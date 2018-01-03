@@ -22,7 +22,6 @@
             android:id="@+id/toolbar">
 
             <Switch
-                android:id="@+id/switchService"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_marginEnd="16dp"
@@ -54,11 +53,11 @@
                 android:layout_row="0"/>
 
             <TextView
-                android:id="@+id/textSsid"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="0"
+                android:text="@{data.ssid}"
                 tools:text="DIRECT-rAnd0m"/>
 
             <TextView
@@ -70,11 +69,11 @@
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
             <TextView
-                android:id="@+id/textPassword"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="1"
+                android:text="@{data.password}"
                 tools:text="p4ssW0rd"/>
         </GridLayout>
 
@@ -93,11 +92,15 @@
             android:backgroundTint="?android:attr/textColorSecondary"/>
 
         <android.support.v7.widget.RecyclerView
+            android:id="@+id/clients"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:paddingBottom="8dp"
             android:paddingEnd="16dp"
             android:paddingStart="16dp"
-            android:paddingTop="8dp"/>
+            android:paddingTop="8dp"
+            android:clipToPadding="false"
+            android:scrollbars="vertical"
+            tools:listitem="@layout/client"/>
     </LinearLayout>
 </layout>

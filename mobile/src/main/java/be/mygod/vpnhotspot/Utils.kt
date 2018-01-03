@@ -21,8 +21,8 @@ echo $NOISYSU_SUFFIX""")
     var out = process.inputStream.bufferedReader().use { it.readLine() }
     val result = out != NOISYSU_SUFFIX
     out = out.removeSuffix(NOISYSU_SUFFIX)
-    if (!out.isNullOrBlank()) Log.i("noisySu", out)
+    if (!out.isNullOrBlank()) Log.i(NOISYSU_TAG, out)
     val err = process.errorStream.bufferedReader().use { it.readLine() }
-    if (!err.isNullOrBlank()) Log.e("noisySu", err)
+    if (!err.isNullOrBlank()) Log.e(NOISYSU_TAG, err)
     return result
 }
