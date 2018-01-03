@@ -88,11 +88,12 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
 
     private fun doStart() {
         p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener, WifiP2pManager.GroupInfoListener {
-            private fun shutdown() {
-                startForeground(0, NotificationCompat.Builder(this@HotspotService, CHANNEL)
-                        .build())
+            private fun shutdown(msg: String) {
+                Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
+                startForeground(0, NotificationCompat.Builder(this@HotspotService, CHANNEL).build())
                 clean()
             }
+            override fun onFailure(reason: Int) = shutdown("Failed to create P2P group (reason: $reason)")
 
             private var tries = 0
             override fun onSuccess() = p2pManager.requestGroupInfo(channel, this)
@@ -100,16 +101,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 if (group != null && group.isGroupOwner) doStart(group) else if (tries < 10) {
                     Thread.sleep(30L shl tries++)
                     onSuccess()
-                } else {
-                    Log.w(TAG, "Unexpected group: $group")
-                    shutdown()
-                }
-            }
-
-            override fun onFailure(reason: Int) {
-                Toast.makeText(this@HotspotService, "Failed to create P2P group (reason: $reason)",
-                        Toast.LENGTH_SHORT).show()
-                shutdown()
+                } else shutdown("Unexpected group: $group")
             }
         })
     }
