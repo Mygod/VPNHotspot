@@ -2,22 +2,26 @@ package be.mygod.vpnhotspot
 
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.NetworkInfo
-import android.net.wifi.p2p.*
+import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pInfo
+import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
 import android.os.Looper
 import android.support.v4.app.NotificationCompat
 import android.support.v4.content.ContextCompat
+import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
+import be.mygod.vpnhotspot.App.Companion.app
 import java.net.InetAddress
 
 class HotspotService : Service(), WifiP2pManager.ChannelListener {
     companion object {
         const val CHANNEL = "hotspot"
+        const val STATUS_CHANGED = "be.mygod.vpnhotspot.HotspotService.STATUS_CHANGED"
         private const val TAG = "HotspotService"
     }
 
@@ -27,7 +31,6 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
 
     inner class HotspotBinder : Binder() {
         val service get() = this@HotspotService
-        val status get() = this@HotspotService.status
         var data: MainActivity.Data? = null
 
         fun shutdown() {
@@ -35,9 +38,9 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 override fun onSuccess() = clean()
                 override fun onFailure(reason: Int) {
                     if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
-                        Toast.makeText(this@HotspotService, "Failed to remove P2P group (reason: $reason)",
+                        Toast.makeText(this@HotspotService, "Failed to remove P2P group (${formatReason(reason)})",
                                 Toast.LENGTH_SHORT).show()
-                        binder.data?.onStatusChanged()
+                        LocalBroadcastManager.getInstance(this@HotspotService).sendBroadcast(Intent(STATUS_CHANGED))
                     }
                 }
             })
@@ -52,43 +55,41 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         private set
     private val binder = HotspotBinder()
     private var receiverRegistered = false
-    private val receiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
-                    if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
-                            WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // group may be enabled by other apps
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                    val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
-                    val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
-                    val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
-                    hostAddress = info.groupOwnerAddress
-                    val downstream = group.`interface`
-                    if (net.isConnected && downstream != null && this@HotspotService.downstream == null) {
-                        this@HotspotService.downstream = downstream
-                        if (noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
-                                "ip route add default dev $upstream scope link table 62",
-                                "ip route add $route dev $downstream scope link table 62",
-                                "ip route add broadcast 255.255.255.255 dev $downstream scope link table 62",
-                                "ip rule add from $route lookup 62",
-                                "iptables -N vpnhotspot_fwd",
-                                "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
-                                "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
-                                "iptables -I FORWARD -j vpnhotspot_fwd",
-                                "iptables -t nat -A PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
-                                "iptables -t nat -A PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns")) {
-                            doStart(group)
-                        } else startFailure("Something went wrong, please check logcat.")
-                    }
-                    this@HotspotService.group = group
-                    binder.data?.onGroupChanged()
-                    showNotification(group)
-                    Log.d(TAG, "${intent.action}: $info, $net, $group")
+    private val receiver = broadcastReceiver { _, intent ->
+        when (intent.action) {
+            WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
+                if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
+                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // group may be enabled by other apps
+            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
+                val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
+                val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
+                val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
+                hostAddress = info.groupOwnerAddress
+                val downstream = group.`interface`
+                if (net.isConnected && downstream != null && this@HotspotService.downstream == null) {
+                    this@HotspotService.downstream = downstream
+                    if (noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
+                            "ip route add default dev $upstream scope link table 62",
+                            "ip route add $route dev $downstream scope link table 62",
+                            "ip route add broadcast 255.255.255.255 dev $downstream scope link table 62",
+                            "ip rule add from $route lookup 62",
+                            "iptables -N vpnhotspot_fwd",
+                            "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
+                            "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
+                            "iptables -I FORWARD -j vpnhotspot_fwd",
+                            "iptables -t nat -A PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
+                            "iptables -t nat -A PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns")) {
+                        doStart(group)
+                    } else startFailure("Something went wrong, please check logcat.")
                 }
-                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                    val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
-                    Log.d(TAG, "${intent.action}: $info")
-                }
+                this@HotspotService.group = group
+                binder.data?.onGroupChanged()
+                showNotification(group)
+                Log.d(TAG, "${intent.action}: $info, $net, $group")
+            }
+            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
+                val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
+                Log.d(TAG, "${intent.action}: $info")
             }
         }
     }
@@ -96,15 +97,24 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     // TODO: do something to these hardcoded strings
     var downstream: String? = null
         private set
-    private val upstream = "tun0"
-    private val route = "192.168.49.0/24"
-    private val dns = "8.8.8.8:53"
+    private val upstream get() = app.pref.getString("service.upstream", "tun0")
+    private val route get() = app.pref.getString("service.route", "192.168.49.0/24")
+    private val dns get() = app.pref.getString("service.dns", "8.8.8.8:53")
 
     var status = Status.IDLE
         private set(value) {
+            if (field == value) return
             field = value
-            binder.data?.onStatusChanged()
+            LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(STATUS_CHANGED))
         }
+
+    private fun formatReason(reason: Int) = when (reason) {
+        WifiP2pManager.ERROR -> "ERROR"
+        WifiP2pManager.P2P_UNSUPPORTED -> "P2P_UNSUPPORTED"
+        WifiP2pManager.BUSY -> "BUSY"
+        WifiP2pManager.NO_SERVICE_REQUESTS -> "NO_SERVICE_REQUESTS"
+        else -> "unknown reason: $reason"
+    }
 
     override fun onBind(intent: Intent) = binder
 
@@ -122,7 +132,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
         if (!receiverRegistered) {
-            registerReceiver(receiver, createIntentFilter(
+            registerReceiver(receiver, intentFilter(
                     WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
@@ -137,8 +147,9 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                     p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                         override fun onSuccess() = doStart()
                         override fun onFailure(reason: Int) {
-                            Toast.makeText(this@HotspotService, "Failed to remove old P2P group (reason: $reason)",
-                                    Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this@HotspotService,
+                                    "Failed to remove old P2P group (${formatReason(reason)})", Toast.LENGTH_SHORT)
+                                    .show()
                         }
                     })
                 }
@@ -153,7 +164,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         clean()
     }
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
-        override fun onFailure(reason: Int) = startFailure("Failed to create P2P group (reason: $reason)")
+        override fun onFailure(reason: Int) = startFailure("Failed to create P2P group (${formatReason(reason)})")
         override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire
     })
     private fun doStart(group: WifiP2pGroup) {

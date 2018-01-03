@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <PreferenceCategory
+        android:key="service"
+        android:title="Service">
+        <AutoSummaryEditTextPreference
+            android:key="service.upstream"
+            android:title="Upstream interface"
+            android:summary="%s"
+            android:defaultValue="tun0"/>
+        <AutoSummaryEditTextPreference
+            android:key="service.route"
+            android:title="Wi-Fi Direct routing"
+            android:summary="%s"
+            android:defaultValue="192.168.49.0/24"/>
+        <AutoSummaryEditTextPreference
+            android:key="service.dns"
+            android:title="Downstream DNS server:port"
+            android:summary="%s"
+            android:defaultValue="8.8.8.8:53"/>
+        <Preference
+            android:key="service.clean"
+            android:title="Clean up"
+            android:summary="Remove routing rules"/>
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:title="Misc">
+        <Preference
+            android:key="misc.logcat"
+            android:title="Export logcat"
+            android:summary="Such useful very wow"/>
+        <Preference
+            android:key="misc.source"
+            android:title="View on GitHub"
+            android:summary="Star, submit issues and contribute"/>
+        <Preference
+            android:key="misc.donate"
+            android:title="Donate"
+            android:summary="I love money"/>
+    </PreferenceCategory>
+</PreferenceScreen>

@@ -21,9 +21,12 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".HotspotService">
+        <service android:name=".HotspotService">
         </service>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:label="@string/title_activity_settings"/>
     </application>
 
 </manifest>

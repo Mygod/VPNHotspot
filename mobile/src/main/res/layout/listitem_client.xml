@@ -21,6 +21,7 @@
             android:layout_height="wrap_content"
             android:text="@{device.deviceAddress}"
             android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+            android:textIsSelectable="true"
             tools:text="xx:xx:xx:xx:xx:xx"/>
 
         <TextView
@@ -28,6 +29,7 @@
             android:layout_height="wrap_content"
             android:visibility="@{ipAddress == null ? View.GONE : View.VISIBLE}"
             android:text="@{ipAddress}"
+            android:textIsSelectable="true"
             tools:text="192.168.49.123"/>
     </LinearLayout>
 </layout>

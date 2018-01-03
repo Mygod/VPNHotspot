@@ -58,6 +58,7 @@
                 android:layout_column="2"
                 android:layout_row="0"
                 android:text="@{data.ssid}"
+                android:textIsSelectable="true"
                 tools:text="DIRECT-rAnd0m"/>
 
             <TextView
@@ -74,6 +75,7 @@
                 android:layout_column="2"
                 android:layout_row="1"
                 android:text="@{data.password}"
+                android:textIsSelectable="true"
                 tools:text="p4ssW0rd"/>
         </GridLayout>
 
@@ -101,6 +103,6 @@
             android:paddingTop="8dp"
             android:clipToPadding="false"
             android:scrollbars="vertical"
-            tools:listitem="@layout/client"/>
+            tools:listitem="@layout/listitem_client"/>
     </LinearLayout>
 </layout>

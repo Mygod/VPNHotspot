@@ -1,9 +1,16 @@
 package be.mygod.vpnhotspot
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 
-fun createIntentFilter(vararg actions: String): IntentFilter {
+fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
+}
+
+fun intentFilter(vararg actions: String): IntentFilter {
     val result = IntentFilter()
     actions.forEach { result.addAction(it) }
     return result
