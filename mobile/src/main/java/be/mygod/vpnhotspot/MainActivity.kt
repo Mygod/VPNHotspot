@@ -47,31 +47,31 @@ class MainActivity : AppCompatActivity(), ServiceConnection {
         val running get() = binder?.status == HotspotService.Status.ACTIVE
         val ssid: String @Bindable get() = if (running) binder!!.service.group.networkName else ""
         val password: String @Bindable get() = if (running) binder!!.service.group.passphrase else ""
-        val clients @Bindable get() = if (running) binder!!.service.clients else null
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
             notifyPropertyChanged(BR.serviceStarted)
             onGroupChanged()
-            onClientsChanged()
         }
         fun onGroupChanged() {
             notifyPropertyChanged(BR.ssid)
             notifyPropertyChanged(BR.password)
+            adapter.fetchClients()
         }
-        fun onClientsChanged() = adapter.fetchClients()
     }
 
     class ClientViewHolder(val binding: ClientBinding) : RecyclerView.ViewHolder(binding.root)
     inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
         private var owner: WifiP2pDevice? = null
         private lateinit var clients: MutableCollection<WifiP2pDevice>
+        private lateinit var arpCache: ArpCache
 
         fun fetchClients() {
             val binder = binder!!
             if (data.running) {
                 owner = binder.service.group.owner
-                clients = binder.service.clients
+                clients = binder.service.group.clientList
+                arpCache = ArpCache(binder.service.downstream!!)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
         }
@@ -80,9 +80,14 @@ class MainActivity : AppCompatActivity(), ServiceConnection {
                 ClientViewHolder(ClientBinding.inflate(LayoutInflater.from(parent.context)))
 
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
-            holder.binding.device = when (position) {
+            val device = when (position) {
                 0 -> owner
                 else -> clients.elementAt(position - 1)
+            }
+            holder.binding.device = device
+            holder.binding.ipAddress = when (position) {
+                0 -> binder?.service?.hostAddress?.hostAddress?.toString()
+                else -> arpCache[device?.deviceAddress]
             }
             holder.binding.executePendingBindings()
         }

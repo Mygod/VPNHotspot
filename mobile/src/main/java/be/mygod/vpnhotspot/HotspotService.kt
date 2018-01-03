@@ -13,6 +13,7 @@ import android.support.v4.app.NotificationCompat
 import android.support.v4.content.ContextCompat
 import android.util.Log
 import android.widget.Toast
+import java.net.InetAddress
 
 class HotspotService : Service(), WifiP2pManager.ChannelListener {
     companion object {
@@ -46,7 +47,9 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     private lateinit var p2pManager: WifiP2pManager
     private lateinit var channel: WifiP2pManager.Channel
     lateinit var group: WifiP2pGroup
-    lateinit var clients: MutableCollection<WifiP2pDevice>
+        private set
+    var hostAddress: InetAddress? = null
+        private set
     private val binder = HotspotBinder()
     private var receiverRegistered = false
     private val receiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -55,14 +58,11 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
                     if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
                             WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // group may be enabled by other apps
-                WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION ->{
-                    clients = intent.getParcelableExtra<WifiP2pDeviceList>(WifiP2pManager.EXTRA_P2P_DEVICE_LIST).deviceList
-                    binder.data?.onClientsChanged()
-                }
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
                     val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
                     val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
                     val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
+                    hostAddress = info.groupOwnerAddress
                     val downstream = group.`interface`
                     if (net.isConnected && downstream != null && this@HotspotService.downstream == null) {
                         this@HotspotService.downstream = downstream
@@ -80,7 +80,6 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                             doStart(group)
                         } else startFailure("Something went wrong, please check logcat.")
                     }
-                    group.`interface`
                     binder.data?.onGroupChanged()
                     Log.d(TAG, "${intent.action}: $info, $net, $group")
                 }
@@ -93,7 +92,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     }
 
     // TODO: do something to these hardcoded strings
-    private var downstream: String? = null
+    var downstream: String? = null
+        private set
     private val upstream = "tun0"
     private val route = "192.168.49.0/24"
     private val dns = "8.8.8.8:53"
@@ -122,7 +122,6 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         if (!receiverRegistered) {
             registerReceiver(receiver, createIntentFilter(
                     WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                    WifiP2pManager.WIFI_P2P_PEERS_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
             receiverRegistered = true
@@ -157,7 +156,6 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     })
     private fun doStart(group: WifiP2pGroup) {
         this.group = group
-        clients = group.clientList
         status = Status.ACTIVE
         startForeground(1, NotificationCompat.Builder(this@HotspotService, CHANNEL)
                 .setWhen(0)
