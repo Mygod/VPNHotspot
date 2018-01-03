@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.app.PendingIntent
 import android.app.Service
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -32,8 +33,11 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = clean()
                 override fun onFailure(reason: Int) {
-                    Toast.makeText(this@HotspotService, "Failed to remove P2P group (reason: $reason)",
-                            Toast.LENGTH_SHORT).show()
+                    if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
+                        Toast.makeText(this@HotspotService, "Failed to remove P2P group (reason: $reason)",
+                                Toast.LENGTH_SHORT).show()
+                        binder.data?.onStatusChanged()
+                    }
                 }
             })
         }
@@ -44,6 +48,12 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     private lateinit var group: WifiP2pGroup
     private var receiver: BroadcastReceiver? = null
     private val binder = HotspotBinder()
+
+    // TODO: do something
+    private val upstream = "tun0"
+    private val downstream = "p2p0"
+    private val route = "192.168.49.0/24"
+    private val dns = "8.8.8.8:53"
 
     private var status = Status.IDLE
         set(value) {
@@ -67,6 +77,20 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
         initReceiver()
+        if (!noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
+                "ip route add default dev $upstream scope link table 62",
+                "ip route add $route dev $downstream scope link table 62",
+                "ip route add broadcast 255.255.255.255 dev $downstream scope link table 62",
+                "ip rule add from $route lookup 62",
+                "iptables -N vpnhotspot_fwd",
+                "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
+                "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
+                "iptables -I FORWARD -j vpnhotspot_fwd",
+                "iptables -t nat -A PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
+                "iptables -t nat -A PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns")) {
+            startFailure("Something went wrong, please check logcat.")
+            return START_NOT_STICKY
+        }
         p2pManager.requestGroupInfo(channel, {
             when {
                 it == null -> doStart()
@@ -86,14 +110,14 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         return START_NOT_STICKY
     }
 
+    private fun startFailure(msg: String) {
+        Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
+        startForeground(0, NotificationCompat.Builder(this@HotspotService, CHANNEL).build())
+        clean()
+    }
     private fun doStart() {
         p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener, WifiP2pManager.GroupInfoListener {
-            private fun shutdown(msg: String) {
-                Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
-                startForeground(0, NotificationCompat.Builder(this@HotspotService, CHANNEL).build())
-                clean()
-            }
-            override fun onFailure(reason: Int) = shutdown("Failed to create P2P group (reason: $reason)")
+            override fun onFailure(reason: Int) = startFailure("Failed to create P2P group (reason: $reason)")
 
             private var tries = 0
             override fun onSuccess() = p2pManager.requestGroupInfo(channel, this)
@@ -101,7 +125,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 if (group != null && group.isGroupOwner) doStart(group) else if (tries < 10) {
                     Thread.sleep(30L shl tries++)
                     onSuccess()
-                } else shutdown("Unexpected group: $group")
+                } else startFailure("Unexpected group: $group")
             }
         })
     }
@@ -113,6 +137,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 .setContentTitle(group.networkName)
                 .setSubText(group.passphrase)
                 .setSmallIcon(R.drawable.ic_device_wifi_tethering)
+                .setContentIntent(PendingIntent.getActivity(this, 0,
+                        Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
                 .build())
     }
 
@@ -133,6 +159,16 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     }
 
     private fun clean() {
+        if (!noisySu("iptables -t nat -D PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
+                "iptables -t nat -D PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns",
+                "iptables -D FORWARD -j vpnhotspot_fwd",
+                "iptables -F vpnhotspot_fwd",
+                "iptables -X vpnhotspot_fwd",
+                "ip rule del from $route lookup 62",
+                "ip route del broadcast 255.255.255.255 dev $downstream scope link table 62",
+                "ip route del $route dev $downstream scope link table 62",
+                "ip route del default dev $upstream scope link table 62"))
+            Toast.makeText(this, "Something went wrong, please check logcat.", Toast.LENGTH_SHORT).show()
         status = Status.IDLE
         stopForeground(true)
     }
