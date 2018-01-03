@@ -80,7 +80,9 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                             doStart(group)
                         } else startFailure("Something went wrong, please check logcat.")
                     }
+                    this@HotspotService.group = group
                     binder.data?.onGroupChanged()
+                    showNotification(group)
                     Log.d(TAG, "${intent.action}: $info, $net, $group")
                 }
                 WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
@@ -147,7 +149,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
 
     private fun startFailure(msg: String) {
         Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
-        startForeground(0, NotificationCompat.Builder(this@HotspotService, CHANNEL).build())
+        showNotification()
         clean()
     }
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
@@ -157,16 +159,19 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     private fun doStart(group: WifiP2pGroup) {
         this.group = group
         status = Status.ACTIVE
-        startForeground(1, NotificationCompat.Builder(this@HotspotService, CHANNEL)
+        showNotification(group)
+    }
+    private fun showNotification(group: WifiP2pGroup? = null) = startForeground(1,
+            NotificationCompat.Builder(this@HotspotService, CHANNEL)
                 .setWhen(0)
                 .setColor(ContextCompat.getColor(this@HotspotService, R.color.colorPrimary))
-                .setContentTitle(group.networkName)
-                .setContentText(group.passphrase)
+                .setContentTitle(group?.networkName)
+                .setContentText(group?.passphrase)
+                .setSubText("${group?.clientList?.size ?: 0} connected device(s)")
                 .setSmallIcon(R.drawable.ic_device_wifi_tethering)
                 .setContentIntent(PendingIntent.getActivity(this, 0,
                         Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
                 .build())
-    }
 
     private fun clean() {
         if (receiverRegistered) {

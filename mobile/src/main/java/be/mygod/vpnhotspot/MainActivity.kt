@@ -38,9 +38,9 @@ class MainActivity : AppCompatActivity(), ServiceConnection {
                 val binder = binder
                 when (binder?.status) {
                     HotspotService.Status.IDLE ->
-                        ContextCompat.startForegroundService(this@MainActivity,
+                        if (value) ContextCompat.startForegroundService(this@MainActivity,
                                 Intent(this@MainActivity, HotspotService::class.java))
-                    HotspotService.Status.ACTIVE -> binder.shutdown()
+                    HotspotService.Status.ACTIVE -> if (!value) binder.shutdown()
                 }
             }
 
@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection {
             if (data.running) {
                 owner = binder.service.group.owner
                 clients = binder.service.group.clientList
-                arpCache = ArpCache(binder.service.downstream!!)
+                arpCache = ArpCache(binder.service.downstream)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
         }
