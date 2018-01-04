@@ -66,14 +66,14 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
     inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
         private var owner: WifiP2pDevice? = null
         private lateinit var clients: MutableCollection<WifiP2pDevice>
-        private lateinit var arpCache: ArpCache
+        private lateinit var arpCache: Map<String, String>
 
         fun fetchClients() {
             if (data.running) {
                 val binder = binder!!
                 owner = binder.service.group.owner
                 clients = binder.service.group.clientList
-                arpCache = ArpCache(binder.service.downstream)
+                arpCache = NetUtils.arp(binder.service.downstream)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
         }

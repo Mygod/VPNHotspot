@@ -9,13 +9,6 @@
             android:summary="%s"
             android:defaultValue="tun0"/>
         <AutoSummaryEditTextPreference
-            android:key="service.subnetPrefixLength"
-            android:title="Subnet prefix length"
-            android:summary="%s"
-            android:inputType="number"
-            android:maxLength="3"
-            android:defaultValue="24"/>
-        <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="Downstream DNS server:port"
             android:summary="%s"
