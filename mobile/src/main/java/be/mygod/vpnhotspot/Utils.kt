@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Bundle
 import android.util.Log
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
@@ -14,6 +15,11 @@ fun intentFilter(vararg actions: String): IntentFilter {
     val result = IntentFilter()
     actions.forEach { result.addAction(it) }
     return result
+}
+
+fun Bundle.put(key: String, map: Array<String>): Bundle {
+    putStringArray(key, map)
+    return this
 }
 
 const val NOISYSU_TAG = "NoisySU"

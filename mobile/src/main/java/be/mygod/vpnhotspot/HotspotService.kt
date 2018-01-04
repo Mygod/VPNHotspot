@@ -22,6 +22,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     companion object {
         const val CHANNEL = "hotspot"
         const val STATUS_CHANGED = "be.mygod.vpnhotspot.HotspotService.STATUS_CHANGED"
+        const val KEY_UPSTREAM = "service.upstream"
         private const val TAG = "HotspotService"
     }
 
@@ -75,7 +76,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
 
     var downstream: String? = null
         private set
-    private val upstream get() = app.pref.getString("service.upstream", "tun0")
+    private val upstream get() = app.pref.getString(KEY_UPSTREAM, "tun0")
     /**
      * subnetPrefixLength has been the same forever but this option is here anyways. Source:
      *  https://android.googlesource.com/platform/frameworks/base/+/android-4.0.1_r1/wifi/java/android/net/wifi/p2p/WifiP2pService.java#1028
