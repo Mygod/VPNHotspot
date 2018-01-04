@@ -188,7 +188,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 "ip route add default dev $upstream scope link table 62",
                 "ip route add $hostAddress/$subnetPrefixLength dev $downstream scope link table 62",
                 "ip route add broadcast 255.255.255.255 dev $downstream scope link table 62",
-                "ip rule add from $hostAddress/$subnetPrefixLength lookup 62",
+                "ip rule add iif $downstream lookup 62",
                 "iptables -N vpnhotspot_fwd",
                 "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
                 "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
@@ -210,7 +210,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                     "iptables -D FORWARD -j vpnhotspot_fwd",
                     "iptables -F vpnhotspot_fwd",
                     "iptables -X vpnhotspot_fwd",
-                    "ip rule del from $hostAddress/$subnetPrefixLength lookup 62",
+                    "ip rule del iif $downstream lookup 62",
                     "ip route del broadcast 255.255.255.255 dev $downstream scope link table 62",
                     "ip route del $hostAddress/$subnetPrefixLength dev $downstream scope link table 62",
                     "ip route del default dev $upstream scope link table 62")) {
