@@ -66,7 +66,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
                 hostAddress = info.groupOwnerAddress
                 val downstream = group.`interface`
-                if (net.isConnected && downstream != null && this@HotspotService.downstream == null) {
+                if (info.groupFormed && info.isGroupOwner &&
+                        downstream != null && this@HotspotService.downstream == null) {
                     this@HotspotService.downstream = downstream
                     if (noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
                             "ip route add default dev $upstream scope link table 62",
@@ -86,10 +87,6 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 binder.data?.onGroupChanged()
                 showNotification(group)
                 Log.d(TAG, "${intent.action}: $info, $net, $group")
-            }
-            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
-                Log.d(TAG, "${intent.action}: $info")
             }
         }
     }
@@ -132,10 +129,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
         if (!receiverRegistered) {
-            registerReceiver(receiver, intentFilter(
-                    WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                    WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
-                    WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
+            registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                    WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
             receiverRegistered = true
         }
         p2pManager.requestGroupInfo(channel, {
