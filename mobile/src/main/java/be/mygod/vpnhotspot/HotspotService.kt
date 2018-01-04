@@ -66,7 +66,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
                 val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
                 if (downstream == null) onGroupCreated(info, group)
-                this@HotspotService.group = group
+                this.group = group
                 binder.data?.onGroupChanged()
                 showNotification(group)
                 Log.d(TAG, "${intent.action}: $info, $net, $group")
