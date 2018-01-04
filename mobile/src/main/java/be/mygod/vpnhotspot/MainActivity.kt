@@ -76,6 +76,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
                 arpCache = NetUtils.arp(binder.service.downstream)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
+            binding.swipeRefresher.isRefreshing = false
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
@@ -113,6 +114,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
         binding.clients.adapter = adapter
         binding.toolbar.inflateMenu(R.menu.main)
         binding.toolbar.setOnMenuItemClickListener(this)
+        binding.swipeRefresher.setOnRefreshListener { adapter.fetchClients() }
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {

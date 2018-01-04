@@ -93,16 +93,22 @@
             android:background="#000"
             android:backgroundTint="?android:attr/textColorSecondary"/>
 
-        <android.support.v7.widget.RecyclerView
-            android:id="@+id/clients"
+        <android.support.v4.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresher"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:paddingBottom="8dp"
-            android:paddingEnd="16dp"
-            android:paddingStart="16dp"
-            android:paddingTop="8dp"
-            android:clipToPadding="false"
-            android:scrollbars="vertical"
-            tools:listitem="@layout/listitem_client"/>
+            android:layout_height="match_parent">
+
+            <android.support.v7.widget.RecyclerView
+                android:id="@+id/clients"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingBottom="8dp"
+                android:paddingEnd="16dp"
+                android:paddingStart="16dp"
+                android:paddingTop="8dp"
+                android:clipToPadding="false"
+                android:scrollbars="vertical"
+                tools:listitem="@layout/listitem_client"/>
+        </android.support.v4.widget.SwipeRefreshLayout>
     </LinearLayout>
 </layout>
