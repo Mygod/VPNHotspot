@@ -31,7 +31,7 @@ class SettingsFragment : PreferenceFragmentCompatDividers(), ServiceConnection {
                     "while iptables -D FORWARD -j vpnhotspot_fwd; do done",
                     "iptables -F vpnhotspot_fwd",
                     "iptables -X vpnhotspot_fwd",
-                    "ip rule del lookup 62",
+                    "while ip rule del lookup 62; do done",
                     "ip route flush table 62")
             true
         }

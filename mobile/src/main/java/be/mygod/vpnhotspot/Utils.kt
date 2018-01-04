@@ -26,7 +26,7 @@ const val NOISYSU_TAG = "NoisySU"
 const val NOISYSU_SUFFIX = "SUCCESS\n"
 fun noisySu(vararg commands: String): Boolean {
     val process = ProcessBuilder("su", "-c", """function noisy() { "$@" || echo "$@" exited with $?; }
-${commands.joinToString("\n") { "noisy $it" }}
+${commands.joinToString("\n") { if (it.startsWith("while ")) it else "noisy $it" }}
 echo $NOISYSU_SUFFIX""")
             .redirectErrorStream(true)
             .start()
