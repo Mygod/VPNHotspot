@@ -69,6 +69,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 if (info.groupFormed && info.isGroupOwner &&
                         downstream != null && this@HotspotService.downstream == null) {
                     this@HotspotService.downstream = downstream
+                    val ip = info.groupOwnerAddress.hostAddress
                     if (noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
                             "ip route add default dev $upstream scope link table 62",
                             "ip route add $route dev $downstream scope link table 62",
@@ -78,8 +79,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                             "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
                             "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
                             "iptables -I FORWARD -j vpnhotspot_fwd",
-                            "iptables -t nat -A PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
-                            "iptables -t nat -A PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns")) {
+                            "iptables -t nat -A PREROUTING -i $downstream -p tcp -d $ip --dport 53 -j DNAT --to-destination $dns",
+                            "iptables -t nat -A PREROUTING -i $downstream -p udp -d $ip --dport 53 -j DNAT --to-destination $dns")) {
                         doStart(group)
                     } else startFailure("Something went wrong, please check logcat.")
                 }
