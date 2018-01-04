@@ -227,8 +227,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
             receiverRegistered = false
         }
         if (downstream != null)
-            if (noisySu("iptables -t nat -D PREROUTING -i $downstream -p tcp --dport 53 -j DNAT --to-destination $dns",
-                    "iptables -t nat -D PREROUTING -i $downstream -p udp --dport 53 -j DNAT --to-destination $dns",
+            if (noisySu("iptables -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns",
+                    "iptables -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns",
                     "iptables -D FORWARD -j vpnhotspot_fwd",
                     "iptables -F vpnhotspot_fwd",
                     "iptables -X vpnhotspot_fwd",
