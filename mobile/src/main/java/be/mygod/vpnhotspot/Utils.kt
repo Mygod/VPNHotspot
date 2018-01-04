@@ -23,8 +23,8 @@ fun Bundle.put(key: String, map: Array<String>): Bundle {
     return this
 }
 
-const val NOISYSU_TAG = "NoisySU"
-const val NOISYSU_SUFFIX = "SUCCESS\n"
+private const val NOISYSU_TAG = "NoisySU"
+private const val NOISYSU_SUFFIX = "SUCCESS\n"
 fun loggerSuStream(command: String): InputStream {
     val process = ProcessBuilder("su", "-c", command)
             .redirectErrorStream(true)

@@ -63,21 +63,9 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         val service get() = this@HotspotService
         var data: MainActivity.Data? = null
 
-        fun shutdown() {
-            when (status) {
-                Status.ACTIVE_P2P -> p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() = clean()
-                    override fun onFailure(reason: Int) {
-                        if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
-                            Toast.makeText(this@HotspotService, "Failed to remove P2P group (${formatReason(reason)})",
-                                    Toast.LENGTH_SHORT).show()
-                            LocalBroadcastManager.getInstance(this@HotspotService)
-                                    .sendBroadcast(Intent(STATUS_CHANGED))
-                        }
-                    }
-                })
-                else -> clean()
-            }
+        fun shutdown() = when (status) {
+            Status.ACTIVE_P2P -> removeGroup()
+            else -> clean()
         }
     }
 
@@ -199,10 +187,10 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         return START_NOT_STICKY
     }
 
-    private fun startFailure(msg: String) {
+    private fun startFailure(msg: String, group: WifiP2pGroup? = null) {
         Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
         showNotification()
-        clean()
+        if (group != null) removeGroup() else clean()
     }
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
         override fun onFailure(reason: Int) = startFailure("Failed to create P2P group (${formatReason(reason)})")
@@ -234,15 +222,28 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         val routing = try {
             Routing(upstream, downstream, owner)
         } catch (_: Routing.InterfaceNotFoundException) {
-            startFailure(getString(R.string.exception_interface_not_found))
+            startFailure(getString(R.string.exception_interface_not_found), group)
             return
         }.p2pRule().forward().dnsRedirect(dns)
         if (routing.start()) {
             this.routing = routing
             doStart(group)
-        } else startFailure("Something went wrong, please check logcat.")
+        } else startFailure("Something went wrong, please check logcat.", group)
     }
 
+    private fun removeGroup() {
+        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() = clean()
+            override fun onFailure(reason: Int) {
+                if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
+                    Toast.makeText(this@HotspotService, "Failed to remove P2P group (${formatReason(reason)})",
+                            Toast.LENGTH_SHORT).show()
+                    status = Status.ACTIVE_P2P
+                    LocalBroadcastManager.getInstance(this@HotspotService).sendBroadcast(Intent(STATUS_CHANGED))
+                }
+            }
+        })
+    }
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
