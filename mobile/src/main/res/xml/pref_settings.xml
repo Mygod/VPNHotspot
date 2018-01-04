@@ -8,6 +8,11 @@
             android:title="Upstream interface"
             android:summary="%s"
             android:defaultValue="tun0"/>
+        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+            android:key="service.wifi"
+            android:title="Wi-Fi interface"
+            android:summary="%s"
+            android:defaultValue="wlan0"/>
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="Downstream DNS server:port"

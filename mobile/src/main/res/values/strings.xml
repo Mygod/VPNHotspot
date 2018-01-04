@@ -5,4 +5,5 @@
         <item quantity="one">1 connected device</item>
         <item quantity="other">%d connected devices</item>
     </plurals>
+    <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
 </resources>

@@ -27,12 +27,7 @@ class SettingsFragment : PreferenceFragmentCompatDividers(), ServiceConnection {
         addPreferencesFromResource(R.xml.pref_settings)
         service = findPreference("service")
         findPreference("service.clean").setOnPreferenceClickListener {
-            noisySu("iptables -t nat -F PREROUTING",
-                    "while iptables -D FORWARD -j vpnhotspot_fwd; do done",
-                    "iptables -F vpnhotspot_fwd",
-                    "iptables -X vpnhotspot_fwd",
-                    "while ip rule del lookup 62; do done",
-                    "ip route flush table 62")
+            Routing.clean()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
@@ -59,7 +54,13 @@ class SettingsFragment : PreferenceFragmentCompatDividers(), ServiceConnection {
                 Bundle().put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
                         NetworkInterface.getNetworkInterfaces().asSequence()
                                 .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
-                                .map { it.name }.toList().toTypedArray()))
+                                .map { it.name }.sorted().toList().toTypedArray()))
+        HotspotService.KEY_WIFI -> displayPreferenceDialog(
+                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), HotspotService.KEY_WIFI,
+                Bundle().put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
+                        NetworkInterface.getNetworkInterfaces().asSequence()
+                                .filter { !it.isLoopback }  // wlan0 is down in airplane mode
+                                .map { it.name }.sorted().toList().toTypedArray()))
         else -> super.onDisplayPreferenceDialog(preference)
     }
 

@@ -24,14 +24,13 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
     inner class Data : BaseObservable() {
         val switchEnabled: Boolean
             @Bindable get() = when (binder?.service?.status) {
-                HotspotService.Status.IDLE -> true
-                HotspotService.Status.ACTIVE -> true
+                HotspotService.Status.IDLE, HotspotService.Status.ACTIVE_P2P, HotspotService.Status.ACTIVE_AP -> true
                 else -> false
             }
         var serviceStarted: Boolean
             @Bindable get() = when (binder?.service?.status) {
-                HotspotService.Status.STARTING -> true
-                HotspotService.Status.ACTIVE -> true
+                HotspotService.Status.STARTING, HotspotService.Status.ACTIVE_P2P, HotspotService.Status.ACTIVE_AP ->
+                    true
                 else -> false
             }
             set(value) {
@@ -40,13 +39,12 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
                     HotspotService.Status.IDLE ->
                         if (value) ContextCompat.startForegroundService(this@MainActivity,
                                 Intent(this@MainActivity, HotspotService::class.java))
-                    HotspotService.Status.ACTIVE -> if (!value) binder.shutdown()
+                    HotspotService.Status.ACTIVE_P2P, HotspotService.Status.ACTIVE_AP -> if (!value) binder.shutdown()
                 }
             }
 
-        val running get() = binder?.service?.status == HotspotService.Status.ACTIVE
-        val ssid: String @Bindable get() = if (running) binder!!.service.group.networkName else ""
-        val password: String @Bindable get() = if (running) binder!!.service.group.passphrase else ""
+        val ssid @Bindable get() = binder?.service?.ssid ?: "Service inactive"
+        val password @Bindable get() = binder?.service?.password ?: ""
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
@@ -69,11 +67,11 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
         private lateinit var arpCache: Map<String, String>
 
         fun fetchClients() {
-            if (data.running) {
-                val binder = binder!!
+            val binder = binder
+            if (binder?.service?.status == HotspotService.Status.ACTIVE_P2P) {
                 owner = binder.service.group.owner
                 clients = binder.service.group.clientList
-                arpCache = NetUtils.arp(binder.service.downstream)
+                arpCache = NetUtils.arp(binder.service.routing?.downstream)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
             binding.swipeRefresher.isRefreshing = false
@@ -89,7 +87,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
             }
             holder.binding.device = device
             holder.binding.ipAddress = when (position) {
-                0 -> binder?.service?.hostAddress
+                0 -> binder?.service?.routing?.hostAddress
                 else -> arpCache[device?.deviceAddress]
             }
             holder.binding.executePendingBindings()
