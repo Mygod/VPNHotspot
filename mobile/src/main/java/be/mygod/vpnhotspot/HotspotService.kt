@@ -153,17 +153,21 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         status = Status.ACTIVE
         showNotification(group)
     }
-    private fun showNotification(group: WifiP2pGroup? = null) = startForeground(1,
-            NotificationCompat.Builder(this@HotspotService, CHANNEL)
-                .setWhen(0)
-                .setColor(ContextCompat.getColor(this@HotspotService, R.color.colorPrimary))
-                .setContentTitle(group?.networkName)
-                .setContentText(group?.passphrase)
-                .setSubText("${group?.clientList?.size ?: 0} connected device(s)")
-                .setSmallIcon(R.drawable.ic_device_wifi_tethering)
-                .setContentIntent(PendingIntent.getActivity(this, 0,
-                        Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-                .build())
+    private fun showNotification(group: WifiP2pGroup? = null) {
+        val deviceCount = group?.clientList?.size ?: 0
+        startForeground(1,
+                NotificationCompat.Builder(this@HotspotService, CHANNEL)
+                        .setWhen(0)
+                        .setColor(ContextCompat.getColor(this@HotspotService, R.color.colorPrimary))
+                        .setContentTitle(group?.networkName)
+                        .setContentText(group?.passphrase)
+                        .setSubText(resources.getQuantityString(R.plurals.notification_connected_devices,
+                                deviceCount, deviceCount))
+                        .setSmallIcon(R.drawable.ic_device_wifi_tethering)
+                        .setContentIntent(PendingIntent.getActivity(this, 0,
+                                Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
+                        .build())
+    }
 
     private fun onGroupCreated(info: WifiP2pInfo, group: WifiP2pGroup) {
         val owner = info.groupOwnerAddress

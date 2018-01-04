@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">VPN Hotspot</string>
     <string name="title_activity_settings">Settings</string>
+    <plurals name="notification_connected_devices">
+        <item quantity="one">1 connected device</item>
+        <item quantity="other">%d connected devices</item>
+    </plurals>
 </resources>
