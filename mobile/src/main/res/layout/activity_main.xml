@@ -24,7 +24,6 @@
             <Switch
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:layout_marginEnd="16dp"
                 android:enabled="@{data.switchEnabled}"
                 android:checked="@{data.serviceStarted}"
                 android:onCheckedChanged="@{(_, checked) -> data.setServiceStarted(checked)}"
