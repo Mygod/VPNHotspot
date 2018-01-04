@@ -88,7 +88,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
             }
             holder.binding.device = device
             holder.binding.ipAddress = when (position) {
-                0 -> binder?.service?.hostAddress?.hostAddress?.toString()
+                0 -> binder?.service?.hostAddress
                 else -> arpCache[device?.deviceAddress]
             }
             holder.binding.executePendingBindings()

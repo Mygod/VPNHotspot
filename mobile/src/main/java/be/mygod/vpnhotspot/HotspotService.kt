@@ -16,7 +16,6 @@ import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
-import java.net.InetAddress
 
 class HotspotService : Service(), WifiP2pManager.ChannelListener {
     companion object {
@@ -51,7 +50,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     private lateinit var channel: WifiP2pManager.Channel
     lateinit var group: WifiP2pGroup
         private set
-    var hostAddress: InetAddress? = null
+    var hostAddress: String? = null
         private set
     private val binder = HotspotBinder()
     private var receiverRegistered = false
@@ -64,23 +63,23 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
                 val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
                 val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
-                hostAddress = info.groupOwnerAddress
+                val hostAddress = info.groupOwnerAddress?.hostAddress
                 val downstream = group.`interface`
                 if (info.groupFormed && info.isGroupOwner &&
-                        downstream != null && this@HotspotService.downstream == null) {
-                    this@HotspotService.downstream = downstream
-                    val ip = info.groupOwnerAddress.hostAddress
+                        downstream != null && hostAddress != null && this.downstream == null) {
+                    this.downstream = downstream
+                    this.hostAddress = hostAddress
                     if (noisySu("echo 1 >/proc/sys/net/ipv4/ip_forward",
                             "ip route add default dev $upstream scope link table 62",
-                            "ip route add $route dev $downstream scope link table 62",
+                            "ip route add $hostAddress/$subnetPrefixLength dev $downstream scope link table 62",
                             "ip route add broadcast 255.255.255.255 dev $downstream scope link table 62",
-                            "ip rule add from $route lookup 62",
+                            "ip rule add from $hostAddress/$subnetPrefixLength lookup 62",
                             "iptables -N vpnhotspot_fwd",
                             "iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT",
                             "iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT",
                             "iptables -I FORWARD -j vpnhotspot_fwd",
-                            "iptables -t nat -A PREROUTING -i $downstream -p tcp -d $ip --dport 53 -j DNAT --to-destination $dns",
-                            "iptables -t nat -A PREROUTING -i $downstream -p udp -d $ip --dport 53 -j DNAT --to-destination $dns")) {
+                            "iptables -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns",
+                            "iptables -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")) {
                         doStart(group)
                     } else startFailure("Something went wrong, please check logcat.")
                 }
@@ -92,11 +91,15 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         }
     }
 
-    // TODO: do something to these hardcoded strings
     var downstream: String? = null
         private set
     private val upstream get() = app.pref.getString("service.upstream", "tun0")
-    private val route get() = app.pref.getString("service.route", "192.168.49.0/24")
+    /**
+     * subnetPrefixLength has been the same forever but this option is here anyways. Source:
+     *  https://android.googlesource.com/platform/frameworks/base/+/android-4.0.1_r1/wifi/java/android/net/wifi/p2p/WifiP2pService.java#1028
+     *  https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/a8d5e40/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2547
+     */
+    private val subnetPrefixLength get() = app.pref.getString("service.subnetPrefixLength", "24")
     private val dns get() = app.pref.getString("service.dns", "8.8.8.8:53")
 
     var status = Status.IDLE
@@ -191,10 +194,11 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                     "iptables -D FORWARD -j vpnhotspot_fwd",
                     "iptables -F vpnhotspot_fwd",
                     "iptables -X vpnhotspot_fwd",
-                    "ip rule del from $route lookup 62",
+                    "ip rule del from $hostAddress/$subnetPrefixLength lookup 62",
                     "ip route del broadcast 255.255.255.255 dev $downstream scope link table 62",
-                    "ip route del $route dev $downstream scope link table 62",
+                    "ip route del $hostAddress/$subnetPrefixLength dev $downstream scope link table 62",
                     "ip route del default dev $upstream scope link table 62")) {
+                hostAddress = null
                 downstream = null
             } else Toast.makeText(this, "Something went wrong, please check logcat.", Toast.LENGTH_SHORT).show()
         status = Status.IDLE

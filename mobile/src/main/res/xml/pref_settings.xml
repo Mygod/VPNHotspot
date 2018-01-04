@@ -9,10 +9,12 @@
             android:summary="%s"
             android:defaultValue="tun0"/>
         <AutoSummaryEditTextPreference
-            android:key="service.route"
-            android:title="Wi-Fi Direct routing"
+            android:key="service.subnetPrefixLength"
+            android:title="Subnet prefix length"
             android:summary="%s"
-            android:defaultValue="192.168.49.0/24"/>
+            android:inputType="number"
+            android:maxLength="3"
+            android:defaultValue="24"/>
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="Downstream DNS server:port"
