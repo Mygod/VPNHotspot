@@ -24,18 +24,21 @@ fun Bundle.put(key: String, map: Array<String>): Bundle {
 
 const val NOISYSU_TAG = "NoisySU"
 const val NOISYSU_SUFFIX = "SUCCESS\n"
-fun noisySu(vararg commands: String): Boolean {
-    val process = ProcessBuilder("su", "-c", """function noisy() { "$@" || echo "$@" exited with $?; }
-${commands.joinToString("\n") { if (it.startsWith("while ")) it else "noisy $it" }}
-echo $NOISYSU_SUFFIX""")
+fun loggerSu(vararg commands: String): String {
+    val process = ProcessBuilder("su", "-c", commands.joinToString("\n"))
             .redirectErrorStream(true)
             .start()
     process.waitFor()
-    var out = process.inputStream.bufferedReader().use { it.readLine() }
+    val err = process.errorStream.bufferedReader().use { it.readText() }
+    if (!err.isBlank()) Log.e(NOISYSU_TAG, err)
+    return process.inputStream.bufferedReader().use { it.readText() }
+}
+fun noisySu(vararg commands: String): Boolean {
+    var out = loggerSu("""function noisy() { "$@" || echo "$@" exited with $?; }
+${commands.joinToString("\n") { if (it.startsWith("while ")) it else "noisy $it" }}
+echo $NOISYSU_SUFFIX""")
     val result = out != NOISYSU_SUFFIX
     out = out.removeSuffix(NOISYSU_SUFFIX)
-    if (!out.isNullOrBlank()) Log.i(NOISYSU_TAG, out)
-    val err = process.errorStream.bufferedReader().use { it.readLine() }
-    if (!err.isNullOrBlank()) Log.e(NOISYSU_TAG, err)
+    if (!out.isBlank()) Log.i(NOISYSU_TAG, out)
     return result
 }

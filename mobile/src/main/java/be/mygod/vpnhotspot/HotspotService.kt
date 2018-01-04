@@ -17,6 +17,7 @@ import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import java.net.NetworkInterface
+import java.util.regex.Pattern
 
 class HotspotService : Service(), WifiP2pManager.ChannelListener {
     companion object {
@@ -24,6 +25,18 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         const val STATUS_CHANGED = "be.mygod.vpnhotspot.HotspotService.STATUS_CHANGED"
         const val KEY_UPSTREAM = "service.upstream"
         private const val TAG = "HotspotService"
+
+        /**
+         * Matches the output of dumpsys wifip2p. This part is available since Android 4.2.
+         *
+         * Related sources:
+         *   https://android.googlesource.com/platform/frameworks/base/+/f0afe4144d09aa9b980cffd444911ab118fa9cbe%5E%21/wifi/java/android/net/wifi/p2p/WifiP2pService.java
+         *   https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/a8d5e40/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#639
+         *
+         *   https://android.googlesource.com/platform/frameworks/base.git/+/android-5.0.0_r1/core/java/android/net/NetworkInfo.java#433
+         *   https://android.googlesource.com/platform/frameworks/base.git/+/220871a/core/java/android/net/NetworkInfo.java#415
+         */
+        private val patternNetworkInfo = "^mNetworkInfo .* (isA|a)vailable: (true|false)".toPattern(Pattern.MULTILINE)
     }
 
     enum class Status {
@@ -115,6 +128,15 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
+        val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}"))
+        if (!matcher.find()) {
+            startFailure("Root unavailable")
+            return START_NOT_STICKY
+        }
+        if (matcher.group(2) != "true") {
+            startFailure("Wi-Fi direct unavailable")
+            return START_NOT_STICKY
+        }
         if (!receiverRegistered) {
             registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
