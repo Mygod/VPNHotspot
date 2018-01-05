@@ -20,31 +20,25 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
 
     class InterfaceNotFoundException : IOException()
 
-    val hostAddress: InetAddress
-    private val subnetPrefixLength: Short
+    val hostAddress = NetworkInterface.getByName(downstream)?.interfaceAddresses
+            ?.singleOrNull { if (ownerAddress == null) it.address is Inet4Address else it.address == ownerAddress }
+            ?: throw InterfaceNotFoundException()
     private val startScript = LinkedList<String>()
     private val stopScript = LinkedList<String>()
-    init {
-        val address = NetworkInterface.getByName(downstream)?.interfaceAddresses
-                ?.singleOrNull { if (ownerAddress == null) it.address is Inet4Address else it.address == ownerAddress }
-                ?: throw InterfaceNotFoundException()
-        hostAddress = address.address
-        subnetPrefixLength = address.networkPrefixLength
-    }
 
     fun p2pRule(): Routing {
+        val address = hostAddress.address.address
+        val subnetPrefixLength = hostAddress.networkPrefixLength
         // clear suffix bits
-        val address = hostAddress.address
         var done = subnetPrefixLength.toInt()
         while (done < address.size shl 3) {
             val index = done shr 3
             address[index] = (address[index].toInt() and (0x7f00 shr (done and 7))).toByte()
             done = (index + 1) shl 3
         }
-        val hostAddress = InetAddress.getByAddress(address).hostAddress
         startScript.add("echo 1 >/proc/sys/net/ipv4/ip_forward")    // Wi-Fi direct doesn't enable ip_forward
         startScript.add("ip route add default dev $upstream scope link table 62")
-        startScript.add("ip route add $hostAddress/$subnetPrefixLength dev $downstream scope link table 62")
+        startScript.add("ip route add ${InetAddress.getByAddress(address).hostAddress}/$subnetPrefixLength dev $downstream scope link table 62")
         startScript.add("ip route add broadcast 255.255.255.255 dev $downstream scope link table 62")
         startScript.add("ip rule add iif $downstream lookup 62")
         stopScript.addFirst("ip route del default dev $upstream scope link table 62")
@@ -74,7 +68,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     }
 
     fun dnsRedirect(dns: String): Routing {
-        val hostAddress = hostAddress.hostAddress
+        val hostAddress = hostAddress.address.hostAddress
         startScript.add("iptables -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         startScript.add("iptables -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         stopScript.addFirst("iptables -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
