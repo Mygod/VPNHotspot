@@ -41,7 +41,6 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
         startScript.add("ip route add ${InetAddress.getByAddress(address).hostAddress}/$subnetPrefixLength dev $downstream scope link table 62")
         startScript.add("ip route add broadcast 255.255.255.255 dev $downstream scope link table 62")
         startScript.add("ip rule add iif $downstream lookup 62")
-        stopScript.addFirst("ip route del default dev $upstream scope link table 62")
         // removing each rule may fail if downstream is already removed
         stopScript.addFirst("ip route flush table 62")
         stopScript.addFirst("ip rule del iif $downstream lookup 62")

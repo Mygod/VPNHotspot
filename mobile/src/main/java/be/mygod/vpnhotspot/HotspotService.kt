@@ -85,16 +85,11 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
                 if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
-                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // group may be enabled by other apps
+                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> {
-                val info = intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)
-                val net = intent.getParcelableExtra<NetworkInfo>(WifiP2pManager.EXTRA_NETWORK_INFO)
-                val group = intent.getParcelableExtra<WifiP2pGroup>(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)
-                if (routing == null) onGroupCreated(info, group)
-                this.group = group
-                binder.data?.onGroupChanged()
-                showNotification(group)
-                Log.d(TAG, "${intent.action}: $info, $net, $group")
+                onP2pConnectionChanged(intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
+                        intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
+                        intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
             }
             WIFI_AP_STATE_CHANGED_ACTION ->
                 if (intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, 0) != WIFI_AP_STATE_ENABLED) clean()
@@ -214,6 +209,16 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         startForeground(1, builder.build())
     }
 
+    private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
+        if (routing == null) onGroupCreated(info, group) else if (!group.isGroupOwner) {    // P2P shutdown
+            clean()
+            return
+        }
+        this.group = group
+        binder.data?.onGroupChanged()
+        showNotification(group)
+        Log.d(TAG, "P2P connection changed: $info\n$net\n$group")
+    }
     private fun onGroupCreated(info: WifiP2pInfo, group: WifiP2pGroup) {
         val owner = info.groupOwnerAddress
         val downstream = group.`interface`
