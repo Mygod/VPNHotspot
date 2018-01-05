@@ -8,6 +8,10 @@ import android.os.Bundle
 import android.util.Log
 import java.io.InputStream
 
+fun debugLog(tag: String?, message: String?) {
+    if (BuildConfig.DEBUG) Log.d(tag, message)
+}
+
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
 }

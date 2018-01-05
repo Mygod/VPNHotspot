@@ -7,7 +7,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.*
 
-class Routing(private val upstream: String, val downstream: String, ownerAddress: InetAddress? = null) {
+class Routing(val upstream: String, val downstream: String, ownerAddress: InetAddress? = null) {
     companion object {
         fun clean() = noisySu(
                 "iptables -t nat -F PREROUTING",
@@ -25,6 +25,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
             ?.singleOrNull { it is Inet4Address } ?: throw InterfaceNotFoundException()
     private val startScript = LinkedList<String>()
     private val stopScript = LinkedList<String>()
+    private var started = false
 
     fun ipForward(): Routing {
         startScript.add("echo 1 >/proc/sys/net/ipv4/ip_forward")
@@ -63,6 +64,14 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
         return this
     }
 
-    fun start() = noisySu(startScript)
-    fun stop() = noisySu(stopScript)
+    fun start(): Boolean {
+        if (started) return true
+        started = true
+        return noisySu(startScript)
+    }
+    fun stop(): Boolean {
+        if (!started) return true
+        started = false
+        return noisySu(stopScript)
+    }
 }

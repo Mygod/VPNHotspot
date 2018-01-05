@@ -4,7 +4,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.net.NetworkInfo
+import android.net.*
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pGroup
@@ -51,6 +51,18 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         private val isWifiApEnabledMethod = WifiManager::class.java.getDeclaredMethod("isWifiApEnabled")
         val WifiManager.isWifiApEnabled get() = isWifiApEnabledMethod.invoke(this) as Boolean
 
+        private val request by lazy {
+            /* We don't know how to specify the interface we're interested in, so we will listen for everything.
+             * However, we need to remove all default capabilities defined in NetworkCapabilities constructor.
+             * Also this unfortunately doesn't work for P2P/AP connectivity changes.
+             */
+            NetworkRequest.Builder()
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                    .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    .build()
+        }
+
         init {
             isWifiApEnabledMethod.isAccessible = true
         }
@@ -86,6 +98,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         }
     }
 
+    private val connectivityManager by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
     private val wifiManager by lazy { getSystemService(Context.WIFI_SERVICE) as WifiManager }
     private val p2pManager by lazy { getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager }
     private var _channel: WifiP2pManager.Channel? = null
@@ -110,6 +123,38 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
             }
             WIFI_AP_STATE_CHANGED_ACTION ->
                 if (intent.getIntExtra(WifiManager.EXTRA_WIFI_STATE, 0) != WIFI_AP_STATE_ENABLED) clean()
+        }
+    }
+    private var netListenerRegistered = false
+    private val netListener = object : ConnectivityManager.NetworkCallback() {
+        /**
+         * Obtaining ifname in onLost doesn't work so we need to cache it in onAvailable.
+         */
+        private val ifnameCache = HashMap<Network, String>()
+        private val Network.ifname: String? get() {
+            var result = ifnameCache[this]
+            if (result == null) {
+                result = connectivityManager.getLinkProperties(this)?.interfaceName
+                if (result != null) ifnameCache.put(this, result)
+            }
+            return result
+        }
+
+        override fun onAvailable(network: Network?) {
+            val routing = routing ?: return
+            val ifname = network?.ifname
+            debugLog(TAG, "onAvailable: $ifname")
+            if (ifname == routing.upstream) routing.start()
+        }
+
+        override fun onLost(network: Network?) {
+            val routing = routing ?: return
+            val ifname = network?.ifname
+            debugLog(TAG, "onLost: $ifname")
+            when (ifname) {
+                routing.downstream -> clean()
+                routing.upstream -> routing.stop()
+            }
         }
     }
 
@@ -183,6 +228,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 receiverRegistered = true
                 try {
                     if (initApRouting()) {
+                        connectivityManager.registerNetworkCallback(request, netListener)
+                        netListenerRegistered = true
                         apConfiguration = NetUtils.loadApConfiguration()
                         status = Status.ACTIVE_AP
                         showNotification()
@@ -250,8 +297,11 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         if (!info.groupFormed || !info.isGroupOwner || downstream == null || owner == null) return
         receiverRegistered = true
         try {
-            if (initP2pRouting(downstream, owner)) doStart(group)
-            else startFailure("Something went wrong, please check logcat.", group)
+            if (initP2pRouting(downstream, owner)) {
+                connectivityManager.registerNetworkCallback(request, netListener)
+                netListenerRegistered = true
+                doStart(group)
+            } else startFailure("Something went wrong, please check logcat.", group)
         } catch (e: Routing.InterfaceNotFoundException) {
             startFailure(e.message, group)
             return
@@ -285,6 +335,10 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         })
     }
     private fun unregisterReceiver() {
+        if (netListenerRegistered) {
+            connectivityManager.unregisterNetworkCallback(netListener)
+            netListenerRegistered = false
+        }
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
