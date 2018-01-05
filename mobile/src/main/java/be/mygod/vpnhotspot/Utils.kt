@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
+import android.support.v4.app.TaskStackBuilder
+import android.support.v7.app.AppCompatActivity
 import android.util.Log
 import java.io.InputStream
 
@@ -20,6 +22,13 @@ fun intentFilter(vararg actions: String): IntentFilter {
     val result = IntentFilter()
     actions.forEach { result.addAction(it) }
     return result
+}
+
+fun AppCompatActivity.navigateUp() {
+    val intent = parentActivityIntent
+    if (shouldUpRecreateTask(intent))
+        TaskStackBuilder.create(this).addNextIntentWithParentStack(intent).startActivities()
+    else navigateUpTo(intent)
 }
 
 fun Bundle.put(key: String, map: Array<String>): Bundle {

@@ -9,6 +9,6 @@ class SettingsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         DataBindingUtil.setContentView<ActivitySettingsBinding>(this, R.layout.activity_settings)
-                .toolbar.setNavigationOnClickListener({ finish() })
+                .toolbar.setNavigationOnClickListener({ navigateUp() })
     }
 }

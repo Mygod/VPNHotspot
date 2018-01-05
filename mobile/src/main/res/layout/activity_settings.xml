@@ -12,7 +12,7 @@
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
             app:title="@string/title_activity_settings"
-            app:navigationIcon="@drawable/ic_navigation_close"
+            app:navigationIcon="?attr/homeAsUpIndicator"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
             android:id="@+id/toolbar"/>
