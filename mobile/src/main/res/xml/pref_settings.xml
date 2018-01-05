@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <PreferenceCategory
-        android:key="service"
         android:title="Service">
         <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
             android:key="service.upstream"
@@ -18,10 +17,6 @@
             android:title="Downstream DNS server:port"
             android:summary="%s"
             android:defaultValue="8.8.8.8:53"/>
-        <Preference
-            android:key="service.clean"
-            android:title="Clean up"
-            android:summary="Remove routing rules"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:title="Misc">

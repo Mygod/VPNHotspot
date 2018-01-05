@@ -1,36 +1,23 @@
 package be.mygod.vpnhotspot
 
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
-import android.support.v4.content.LocalBroadcastManager
 import android.support.v7.preference.Preference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.net.NetworkInterface
 
-class SettingsFragment : PreferenceFragmentCompatDividers(), ServiceConnection {
-    private lateinit var service: Preference
-    private var binder: HotspotService.HotspotBinder? = null
-    private val statusListener = broadcastReceiver { _, _ -> onStatusChanged() }
+class SettingsFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
         CustomTabsIntent.Builder().setToolbarColor(ContextCompat.getColor(activity!!, R.color.colorPrimary)).build()
     }
 
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_settings)
-        service = findPreference("service")
-        findPreference("service.clean").setOnPreferenceClickListener {
-            Routing.clean()
-            true
-        }
         findPreference("misc.logcat").setOnPreferenceClickListener {
             val intent = Intent(Intent.ACTION_SEND)
                     .setType("text/plain")
@@ -60,34 +47,5 @@ class SettingsFragment : PreferenceFragmentCompatDividers(), ServiceConnection {
                 AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), HotspotService.KEY_WIFI, Bundle()
                     .put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS, app.wifiInterfaces))
         else -> super.onDisplayPreferenceDialog(preference)
-    }
-
-    override fun onStart() {
-        super.onStart()
-        val activity = activity!!
-        activity.bindService(Intent(activity, HotspotService::class.java), this, Context.BIND_AUTO_CREATE)
-    }
-
-    override fun onStop() {
-        onServiceDisconnected(null)
-        activity!!.unbindService(this)
-        super.onStop()
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        binder = service as HotspotService.HotspotBinder
-        onStatusChanged()
-        LocalBroadcastManager.getInstance(activity!!)
-                .registerReceiver(statusListener, intentFilter(HotspotService.STATUS_CHANGED))
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        LocalBroadcastManager.getInstance(activity!!).unregisterReceiver(statusListener)
-        binder = null
-        service.isEnabled = false
-    }
-
-    private fun onStatusChanged() {
-        service.isEnabled = binder!!.service.status == HotspotService.Status.IDLE
     }
 }

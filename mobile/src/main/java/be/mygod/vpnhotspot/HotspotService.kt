@@ -18,6 +18,7 @@ import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import java.net.InetAddress
 import java.util.regex.Pattern
 
 class HotspotService : Service(), WifiP2pManager.ChannelListener {
@@ -66,6 +67,22 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         fun shutdown() = when (status) {
             Status.ACTIVE_P2P -> removeGroup()
             else -> clean()
+        }
+
+        fun reapplyRouting() {
+            val routing = routing
+            routing?.stop()
+            try {
+                if (!when (status) {
+                    Status.ACTIVE_P2P -> initP2pRouting(routing!!.downstream, routing.hostAddress)
+                    Status.ACTIVE_AP -> initApRouting(routing!!.hostAddress)
+                    else -> false
+                }) Toast.makeText(this@HotspotService, "Something went wrong, please check logcat.",
+                        Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this@HotspotService, e.message, Toast.LENGTH_SHORT).show()
+                return
+            }
         }
     }
 
@@ -164,26 +181,34 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 unregisterReceiver()
                 registerReceiver(receiver, intentFilter(WIFI_AP_STATE_CHANGED_ACTION))
                 receiverRegistered = true
-                val routing = try {
-                    Routing(upstream, wifi)
-                } catch (_: Routing.InterfaceNotFoundException) {
-                    startFailure(getString(R.string.exception_interface_not_found))
-                    return START_NOT_STICKY
-                }.rule().forward().dnsRedirect(dns)
-                if (routing.start()) {
-                    this.routing = routing
-                    apConfiguration = NetUtils.loadApConfiguration()
-                    status = Status.ACTIVE_AP
-                    showNotification()
-                } else startFailure("Something went wrong, please check logcat.")
+                try {
+                    if (initApRouting()) {
+                        apConfiguration = NetUtils.loadApConfiguration()
+                        status = Status.ACTIVE_AP
+                        showNotification()
+                    } else startFailure("Something went wrong, please check logcat.", group)
+                } catch (e: Routing.InterfaceNotFoundException) {
+                    startFailure(e.message, group)
+                }
             }
             else -> startFailure("Wi-Fi direct unavailable and hotspot disabled, please enable either")
         }
         return START_NOT_STICKY
     }
+    private fun initApRouting(owner: InetAddress? = null): Boolean {
+        val routing = Routing(upstream, wifi, owner).rule().forward().dnsRedirect(dns)
+        return if (routing.start()) {
+            this.routing = routing
+            true
+        } else {
+            routing.stop()
+            this.routing = null
+            false
+        }
+    }
 
-    private fun startFailure(msg: String, group: WifiP2pGroup? = null) {
-        Toast.makeText(this@HotspotService, msg, Toast.LENGTH_SHORT).show()
+    private fun startFailure(msg: String?, group: WifiP2pGroup? = null) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         showNotification()
         if (group != null) removeGroup() else clean()
     }
@@ -224,17 +249,26 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         val downstream = group.`interface`
         if (!info.groupFormed || !info.isGroupOwner || downstream == null || owner == null) return
         receiverRegistered = true
-        val routing = try {
-            Routing(upstream, downstream, owner)
-        } catch (_: Routing.InterfaceNotFoundException) {
-            startFailure(getString(R.string.exception_interface_not_found), group)
+        try {
+            if (initP2pRouting(downstream, owner)) doStart(group)
+            else startFailure("Something went wrong, please check logcat.", group)
+        } catch (e: Routing.InterfaceNotFoundException) {
+            startFailure(e.message, group)
             return
-        }.ipForward()   // Wi-Fi direct doesn't enable ip_forward
+        }
+    }
+    private fun initP2pRouting(downstream: String, owner: InetAddress): Boolean {
+        val routing = Routing(upstream, downstream, owner)
+                .ipForward()   // Wi-Fi direct doesn't enable ip_forward
                 .rule().forward().dnsRedirect(dns)
-        if (routing.start()) {
+        return if (routing.start()) {
             this.routing = routing
-            doStart(group)
-        } else startFailure("Something went wrong, please check logcat.", group)
+            true
+        } else {
+            routing.stop()
+            this.routing = null
+            false
+        }
     }
 
     private fun removeGroup() {

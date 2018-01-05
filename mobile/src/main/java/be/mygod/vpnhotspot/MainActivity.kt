@@ -87,7 +87,7 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
             }
             holder.binding.device = device
             holder.binding.ipAddress = when (position) {
-                0 -> binder?.service?.routing?.hostAddress
+                0 -> binder?.service?.routing?.hostAddress?.hostAddress
                 else -> arpCache[device?.deviceAddress]
             }
             holder.binding.executePendingBindings()
@@ -116,6 +116,14 @@ class MainActivity : AppCompatActivity(), ServiceConnection, Toolbar.OnMenuItemC
     }
 
     override fun onMenuItemClick(item: MenuItem): Boolean = when (item.itemId) {
+        R.id.reapply -> {
+            val binder = binder
+            when (binder?.service?.status) {
+                HotspotService.Status.IDLE -> Routing.clean()
+                HotspotService.Status.ACTIVE_P2P, HotspotService.Status.ACTIVE_AP -> binder.reapplyRouting()
+            }
+            true
+        }
         R.id.settings -> {
             startActivity(Intent(this, SettingsActivity::class.java))
             true

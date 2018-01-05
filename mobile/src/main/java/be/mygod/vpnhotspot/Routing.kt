@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import be.mygod.vpnhotspot.App.Companion.app
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -16,10 +17,12 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
                 "while ip rule del priority 17999; do done")
     }
 
-    class InterfaceNotFoundException : IOException()
+    class InterfaceNotFoundException : IOException() {
+        override val message: String get() = app.getString(R.string.exception_interface_not_found)
+    }
 
-    val hostAddress: String = (ownerAddress ?: NetworkInterface.getByName(downstream)?.inetAddresses?.asSequence()
-            ?.singleOrNull { it is Inet4Address } ?: throw InterfaceNotFoundException()).hostAddress
+    val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.inetAddresses?.asSequence()
+            ?.singleOrNull { it is Inet4Address } ?: throw InterfaceNotFoundException()
     private val startScript = LinkedList<String>()
     private val stopScript = LinkedList<String>()
 
@@ -52,6 +55,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     }
 
     fun dnsRedirect(dns: String): Routing {
+        val hostAddress = hostAddress.hostAddress
         startScript.add("iptables -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         startScript.add("iptables -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         stopScript.addFirst("iptables -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
