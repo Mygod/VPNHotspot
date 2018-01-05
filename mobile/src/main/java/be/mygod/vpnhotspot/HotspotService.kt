@@ -169,7 +169,7 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
                 } catch (_: Routing.InterfaceNotFoundException) {
                     startFailure(getString(R.string.exception_interface_not_found))
                     return START_NOT_STICKY
-                }.apRule().forward().dnsRedirect(dns)
+                }.rule().forward().dnsRedirect(dns)
                 if (routing.start()) {
                     this.routing = routing
                     apConfiguration = NetUtils.loadApConfiguration()
@@ -229,7 +229,8 @@ class HotspotService : Service(), WifiP2pManager.ChannelListener {
         } catch (_: Routing.InterfaceNotFoundException) {
             startFailure(getString(R.string.exception_interface_not_found), group)
             return
-        }.p2pRule().forward().dnsRedirect(dns)
+        }.ipForward()   // Wi-Fi direct doesn't enable ip_forward
+                .rule().forward().dnsRedirect(dns)
         if (routing.start()) {
             this.routing = routing
             doStart(group)
