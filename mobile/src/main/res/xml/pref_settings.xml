@@ -2,21 +2,15 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <PreferenceCategory
         android:title="Service">
-        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
-            android:key="service.upstream"
-            android:title="Upstream interface"
-            android:summary="%s"
-            android:defaultValue="tun0"/>
-        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
-            android:key="service.wifi"
-            android:title="Wi-Fi interface"
-            android:summary="%s"
-            android:defaultValue="wlan0"/>
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="Downstream DNS server:port"
             android:summary="%s"
             android:defaultValue="8.8.8.8:53"/>
+        <Preference
+            android:key="service.clean"
+            android:title="Clean routing rules"
+            android:summary="Only use after having shut down everything"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:title="Misc">

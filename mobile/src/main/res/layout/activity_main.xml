@@ -3,111 +3,34 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools">
-    <data>
-        <variable
-            name="data"
-            type="be.mygod.vpnhotspot.MainActivity.Data"/>
-    </data>
-    <LinearLayout
-        android:orientation="vertical"
+    <android.support.constraint.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-        <android.support.v7.widget.Toolbar
-            android:layout_height="?attr/actionBarSize"
-            android:layout_width="match_parent"
-            android:background="?attr/colorPrimary"
-            android:elevation="4dp"
-            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-            app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
-            android:id="@+id/toolbar">
+        android:layout_height="match_parent"
+        tools:context="be.mygod.vpnhotspot.MainActivity">
 
-            <Switch
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:enabled="@{data.switchEnabled}"
-                android:checked="@{data.serviceStarted}"
-                android:onCheckedChanged="@{(_, checked) -> data.setServiceStarted(checked)}"
-                android:text="@string/app_name"
-                android:textAppearance="@style/TextAppearance.Widget.AppCompat.Toolbar.Title"/>
-        </android.support.v7.widget.Toolbar>
+        <FrameLayout
+            android:id="@+id/fragmentHolder"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginEnd="0dp"
+            android:layout_marginStart="0dp"
+            app:layout_constraintBottom_toTopOf="@+id/navigation"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent"/>
 
-        <GridLayout
-            android:layout_width="match_parent"
+        <android.support.design.widget.BottomNavigationView
+            android:id="@+id/navigation"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:paddingBottom="8dp"
-            android:paddingEnd="16dp"
-            android:paddingStart="16dp"
-            android:paddingTop="8dp">
+            android:layout_marginEnd="0dp"
+            android:layout_marginStart="0dp"
+            android:background="?android:attr/windowBackground"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintLeft_toLeftOf="parent"
+            app:layout_constraintRight_toRightOf="parent"
+            app:menu="@menu/navigation"/>
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Network name"
-                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
+    </android.support.constraint.ConstraintLayout>
 
-            <Space
-                android:layout_width="8dp"
-                android:layout_height="0dp"
-                android:layout_column="1"
-                android:layout_row="0"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="2"
-                android:layout_row="0"
-                android:text="@{data.ssid}"
-                android:textIsSelectable="true"
-                tools:text="DIRECT-rAnd0m"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="0"
-                android:layout_row="1"
-                android:text="Password"
-                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="2"
-                android:layout_row="1"
-                android:text="@{data.password}"
-                android:textIsSelectable="true"
-                tools:text="p4ssW0rd"/>
-        </GridLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="Connected devices"
-            android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#000"
-            android:backgroundTint="?android:attr/textColorSecondary"/>
-
-        <android.support.v4.widget.SwipeRefreshLayout
-            android:id="@+id/swipeRefresher"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <android.support.v7.widget.RecyclerView
-                android:id="@+id/clients"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:paddingBottom="8dp"
-                android:paddingEnd="16dp"
-                android:paddingStart="16dp"
-                android:paddingTop="8dp"
-                android:clipToPadding="false"
-                android:scrollbars="vertical"
-                tools:listitem="@layout/listitem_client"/>
-        </android.support.v4.widget.SwipeRefreshLayout>
-    </LinearLayout>
 </layout>

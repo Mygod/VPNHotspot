@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools">
     <LinearLayout
         android:orientation="vertical"
         android:layout_width="match_parent"
@@ -11,16 +12,17 @@
             android:layout_width="match_parent"
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
-            app:title="@string/title_activity_settings"
-            app:navigationIcon="?attr/homeAsUpIndicator"
+            app:title="@string/app_name"
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
             android:id="@+id/toolbar"/>
-        <fragment
-            class="be.mygod.vpnhotspot.SettingsFragment"
+        <android.support.v7.widget.RecyclerView
+            android:id="@+id/interfaces"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:id="@+id/preference"/>
+            android:clipToPadding="false"
+            android:scrollbars="vertical"
+            tools:listitem="@layout/listitem_interface"/>
     </LinearLayout>
 </layout>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/navigation_repeater"
+        android:icon="@drawable/ic_device_network_wifi"
+        android:title="Repeater"/>
+
+    <item
+        android:id="@+id/navigation_tethering"
+        android:icon="@drawable/ic_device_wifi_tethering"
+        android:title="Tethering"/>
+
+    <item
+        android:id="@+id/navigation_settings"
+        android:icon="@drawable/ic_action_settings"
+        android:title="@string/title_activity_settings"/>
+
+</menu>
