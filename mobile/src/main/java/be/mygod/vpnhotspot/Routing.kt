@@ -14,7 +14,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
                 "while iptables -D FORWARD -j vpnhotspot_fwd; do done",
                 "iptables -F vpnhotspot_fwd",
                 "iptables -X vpnhotspot_fwd",
-                "while ip rule del priority 17999; do done")
+                "while ip rule del priority 17900; do done")
     }
 
     class InterfaceNotFoundException : IOException() {
@@ -40,8 +40,8 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
      * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
      */
     fun rule(): Routing {
-        startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17999")
-        stopScript.addFirst("ip rule del from all iif $downstream lookup $upstream priority 17999")
+        startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17900")
+        stopScript.addFirst("ip rule del from all iif $downstream lookup $upstream priority 17900")
         return this
     }
 
