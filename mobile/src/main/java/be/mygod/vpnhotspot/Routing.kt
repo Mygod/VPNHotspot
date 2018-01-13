@@ -10,10 +10,10 @@ import java.util.*
 class Routing(private val upstream: String, val downstream: String, ownerAddress: InetAddress? = null) {
     companion object {
         fun clean() = noisySu(
-                "iptables -t nat -F PREROUTING",
-                "while iptables -D FORWARD -j vpnhotspot_fwd; do done",
-                "iptables -F vpnhotspot_fwd",
-                "iptables -X vpnhotspot_fwd",
+                "iptables -w 1 -t nat -F PREROUTING",
+                "while iptables -w 1 -D FORWARD -j vpnhotspot_fwd; do done",
+                "iptables -w 1 -F vpnhotspot_fwd",
+                "iptables -w 1 -X vpnhotspot_fwd",
                 "while ip rule del priority 17900; do done")
     }
 
@@ -47,22 +47,22 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     }
 
     fun forward(): Routing {
-        startScript.add("iptables -N vpnhotspot_fwd")
-        startScript.add("iptables -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-        startScript.add("iptables -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
-        startScript.add("iptables -I FORWARD -j vpnhotspot_fwd")
-        stopScript.addFirst("iptables -X vpnhotspot_fwd")
-        stopScript.addFirst("iptables -F vpnhotspot_fwd")
-        stopScript.addFirst("iptables -D FORWARD -j vpnhotspot_fwd")
+        startScript.add("iptables -w 1 -N vpnhotspot_fwd")
+        startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+        startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+        startScript.add("iptables -w 1 -I FORWARD -j vpnhotspot_fwd")
+        stopScript.addFirst("iptables -w 1 -X vpnhotspot_fwd")
+        stopScript.addFirst("iptables -w 1 -F vpnhotspot_fwd")
+        stopScript.addFirst("iptables -w 1 -D FORWARD -j vpnhotspot_fwd")
         return this
     }
 
     fun dnsRedirect(dns: String): Routing {
         val hostAddress = hostAddress.hostAddress
-        startScript.add("iptables -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        startScript.add("iptables -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        stopScript.addFirst("iptables -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        stopScript.addFirst("iptables -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        startScript.add("iptables -w 1 -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        startScript.add("iptables -w 1 -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        stopScript.addFirst("iptables -w 1 -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        stopScript.addFirst("iptables -w 1 -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         return this
     }
 
