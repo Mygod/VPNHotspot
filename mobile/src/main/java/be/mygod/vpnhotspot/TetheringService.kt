@@ -13,8 +13,12 @@ class TetheringService : Service(), VpnListener.Callback {
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
         private const val KEY_ACTIVE = "persist.service.tether.active"
 
+        private var alive = false
         var active: Set<String>
-            get() = app.pref.getStringSet(KEY_ACTIVE, null) ?: emptySet()
+            get() = if (alive) app.pref.getStringSet(KEY_ACTIVE, null) ?: emptySet() else {
+                app.pref.edit().remove(KEY_ACTIVE).apply()
+                emptySet()
+            }
             private set(value) {
                 app.pref.edit().putStringSet(KEY_ACTIVE, value).apply()
                 LocalBroadcastManager.getInstance(app).sendBroadcast(Intent(ACTION_ACTIVE_INTERFACES_CHANGED))
@@ -33,7 +37,6 @@ class TetheringService : Service(), VpnListener.Callback {
     }
 
     private fun updateRoutings() {
-        active = routings.keys
         if (routings.isEmpty()) {
             unregisterReceiver()
             stopSelf()
@@ -56,6 +59,12 @@ class TetheringService : Service(), VpnListener.Callback {
                 receiverRegistered = true
             }
         }
+        active = routings.keys
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        alive = true
     }
 
     override fun onBind(intent: Intent?) = null
@@ -90,6 +99,7 @@ class TetheringService : Service(), VpnListener.Callback {
 
     override fun onDestroy() {
         unregisterReceiver()
+        alive = false
         super.onDestroy()
     }
 
