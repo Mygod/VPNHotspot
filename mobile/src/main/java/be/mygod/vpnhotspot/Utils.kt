@@ -46,7 +46,7 @@ fun loggerSu(command: String): String? = try {
 }
 fun noisySu(commands: Iterable<String>): Boolean {
     var out = loggerSu("""function noisy() { "$@" || echo "$@" exited with $?; }
-${commands.joinToString("\n") { if (it.startsWith("while ")) it else "noisy $it" }}
+${commands.joinToString("\n") { if (it.startsWith("quiet ")) it.substring(6) else "noisy $it" }}
 echo $NOISYSU_SUFFIX""")
     val result = out == NOISYSU_SUFFIX
     out = out?.removeSuffix(NOISYSU_SUFFIX)

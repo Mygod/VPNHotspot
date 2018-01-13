@@ -11,10 +11,10 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     companion object {
         fun clean() = noisySu(
                 "iptables -w 1 -t nat -F PREROUTING",
-                "while iptables -w 1 -D FORWARD -j vpnhotspot_fwd; do done",
+                "quiet while iptables -w 1 -D FORWARD -j vpnhotspot_fwd; do done",
                 "iptables -w 1 -F vpnhotspot_fwd",
                 "iptables -w 1 -X vpnhotspot_fwd",
-                "while ip rule del priority 17900; do done")
+                "quiet while ip rule del priority 17900; do done")
     }
 
     class InterfaceNotFoundException : IOException() {
@@ -46,12 +46,12 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     }
 
     fun forward(): Routing {
-        startScript.add("iptables -w 1 -N vpnhotspot_fwd")
+        startScript.add("quiet iptables -w 1 -N vpnhotspot_fwd 2>/dev/null")
         startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
         startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
         startScript.add("iptables -w 1 -I FORWARD -j vpnhotspot_fwd")
-        stopScript.addFirst("iptables -w 1 -X vpnhotspot_fwd")
-        stopScript.addFirst("iptables -w 1 -F vpnhotspot_fwd")
+        stopScript.addFirst("iptables -w 1 -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+        stopScript.addFirst("iptables -w 1 -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
         stopScript.addFirst("iptables -w 1 -D FORWARD -j vpnhotspot_fwd")
         return this
     }
