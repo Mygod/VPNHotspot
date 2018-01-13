@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VPN 热点</string>
+    <string name="title_repeater">无线中继</string>
+    <string name="title_tethering">系统共享</string>
+    <string name="title_settings">设置选项</string>
+
+    <string name="repeater_ssid">中继名称</string>
+    <string name="repeater_password">中继密码</string>
+    <string name="repeater_connected_devices">已连接设备</string>
+    <string name="repeater_wps_dialog_title">输入 PIN</string>
+    <string name="repeater_wps_dialog_pbc">一键加密</string>
+    <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
+    <string name="repeater_wps_success_keypad">成功注册 PIN。</string>
+    <string name="repeater_wps_failure">打开 WPS 失败（原因：%s）</string>
+    <string name="repeater_reset_credentials">重置凭据</string>
+    <string name="repeater_reset_credentials_dialog_message">Android
+        系统将在下次打开中继时生成新的中继名称和密码。该操作不可撤销。</string>
+    <string name="repeater_reset_credentials_dialog_reset">重置</string>
+    <string name="repeater_reset_credentials_success">凭据已重置。</string>
+    <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
+
+    <string name="repeater_inactive">未打开</string>
+    <string name="repeater_connecting">正在连接……</string>
+    <string name="repeater_vpn_unavailable">无法找到 VPN，请启用任意 VPN</string>
+    <string name="repeater_root_unavailable">似乎没有 root</string>
+    <string name="repeater_p2p_unavailable">Wi-Fi 直连不可用</string>
+    <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
+    <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
+    <string name="repeater_remove_old_group_failure">关闭 P2P 群组失败（原因：%s）</string>
+
+    <string name="repeater_failure_reason_error">内部异常</string>
+    <string name="repeater_failure_reason_p2p_unsupported">设备不支持 Wi-Fi 直连</string>
+    <string name="repeater_failure_reason_busy">系统忙</string>
+    <string name="repeater_failure_reason_no_service_requests">未添加服务请求</string>
+    <string name="repeater_failure_reason_unknown">未知 #%d</string>
+
+    <string name="tethering_no_interfaces"><![CDATA[请先打开<a href=&quot;#&quot;>系统共享</a>后使用此功能。]]></string>
+
+    <string name="settings_service">服务</string>
+    <string name="settings_service_dns">下游 DNS 服务器:端口</string>
+    <string name="settings_service_clean">清理路由规则</string>
+    <string name="settings_service_clean_summary">请关闭所有服务后使用</string>
+    <string name="settings_misc">杂项</string>
+    <string name="settings_misc_logcat">导出日志</string>
+    <string name="settings_misc_logcat_summary">这种非常有用哇</string>
+    <string name="settings_misc_source">查看 GitHub 上的源码</string>
+    <string name="settings_misc_source_summary">Star, 提交 issues, 合作</string>
+    <string name="settings_misc_donate">捐款</string>
+    <string name="settings_misc_donate_summary">请给我钱</string>
+
+    <string name="notification_channel_repeater">无线中继服务</string>
+    <plurals name="notification_connected_devices">
+        <item quantity="other">已连接 %d 个设备</item>
+    </plurals>
+
+    <string name="exception_interface_not_found">错误：未找到下游接口</string>
+    <string name="noisy_su_failure">发生异常，详情请查看日志。</string>
+</resources>
