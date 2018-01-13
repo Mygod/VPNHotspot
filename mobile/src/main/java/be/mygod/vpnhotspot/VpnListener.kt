@@ -46,7 +46,7 @@ object VpnListener : ConnectivityManager.NetworkCallback() {
         if (!callbacks.add(callback)) return
         if (registered) available.forEach { callback.onAvailable(it.value) } else {
             connectivityManager.registerNetworkCallback(request, this)
-            registered = false
+            registered = true
         }
     }
     fun unregisterCallback(callback: Callback) {
