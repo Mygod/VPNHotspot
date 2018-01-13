@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.annotation.TargetApi
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,9 +16,12 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
-        if (Build.VERSION.SDK_INT >= 26) getSystemService(NotificationManager::class.java)
-                .createNotificationChannel(NotificationChannel(RepeaterService.CHANNEL,
-                        "Hotspot Service", NotificationManager.IMPORTANCE_LOW))
+        if (Build.VERSION.SDK_INT >= 26) @TargetApi(26) {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(RepeaterService.CHANNEL,
+                    "Repeater Service", NotificationManager.IMPORTANCE_LOW))
+            nm.deleteNotificationChannel("hotspot") // remove old service channel
+        }
     }
 
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }

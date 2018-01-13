@@ -22,7 +22,7 @@ import java.util.regex.Pattern
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.Callback {
     companion object {
-        const val CHANNEL = "hotspot"
+        const val CHANNEL = "repeater"
         const val STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         private const val TAG = "RepeaterService"
 
