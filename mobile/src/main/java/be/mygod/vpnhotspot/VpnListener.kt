@@ -31,7 +31,7 @@ object VpnListener : ConnectivityManager.NetworkCallback() {
     private val available = HashMap<Network, String>()
     override fun onAvailable(network: Network) {
         val ifname = connectivityManager.getLinkProperties(network)?.interfaceName ?: return
-        available.put(network, ifname)
+        if (available.put(network, ifname) != null) return
         debugLog(TAG, "onAvailable: $ifname")
         callbacks.forEach { it.onAvailable(ifname) }
     }

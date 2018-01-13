@@ -41,7 +41,8 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
      */
     fun rule(): Routing {
         startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17900")
-        stopScript.addFirst("ip rule del from all iif $downstream lookup $upstream priority 17900")
+        // by the time stopScript is called, table entry for upstream may already get removed
+        stopScript.addFirst("ip rule del from all iif $downstream priority 17900")
         return this
     }
 

@@ -59,7 +59,7 @@ class TetheringService : Service(), VpnListener.Callback {
     }
 
     override fun onAvailable(ifname: String) {
-        assert(upstream == null || upstream == ifname)
+        check(upstream == null || upstream == ifname)
         upstream = ifname
         for ((downstream, value) in routings) if (value == null) {
             val routing = Routing(ifname, downstream).rule().forward().dnsRedirect(app.dns)
@@ -68,7 +68,7 @@ class TetheringService : Service(), VpnListener.Callback {
     }
 
     override fun onLost(ifname: String) {
-        assert(upstream == null || upstream == ifname)
+        check(upstream == null || upstream == ifname)
         upstream = null
         for ((iface, routing) in routings) {
             routing?.stop()

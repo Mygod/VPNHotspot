@@ -160,7 +160,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             }
             Status.ACTIVE -> {
                 val routing = routing
-                assert(!routing!!.started)
+                check(!routing!!.started)
                 initRouting(ifname, routing.downstream, routing.hostAddress)
             }
             else -> throw RuntimeException("RepeaterService is in unexpected state when receiving onAvailable")
@@ -248,13 +248,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         })
     }
     private fun unregisterReceiver() {
-        VpnListener.unregisterCallback(this)
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
         }
     }
     private fun clean() {
+        VpnListener.unregisterCallback(this)
         unregisterReceiver()
         if (routing?.stop() == false)
             Toast.makeText(this, "Something went wrong, please check logcat.", Toast.LENGTH_SHORT).show()
