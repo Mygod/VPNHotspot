@@ -23,7 +23,7 @@ import java.util.regex.Pattern
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.Callback {
     companion object {
         const val CHANNEL = "repeater"
-        const val STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
+        const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         private const val TAG = "RepeaterService"
 
         /**
@@ -88,7 +88,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         private set(value) {
             if (field == value) return
             field = value
-            LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(STATUS_CHANGED))
+            LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
         }
 
     private fun formatReason(reason: Int) = when (reason) {
@@ -242,7 +242,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
                     Toast.makeText(this@RepeaterService, "Failed to remove P2P group (${formatReason(reason)})",
                             Toast.LENGTH_SHORT).show()
                     status = Status.ACTIVE
-                    LocalBroadcastManager.getInstance(this@RepeaterService).sendBroadcast(Intent(STATUS_CHANGED))
+                    LocalBroadcastManager.getInstance(this@RepeaterService).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
                 }
             }
         })

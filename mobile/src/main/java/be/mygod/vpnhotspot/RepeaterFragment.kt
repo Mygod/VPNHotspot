@@ -134,7 +134,7 @@ class RepeaterFragment : Fragment(), ServiceConnection {
         this.binder = binder
         data.onStatusChanged()
         LocalBroadcastManager.getInstance(context!!)
-                .registerReceiver(data.statusListener, intentFilter(RepeaterService.STATUS_CHANGED))
+                .registerReceiver(data.statusListener, intentFilter(RepeaterService.ACTION_STATUS_CHANGED))
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
