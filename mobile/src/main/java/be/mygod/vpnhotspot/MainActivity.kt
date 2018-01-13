@@ -15,23 +15,29 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
         binding.navigation.setOnNavigationItemSelectedListener(this)
-        onNavigationItemSelected(binding.navigation.menu.getItem(0))
+        if (savedInstanceState == null) displayFragment(RepeaterFragment())
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.navigation_repeater -> {
-            item.isChecked = true
-            displayFragment(RepeaterFragment())
+            if (!item.isChecked) {
+                item.isChecked = true
+                displayFragment(RepeaterFragment())
+            }
             true
         }
         R.id.navigation_tethering -> {
-            item.isChecked = true
-            displayFragment(TetheringFragment())
+            if (!item.isChecked) {
+                item.isChecked = true
+                displayFragment(TetheringFragment())
+            }
             true
         }
         R.id.navigation_settings -> {
-            item.isChecked = true
-            displayFragment(SettingsFragment())
+            if (!item.isChecked) {
+                item.isChecked = true
+                displayFragment(SettingsFragment())
+            }
             true
         }
         else -> false
