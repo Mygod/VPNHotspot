@@ -18,7 +18,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.NetUtils.tetheredIfaces
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.widget.TextViewLinkHandler
@@ -86,7 +85,7 @@ class TetheringFragment : Fragment() {
     inner class InterfaceAdapter : RecyclerView.Adapter<InterfaceViewHolder>() {
         private val tethered = SortedList(String::class.java, StringSorter)
 
-        fun update(data: Set<String> = VpnListener.connectivityManager.tetheredIfaces.toSet()) {
+        fun update(data: Set<String>) {
             val oldEmpty = tethered.size() == 0
             tethered.clear()
             tethered.addAll(data)
@@ -109,8 +108,7 @@ class TetheringFragment : Fragment() {
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
             TetheringService.ACTION_ACTIVE_INTERFACES_CHANGED -> adapter.notifyDataSetChanged()
-            NetUtils.ACTION_TETHER_STATE_CHANGED ->
-                adapter.update(intent.extras.getStringArrayList(NetUtils.EXTRA_ACTIVE_TETHER).toSet())
+            NetUtils.ACTION_TETHER_STATE_CHANGED -> adapter.update(NetUtils.getTetheredIfaces(intent.extras).toSet())
         }
     }
     private var receiverRegistered = false
@@ -133,7 +131,6 @@ class TetheringFragment : Fragment() {
     override fun onStart() {
         super.onStart()
         if (!receiverRegistered) {
-            adapter.update()
             val context = context!!
             context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
             LocalBroadcastManager.getInstance(context)

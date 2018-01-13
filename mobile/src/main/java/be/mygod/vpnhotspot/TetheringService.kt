@@ -4,7 +4,6 @@ import android.app.Service
 import android.content.Intent
 import android.support.v4.content.LocalBroadcastManager
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.NetUtils.tetheredIfaces
 
 class TetheringService : Service(), VpnListener.Callback {
     companion object {
@@ -25,7 +24,7 @@ class TetheringService : Service(), VpnListener.Callback {
     private var upstream: String? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val remove = routings.keys - intent.extras.getStringArrayList(NetUtils.EXTRA_ACTIVE_TETHER).toSet()
+        val remove = routings.keys - NetUtils.getTetheredIfaces(intent.extras)
         if (remove.isEmpty()) return@broadcastReceiver
         for (iface in remove) routings.remove(iface)?.stop()
         updateRoutings()
@@ -34,12 +33,7 @@ class TetheringService : Service(), VpnListener.Callback {
     private fun updateRoutings() {
         active = routings.keys
         if (routings.isEmpty()) {
-            if (receiverRegistered) {
-                unregisterReceiver(receiver)
-                VpnListener.unregisterCallback(this)
-                upstream = null
-                receiverRegistered = false
-            }
+            unregisterReceiver()
             stopSelf()
         } else {
             val upstream = upstream
@@ -61,14 +55,9 @@ class TetheringService : Service(), VpnListener.Callback {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {   // otw service is recreated after being killed
             val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
-            if (iface != null && VpnListener.connectivityManager.tetheredIfaces.contains(iface))
-                routings.put(iface, null)
+            if (iface != null) routings.put(iface, null)
             routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
-        } else {
-            val active = active
-            if (active.isNotEmpty()) active.intersect(VpnListener.connectivityManager.tetheredIfaces.asIterable())
-                    .forEach { routings.put(it, null) }
-        }
+        } else active.forEach { routings.put(it, null) }
         updateRoutings()
         return START_STICKY
     }
@@ -85,6 +74,20 @@ class TetheringService : Service(), VpnListener.Callback {
         for ((iface, routing) in routings) {
             routing?.stop()
             routings[iface] = null
+        }
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver()
+        super.onDestroy()
+    }
+
+    fun unregisterReceiver() {
+        if (receiverRegistered) {
+            unregisterReceiver(receiver)
+            VpnListener.unregisterCallback(this)
+            upstream = null
+            receiverRegistered = false
         }
     }
 }
