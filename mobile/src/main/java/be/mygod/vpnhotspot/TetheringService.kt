@@ -13,8 +13,8 @@ class TetheringService : Service(), VpnListener.Callback {
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
         private const val KEY_ACTIVE = "persist.service.tether.active"
 
-        var active: Set<String>?
-            get() = app.pref.getStringSet(KEY_ACTIVE, null)
+        var active: Set<String>
+            get() = app.pref.getStringSet(KEY_ACTIVE, null) ?: emptySet()
             private set(value) {
                 app.pref.edit().putStringSet(KEY_ACTIVE, value).apply()
                 LocalBroadcastManager.getInstance(app).sendBroadcast(Intent(ACTION_ACTIVE_INTERFACES_CHANGED))
@@ -25,46 +25,58 @@ class TetheringService : Service(), VpnListener.Callback {
     private var upstream: String? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val remove = routings - intent.extras.getStringArrayList(NetUtils.EXTRA_ACTIVE_TETHER).toSet()
+        val remove = routings.keys - intent.extras.getStringArrayList(NetUtils.EXTRA_ACTIVE_TETHER).toSet()
         if (remove.isEmpty()) return@broadcastReceiver
-        for ((iface, routing) in remove) {
-            routing?.stop()
-            routings.remove(iface)
-        }
-        val upstream = upstream
-        if (upstream == null) onLost("") else onAvailable(upstream)
+        for (iface in remove) routings.remove(iface)?.stop()
+        updateRoutings()
+    }
+
+    private fun updateRoutings() {
         active = routings.keys
-        if (routings.isEmpty()) terminate()
+        if (routings.isEmpty()) {
+            if (receiverRegistered) {
+                unregisterReceiver(receiver)
+                VpnListener.unregisterCallback(this)
+                upstream = null
+                receiverRegistered = false
+            }
+            stopSelf()
+        } else {
+            val upstream = upstream
+            if (upstream != null) {
+                for ((downstream, value) in routings) if (value == null) {
+                    val routing = Routing(upstream, downstream).rule().forward().dnsRedirect(app.dns)
+                    if (routing.start()) routings[downstream] = routing else routing.stop()
+                }
+            } else if (!receiverRegistered) {
+                registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
+                VpnListener.registerCallback(this)
+                receiverRegistered = true
+            }
+        }
     }
 
     override fun onBind(intent: Intent?) = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {   // otw service is recreated after being killed
-            var iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
+            val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
             if (iface != null && VpnListener.connectivityManager.tetheredIfaces.contains(iface))
                 routings.put(iface, null)
-            iface = intent.getStringExtra(EXTRA_REMOVE_INTERFACE)
-            if (iface != null) routings.remove(iface)?.stop()
-            active = routings.keys
-        } else active?.forEach { routings.put(it, null) }
-        if (routings.isEmpty()) terminate() else {
-            if (!receiverRegistered) {
-                registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
-                VpnListener.registerCallback(this)
-                receiverRegistered = true
-            }
+            routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
+        } else {
+            val active = active
+            if (active.isNotEmpty()) active.intersect(VpnListener.connectivityManager.tetheredIfaces.asIterable())
+                    .forEach { routings.put(it, null) }
         }
+        updateRoutings()
         return START_STICKY
     }
 
     override fun onAvailable(ifname: String) {
         check(upstream == null || upstream == ifname)
         upstream = ifname
-        for ((downstream, value) in routings) if (value == null) {
-            val routing = Routing(ifname, downstream).rule().forward().dnsRedirect(app.dns)
-            if (routing.start()) routings[downstream] = routing else routing.stop()
-        }
+        updateRoutings()
     }
 
     override fun onLost(ifname: String) {
@@ -74,14 +86,5 @@ class TetheringService : Service(), VpnListener.Callback {
             routing?.stop()
             routings[iface] = null
         }
-    }
-
-    private fun terminate() {
-        if (receiverRegistered) {
-            unregisterReceiver(receiver)
-            VpnListener.unregisterCallback(this)
-            receiverRegistered = false
-        }
-        stopSelf()
     }
 }
