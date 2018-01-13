@@ -26,7 +26,6 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     private val startScript = LinkedList<String>()
     private val stopScript = LinkedList<String>()
     var started = false
-        private set
 
     fun ipForward(): Routing {
         startScript.add("echo 1 >/proc/sys/net/ipv4/ip_forward")

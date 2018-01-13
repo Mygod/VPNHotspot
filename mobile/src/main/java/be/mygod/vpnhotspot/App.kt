@@ -11,6 +11,8 @@ import android.preference.PreferenceManager
 
 class App : Application() {
     companion object {
+        const val ACTION_CLEAN_ROUTINGS = "be.mygod.vpnhotspot.CLEAN_ROUTINGS"
+
         lateinit var app: App
     }
 

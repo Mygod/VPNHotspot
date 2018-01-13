@@ -140,6 +140,16 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
                         intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
                         intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
             }
+            App.ACTION_CLEAN_ROUTINGS -> {
+                val routing = routing
+                try {
+                    routing!!.started = false
+                    if (status == Status.ACTIVE && !initRouting(upstream!!, routing.downstream, routing.hostAddress))
+                        Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
     private val onVpnUnavailable = Runnable { startFailure(getString(R.string.repeater_vpn_unavailable)) }
@@ -202,6 +212,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
                         unregisterReceiver()
                         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+                        LocalBroadcastManager.getInstance(this)
+                                .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
                         receiverRegistered = true
                         upstream = ifname
                         p2pManager.requestGroupInfo(channel, {
@@ -319,6 +331,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
             receiverRegistered = false
         }
     }

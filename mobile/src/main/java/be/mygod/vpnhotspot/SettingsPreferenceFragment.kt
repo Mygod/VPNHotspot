@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
+import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.IOException
@@ -18,6 +19,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference("service.clean").setOnPreferenceClickListener {
             Routing.clean()
+            LocalBroadcastManager.getInstance(context!!).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {

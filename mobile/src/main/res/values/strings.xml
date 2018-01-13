@@ -42,8 +42,7 @@
 
     <string name="settings_service">Service</string>
     <string name="settings_service_dns">Downstream DNS server:port</string>
-    <string name="settings_service_clean">Clean routing rules</string>
-    <string name="settings_service_clean_summary">Only use after having shut down everything</string>
+    <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_misc_logcat">Export logcat</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>

@@ -29,10 +29,15 @@ class TetheringService : Service(), VpnListener.Callback {
     private var upstream: String? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val remove = routings.keys - NetUtils.getTetheredIfaces(intent.extras)
-        if (remove.isEmpty()) return@broadcastReceiver
-        val failed = remove.any { routings.remove(it)?.stop() == false }
-        if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+        when (intent.action) {
+            NetUtils.ACTION_TETHER_STATE_CHANGED -> {
+                val remove = routings.keys - NetUtils.getTetheredIfaces(intent.extras)
+                if (remove.isEmpty()) return@broadcastReceiver
+                val failed = remove.any { routings.remove(it)?.stop() == false }
+                if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+            }
+            App.ACTION_CLEAN_ROUTINGS -> for (iface in routings.keys) routings[iface] = null
+        }
         updateRoutings()
     }
 

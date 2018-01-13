@@ -39,8 +39,7 @@
 
     <string name="settings_service">服务</string>
     <string name="settings_service_dns">下游 DNS 服务器:端口</string>
-    <string name="settings_service_clean">清理路由规则</string>
-    <string name="settings_service_clean_summary">请关闭所有服务后使用</string>
+    <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>
     <string name="settings_misc_logcat">导出日志</string>
     <string name="settings_misc_logcat_summary">这种非常有用哇</string>

@@ -9,8 +9,7 @@
             android:defaultValue="8.8.8.8:53"/>
         <Preference
             android:key="service.clean"
-            android:title="@string/settings_service_clean"
-            android:summary="@string/settings_service_clean_summary"/>
+            android:title="@string/settings_service_clean"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_misc">
