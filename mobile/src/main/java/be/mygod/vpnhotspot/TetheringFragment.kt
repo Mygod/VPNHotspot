@@ -66,7 +66,7 @@ class TetheringFragment : Fragment() {
             bluetoothRegexes.any { it.matcher(iface).matches() } -> R.drawable.ic_device_bluetooth
             else -> R.drawable.ic_device_wifi_tethering
         }
-        var active = TetheringService.active?.contains(iface) == true
+        var active = TetheringService.active.contains(iface)
     }
 
     class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
