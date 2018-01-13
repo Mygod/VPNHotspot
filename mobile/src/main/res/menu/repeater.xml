@@ -4,4 +4,7 @@
     <item
         android:id="@+id/wps"
         android:title="WPS"/>
+    <item
+        android:id="@+id/resetGroup"
+        android:title="Reset credentials"/>
 </menu>

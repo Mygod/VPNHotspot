@@ -68,14 +68,14 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
     inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
         private var owner: WifiP2pDevice? = null
-        private lateinit var clients: MutableCollection<WifiP2pDevice>
+        private lateinit var clients: Collection<WifiP2pDevice>
         private lateinit var arpCache: Map<String, String>
 
         fun fetchClients() {
             val binder = binder
             if (binder?.active == true) {
-                owner = binder.service.group.owner
-                clients = binder.service.group.clientList
+                owner = binder.service.group?.owner
+                clients = binder.service.group?.clientList ?: emptyList()
                 arpCache = NetUtils.arp(binder.service.routing?.downstream)
             } else owner = null
             notifyDataSetChanged()  // recreate everything
@@ -162,6 +162,15 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             dialog.show()
             true
         } else false
+        R.id.resetGroup -> {
+            AlertDialog.Builder(context!!)
+                    .setTitle("Reset credentials")
+                    .setMessage("Android system will generate new network name and password next time repeater is activated. This is irreversible.")
+                    .setPositiveButton("Reset", { _, _ -> binder?.resetCredentials() })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
+            true
+        }
         else -> false
     }
 }

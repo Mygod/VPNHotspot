@@ -25,7 +25,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
     companion object {
         const val CHANNEL = "repeater"
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
+        const val KEY_NET_ID = "netId"
         private const val TAG = "RepeaterService"
+        private const val TEMPORARY_NET_ID = -1
 
         /**
          * Matches the output of dumpsys wifip2p. This part is available since Android 4.2.
@@ -44,12 +46,32 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
          *
          * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.3_r0.9/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#958
          */
-        private val startWpsMethod = WifiP2pManager::class.java.getDeclaredMethod("startWps",
+        private val startWps = WifiP2pManager::class.java.getDeclaredMethod("startWps",
                 WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
         private fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo,
                                             listener: WifiP2pManager.ActionListener) {
-            startWpsMethod.invoke(this, c, wps, listener)
+            startWps.invoke(this, c, wps, listener)
         }
+
+        /**
+         * Available since Android 4.2.
+         *
+         * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#1353
+         */
+        private val deletePersistentGroup = WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
+                WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
+        private fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
+                                                         listener: WifiP2pManager.ActionListener) {
+            deletePersistentGroup.invoke(this, c, netId, listener)
+        }
+
+        /**
+         * Available since Android 4.2.
+         *
+         * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
+         */
+        private val getNetworkId = WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId")
+        private val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
     }
 
     enum class Status {
@@ -80,6 +102,17 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         fun shutdown() {
             if (status == Status.ACTIVE) removeGroup()
         }
+
+        fun resetCredentials() {
+            val netId = app.pref.getInt(KEY_NET_ID, TEMPORARY_NET_ID)
+            if (netId == TEMPORARY_NET_ID) return
+            p2pManager.deletePersistentGroup(channel, netId, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = Toast.makeText(this@RepeaterService,
+                        "Credentials reset.", Toast.LENGTH_SHORT).show()
+                override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
+                        "Failed to reset credentials (reason: ${formatReason(reason)})", Toast.LENGTH_SHORT).show()
+            })
+        }
     }
 
     private val handler = Handler()
@@ -89,8 +122,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         if (_channel == null) onChannelDisconnected()
         return _channel!!
     }
-    lateinit var group: WifiP2pGroup
-        private set
+    var group: WifiP2pGroup? = null
+        private set(value) {
+            field = value
+            if (value != null) app.pref.edit().putInt(KEY_NET_ID, value.netId).apply()
+        }
     private val binder = HotspotBinder()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -107,8 +143,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
     }
     private val onVpnUnavailable = Runnable { startFailure("VPN unavailable") }
 
-    val ssid get() = if (status == Status.ACTIVE) group.networkName else null
-    val password get() = if (status == Status.ACTIVE) group.passphrase else null
+    val ssid get() = if (status == Status.ACTIVE) group?.networkName else null
+    val password get() = if (status == Status.ACTIVE) group?.passphrase else null
 
     private var upstream: String? = null
     var routing: Routing? = null
