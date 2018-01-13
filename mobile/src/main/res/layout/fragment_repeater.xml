@@ -27,10 +27,8 @@
                 android:enabled="@{data.switchEnabled}"
                 android:checked="@{data.serviceStarted}"
                 android:onCheckedChanged="@{(_, checked) -> data.setServiceStarted(checked)}"
-                android:paddingEnd="8dp"
                 android:text="@string/app_name"
-                android:textAppearance="@style/TextAppearance.Widget.AppCompat.Toolbar.Title"
-                tools:ignore="RtlSymmetry"/>
+                android:textAppearance="@style/TextAppearance.Widget.AppCompat.Toolbar.Title"/>
         </android.support.v7.widget.Toolbar>
 
         <GridLayout

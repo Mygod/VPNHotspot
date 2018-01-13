@@ -5,6 +5,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.net.NetworkInfo
+import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
@@ -37,6 +38,18 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
          *   https://android.googlesource.com/platform/frameworks/base.git/+/220871a/core/java/android/net/NetworkInfo.java#415
          */
         private val patternNetworkInfo = "^mNetworkInfo .* (isA|a)vailable: (true|false)".toPattern(Pattern.MULTILINE)
+
+        /**
+         * Available since Android 4.3.
+         *
+         * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.3_r0.9/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#958
+         */
+        private val startWpsMethod = WifiP2pManager::class.java.getDeclaredMethod("startWps",
+                WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
+        private fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo,
+                                            listener: WifiP2pManager.ActionListener) {
+            startWpsMethod.invoke(this, c, wps, listener)
+        }
     }
 
     enum class Status {
@@ -46,6 +59,23 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
     inner class HotspotBinder : Binder() {
         val service get() = this@RepeaterService
         var data: RepeaterFragment.Data? = null
+        val active get() = status == Status.ACTIVE
+
+        fun startWps(pin: String? = null) {
+            if (status != Status.ACTIVE) return
+            val wps = WpsInfo()
+            if (pin == null) wps.setup = WpsInfo.PBC else {
+                wps.setup = WpsInfo.KEYPAD
+                wps.pin = pin
+            }
+            p2pManager.startWps(channel, wps, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = Toast.makeText(this@RepeaterService,
+                        if (pin == null) "Please use WPS push button within the next 2 minutes to connect your device."
+                        else "PIN registered.", Toast.LENGTH_SHORT).show()
+                override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
+                        "Failed to start WPS (reason: ${formatReason(reason)})", Toast.LENGTH_SHORT).show()
+            })
+        }
 
         fun shutdown() {
             if (status == Status.ACTIVE) removeGroup()

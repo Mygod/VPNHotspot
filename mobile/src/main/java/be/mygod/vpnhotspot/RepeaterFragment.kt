@@ -13,16 +13,18 @@ import android.os.IBinder
 import android.support.v4.app.Fragment
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
+import android.support.v7.app.AlertDialog
+import android.support.v7.app.AppCompatDialog
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.support.v7.widget.Toolbar
+import android.view.*
+import android.widget.EditText
 import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 
-class RepeaterFragment : Fragment(), ServiceConnection {
+class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     inner class Data : BaseObservable() {
         val switchEnabled: Boolean
             @Bindable get() = when (binder?.service?.status) {
@@ -71,7 +73,7 @@ class RepeaterFragment : Fragment(), ServiceConnection {
 
         fun fetchClients() {
             val binder = binder
-            if (binder?.service?.status == RepeaterService.Status.ACTIVE) {
+            if (binder?.active == true) {
                 owner = binder.service.group.owner
                 clients = binder.service.group.clientList
                 arpCache = NetUtils.arp(binder.service.routing?.downstream)
@@ -113,6 +115,8 @@ class RepeaterFragment : Fragment(), ServiceConnection {
         binding.clients.itemAnimator = animator
         binding.clients.adapter = adapter
         binding.swipeRefresher.setOnRefreshListener { adapter.fetchClients() }
+        binding.toolbar.inflateMenu(R.menu.repeater)
+        binding.toolbar.setOnMenuItemClickListener(this)
         return binding.root
     }
 
@@ -142,5 +146,22 @@ class RepeaterFragment : Fragment(), ServiceConnection {
         binder = null
         LocalBroadcastManager.getInstance(context!!).unregisterReceiver(data.statusListener)
         data.onStatusChanged()
+    }
+
+    override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
+        R.id.wps -> if (binder?.active == true) {
+            val dialog = AlertDialog.Builder(context!!)
+                    .setTitle("Enter PIN")
+                    .setView(R.layout.dialog_wps)
+                    .setPositiveButton(android.R.string.ok, { dialog, _ -> binder?.startWps((dialog as AppCompatDialog)
+                            .findViewById<EditText>(android.R.id.edit)!!.text.toString()) })
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .setNeutralButton("Push Button", { _, _ -> binder?.startWps(null) })
+                    .create()
+            dialog.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+            dialog.show()
+            true
+        } else false
+        else -> false
     }
 }
