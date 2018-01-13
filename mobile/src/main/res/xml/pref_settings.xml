@@ -1,30 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <PreferenceCategory
-        android:title="Service">
+        android:title="@string/settings_service">
         <AutoSummaryEditTextPreference
             android:key="service.dns"
-            android:title="Downstream DNS server:port"
+            android:title="@string/settings_service_dns"
             android:summary="%s"
             android:defaultValue="8.8.8.8:53"/>
         <Preference
             android:key="service.clean"
-            android:title="Clean routing rules"
-            android:summary="Only use after having shut down everything"/>
+            android:title="@string/settings_service_clean"
+            android:summary="@string/settings_service_clean_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
-        android:title="Misc">
+        android:title="@string/settings_misc">
         <Preference
             android:key="misc.logcat"
-            android:title="Export logcat"
-            android:summary="Such useful very wow"/>
+            android:title="@string/settings_misc_logcat"
+            android:summary="@string/settings_misc_logcat_summary"/>
         <Preference
             android:key="misc.source"
-            android:title="View on GitHub"
-            android:summary="Star, submit issues and contribute"/>
+            android:title="@string/settings_misc_source"
+            android:summary="@string/settings_misc_source_summary"/>
         <Preference
             android:key="misc.donate"
-            android:title="Donate"
-            android:summary="I love money"/>
+            android:title="@string/settings_misc_donate"
+            android:summary="@string/settings_misc_donate_summary"/>
     </PreferenceCategory>
 </PreferenceScreen>

@@ -1,12 +1,62 @@
 <resources>
     <string name="app_name">VPN Hotspot</string>
+    <string name="title_repeater">Repeater</string>
+    <string name="title_tethering">Tethering</string>
     <string name="title_settings">Settings</string>
+
+    <string name="repeater_ssid">Network name</string>
+    <string name="repeater_password">Password</string>
+    <string name="repeater_connected_devices">Connected devices</string>
+    <string name="repeater_wps">WPS</string>
+    <string name="repeater_wps_dialog_title">Enter PIN</string>
+    <string name="repeater_wps_dialog_pbc">Push Button</string>
+    <string name="repeater_wps_success_pbc">Please use WPS push button within the next 2 minutes to connect your
+        device.</string>
+    <string name="repeater_wps_success_keypad">PIN registered.</string>
+    <string name="repeater_wps_failure">Failed to start WPS (reason: %s)</string>
+    <string name="repeater_reset_credentials">Reset credentials</string>
+    <string name="repeater_reset_credentials_dialog_message">Android system will generate new network name and password
+        next time repeater is activated. This is irreversible.</string>
+    <string name="repeater_reset_credentials_dialog_reset">Reset</string>
+    <string name="repeater_reset_credentials_success">Credentials reset.</string>
+    <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
+
+    <string name="repeater_inactive">Service inactive</string>
+    <string name="repeater_connecting">Connecting…</string>
+    <string name="repeater_vpn_unavailable">VPN unavailable, please enable any VPN</string>
+    <string name="repeater_root_unavailable">Root unavailable</string>
+    <string name="repeater_p2p_unavailable">Wi-Fi direct unavailable</string>
+    <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
+    <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
+    <string name="repeater_remove_old_group_failure">Failed to remove old P2P group (reason: %s)</string>
+
+    <string name="repeater_failure_reason_error">internal error</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi-Fi direct unsupported</string>
+    <string name="repeater_failure_reason_busy">framework is busy</string>
+    <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
+    <string name="repeater_failure_reason_unknown">unknown reason #%d</string>
+
+    <string name="tethering_no_interfaces"><![CDATA[To use this feature, turn on any <a href=&quot;#&quot;>system
+        tethering</a> first.]]></string>
+
+    <string name="settings_service">Service</string>
+    <string name="settings_service_dns">Downstream DNS server:port</string>
+    <string name="settings_service_clean">Clean routing rules</string>
+    <string name="settings_service_clean_summary">Only use after having shut down everything</string>
+    <string name="settings_misc">Misc</string>
+    <string name="settings_misc_logcat">Export logcat</string>
+    <string name="settings_misc_logcat_summary">Such useful very wow</string>
+    <string name="settings_misc_source">View on GitHub</string>
+    <string name="settings_misc_source_summary">Star, submit issues and contribute</string>
+    <string name="settings_misc_donate">Donate</string>
+    <string name="settings_misc_donate_summary">I love money</string>
+
+    <string name="notification_channel_repeater">Repeater Service</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">1 connected device</item>
         <item quantity="other">%d connected devices</item>
     </plurals>
+
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
-    <string name="tethering_no_interfaces"><![CDATA[To use this feature, turn on any <a href=&quot;#&quot;>system
-        tethering</a> first.]]></string>
     <string name="noisy_su_failure">Something went wrong, please check logcat.</string>
 </resources>

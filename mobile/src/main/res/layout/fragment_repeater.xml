@@ -42,7 +42,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Network name"
+                android:text="@string/repeater_ssid"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
             <Space
@@ -65,7 +65,7 @@
                 android:layout_height="wrap_content"
                 android:layout_column="0"
                 android:layout_row="1"
-                android:text="Password"
+                android:text="@string/repeater_password"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
             <TextView
@@ -83,7 +83,7 @@
             android:layout_height="wrap_content"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="Connected devices"
+            android:text="@string/repeater_connected_devices"
             android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
 
         <View

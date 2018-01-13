@@ -12,6 +12,7 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
 import android.os.Handler
 import android.os.Looper
+import android.support.annotation.StringRes
 import android.support.v4.app.NotificationCompat
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
@@ -92,10 +93,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             }
             p2pManager.startWps(channel, wps, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = Toast.makeText(this@RepeaterService,
-                        if (pin == null) "Please use WPS push button within the next 2 minutes to connect your device."
-                        else "PIN registered.", Toast.LENGTH_SHORT).show()
+                        if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad,
+                        Toast.LENGTH_SHORT).show()
                 override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
-                        "Failed to start WPS (reason: ${formatReason(reason)})", Toast.LENGTH_SHORT).show()
+                        formatReason(R.string.repeater_wps_failure, reason), Toast.LENGTH_SHORT).show()
             })
         }
 
@@ -108,9 +109,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             if (netId == TEMPORARY_NET_ID) return
             p2pManager.deletePersistentGroup(channel, netId, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = Toast.makeText(this@RepeaterService,
-                        "Credentials reset.", Toast.LENGTH_SHORT).show()
+                        R.string.repeater_reset_credentials_success, Toast.LENGTH_SHORT).show()
                 override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
-                        "Failed to reset credentials (reason: ${formatReason(reason)})", Toast.LENGTH_SHORT).show()
+                        formatReason(R.string.repeater_reset_credentials_failure, reason), Toast.LENGTH_SHORT).show()
             })
         }
     }
@@ -141,7 +142,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             }
         }
     }
-    private val onVpnUnavailable = Runnable { startFailure("VPN unavailable") }
+    private val onVpnUnavailable = Runnable { startFailure(getString(R.string.repeater_vpn_unavailable)) }
 
     val ssid get() = if (status == Status.ACTIVE) group?.networkName else null
     val password get() = if (status == Status.ACTIVE) group?.passphrase else null
@@ -157,13 +158,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
         }
 
-    private fun formatReason(reason: Int) = when (reason) {
-        WifiP2pManager.ERROR -> "ERROR"
-        WifiP2pManager.P2P_UNSUPPORTED -> "P2P_UNSUPPORTED"
-        WifiP2pManager.BUSY -> "BUSY"
-        WifiP2pManager.NO_SERVICE_REQUESTS -> "NO_SERVICE_REQUESTS"
-        else -> "unknown reason: $reason"
-    }
+    private fun formatReason(@StringRes resId: Int, reason: Int) = getString(resId, when (reason) {
+        WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
+        WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
+        WifiP2pManager.BUSY -> getString(R.string.repeater_failure_reason_busy)
+        WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
+        else -> getString(R.string.repeater_failure_reason_unknown, reason)
+    })
 
     override fun onBind(intent: Intent) = binder
 
@@ -196,7 +197,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             Status.STARTING -> {
                 val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
                 when {
-                    !matcher.find() -> startFailure("Root unavailable")
+                    !matcher.find() -> startFailure(getString(R.string.repeater_root_unavailable))
                     matcher.group(2) == "true" -> {
                         unregisterReceiver()
                         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
@@ -213,7 +214,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
                                         override fun onSuccess() = doStart()
                                         override fun onFailure(reason: Int) {
                                             Toast.makeText(this@RepeaterService,
-                                                    "Failed to remove old P2P group (${formatReason(reason)})",
+                                                    formatReason(R.string.repeater_remove_old_group_failure, reason),
                                                     Toast.LENGTH_SHORT).show()
                                         }
                                     })
@@ -221,7 +222,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
                             }
                         })
                     }
-                    else -> startFailure("Wi-Fi direct unavailable")
+                    else -> startFailure(getString(R.string.repeater_p2p_unavailable))
                 }
             }
             Status.ACTIVE -> {
@@ -240,7 +241,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
     }
 
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
-        override fun onFailure(reason: Int) = startFailure("Failed to create P2P group (${formatReason(reason)})")
+        override fun onFailure(reason: Int) = startFailure(formatReason(R.string.repeater_create_group_failure, reason))
         override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire
     })
     private fun doStart(group: WifiP2pGroup) {
@@ -260,7 +261,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         this.group = group
         binder.data?.onGroupChanged()
         showNotification(group)
-        Log.d(TAG, "P2P connection changed: $info\n$net\n$group")
+        debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
     }
     private fun onGroupCreated(info: WifiP2pInfo, group: WifiP2pGroup) {
         val owner = info.groupOwnerAddress
@@ -293,7 +294,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         val builder = NotificationCompat.Builder(this, CHANNEL)
                 .setWhen(0)
                 .setColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .setContentTitle(group?.networkName ?: ssid ?: "Connecting...")
+                .setContentTitle(group?.networkName ?: ssid ?: getString(R.string.repeater_connecting))
                 .setSmallIcon(R.drawable.ic_device_wifi_tethering)
                 .setContentIntent(PendingIntent.getActivity(this, 0,
                         Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
@@ -307,8 +308,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             override fun onSuccess() = clean()
             override fun onFailure(reason: Int) {
                 if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
-                    Toast.makeText(this@RepeaterService, "Failed to remove P2P group (${formatReason(reason)})",
-                            Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@RepeaterService,
+                            formatReason(R.string.repeater_remove_group_failure, reason), Toast.LENGTH_SHORT).show()
                     status = Status.ACTIVE
                     LocalBroadcastManager.getInstance(this@RepeaterService).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
                 }

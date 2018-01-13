@@ -48,7 +48,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 }
             }
 
-        val ssid @Bindable get() = binder?.service?.ssid ?: "Service inactive"
+        val ssid @Bindable get() = binder?.service?.ssid ?: getText(R.string.repeater_inactive)
         val password @Bindable get() = binder?.service?.password ?: ""
 
         fun onStatusChanged() {
@@ -151,12 +151,12 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
         R.id.wps -> if (binder?.active == true) {
             val dialog = AlertDialog.Builder(context!!)
-                    .setTitle("Enter PIN")
+                    .setTitle(R.string.repeater_wps_dialog_title)
                     .setView(R.layout.dialog_wps)
                     .setPositiveButton(android.R.string.ok, { dialog, _ -> binder?.startWps((dialog as AppCompatDialog)
                             .findViewById<EditText>(android.R.id.edit)!!.text.toString()) })
                     .setNegativeButton(android.R.string.cancel, null)
-                    .setNeutralButton("Push Button", { _, _ -> binder?.startWps(null) })
+                    .setNeutralButton(R.string.repeater_wps_dialog_pbc, { _, _ -> binder?.startWps(null) })
                     .create()
             dialog.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
             dialog.show()
@@ -164,9 +164,10 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         } else false
         R.id.resetGroup -> {
             AlertDialog.Builder(context!!)
-                    .setTitle("Reset credentials")
-                    .setMessage("Android system will generate new network name and password next time repeater is activated. This is irreversible.")
-                    .setPositiveButton("Reset", { _, _ -> binder?.resetCredentials() })
+                    .setTitle(R.string.repeater_reset_credentials)
+                    .setMessage(getString(R.string.repeater_reset_credentials_dialog_message))
+                    .setPositiveButton(R.string.repeater_reset_credentials_dialog_reset,
+                            { _, _ -> binder?.resetCredentials() })
                     .setNegativeButton(android.R.string.cancel, null)
                     .show()
             true

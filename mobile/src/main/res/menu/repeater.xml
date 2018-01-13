@@ -3,8 +3,8 @@
 
     <item
         android:id="@+id/wps"
-        android:title="WPS"/>
+        android:title="@string/repeater_wps"/>
     <item
         android:id="@+id/resetGroup"
-        android:title="Reset credentials"/>
+        android:title="@string/repeater_reset_credentials"/>
 </menu>
