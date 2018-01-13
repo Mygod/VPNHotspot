@@ -60,6 +60,8 @@ class TetheringService : Service(), VpnListener.Callback {
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
                 VpnListener.registerCallback(this)
                 receiverRegistered = true
             }
@@ -111,6 +113,7 @@ class TetheringService : Service(), VpnListener.Callback {
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
+            LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
             VpnListener.unregisterCallback(this)
             upstream = null
             receiverRegistered = false
