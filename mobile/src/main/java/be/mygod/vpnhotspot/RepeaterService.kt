@@ -194,7 +194,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         handler.removeCallbacks(onVpnUnavailable)
         when (status) {
             Status.STARTING -> {
-                val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}"))
+                val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
                 when {
                     !matcher.find() -> startFailure("Root unavailable")
                     matcher.group(2) == "true" -> {

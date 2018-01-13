@@ -5,7 +5,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
+import android.widget.Toast
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
+import java.io.IOException
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -19,11 +21,16 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
-            val intent = Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT, Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
-                            .inputStream.bufferedReader().use { it.readText() })
-            startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
+            try {
+                val intent = Intent(Intent.ACTION_SEND)
+                        .setType("text/plain")
+                        .putExtra(Intent.EXTRA_TEXT, Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
+                                .inputStream.bufferedReader().use { it.readText() })
+                startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
+            } catch (e: IOException) {
+                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+                e.printStackTrace()
+            }
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
