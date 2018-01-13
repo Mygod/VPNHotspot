@@ -16,13 +16,26 @@
             android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
             app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
             android:id="@+id/toolbar"/>
-        <android.support.v7.widget.RecyclerView
-            android:id="@+id/interfaces"
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"
-            android:scrollbars="vertical"
-            tools:listitem="@layout/listitem_interface"/>
+            android:layout_weight="1">
+            <TextView
+                android:id="@+id/empty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:linksClickable="true"
+                android:padding="16dp"
+                tools:text="@string/tethering_no_interfaces"/>
+            <android.support.v7.widget.RecyclerView
+                android:id="@+id/interfaces"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:scrollbars="vertical"
+                android:visibility="gone"
+                tools:listitem="@layout/listitem_interface"
+                tools:visibility="visible"/>
+        </FrameLayout>
     </LinearLayout>
 </layout>

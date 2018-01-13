@@ -1,5 +1,7 @@
 package be.mygod.vpnhotspot
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.content.Intent
 import android.content.res.Resources
 import android.databinding.BaseObservable
@@ -11,6 +13,7 @@ import android.support.v7.util.SortedList
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
+import android.text.Html
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -18,6 +21,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.NetUtils.tetheredIfaces
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
+import be.mygod.vpnhotspot.widget.TextViewLinkHandler
 
 class TetheringFragment : Fragment() {
     companion object {
@@ -83,9 +87,13 @@ class TetheringFragment : Fragment() {
         private val tethered = SortedList(String::class.java, StringSorter)
 
         fun update(data: Set<String> = VpnListener.connectivityManager.tetheredIfaces.toSet()) {
+            val oldEmpty = tethered.size() == 0
             tethered.clear()
             tethered.addAll(data)
             notifyDataSetChanged()
+            if (oldEmpty != data.isEmpty())
+                if (oldEmpty) crossFade(binding.empty, binding.interfaces)
+                else crossFade(binding.interfaces, binding.empty)
         }
 
         override fun getItemCount() = tethered.size()
@@ -96,6 +104,7 @@ class TetheringFragment : Fragment() {
         }
     }
 
+    private lateinit var binding: FragmentTetheringBinding
     private val adapter = InterfaceAdapter()
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -107,8 +116,12 @@ class TetheringFragment : Fragment() {
     private var receiverRegistered = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        val binding = DataBindingUtil.inflate<FragmentTetheringBinding>(inflater, R.layout.fragment_tethering,
-                container, false)
+        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
+        binding.empty.text = Html.fromHtml(getString(R.string.tethering_no_interfaces))
+        binding.empty.movementMethod = TextViewLinkHandler.create {
+            startActivity(Intent().setClassName("com.android.settings",
+                    "com.android.settings.Settings\$TetherSettingsActivity"))
+        }
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         val animator = DefaultItemAnimator()
         animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
@@ -137,5 +150,17 @@ class TetheringFragment : Fragment() {
             receiverRegistered = false
         }
         super.onStop()
+    }
+
+    private fun crossFade(old: View, new: View) {
+        val shortAnimTime = resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
+        old.animate().alpha(0F).setListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                old.visibility = View.GONE
+            }
+        }).duration = shortAnimTime
+        new.alpha = 0F
+        new.visibility = View.VISIBLE
+        new.animate().alpha(1F).setListener(null).duration = shortAnimTime
     }
 }
