@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.app.Service
 import android.content.Intent
 import android.support.v4.content.LocalBroadcastManager
+import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 
 class TetheringService : Service(), VpnListener.Callback {
@@ -26,7 +27,8 @@ class TetheringService : Service(), VpnListener.Callback {
     private val receiver = broadcastReceiver { _, intent ->
         val remove = routings.keys - NetUtils.getTetheredIfaces(intent.extras)
         if (remove.isEmpty()) return@broadcastReceiver
-        for (iface in remove) routings.remove(iface)?.stop()
+        val failed = remove.any { routings.remove(it)?.stop() == false }
+        if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         updateRoutings()
     }
 
@@ -38,10 +40,16 @@ class TetheringService : Service(), VpnListener.Callback {
         } else {
             val upstream = upstream
             if (upstream != null) {
+                var failed = false
                 for ((downstream, value) in routings) if (value == null) {
                     val routing = Routing(upstream, downstream).rule().forward().dnsRedirect(app.dns)
-                    if (routing.start()) routings[downstream] = routing else routing.stop()
+                    if (routing.start()) routings[downstream] = routing else {
+                        failed = true
+                        routing.stop()
+                        routings.remove(downstream)
+                    }
                 }
+                if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
                 VpnListener.registerCallback(this)
@@ -56,7 +64,8 @@ class TetheringService : Service(), VpnListener.Callback {
         if (intent != null) {   // otw service is recreated after being killed
             val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
             if (iface != null) routings.put(iface, null)
-            routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
+            if (routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop() == false)
+                Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         } else active.forEach { routings.put(it, null) }
         updateRoutings()
         return START_STICKY
@@ -71,10 +80,12 @@ class TetheringService : Service(), VpnListener.Callback {
     override fun onLost(ifname: String) {
         check(upstream == null || upstream == ifname)
         upstream = null
+        var failed = false
         for ((iface, routing) in routings) {
-            routing?.stop()
+            if (routing?.stop() == false) failed = true
             routings[iface] = null
         }
+        if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
@@ -82,7 +93,7 @@ class TetheringService : Service(), VpnListener.Callback {
         super.onDestroy()
     }
 
-    fun unregisterReceiver() {
+    private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             VpnListener.unregisterCallback(this)

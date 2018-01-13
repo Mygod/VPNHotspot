@@ -181,7 +181,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         VpnListener.registerCallback(this)
         return START_NOT_STICKY
     }
-    private fun startFailure(msg: String?, group: WifiP2pGroup? = null) {
+    private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         showNotification()
         if (group != null) removeGroup() else clean()
@@ -227,13 +227,15 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
             Status.ACTIVE -> {
                 val routing = routing
                 check(!routing!!.started)
-                initRouting(ifname, routing.downstream, routing.hostAddress)
+                if (!initRouting(ifname, routing.downstream, routing.hostAddress))
+                    Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             }
             else -> throw RuntimeException("RepeaterService is in unexpected state when receiving onAvailable")
         }
     }
     override fun onLost(ifname: String) {
-        routing?.stop()
+        if (routing?.stop() == false)
+            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         upstream = null
     }
 
@@ -267,7 +269,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         receiverRegistered = true
         try {
             if (initRouting(upstream!!, downstream, owner)) doStart(group)
-            else startFailure("Something went wrong, please check logcat.", group)
+            else startFailure(getText(R.string.noisy_su_failure), group)
         } catch (e: Routing.InterfaceNotFoundException) {
             startFailure(e.message, group)
             return
@@ -323,7 +325,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         VpnListener.unregisterCallback(this)
         unregisterReceiver()
         if (routing?.stop() == false)
-            Toast.makeText(this, "Something went wrong, please check logcat.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         routing = null
         status = Status.IDLE
         stopForeground(true)

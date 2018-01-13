@@ -8,4 +8,5 @@
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="tethering_no_interfaces"><![CDATA[To use this feature, turn on any <a href=&quot;#&quot;>system
         tethering</a> first.]]></string>
+    <string name="noisy_su_failure">Something went wrong, please check logcat.</string>
 </resources>
