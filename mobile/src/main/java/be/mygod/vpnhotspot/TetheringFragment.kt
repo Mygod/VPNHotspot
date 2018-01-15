@@ -13,16 +13,16 @@ import android.support.v7.util.SortedList
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.text.Html
+import android.support.v7.widget.Toolbar
 import android.view.LayoutInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
-import be.mygod.vpnhotspot.widget.TextViewLinkHandler
 
-class TetheringFragment : Fragment() {
+class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
     companion object {
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/61fa313/core/res/res/values/config.xml#328
@@ -115,11 +115,8 @@ class TetheringFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
-        binding.empty.text = Html.fromHtml(getString(R.string.tethering_no_interfaces))
-        binding.empty.movementMethod = TextViewLinkHandler.create {
-            startActivity(Intent().setClassName("com.android.settings",
-                    "com.android.settings.Settings\$TetherSettingsActivity"))
-        }
+        binding.toolbar.inflateMenu(R.menu.tethering)
+        binding.toolbar.setOnMenuItemClickListener(this)
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         val animator = DefaultItemAnimator()
         animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
@@ -147,6 +144,15 @@ class TetheringFragment : Fragment() {
             receiverRegistered = false
         }
         super.onStop()
+    }
+
+    override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
+        R.id.systemTethering -> {
+            startActivity(Intent().setClassName("com.android.settings",
+                    "com.android.settings.Settings\$TetherSettingsActivity"))
+            true
+        }
+        else -> false
     }
 
     private fun crossFade(old: View, new: View) {

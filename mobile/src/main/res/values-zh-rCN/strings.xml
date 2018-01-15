@@ -35,7 +35,8 @@
     <string name="repeater_failure_reason_no_service_requests">未添加服务请求</string>
     <string name="repeater_failure_reason_unknown">未知 #%d</string>
 
-    <string name="tethering_no_interfaces"><![CDATA[请先打开<a href=&quot;#&quot;>系统共享</a>后使用此功能。]]></string>
+    <string name="tethering_system_tethering">系统共享</string>
+    <string name="tethering_no_interfaces">请先打开系统共享后使用此功能。</string>
 
     <string name="settings_service">服务</string>
     <string name="settings_service_dns">下游 DNS 服务器:端口</string>

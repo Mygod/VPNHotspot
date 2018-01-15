@@ -22,9 +22,8 @@
                 android:id="@+id/empty"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:linksClickable="true"
                 android:padding="16dp"
-                tools:text="@string/tethering_no_interfaces"/>
+                android:text="@string/tethering_no_interfaces"/>
             <android.support.v7.widget.RecyclerView
                 android:id="@+id/interfaces"
                 android:layout_width="match_parent"
