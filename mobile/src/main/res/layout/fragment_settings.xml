@@ -11,8 +11,6 @@
         android:background="?attr/colorPrimary"
         android:elevation="4dp"
         app:title="@string/app_name"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-        app:popupTheme="@style/ThemeOverlay.AppCompat.Light"
         android:id="@+id/toolbar"/>
     <fragment
         class="be.mygod.vpnhotspot.SettingsPreferenceFragment"
