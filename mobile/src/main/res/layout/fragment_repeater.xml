@@ -16,6 +16,7 @@
             android:layout_width="match_parent"
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
+            android:touchscreenBlocksFocus="false"
             android:id="@+id/toolbar">
 
             <Switch
@@ -34,7 +35,7 @@
             android:paddingBottom="8dp"
             android:paddingEnd="16dp"
             android:paddingStart="16dp"
-            android:paddingTop="8dp">
+            android:paddingTop="16dp">
 
             <TextView
                 android:layout_width="wrap_content"
@@ -53,6 +54,7 @@
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="0"
+                android:focusable="false"
                 android:text="@{data.ssid}"
                 android:textIsSelectable="true"
                 tools:text="DIRECT-rAnd0m"/>
@@ -70,6 +72,7 @@
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="1"
+                android:focusable="false"
                 android:text="@{data.password}"
                 android:textIsSelectable="true"
                 tools:text="p4ssW0rd"/>
@@ -91,6 +94,7 @@
 
         <android.support.v4.widget.SwipeRefreshLayout
             android:id="@+id/swipeRefresher"
+            android:descendantFocusability="blocksDescendants"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 

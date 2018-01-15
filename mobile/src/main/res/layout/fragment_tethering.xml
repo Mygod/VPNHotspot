@@ -12,6 +12,7 @@
             android:layout_width="match_parent"
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
+            android:touchscreenBlocksFocus="false"
             app:title="@string/app_name"
             android:id="@+id/toolbar"/>
         <FrameLayout
