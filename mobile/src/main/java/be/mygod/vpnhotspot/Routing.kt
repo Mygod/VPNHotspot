@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import java.io.IOException
 import java.net.Inet4Address
@@ -9,11 +10,18 @@ import java.util.*
 
 class Routing(private val upstream: String, val downstream: String, ownerAddress: InetAddress? = null) {
     companion object {
+        /**
+         * -w <seconds> is not supported on 7.1-.
+         *
+         * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
+         */
+        private val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
+
         fun clean() = noisySu(
-                "iptables -w 1 -t nat -F PREROUTING",
-                "quiet while iptables -w 1 -D FORWARD -j vpnhotspot_fwd; do done",
-                "iptables -w 1 -F vpnhotspot_fwd",
-                "iptables -w 1 -X vpnhotspot_fwd",
+                "$IPTABLES -t nat -F PREROUTING",
+                "quiet while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done",
+                "$IPTABLES -F vpnhotspot_fwd",
+                "$IPTABLES -X vpnhotspot_fwd",
                 "quiet while ip rule del priority 17900; do done")
     }
 
@@ -46,22 +54,22 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     }
 
     fun forward(): Routing {
-        startScript.add("quiet iptables -w 1 -N vpnhotspot_fwd 2>/dev/null")
-        startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-        startScript.add("iptables -w 1 -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
-        startScript.add("iptables -w 1 -I FORWARD -j vpnhotspot_fwd")
-        stopScript.addFirst("iptables -w 1 -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-        stopScript.addFirst("iptables -w 1 -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
-        stopScript.addFirst("iptables -w 1 -D FORWARD -j vpnhotspot_fwd")
+        startScript.add("quiet $IPTABLES -N vpnhotspot_fwd 2>/dev/null")
+        startScript.add("$IPTABLES -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+        startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+        startScript.add("$IPTABLES -I FORWARD -j vpnhotspot_fwd")
+        stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+        stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+        stopScript.addFirst("$IPTABLES -D FORWARD -j vpnhotspot_fwd")
         return this
     }
 
     fun dnsRedirect(dns: String): Routing {
         val hostAddress = hostAddress.hostAddress
-        startScript.add("iptables -w 1 -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        startScript.add("iptables -w 1 -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        stopScript.addFirst("iptables -w 1 -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        stopScript.addFirst("iptables -w 1 -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        stopScript.addFirst("$IPTABLES -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
+        stopScript.addFirst("$IPTABLES -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         return this
     }
 
