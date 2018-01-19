@@ -3,7 +3,7 @@
 buildscript {
     ext {
         androidPluginVersion = '3.0.1'
-        kotlinVersion = '1.2.10'
+        kotlinVersion = '1.2.20'
         supportLibraryVersion = '27.0.2'
         takisoftFixVersion = '27.0.2.0'
     }
