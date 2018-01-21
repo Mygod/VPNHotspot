@@ -7,7 +7,6 @@
 
     <string name="repeater_ssid">中继名称</string>
     <string name="repeater_password">中继密码</string>
-    <string name="connected_devices">已连接设备</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
@@ -21,7 +20,6 @@
     <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
 
     <string name="repeater_inactive">未打开</string>
-    <string name="repeater_connecting">正在连接……</string>
     <string name="repeater_vpn_unavailable">无法找到 VPN，请启用任意 VPN</string>
     <string name="repeater_root_unavailable">似乎没有 root</string>
     <string name="repeater_p2p_unavailable">Wi-Fi 直连不可用</string>
@@ -35,8 +33,12 @@
     <string name="repeater_failure_reason_no_service_requests">未添加服务请求</string>
     <string name="repeater_failure_reason_unknown">未知 #%d</string>
 
-    <string name="tethering_system_tethering">系统共享</string>
-    <string name="tethering_no_interfaces">请先打开系统共享后使用此功能。</string>
+    <string name="tethering_manage">管理…</string>
+
+    <string name="connected_devices">已连接设备</string>
+    <string name="connected_state_incomplete">正在通过 %s 连接</string>
+    <string name="connected_state_valid">已连接到 %s</string>
+    <string name="connected_state_failed">已从 %s 断开</string>
 
     <string name="settings_service">服务</string>
     <string name="settings_service_dns">下游 DNS 服务器:端口</string>
@@ -49,9 +51,12 @@
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
 
-    <string name="notification_channel_repeater">无线中继服务</string>
+    <string name="notification_channel_tethering">VPN 共享服务</string>
     <plurals name="notification_connected_devices">
-        <item quantity="other">已连接 %d 个设备</item>
+        <item quantity="other">%d 个设备已连接到 %s</item>
+    </plurals>
+    <plurals name="notification_interfaces">
+        <item quantity="other">%d 个接口</item>
     </plurals>
 
     <string name="exception_interface_not_found">错误：未找到下游接口</string>

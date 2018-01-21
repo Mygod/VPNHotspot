@@ -9,6 +9,7 @@ android {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
         targetSdkVersion 27
+        resConfigs "zh-rCN"
         versionCode 4
         versionName "0.9.1-beta"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"

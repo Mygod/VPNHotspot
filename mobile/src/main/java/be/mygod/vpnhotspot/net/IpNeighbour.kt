@@ -6,7 +6,7 @@ import java.io.IOException
 
 data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val state: State) {
     enum class State {
-        INCOMPLETE, VALID, VALID_DELAY, FAILED, DELETING
+        INCOMPLETE, VALID, FAILED, DELETING
     }
 
     companion object {
@@ -38,8 +38,7 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
                     .singleOrNull() ?: "")
             val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[9]) {
                 "", "INCOMPLETE" -> State.INCOMPLETE
-                "REACHABLE", "STALE", "PROBE", "PERMANENT" -> State.VALID
-                "DELAY" -> State.VALID_DELAY
+                "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
                 "FAILED" -> State.FAILED
                 "NOARP" -> return null  // skip
                 else -> {

@@ -84,7 +84,6 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val description get() = getString(when (neighbour?.state) {
             IpNeighbour.State.INCOMPLETE, null -> R.string.connected_state_incomplete
             IpNeighbour.State.VALID -> R.string.connected_state_valid
-            IpNeighbour.State.VALID_DELAY -> R.string.connected_state_valid_delay
             IpNeighbour.State.FAILED -> R.string.connected_state_failed
             else -> throw IllegalStateException()
         }, iface)
