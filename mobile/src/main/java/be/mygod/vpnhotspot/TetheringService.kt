@@ -26,8 +26,8 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
-            NetUtils.ACTION_TETHER_STATE_CHANGED -> {
-                val remove = routings.keys - NetUtils.getTetheredIfaces(intent.extras)
+            ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED -> {
+                val remove = routings.keys - ConnectivityManagerHelper.getTetheredIfaces(intent.extras)
                 if (remove.isEmpty()) return@broadcastReceiver
                 val failed = remove.any { routings.remove(it)?.stop() == false }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
@@ -56,7 +56,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
                 }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
-                registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
+                registerReceiver(receiver, intentFilter(ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED))
                 LocalBroadcastManager.getInstance(this)
                         .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
                 IpNeighbourMonitor.registerCallback(this)

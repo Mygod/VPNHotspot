@@ -23,7 +23,7 @@ import android.view.View
 import android.view.ViewGroup
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
-import be.mygod.vpnhotspot.net.NetUtils
+import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
@@ -89,7 +89,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     private var binder: TetheringService.TetheringBinder? = null
     val adapter = InterfaceAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(NetUtils.getTetheredIfaces(intent.extras).toSet())
+        adapter.update(ConnectivityManagerHelper.getTetheredIfaces(intent.extras).toSet())
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -107,7 +107,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onStart() {
         super.onStart()
         val context = context!!
-        context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
+        context.registerReceiver(receiver, intentFilter(ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED))
         context.bindService(Intent(context, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
     }
 
