@@ -294,7 +294,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             true
         } else {
             routing.stop()
-            this.routing = null
             false
         }
     }
