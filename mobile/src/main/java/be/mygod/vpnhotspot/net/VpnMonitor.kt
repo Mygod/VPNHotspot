@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot
+package be.mygod.vpnhotspot.net
 
 import android.content.Context
 import android.net.ConnectivityManager
@@ -6,14 +6,15 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.debugLog
 
-object VpnListener : ConnectivityManager.NetworkCallback() {
+object VpnMonitor : ConnectivityManager.NetworkCallback() {
     interface Callback {
         fun onAvailable(ifname: String)
         fun onLost(ifname: String)
     }
 
-    private const val TAG = "VpnListener"
+    private const val TAG = "VpnMonitor"
 
     val connectivityManager = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val request by lazy {

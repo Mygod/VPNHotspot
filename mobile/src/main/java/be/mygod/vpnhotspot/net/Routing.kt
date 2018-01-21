@@ -1,7 +1,9 @@
-package be.mygod.vpnhotspot
+package be.mygod.vpnhotspot.net
 
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.noisySu
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -12,6 +14,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     companion object {
         /**
          * -w <seconds> is not supported on 7.1-.
+         * Fortunately there also isn't a time limit for starting a foreground service back in 7.1-.
          *
          * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
          */

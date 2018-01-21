@@ -5,8 +5,11 @@ import android.content.Intent
 import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.NetUtils
+import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.VpnMonitor
 
-class TetheringService : Service(), VpnListener.Callback {
+class TetheringService : Service(), VpnMonitor.Callback {
     companion object {
         const val ACTION_ACTIVE_INTERFACES_CHANGED = "be.mygod.vpnhotspot.TetheringService.ACTIVE_INTERFACES_CHANGED"
         const val EXTRA_ADD_INTERFACE = "interface.add"
@@ -62,7 +65,7 @@ class TetheringService : Service(), VpnListener.Callback {
                 registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
                 LocalBroadcastManager.getInstance(this)
                         .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
-                VpnListener.registerCallback(this)
+                VpnMonitor.registerCallback(this)
                 receiverRegistered = true
             }
         }
@@ -114,7 +117,7 @@ class TetheringService : Service(), VpnListener.Callback {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
-            VpnListener.unregisterCallback(this)
+            VpnMonitor.unregisterCallback(this)
             upstream = null
             receiverRegistered = false
         }

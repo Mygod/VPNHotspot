@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot
+package be.mygod.vpnhotspot.net
 
 import android.os.Build
 import android.os.Bundle

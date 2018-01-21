@@ -23,6 +23,7 @@ import android.view.*
 import android.widget.EditText
 import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
+import be.mygod.vpnhotspot.net.NetUtils
 
 class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     inner class Data : BaseObservable() {

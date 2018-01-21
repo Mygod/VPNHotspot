@@ -19,10 +19,12 @@ import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.VpnMonitor
 import java.net.InetAddress
 import java.util.regex.Pattern
 
-class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.Callback {
+class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback {
     companion object {
         const val CHANNEL = "repeater"
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
@@ -189,7 +191,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
         handler.postDelayed(onVpnUnavailable, 4000)
-        VpnListener.registerCallback(this)
+        VpnMonitor.registerCallback(this)
         return START_NOT_STICKY
     }
     private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
@@ -336,7 +338,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnListener.C
         }
     }
     private fun clean() {
-        VpnListener.unregisterCallback(this)
+        VpnMonitor.unregisterCallback(this)
         unregisterReceiver()
         if (routing?.stop() == false)
             Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()

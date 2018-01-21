@@ -7,6 +7,7 @@ import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
+import be.mygod.vpnhotspot.net.Routing
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.IOException
 

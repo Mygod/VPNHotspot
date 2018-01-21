@@ -21,6 +21,7 @@ import android.view.ViewGroup
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
+import be.mygod.vpnhotspot.net.NetUtils
 
 class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
     companion object {
