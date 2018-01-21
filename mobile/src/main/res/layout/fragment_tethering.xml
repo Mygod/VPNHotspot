@@ -12,28 +12,15 @@
             android:layout_width="match_parent"
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
-            android:touchscreenBlocksFocus="false"
             app:title="@string/app_name"
             android:id="@+id/toolbar"/>
-        <FrameLayout
+        <android.support.v7.widget.RecyclerView
+            android:id="@+id/interfaces"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
-            <TextView
-                android:id="@+id/empty"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:padding="16dp"
-                android:text="@string/tethering_no_interfaces"/>
-            <android.support.v7.widget.RecyclerView
-                android:id="@+id/interfaces"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:scrollbars="vertical"
-                android:visibility="gone"
-                tools:listitem="@layout/listitem_interface"
-                tools:visibility="visible"/>
-        </FrameLayout>
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:scrollbars="vertical"
+            tools:listitem="@layout/listitem_interface"/>
     </LinearLayout>
 </layout>

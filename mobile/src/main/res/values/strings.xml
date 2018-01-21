@@ -37,9 +37,6 @@
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
     <string name="repeater_failure_reason_unknown">unknown #%d</string>
 
-    <string name="tethering_system_tethering">System tethering</string>
-    <string name="tethering_no_interfaces">To use this feature, turn on any system tethering first.</string>
-
     <string name="settings_service">Service</string>
     <string name="settings_service_dns">Downstream DNS server:port</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>

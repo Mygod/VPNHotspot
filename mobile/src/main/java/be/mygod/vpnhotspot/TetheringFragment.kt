@@ -1,7 +1,5 @@
 package be.mygod.vpnhotspot
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -16,9 +14,7 @@ import android.support.v7.util.SortedList
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
-import android.support.v7.widget.Toolbar
 import android.view.LayoutInflater
-import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
@@ -26,7 +22,12 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 
-class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
+class TetheringFragment : Fragment(), ServiceConnection {
+    companion object {
+        private const val VIEW_TYPE_INTERFACE = 0
+        private const val VIEW_TYPE_MANAGE = 1
+    }
+
     private abstract class BaseSorter<T> : SortedList.Callback<T>() {
         override fun onInserted(position: Int, count: Int) { }
         override fun areContentsTheSame(oldItem: T?, newItem: T?): Boolean = oldItem == newItem
@@ -48,7 +49,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         var active = binder?.active?.contains(iface) == true
     }
 
-    class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
+    private class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
             itemView.setOnClickListener(this)
@@ -64,38 +65,50 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             data.active = !data.active
         }
     }
-    inner class InterfaceAdapter : RecyclerView.Adapter<InterfaceViewHolder>() {
+    private class ManageViewHolder(view: View) : RecyclerView.ViewHolder(view), View.OnClickListener {
+        init {
+            view.setOnClickListener(this)
+        }
+
+        override fun onClick(v: View?) = itemView.context.startActivity(Intent()
+                .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
+    }
+    inner class TetheringAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         private val tethered = SortedList(String::class.java, StringSorter)
 
         fun update(data: Set<String>) {
-            val oldEmpty = tethered.size() == 0
             tethered.clear()
             tethered.addAll(data)
             notifyDataSetChanged()
-            if (oldEmpty != data.isEmpty())
-                if (oldEmpty) crossFade(binding.empty, binding.interfaces)
-                else crossFade(binding.interfaces, binding.empty)
         }
 
-        override fun getItemCount() = tethered.size()
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = InterfaceViewHolder(
-                ListitemInterfaceBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-        override fun onBindViewHolder(holder: InterfaceViewHolder, position: Int) {
-            holder.binding.data = Data(tethered[position])
+        override fun getItemCount() = tethered.size() + 1
+        override fun getItemViewType(position: Int) =
+                if (position == tethered.size()) VIEW_TYPE_MANAGE else VIEW_TYPE_INTERFACE
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val inflater = LayoutInflater.from(parent.context)
+            return when (viewType) {
+                VIEW_TYPE_INTERFACE -> InterfaceViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
+                VIEW_TYPE_MANAGE -> ManageViewHolder(inflater.inflate(R.layout.listitem_manage, parent, false))
+                else -> throw IllegalArgumentException()
+            }
+        }
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            when (holder) {
+                is InterfaceViewHolder -> holder.binding.data = Data(tethered[position])
+            }
         }
     }
 
     private lateinit var binding: FragmentTetheringBinding
     private var binder: TetheringService.TetheringBinder? = null
-    val adapter = InterfaceAdapter()
+    val adapter = TetheringAdapter()
     private val receiver = broadcastReceiver { _, intent ->
         adapter.update(ConnectivityManagerHelper.getTetheredIfaces(intent.extras).toSet())
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
-        binding.toolbar.inflateMenu(R.menu.tethering)
-        binding.toolbar.setOnMenuItemClickListener(this)
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         val animator = DefaultItemAnimator()
         animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
@@ -127,26 +140,5 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onServiceDisconnected(name: ComponentName?) {
         binder?.fragment = null
         binder = null
-    }
-
-    override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
-        R.id.systemTethering -> {
-            startActivity(Intent().setClassName("com.android.settings",
-                    "com.android.settings.Settings\$TetherSettingsActivity"))
-            true
-        }
-        else -> false
-    }
-
-    private fun crossFade(old: View, new: View) {
-        val shortAnimTime = resources.getInteger(android.R.integer.config_shortAnimTime).toLong()
-        old.animate().alpha(0F).setListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                old.visibility = View.GONE
-            }
-        }).duration = shortAnimTime
-        new.alpha = 0F
-        new.visibility = View.VISIBLE
-        new.animate().alpha(1F).setListener(null).duration = shortAnimTime
     }
 }

@@ -12,14 +12,12 @@
         android:layout_height="wrap_content"
         android:focusable="true"
         android:background="?android:attr/selectableItemBackground"
-        android:paddingBottom="8dp"
-        android:paddingEnd="16dp"
-        android:paddingStart="16dp"
-        android:paddingTop="8dp">
+        android:padding="16dp">
 
         <ImageView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
             android:src="@{data.icon}"
             android:tint="?android:attr/textColorPrimary"
             tools:src="@drawable/ic_device_network_wifi"/>
@@ -32,13 +30,14 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:layout_gravity="center_vertical"
+            android:checked="@{data.active}"
             android:clickable="false"
             android:ellipsize="end"
             android:focusable="false"
             android:focusableInTouchMode="false"
             android:gravity="center_vertical"
             android:text="@{data.iface}"
-            android:checked="@{data.active}"
             tools:text="wlan0"/>
 
     </LinearLayout>
