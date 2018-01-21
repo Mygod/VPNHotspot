@@ -27,6 +27,7 @@ import java.util.regex.Pattern
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback {
     companion object {
         const val CHANNEL = "repeater"
+        const val CHANNEL_ID = 1
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         const val KEY_NET_ID = "netId"
         private const val TAG = "RepeaterService"
@@ -81,7 +82,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         IDLE, STARTING, ACTIVE
     }
 
-    inner class HotspotBinder : Binder() {
+    inner class RepeaterBinder : Binder() {
         val service get() = this@RepeaterService
         var data: RepeaterFragment.Data? = null
         val active get() = status == Status.ACTIVE
@@ -130,7 +131,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             field = value
             if (value != null) app.pref.edit().putInt(KEY_NET_ID, value.netId).apply()
         }
-    private val binder = HotspotBinder()
+    private val binder = RepeaterBinder()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -160,8 +161,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     val password get() = if (status == Status.ACTIVE) group?.passphrase else null
 
     private var upstream: String? = null
-    var routing: Routing? = null
-        private set
+    private var routing: Routing? = null
 
     var status = Status.IDLE
         private set(value) {
@@ -312,9 +312,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                 .setSmallIcon(R.drawable.ic_device_wifi_tethering)
                 .setContentIntent(PendingIntent.getActivity(this, 0,
                         Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-        if (group != null) builder.setContentText(resources.getQuantityString(R.plurals.notification_connected_devices,
-                group.clientList.size, group.clientList.size))
-        startForeground(1, builder.build())
+        val size = group?.clientList?.size ?: 0
+        if (size != 0) builder.setContentText(resources.getQuantityString(R.plurals.notification_connected_devices,
+                size, size, group!!.`interface`))
+        startForeground(CHANNEL_ID, builder.build())
     }
 
     private fun removeGroup() {

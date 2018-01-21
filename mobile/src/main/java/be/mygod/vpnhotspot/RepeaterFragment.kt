@@ -123,7 +123,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     private lateinit var binding: FragmentRepeaterBinding
     private val data = Data()
     private val adapter = ClientAdapter()
-    private var binder: RepeaterService.HotspotBinder? = null
+    private var binder: RepeaterService.RepeaterBinder? = null
     private var p2pInterface: String? = null
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
@@ -167,7 +167,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        val binder = service as RepeaterService.HotspotBinder
+        val binder = service as RepeaterService.RepeaterBinder
         binder.data = data
         this.binder = binder
         data.onStatusChanged()

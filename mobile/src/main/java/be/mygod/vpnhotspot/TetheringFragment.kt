@@ -2,12 +2,16 @@ package be.mygod.vpnhotspot
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.ServiceConnection
 import android.databinding.BaseObservable
 import android.databinding.DataBindingUtil
 import android.os.Bundle
+import android.os.IBinder
 import android.support.v4.app.Fragment
-import android.support.v4.content.LocalBroadcastManager
+import android.support.v4.content.ContextCompat
 import android.support.v7.util.SortedList
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
@@ -22,7 +26,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.NetUtils
 import be.mygod.vpnhotspot.net.TetherType
 
-class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
+class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     private abstract class BaseSorter<T> : SortedList.Callback<T>() {
         override fun onInserted(position: Int, count: Int) { }
         override fun areContentsTheSame(oldItem: T?, newItem: T?): Boolean = oldItem == newItem
@@ -39,9 +43,9 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
     }
     private object StringSorter : DefaultSorter<String>()
 
-    class Data(val iface: String) : BaseObservable() {
+    inner class Data(val iface: String) : BaseObservable() {
         val icon: Int get() = TetherType.ofInterface(iface).icon
-        var active = TetheringService.active.contains(iface)
+        var active = binder?.active?.contains(iface) == true
     }
 
     class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
@@ -53,8 +57,10 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
         override fun onClick(view: View) {
             val context = itemView.context
             val data = binding.data!!
-            context.startService(Intent(context, TetheringService::class.java).putExtra(if (data.active)
-                TetheringService.EXTRA_REMOVE_INTERFACE else TetheringService.EXTRA_ADD_INTERFACE, data.iface))
+            if (data.active) context.startService(Intent(context, TetheringService::class.java)
+                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, data.iface))
+            else ContextCompat.startForegroundService(context, Intent(context, TetheringService::class.java)
+                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE, data.iface))
             data.active = !data.active
         }
     }
@@ -80,12 +86,10 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
     }
 
     private lateinit var binding: FragmentTetheringBinding
-    private val adapter = InterfaceAdapter()
+    private var binder: TetheringService.TetheringBinder? = null
+    val adapter = InterfaceAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        when (intent.action) {
-            TetheringService.ACTION_ACTIVE_INTERFACES_CHANGED -> adapter.notifyDataSetChanged()
-            NetUtils.ACTION_TETHER_STATE_CHANGED -> adapter.update(NetUtils.getTetheredIfaces(intent.extras).toSet())
-        }
+        adapter.update(NetUtils.getTetheredIfaces(intent.extras).toSet())
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -104,15 +108,25 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
         super.onStart()
         val context = context!!
         context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
-        LocalBroadcastManager.getInstance(context)
-                .registerReceiver(receiver, intentFilter(TetheringService.ACTION_ACTIVE_INTERFACES_CHANGED))
+        context.bindService(Intent(context, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
     }
 
     override fun onStop() {
         val context = context!!
+        context.unbindService(this)
         context.unregisterReceiver(receiver)
-        LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)
         super.onStop()
+    }
+
+    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+        val binder = service as TetheringService.TetheringBinder
+        this.binder = binder
+        binder.fragment = this
+    }
+
+    override fun onServiceDisconnected(name: ComponentName?) {
+        binder?.fragment = null
+        binder = null
     }
 
     override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {

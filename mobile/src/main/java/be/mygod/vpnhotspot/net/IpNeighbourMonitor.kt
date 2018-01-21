@@ -20,7 +20,10 @@ class IpNeighbourMonitor private constructor() {
                 monitor = IpNeighbourMonitor()
                 instance = monitor
                 monitor.flush()
-            } else synchronized(monitor.neighbours) { callback.onIpNeighbourAvailable(monitor.neighbours) }
+            } else {
+                synchronized(monitor.neighbours) { callback.onIpNeighbourAvailable(monitor.neighbours) }
+                callback.postIpNeighbourAvailable()
+            }
         }
         fun unregisterCallback(callback: Callback) {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return
@@ -43,7 +46,7 @@ class IpNeighbourMonitor private constructor() {
 
     interface Callback {
         fun onIpNeighbourAvailable(neighbours: Map<String, IpNeighbour>)
-        fun postIpNeighbourAvailable() { }
+        fun postIpNeighbourAvailable()
     }
 
     private val handler = Handler()

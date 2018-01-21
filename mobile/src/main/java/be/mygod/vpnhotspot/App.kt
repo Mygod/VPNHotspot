@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.annotation.TargetApi
 import android.app.Application
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.SharedPreferences
@@ -33,13 +34,18 @@ class App : Application() {
     private fun updateNotificationChannels() {
         if (Build.VERSION.SDK_INT >= 26) @TargetApi(26) {
             val nm = getSystemService(NotificationManager::class.java)
-            nm.createNotificationChannel(NotificationChannel(RepeaterService.CHANNEL,
-                    getText(R.string.notification_channel_repeater), NotificationManager.IMPORTANCE_LOW))
+            val tethering = NotificationChannel(TetheringService.CHANNEL,
+                    getText(R.string.notification_channel_tethering), NotificationManager.IMPORTANCE_LOW)
+            tethering.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            nm.createNotificationChannels(listOf(
+                    NotificationChannel(RepeaterService.CHANNEL, getText(R.string.notification_channel_repeater),
+                            NotificationManager.IMPORTANCE_LOW), tethering
+            ))
             nm.deleteNotificationChannel("hotspot") // remove old service channel
         }
     }
 
-    private val handler = Handler()
+    val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     val dns: String get() = app.pref.getString("service.dns", "8.8.8.8:53")
 
