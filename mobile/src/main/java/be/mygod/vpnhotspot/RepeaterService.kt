@@ -273,7 +273,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             return
         }
         this.group = group
-        binder.data?.onGroupChanged()
+        binder.data?.onGroupChanged(group)
         showNotification(group)
         debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
     }

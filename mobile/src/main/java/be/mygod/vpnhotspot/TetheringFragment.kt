@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.content.Intent
-import android.content.res.Resources
 import android.databinding.BaseObservable
 import android.databinding.DataBindingUtil
 import android.os.Bundle
@@ -18,30 +17,12 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.NetUtils
+import be.mygod.vpnhotspot.net.TetherType
 
 class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
-    companion object {
-        /**
-         * Source: https://android.googlesource.com/platform/frameworks/base/+/61fa313/core/res/res/values/config.xml#328
-         */
-        private val usbRegexes = app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_usb_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val wifiRegexes = app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_wifi_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val wimaxRegexes = app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_wimax_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val bluetoothRegexes = app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
-                .map { it.toPattern() }
-    }
-
     private abstract class BaseSorter<T> : SortedList.Callback<T>() {
         override fun onInserted(position: Int, count: Int) { }
         override fun areContentsTheSame(oldItem: T?, newItem: T?): Boolean = oldItem == newItem
@@ -59,13 +40,7 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
     private object StringSorter : DefaultSorter<String>()
 
     class Data(val iface: String) : BaseObservable() {
-        val icon: Int get() = when {
-            usbRegexes.any { it.matcher(iface).matches() } -> R.drawable.ic_device_usb
-            wifiRegexes.any { it.matcher(iface).matches() } -> R.drawable.ic_device_network_wifi
-            wimaxRegexes.any { it.matcher(iface).matches() } -> R.drawable.ic_device_network_wifi
-            bluetoothRegexes.any { it.matcher(iface).matches() } -> R.drawable.ic_device_bluetooth
-            else -> R.drawable.ic_device_wifi_tethering
-        }
+        val icon: Int get() = TetherType.ofInterface(iface).icon
         var active = TetheringService.active.contains(iface)
     }
 
@@ -112,7 +87,6 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
             NetUtils.ACTION_TETHER_STATE_CHANGED -> adapter.update(NetUtils.getTetheredIfaces(intent.extras).toSet())
         }
     }
-    private var receiverRegistered = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
@@ -128,22 +102,16 @@ class TetheringFragment : Fragment(), Toolbar.OnMenuItemClickListener {
 
     override fun onStart() {
         super.onStart()
-        if (!receiverRegistered) {
-            val context = context!!
-            context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
-            LocalBroadcastManager.getInstance(context)
-                    .registerReceiver(receiver, intentFilter(TetheringService.ACTION_ACTIVE_INTERFACES_CHANGED))
-            receiverRegistered = true
-        }
+        val context = context!!
+        context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
+        LocalBroadcastManager.getInstance(context)
+                .registerReceiver(receiver, intentFilter(TetheringService.ACTION_ACTIVE_INTERFACES_CHANGED))
     }
 
     override fun onStop() {
-        if (receiverRegistered) {
-            val context = context!!
-            context.unregisterReceiver(receiver)
-            LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)
-            receiverRegistered = false
-        }
+        val context = context!!
+        context.unregisterReceiver(receiver)
+        LocalBroadcastManager.getInstance(context).unregisterReceiver(receiver)
         super.onStop()
     }
 

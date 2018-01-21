@@ -8,6 +8,7 @@ import android.databinding.BaseObservable
 import android.databinding.Bindable
 import android.databinding.DataBindingUtil
 import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
 import android.os.IBinder
 import android.support.v4.app.Fragment
@@ -23,9 +24,12 @@ import android.view.*
 import android.widget.EditText
 import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
+import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.NetUtils
+import be.mygod.vpnhotspot.net.TetherType
 
-class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
+class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, IpNeighbourMonitor.Callback {
     inner class Data : BaseObservable() {
         val switchEnabled: Boolean
             @Bindable get() = when (binder?.service?.status) {
@@ -55,30 +59,53 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
             notifyPropertyChanged(BR.serviceStarted)
-            onGroupChanged()
+            val binder = binder
+            onGroupChanged(if (binder?.active == true) binder.service.group else null)
         }
-        fun onGroupChanged() {
+        fun onGroupChanged(group: WifiP2pGroup?) {
             notifyPropertyChanged(BR.ssid)
             notifyPropertyChanged(BR.password)
-            adapter.fetchClients()
+            p2pInterface = group?.`interface`
+            adapter.p2p = group?.clientList ?: emptyList()
+            adapter.recreate()
         }
 
         val statusListener = broadcastReceiver { _, _ -> onStatusChanged() }
     }
 
-    class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
-    inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
-        private var owner: WifiP2pDevice? = null
-        private lateinit var clients: Collection<WifiP2pDevice>
-        private lateinit var arpCache: Map<String, String>
+    inner class Client(p2p: WifiP2pDevice? = null,
+                       private val pair: Map.Entry<IpNeighbour, IpNeighbour.State>? = null) {
+        val iface = pair?.key?.dev ?: p2pInterface!!
+        val mac = pair?.key?.lladdr ?: p2p!!.deviceAddress
+        val ip = pair?.key?.ip
 
-        fun fetchClients() {
-            val binder = binder
-            if (binder?.active == true) {
-                owner = binder.service.group?.owner
-                clients = binder.service.group?.clientList ?: emptyList()
-                arpCache = NetUtils.arp(binder.service.routing?.downstream)
-            } else owner = null
+        val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
+        val title: CharSequence get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString(", ")
+        val description: CharSequence get() = when (pair?.value) {
+            IpNeighbour.State.INCOMPLETE, null -> "Connecting to $iface"
+            IpNeighbour.State.VALID -> "Connected to $iface"
+            IpNeighbour.State.VALID_DELAY -> "Connected to $iface (losing)"
+            IpNeighbour.State.FAILED -> "Failed to connect to $iface"
+            else -> throw IllegalStateException()
+        }
+    }
+    private class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
+    private inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
+        private val clients = ArrayList<Client>()
+        var p2p: Collection<WifiP2pDevice> = emptyList()
+        var neighbours = emptyMap<IpNeighbour, IpNeighbour.State>()
+
+        fun recreate() {
+            clients.clear()
+            val map = HashMap(p2p.associateBy { it.deviceAddress })
+            val tethered = (tetheredInterfaces + p2pInterface).filterNotNull()
+            for (pair in neighbours) {
+                val client = map.remove(pair.key.lladdr)
+                if (client != null) clients.add(Client(client, pair))
+                else if (tethered.contains(pair.key.dev)) clients.add(Client(pair = pair))
+            }
+            clients.addAll(map.map { Client(it.value) })
+            clients.sortWith(compareBy<Client> { it.ip }.thenBy { it.mac })
             notifyDataSetChanged()  // recreate everything
             binding.swipeRefresher.isRefreshing = false
         }
@@ -87,25 +114,23 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context)))
 
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
-            val device = when (position) {
-                0 -> owner
-                else -> clients.elementAt(position - 1)
-            }
-            holder.binding.device = device
-            holder.binding.ipAddress = when (position) {
-                0 -> binder?.service?.routing?.hostAddress?.hostAddress
-                else -> arpCache[device?.deviceAddress]
-            }
+            holder.binding.client = clients[position]
             holder.binding.executePendingBindings()
         }
 
-        override fun getItemCount() = if (owner == null) 0 else 1 + clients.size
+        override fun getItemCount() = clients.size
     }
 
     private lateinit var binding: FragmentRepeaterBinding
     private val data = Data()
     private val adapter = ClientAdapter()
     private var binder: RepeaterService.HotspotBinder? = null
+    private var p2pInterface: String? = null
+    private var tetheredInterfaces = emptySet<String>()
+    private val receiver = broadcastReceiver { _, intent ->
+        tetheredInterfaces = NetUtils.getTetheredIfaces(intent.extras).toSet()
+        adapter.recreate()
+    }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_repeater, container, false)
@@ -115,7 +140,10 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
         binding.clients.itemAnimator = animator
         binding.clients.adapter = adapter
-        binding.swipeRefresher.setOnRefreshListener { adapter.fetchClients() }
+        binding.swipeRefresher.setOnRefreshListener {
+            IpNeighbourMonitor.instance?.flush()
+            adapter.recreate()
+        }
         binding.toolbar.inflateMenu(R.menu.repeater)
         binding.toolbar.setOnMenuItemClickListener(this)
         return binding.root
@@ -125,11 +153,16 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         super.onStart()
         val context = context!!
         context.bindService(Intent(context, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+        IpNeighbourMonitor.registerCallback(this)
+        context.registerReceiver(receiver, intentFilter(NetUtils.ACTION_TETHER_STATE_CHANGED))
     }
 
     override fun onStop() {
+        val context = context!!
+        context.unregisterReceiver(receiver)
+        IpNeighbourMonitor.unregisterCallback(this)
         onServiceDisconnected(null)
-        context!!.unbindService(this)
+        context.unbindService(this)
         super.onStop()
     }
 
@@ -175,4 +208,9 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         }
         else -> false
     }
+
+    override fun onIpNeighbourAvailable(neighbours: Map<IpNeighbour, IpNeighbour.State>) {
+        adapter.neighbours = neighbours.toMap()
+    }
+    override fun postIpNeighbourAvailable() = adapter.recreate()
 }

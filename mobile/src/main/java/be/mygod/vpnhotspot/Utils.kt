@@ -9,7 +9,6 @@ import android.support.annotation.DrawableRes
 import android.util.Log
 import android.widget.ImageView
 import java.io.IOException
-import java.io.InputStream
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
@@ -30,25 +29,23 @@ fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageVi
 
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
-fun loggerSuStream(command: String): InputStream {
+fun loggerSu(command: String): String? {
     val process = ProcessBuilder("su", "-c", command)
             .redirectErrorStream(true)
             .start()
     process.waitFor()
-    val err = try {
-        process.errorStream.bufferedReader().use { it.readText() }
+    try {
+        val err = process.errorStream.bufferedReader().readText()
+        if (err.isNotBlank()) Log.e(NOISYSU_TAG, err)
+    } catch (e: IOException) {
+        e.printStackTrace()
+    }
+    return try {
+        process.inputStream.bufferedReader().readText()
     } catch (e: IOException) {
         e.printStackTrace()
         null
     }
-    if (!err.isNullOrBlank()) Log.e(NOISYSU_TAG, err)
-    return process.inputStream
-}
-fun loggerSu(command: String): String? = try {
-    loggerSuStream(command).bufferedReader().use { it.readText() }
-} catch (e: IOException) {
-    e.printStackTrace()
-    null
 }
 fun noisySu(commands: Iterable<String>): Boolean {
     var out = loggerSu("""function noisy() { "$@" || echo "$@" exited with $?; }

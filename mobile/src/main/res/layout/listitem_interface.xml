@@ -25,7 +25,7 @@
             tools:src="@drawable/ic_device_network_wifi"/>
 
         <Space
-            android:layout_width="8dp"
+            android:layout_width="16dp"
             android:layout_height="0dp"/>
 
         <Switch

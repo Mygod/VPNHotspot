@@ -28,7 +28,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                 val intent = Intent(Intent.ACTION_SEND)
                         .setType("text/plain")
                         .putExtra(Intent.EXTRA_TEXT, Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
-                                .inputStream.bufferedReader().use { it.readText() })
+                                .inputStream.bufferedReader().readText())
                 startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
             } catch (e: IOException) {
                 Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()

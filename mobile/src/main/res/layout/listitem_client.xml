@@ -3,33 +3,51 @@
     xmlns:tools="http://schemas.android.com/tools"
     xmlns:android="http://schemas.android.com/apk/res/android">
     <data>
-        <import type="android.view.View"/>
         <variable
-            name="device"
-            type="android.net.wifi.p2p.WifiP2pDevice"/>
-        <variable
-            name="ipAddress"
-            type="String"/>
+            name="client"
+            type="be.mygod.vpnhotspot.RepeaterFragment.Client"/>
     </data>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:focusable="true"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingBottom="4dp"
+        android:paddingEnd="16dp"
+        android:paddingStart="16dp"
+        android:paddingTop="4dp">
 
-        <TextView
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:src="@{client.icon}"
+            android:tint="?android:attr/textColorPrimary"
+            tools:src="@drawable/ic_device_network_wifi"/>
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="0dp"/>
+
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@{device.deviceAddress}"
-            android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
-            android:textIsSelectable="true"
-            tools:text="xx:xx:xx:xx:xx:xx"/>
+            android:orientation="vertical">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:visibility="@{ipAddress == null ? View.GONE : View.VISIBLE}"
-            android:text="@{ipAddress}"
-            android:textIsSelectable="true"
-            tools:text="192.168.49.123"/>
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@{client.title}"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:textIsSelectable="true"
+                tools:text="192.168.49.123, 01:23:45:ab:cd:ef"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@{client.description}"
+                tools:text="Connected to p2p0"/>
+        </LinearLayout>
     </LinearLayout>
 </layout>
