@@ -4,7 +4,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.databinding.BindingAdapter
+import android.support.annotation.DrawableRes
 import android.util.Log
+import android.widget.ImageView
 import java.io.IOException
 import java.io.InputStream
 
@@ -21,6 +24,9 @@ fun intentFilter(vararg actions: String): IntentFilter {
     actions.forEach { result.addAction(it) }
     return result
 }
+
+@BindingAdapter("android:src")
+fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
 
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
