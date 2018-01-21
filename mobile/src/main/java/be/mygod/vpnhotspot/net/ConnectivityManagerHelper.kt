@@ -14,7 +14,6 @@ object ConnectivityManagerHelper {
      * https://android.googlesource.com/platform/frameworks/base.git/+/2a091d7aa0c174986387e5d56bf97a87fe075bdb%5E%21/services/java/com/android/server/connectivity/Tethering.java
      */
     const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
-    @Deprecated("No longer used on Android 8+ (API 26+)")
     private const val EXTRA_ACTIVE_TETHER_LEGACY = "activeArray"
     @RequiresApi(26)
     private const val EXTRA_ACTIVE_LOCAL_ONLY = "localOnlyArray"
