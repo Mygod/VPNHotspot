@@ -1,9 +1,7 @@
 package be.mygod.vpnhotspot.net
 
-import android.os.Build
 import android.os.Handler
 import android.util.Log
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
@@ -37,9 +35,7 @@ class IpNeighbourMonitor private constructor() {
         private fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
                            contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
             val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
-            thread.setUncaughtExceptionHandler { _, _ ->
-                Toast.makeText(app, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
-            }
+            thread.setUncaughtExceptionHandler { _, _ -> app.toast(R.string.noisy_su_failure) }
             if (start) thread.start()
             return thread
         }
@@ -53,18 +49,12 @@ class IpNeighbourMonitor private constructor() {
     private val handler = Handler()
     private var updatePosted = false
     val neighbours = HashMap<String, IpNeighbour>()
-    /**
-     * Using monitor requires using /proc/self/ns/net which would be problematic on Android 6.0+.
-     *
-     * Source: https://source.android.com/security/enhancements/enhancements60
-     */
     private var monitor: Process? = null
 
     init {
         thread(name = TAG + "-input") {
-            val monitor = (if (Build.VERSION.SDK_INT >= 23)
-                ProcessBuilder("su", "-c", "ip", "-4", "monitor", "neigh") else
-                ProcessBuilder("ip", "-4", "monitor", "neigh"))
+            // monitor may get rejected by SELinux
+            val monitor = ProcessBuilder("sh", "-c", "ip -4 monitor neigh || su -c ip -4 monitor neigh")
                     .redirectErrorStream(true)
                     .start()
             this.monitor = monitor
@@ -84,8 +74,8 @@ class IpNeighbourMonitor private constructor() {
                         if (changed) postUpdateLocked()
                     }
                 }
-                Log.w(TAG, if (Build.VERSION.SDK_INT >= 26 && monitor.isAlive) "monitor closed stdout" else
-                    "monitor died unexpectedly")
+                monitor.waitFor()
+                if (monitor.exitValue() != 0) app.toast(R.string.noisy_su_failure)
             } catch (ignore: InterruptedIOException) { }
         }
     }

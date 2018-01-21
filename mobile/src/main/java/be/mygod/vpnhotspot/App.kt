@@ -7,7 +7,10 @@ import android.app.NotificationManager
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.os.Build
+import android.os.Handler
 import android.preference.PreferenceManager
+import android.support.annotation.StringRes
+import android.widget.Toast
 
 class App : Application() {
     companion object {
@@ -36,6 +39,9 @@ class App : Application() {
         }
     }
 
+    private val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
     val dns: String get() = app.pref.getString("service.dns", "8.8.8.8:53")
+
+    fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(app, resId, Toast.LENGTH_SHORT).show() }
 }
