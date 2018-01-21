@@ -79,7 +79,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val ip = neighbour?.ip
 
         val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
-        val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString(", ")
+        val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString()
         val description get() = when (neighbour?.state) {
             IpNeighbour.State.INCOMPLETE, null -> "Connecting to $iface"
             IpNeighbour.State.VALID -> "Connected to $iface"

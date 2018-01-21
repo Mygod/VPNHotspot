@@ -51,11 +51,14 @@
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
 
-    <string name="notification_channel_repeater">Repeater Service</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d device connected to %s</item>
         <item quantity="other">%d devices connected to %s</item>
+    </plurals>
+    <plurals name="notification_interfaces">
+        <item quantity="one">%d interface</item>
+        <item quantity="other">%d interfaces</item>
     </plurals>
 
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>

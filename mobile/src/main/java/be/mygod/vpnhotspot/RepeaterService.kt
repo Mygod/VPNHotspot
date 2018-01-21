@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot
 
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -13,8 +12,6 @@ import android.os.Binder
 import android.os.Handler
 import android.os.Looper
 import android.support.annotation.StringRes
-import android.support.v4.app.NotificationCompat
-import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
@@ -26,8 +23,6 @@ import java.util.regex.Pattern
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback {
     companion object {
-        const val CHANNEL = "repeater"
-        const val CHANNEL_ID = 1
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         const val KEY_NET_ID = "netId"
         private const val TAG = "RepeaterService"
@@ -304,19 +299,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         }
     }
 
-    private fun showNotification(group: WifiP2pGroup? = null) {
-        val builder = NotificationCompat.Builder(this, CHANNEL)
-                .setWhen(0)
-                .setColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .setContentTitle(group?.networkName ?: ssid ?: getString(R.string.repeater_connecting))
-                .setSmallIcon(R.drawable.ic_device_wifi_tethering)
-                .setContentIntent(PendingIntent.getActivity(this, 0,
-                        Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-        val size = group?.clientList?.size ?: 0
-        if (size != 0) builder.setContentText(resources.getQuantityString(R.plurals.notification_connected_devices,
-                size, size, group!!.`interface`))
-        startForeground(CHANNEL_ID, builder.build())
-    }
+    private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
+            if (group == null) emptyMap() else mapOf(Pair(group.`interface`, group.clientList?.size ?: 0)))
 
     private fun removeGroup() {
         p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
@@ -345,7 +329,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         routing = null
         status = Status.IDLE
-        stopForeground(true)
+        ServiceNotification.stopForeground(this)
         stopSelf()
     }
 

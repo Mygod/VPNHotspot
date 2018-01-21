@@ -1,13 +1,8 @@
 package be.mygod.vpnhotspot
 
-import android.annotation.TargetApi
 import android.app.Application
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.SharedPreferences
 import android.content.res.Configuration
-import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
 import android.support.annotation.StringRes
@@ -23,26 +18,12 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
-        updateNotificationChannels()
+        ServiceNotification.updateNotificationChannels()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration?) {
         super.onConfigurationChanged(newConfig)
-        updateNotificationChannels()
-    }
-
-    private fun updateNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= 26) @TargetApi(26) {
-            val nm = getSystemService(NotificationManager::class.java)
-            val tethering = NotificationChannel(TetheringService.CHANNEL,
-                    getText(R.string.notification_channel_tethering), NotificationManager.IMPORTANCE_LOW)
-            tethering.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            nm.createNotificationChannels(listOf(
-                    NotificationChannel(RepeaterService.CHANNEL, getText(R.string.notification_channel_repeater),
-                            NotificationManager.IMPORTANCE_LOW), tethering
-            ))
-            nm.deleteNotificationChannel("hotspot") // remove old service channel
-        }
+        ServiceNotification.updateNotificationChannels()
     }
 
     val handler = Handler()

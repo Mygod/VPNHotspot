@@ -1,12 +1,8 @@
 package be.mygod.vpnhotspot
 
-import android.app.Notification
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Binder
-import android.support.v4.app.NotificationCompat
-import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -14,8 +10,6 @@ import be.mygod.vpnhotspot.net.*
 
 class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Callback {
     companion object {
-        const val CHANNEL = "tethering"
-        const val CHANNEL_ID = 2
         const val EXTRA_ADD_INTERFACE = "interface.add"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
     }
@@ -46,7 +40,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     private fun updateRoutings() {
         if (routings.isEmpty()) {
             unregisterReceiver()
-            stopForeground(true)
+            ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
             val upstream = upstream
@@ -106,23 +100,8 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
         this.neighbours = neighbours.values.toList()
     }
     override fun postIpNeighbourAvailable() {
-        val builder = NotificationCompat.Builder(this, CHANNEL)
-                .setWhen(0)
-                .setColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .setContentTitle("VPN tethering active")
-                .setSmallIcon(R.drawable.ic_device_wifi_tethering)
-                .setContentIntent(PendingIntent.getActivity(this, 0,
-                        Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
-        val content = neighbours.groupBy { it.dev }
-                .filter { (dev, _) -> routings.contains(dev) }
-                .mapValues { (_, neighbours) -> neighbours.size }
-                .toList()
-                .joinToString(", ") { (dev, size) ->
-                    resources.getQuantityString(R.plurals.notification_connected_devices, size, size, dev)
-                }
-        if (content.isNotEmpty()) builder.setContentText(content)
-        startForeground(CHANNEL_ID, builder.build())
+        val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) -> neighbours.size }
+        ServiceNotification.startForeground(this, routings.keys.associate { Pair(it, sizeLookup[it] ?: 0) })
     }
 
     override fun onDestroy() {
