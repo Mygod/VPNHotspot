@@ -345,6 +345,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         routing = null
         status = Status.IDLE
         stopForeground(true)
+        stopSelf()
     }
 
     override fun onDestroy() {
