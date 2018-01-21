@@ -63,8 +63,8 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
                 VpnMonitor.registerCallback(this)
                 receiverRegistered = true
             }
+            postIpNeighbourAvailable()
         }
-        postIpNeighbourAvailable()
         app.handler.post { binder.fragment?.adapter?.notifyDataSetChanged() }
     }
 
