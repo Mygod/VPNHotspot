@@ -68,9 +68,9 @@ class IpNeighbourMonitor private constructor() {
             }
             try {
                 monitor.inputStream.bufferedReader().forEachLine {
-                    debugLog(TAG, it)
                     synchronized(neighbours) {
                         val neighbour = IpNeighbour.parse(it) ?: return@forEachLine
+                        debugLog(TAG, it)
                         val changed = if (neighbour.state == IpNeighbour.State.DELETING)
                             neighbours.remove(neighbour.ip) != null
                         else neighbours.put(neighbour.ip, neighbour) != neighbour
