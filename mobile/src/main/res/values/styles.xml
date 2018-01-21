@@ -1,9 +1,15 @@
 <resources>
 
-    <style name="AppTheme" parent="PreferenceFixTheme.Light.NoActionBar">
+    <style name="AppTheme" parent="Theme.Design.Light.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <item name="preferenceTheme">@style/AppTheme.Preference</item>
+    </style>
+    <style name="AppTheme.Preference" parent="PreferenceThemeOverlay.v14.Material.Fix">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccentDark</item>
         <item name="preferenceCategory_marginBottom">8dp</item>
     </style>
 
