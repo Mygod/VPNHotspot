@@ -16,13 +16,11 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
 
     private const val TAG = "VpnMonitor"
 
-    val connectivityManager = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-    private val request by lazy {
-        NetworkRequest.Builder()
-                .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
-                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                .build()
-    }
+    private val manager = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
     private val callbacks = HashSet<Callback>()
     private var registered = false
 
@@ -31,7 +29,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
      */
     private val available = HashMap<Network, String>()
     override fun onAvailable(network: Network) {
-        val ifname = connectivityManager.getLinkProperties(network)?.interfaceName ?: return
+        val ifname = manager.getLinkProperties(network)?.interfaceName ?: return
         if (available.put(network, ifname) != null) return
         debugLog(TAG, "onAvailable: $ifname")
         callbacks.forEach { it.onAvailable(ifname) }
@@ -46,13 +44,13 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     fun registerCallback(callback: Callback) {
         if (!callbacks.add(callback)) return
         if (registered) available.forEach { callback.onAvailable(it.value) } else {
-            connectivityManager.registerNetworkCallback(request, this)
+            manager.registerNetworkCallback(request, this)
             registered = true
         }
     }
     fun unregisterCallback(callback: Callback) {
         if (!callbacks.remove(callback) || callbacks.isNotEmpty() || !registered) return
-        connectivityManager.unregisterNetworkCallback(this)
+        manager.unregisterNetworkCallback(this)
         registered = false
         available.clear()
     }
