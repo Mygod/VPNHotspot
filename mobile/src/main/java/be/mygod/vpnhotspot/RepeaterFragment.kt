@@ -139,7 +139,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
         binding.clients.itemAnimator = animator
         binding.clients.adapter = adapter
-        binding.swipeRefresher.setColorSchemeResources(R.color.colorAccentDark)
+        binding.swipeRefresher.setColorSchemeResources(R.color.colorAccent)
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
             adapter.recreate()
