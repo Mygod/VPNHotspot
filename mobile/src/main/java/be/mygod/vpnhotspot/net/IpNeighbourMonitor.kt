@@ -3,6 +3,9 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import android.os.Handler
 import android.util.Log
+import android.widget.Toast
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
 import java.io.InterruptedIOException
 
@@ -34,7 +37,9 @@ class IpNeighbourMonitor private constructor() {
         private fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
                            contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
             val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
-            thread.setUncaughtExceptionHandler { _, _ -> }
+            thread.setUncaughtExceptionHandler { _, _ ->
+                Toast.makeText(app, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
+            }
             if (start) thread.start()
             return thread
         }
