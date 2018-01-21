@@ -24,6 +24,6 @@
         android:layout_weight="1"
         android:layout_gravity="center_vertical"
         android:textAppearance="@style/TextAppearance.AppCompat.Body1"
-        android:text="Manage..."/>
+        android:text="@string/tethering_manage"/>
 
 </LinearLayout>

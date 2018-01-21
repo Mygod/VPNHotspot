@@ -50,6 +50,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                             ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
                         }
                     RepeaterService.Status.ACTIVE -> if (!value) binder.shutdown()
+                    else -> { }
                 }
             }
 
@@ -80,13 +81,13 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
         val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
         val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString()
-        val description get() = when (neighbour?.state) {
-            IpNeighbour.State.INCOMPLETE, null -> "Connecting to $iface"
-            IpNeighbour.State.VALID -> "Connected to $iface"
-            IpNeighbour.State.VALID_DELAY -> "Connected to $iface (losing)"
-            IpNeighbour.State.FAILED -> "Failed to connect to $iface"
+        val description get() = getString(when (neighbour?.state) {
+            IpNeighbour.State.INCOMPLETE, null -> R.string.connected_state_incomplete
+            IpNeighbour.State.VALID -> R.string.connected_state_valid
+            IpNeighbour.State.VALID_DELAY -> R.string.connected_state_valid_delay
+            IpNeighbour.State.FAILED -> R.string.connected_state_failed
             else -> throw IllegalStateException()
-        }
+        }, iface)
     }
     private class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
     private inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {

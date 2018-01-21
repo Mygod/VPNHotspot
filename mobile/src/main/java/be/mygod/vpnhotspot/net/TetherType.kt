@@ -1,8 +1,9 @@
 package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
-import be.mygod.vpnhotspot.App
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import java.util.regex.Pattern
 
 enum class TetherType {
     NONE, WIFI_P2P, USB, WIFI, WIMAX, BLUETOOTH;
@@ -15,21 +16,30 @@ enum class TetherType {
     }
 
     companion object {
+        private val usbRegexes: List<Pattern>
+        private val wifiRegexes: List<Pattern>
+        private val wimaxRegexes: List<Pattern>
+        private val bluetoothRegexes: List<Pattern>
+
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/61fa313/core/res/res/values/config.xml#328
          */
-        private val usbRegexes = App.app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_usb_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val wifiRegexes = App.app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_wifi_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val wimaxRegexes = App.app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_wimax_regexs", "array", "android"))
-                .map { it.toPattern() }
-        private val bluetoothRegexes = App.app.resources.getStringArray(Resources.getSystem()
-                .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
-                .map { it.toPattern() }
+        init {
+            val appRes = app.resources
+            val sysRes = Resources.getSystem()
+            usbRegexes = appRes.getStringArray(sysRes
+                    .getIdentifier("config_tether_usb_regexs", "array", "android"))
+                    .map { it.toPattern() }
+            wifiRegexes = appRes.getStringArray(sysRes
+                    .getIdentifier("config_tether_wifi_regexs", "array", "android"))
+                    .map { it.toPattern() }
+            wimaxRegexes = appRes.getStringArray(sysRes
+                    .getIdentifier("config_tether_wimax_regexs", "array", "android"))
+                    .map { it.toPattern() }
+            bluetoothRegexes = appRes.getStringArray(sysRes
+                    .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
+                    .map { it.toPattern() }
+        }
 
         fun ofInterface(iface: String, p2pDev: String? = null) = when {
             iface == p2pDev -> WIFI_P2P

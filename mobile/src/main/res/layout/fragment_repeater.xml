@@ -83,7 +83,7 @@
             android:layout_height="wrap_content"
             android:paddingStart="16dp"
             android:paddingEnd="16dp"
-            android:text="@string/repeater_connected_devices"
+            android:text="@string/connected_devices"
             android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
 
         <View

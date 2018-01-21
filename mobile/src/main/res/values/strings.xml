@@ -7,7 +7,6 @@
 
     <string name="repeater_ssid">Network name</string>
     <string name="repeater_password">Password</string>
-    <string name="repeater_connected_devices">Connected devices</string>
     <string name="repeater_wps">WPS</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
@@ -23,7 +22,6 @@
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
     <string name="repeater_inactive">Service inactive</string>
-    <string name="repeater_connecting">Connecting…</string>
     <string name="repeater_vpn_unavailable">VPN unavailable, please enable any VPN</string>
     <string name="repeater_root_unavailable">Root unavailable</string>
     <string name="repeater_p2p_unavailable">Wi-Fi direct unavailable</string>
@@ -36,6 +34,14 @@
     <string name="repeater_failure_reason_busy">framework is busy</string>
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
     <string name="repeater_failure_reason_unknown">unknown #%d</string>
+
+    <string name="tethering_manage">Manage…</string>
+
+    <string name="connected_devices">Connected devices</string>
+    <string name="connected_state_incomplete">Connecting to %s</string>
+    <string name="connected_state_valid">Connected to %s</string>
+    <string name="connected_state_valid_delay">Connected to %s (losing)</string>
+    <string name="connected_state_failed">Failed to connect to %s</string>
 
     <string name="settings_service">Service</string>
     <string name="settings_service_dns">Downstream DNS server:port</string>

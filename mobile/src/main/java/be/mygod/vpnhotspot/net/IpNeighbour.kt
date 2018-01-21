@@ -60,7 +60,7 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
         private const val ARP_CACHE_EXPIRE = 1L * 1000 * 1000 * 1000
         private var arpCache = emptyList<List<String>>()
         private var arpCacheTime = -ARP_CACHE_EXPIRE
-        fun arp(): List<List<String>> {
+        private fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
                 arpCache = File("/proc/net/arp").bufferedReader().useLines {
                     it.map { it.split(spaces) }

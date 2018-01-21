@@ -7,7 +7,7 @@
 
     <string name="repeater_ssid">中继名称</string>
     <string name="repeater_password">中继密码</string>
-    <string name="repeater_connected_devices">已连接设备</string>
+    <string name="connected_devices">已连接设备</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
