@@ -4,6 +4,7 @@ import android.os.Build
 import android.os.Bundle
 import android.support.annotation.RequiresApi
 import java.io.File
+import java.io.IOException
 
 object NetUtils {
     // hidden constants from ConnectivityManager
@@ -27,12 +28,24 @@ object NetUtils {
         extras.getStringArrayList(EXTRA_ACTIVE_TETHER).toSet() + extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY)
     else extras.getStringArrayList(EXTRA_ACTIVE_TETHER_LEGACY).toSet()
 
-    fun arp(iface: String? = null) = File("/proc/net/arp").bufferedReader().useLines {
-        // IP address       HW type     Flags       HW address            Mask     Device
-        it.map { it.split(spaces) }
-                .drop(1)
-                .filter { it.size >= 4 && (iface == null || it.getOrNull(5) == iface) &&
-                        mac.matcher(it[3]).matches() }
-                .associateBy({ it[3] }, { it[0] })
+    // IP address       HW type     Flags       HW address            Mask     Device
+    const val ARP_IP_ADDRESS = 0
+    const val ARP_HW_ADDRESS = 3
+    const val ARP_DEVICE = 5
+    private const val ARP_CACHE_EXPIRE = 1L * 1000 * 1000 * 1000
+    private var arpCache = emptyList<List<String>>()
+    private var arpCacheTime = -ARP_CACHE_EXPIRE
+    fun arp(): List<List<String>> {
+        if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
+            arpCache = File("/proc/net/arp").bufferedReader().useLines {
+                it.map { it.split(spaces) }
+                        .drop(1)
+                        .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
+                        .toList()
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+        }
+        return arpCache
     }
 }

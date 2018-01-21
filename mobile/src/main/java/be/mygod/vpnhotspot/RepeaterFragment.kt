@@ -73,15 +73,14 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val statusListener = broadcastReceiver { _, _ -> onStatusChanged() }
     }
 
-    inner class Client(p2p: WifiP2pDevice? = null,
-                       private val pair: Map.Entry<IpNeighbour, IpNeighbour.State>? = null) {
-        val iface = pair?.key?.dev ?: p2pInterface!!
-        val mac = pair?.key?.lladdr ?: p2p!!.deviceAddress
-        val ip = pair?.key?.ip
+    inner class Client(p2p: WifiP2pDevice? = null, private val neighbour: IpNeighbour? = null) {
+        private val iface = neighbour?.dev ?: p2pInterface!!
+        val mac = neighbour?.lladdr ?: p2p!!.deviceAddress!!
+        val ip = neighbour?.ip
 
         val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
         val title: CharSequence get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString(", ")
-        val description: CharSequence get() = when (pair?.value) {
+        val description: CharSequence get() = when (neighbour?.state) {
             IpNeighbour.State.INCOMPLETE, null -> "Connecting to $iface"
             IpNeighbour.State.VALID -> "Connected to $iface"
             IpNeighbour.State.VALID_DELAY -> "Connected to $iface (losing)"
@@ -93,16 +92,16 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     private inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
         private val clients = ArrayList<Client>()
         var p2p: Collection<WifiP2pDevice> = emptyList()
-        var neighbours = emptyMap<IpNeighbour, IpNeighbour.State>()
+        var neighbours = emptyList<IpNeighbour>()
 
         fun recreate() {
             clients.clear()
             val map = HashMap(p2p.associateBy { it.deviceAddress })
             val tethered = (tetheredInterfaces + p2pInterface).filterNotNull()
-            for (pair in neighbours) {
-                val client = map.remove(pair.key.lladdr)
-                if (client != null) clients.add(Client(client, pair))
-                else if (tethered.contains(pair.key.dev)) clients.add(Client(pair = pair))
+            for (neighbour in neighbours) {
+                val client = map.remove(neighbour.lladdr)
+                if (client != null) clients.add(Client(client, neighbour))
+                else if (tethered.contains(neighbour.dev)) clients.add(Client(neighbour = neighbour))
             }
             clients.addAll(map.map { Client(it.value) })
             clients.sortWith(compareBy<Client> { it.ip }.thenBy { it.mac })
@@ -210,8 +209,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         else -> false
     }
 
-    override fun onIpNeighbourAvailable(neighbours: Map<IpNeighbour, IpNeighbour.State>) {
-        adapter.neighbours = neighbours.toMap()
+    override fun onIpNeighbourAvailable(neighbours: Map<String, IpNeighbour>) {
+        adapter.neighbours = neighbours.values.toList()
     }
     override fun postIpNeighbourAvailable() = adapter.recreate()
 }

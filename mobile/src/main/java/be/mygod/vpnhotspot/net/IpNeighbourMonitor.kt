@@ -41,13 +41,13 @@ class IpNeighbourMonitor private constructor() {
     }
 
     interface Callback {
-        fun onIpNeighbourAvailable(neighbours: Map<IpNeighbour, IpNeighbour.State>)
+        fun onIpNeighbourAvailable(neighbours: Map<String, IpNeighbour>)
         fun postIpNeighbourAvailable() { }
     }
 
     private val handler = Handler()
     private var updatePosted = false
-    val neighbours = HashMap<IpNeighbour, IpNeighbour.State>()
+    val neighbours = HashMap<String, IpNeighbour>()
     /**
      * Using monitor requires using /proc/self/ns/net which would be problematic on Android 6.0+.
      *
@@ -72,9 +72,10 @@ class IpNeighbourMonitor private constructor() {
                 monitor.inputStream.bufferedReader().forEachLine {
                     debugLog(TAG, it)
                     synchronized(neighbours) {
-                        val (neighbour, state) = IpNeighbour.parse(it) ?: return@forEachLine
-                        val changed = if (state == IpNeighbour.State.DELETING) neighbours.remove(neighbour) != null else
-                            neighbours.put(neighbour, state) != state
+                        val neighbour = IpNeighbour.parse(it) ?: return@forEachLine
+                        val changed = if (neighbour.state == IpNeighbour.State.DELETING)
+                            neighbours.remove(neighbour.ip) != null
+                        else neighbours.put(neighbour.ip, neighbour) != neighbour
                         if (changed) postUpdateLocked()
                     }
                 }
@@ -94,7 +95,7 @@ class IpNeighbourMonitor private constructor() {
         process.inputStream.bufferedReader().useLines {
             synchronized(neighbours) {
                 neighbours.clear()
-                neighbours.putAll(it.map(IpNeighbour.Companion::parse).filterNotNull().toMap())
+                neighbours.putAll(it.map(IpNeighbour.Companion::parse).filterNotNull().associateBy { it.ip })
                 postUpdateLocked()
             }
         }
