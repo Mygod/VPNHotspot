@@ -114,13 +114,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         }
     }
 
-    private val handler = Handler()
-    private val p2pManager by lazy { getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager }
-    private var _channel: WifiP2pManager.Channel? = null
-    private val channel: WifiP2pManager.Channel get() {
-        if (_channel == null) onChannelDisconnected()
-        return _channel!!
-    }
+    private lateinit var handler: Handler
+    private lateinit var p2pManager: WifiP2pManager
+    private lateinit var channel: WifiP2pManager.Channel
     var group: WifiP2pGroup? = null
         private set(value) {
             field = value
@@ -168,10 +164,17 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         else -> getString(R.string.repeater_failure_reason_unknown, reason)
     })
 
+    override fun onCreate() {
+        super.onCreate()
+        handler = Handler()
+        p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+        onChannelDisconnected()
+    }
+
     override fun onBind(intent: Intent) = binder
 
     override fun onChannelDisconnected() {
-        _channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
+        channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
     }
 
     /**
