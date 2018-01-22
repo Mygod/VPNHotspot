@@ -25,14 +25,14 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
         fun parse(line: String): IpNeighbour? {
             val match = parser.matchEntire(line)
             if (match == null) {
-                if (!line.isBlank()) Log.w(TAG, line)
+                if (line.isNotEmpty()) Log.w(TAG, line)
                 return null
             }
             val ip = match.groupValues[2]
             val dev = match.groupValues[4]
             var lladdr = checkLladdrNotLoopback(match.groupValues[6])
             // use ARP as fallback
-            if (dev.isNotBlank() && lladdr.isBlank()) lladdr = checkLladdrNotLoopback(arp()
+            if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
                     .filter { it[ARP_IP_ADDRESS] == ip && it[ARP_DEVICE] == dev }
                     .map { it[ARP_HW_ADDRESS] }
                     .singleOrNull() ?: "")
