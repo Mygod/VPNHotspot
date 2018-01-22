@@ -19,8 +19,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference("service.clean").setOnPreferenceClickListener {
-            Routing.clean()
-            LocalBroadcastManager.getInstance(context!!).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
+            if (Routing.clean() == null) Toast.makeText(context!!, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
+            else LocalBroadcastManager.getInstance(context!!).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {

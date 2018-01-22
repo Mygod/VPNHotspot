@@ -24,7 +24,6 @@
 
     <string name="repeater_inactive">Service inactive</string>
     <string name="repeater_vpn_unavailable">VPN unavailable, please enable any VPN</string>
-    <string name="repeater_root_unavailable">Root unavailable</string>
     <string name="repeater_p2p_unavailable">Wi-Fi direct unavailable</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
@@ -66,5 +65,6 @@
     </plurals>
 
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
+    <string name="root_unavailable">Root unavailable</string>
     <string name="noisy_su_failure">Something went wrong, please check logcat.</string>
 </resources>

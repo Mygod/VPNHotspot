@@ -199,7 +199,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             Status.STARTING -> {
                 val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
                 when {
-                    !matcher.find() -> startFailure(getString(R.string.repeater_root_unavailable))
+                    !matcher.find() -> startFailure(getString(R.string.root_unavailable))
                     matcher.group(2) == "true" -> {
                         unregisterReceiver()
                         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,

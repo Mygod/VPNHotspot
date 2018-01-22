@@ -79,11 +79,11 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
     fun start(): Boolean {
         if (started) return true
         started = true
-        return noisySu(startScript)
+        return noisySu(startScript) == true
     }
     fun stop(): Boolean {
         if (!started) return true
         started = false
-        return noisySu(stopScript)
+        return noisySu(stopScript) == true
     }
 }

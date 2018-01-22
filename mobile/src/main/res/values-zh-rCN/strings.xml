@@ -22,7 +22,6 @@
 
     <string name="repeater_inactive">未打开</string>
     <string name="repeater_vpn_unavailable">无法找到 VPN，请启用任意 VPN</string>
-    <string name="repeater_root_unavailable">似乎没有 root</string>
     <string name="repeater_p2p_unavailable">Wi-Fi 直连不可用</string>
     <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
@@ -62,5 +61,6 @@
     </plurals>
 
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
+    <string name="root_unavailable">似乎没有 root</string>
     <string name="noisy_su_failure">发生异常，详情请查看日志。</string>
 </resources>

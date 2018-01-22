@@ -60,11 +60,11 @@ fun loggerSu(command: String): String? {
         null
     }
 }
-fun noisySu(commands: Iterable<String>): Boolean {
+fun noisySu(commands: Iterable<String>): Boolean? {
     var out = loggerSu("""function noisy() { "$@" || echo "$@" exited with $?; }
 ${commands.joinToString("\n") { if (it.startsWith("quiet ")) it.substring(6) else "noisy $it" }}
 echo $NOISYSU_SUFFIX""")
-    val result = out == NOISYSU_SUFFIX
+    val result = if (out == null) null else out == NOISYSU_SUFFIX
     out = out?.removeSuffix(NOISYSU_SUFFIX)
     if (!out.isNullOrBlank()) Log.i(NOISYSU_TAG, out)
     return result
