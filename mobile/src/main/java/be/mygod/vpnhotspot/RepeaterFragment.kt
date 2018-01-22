@@ -28,6 +28,7 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
+import java.net.NetworkInterface
 
 class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, IpNeighbourMonitor.Callback {
     inner class Data : BaseObservable() {
@@ -56,6 +57,9 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
         val ssid @Bindable get() = binder?.service?.ssid ?: getText(R.string.repeater_inactive)
         val password @Bindable get() = binder?.service?.password ?: ""
+        val addresses @Bindable get(): String {
+            return NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
+        }
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
@@ -67,6 +71,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             notifyPropertyChanged(BR.ssid)
             notifyPropertyChanged(BR.password)
             p2pInterface = group?.`interface`
+            notifyPropertyChanged(BR.addresses)
             adapter.p2p = group?.clientList ?: emptyList()
             adapter.recreate()
         }
@@ -80,7 +85,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val ip = neighbour?.ip
 
         val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
-        val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString()
+        val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString("\t\t")
         val description get() = getString(when (neighbour?.state) {
             IpNeighbour.State.INCOMPLETE, null -> R.string.connected_state_incomplete
             IpNeighbour.State.VALID -> R.string.connected_state_valid

@@ -7,6 +7,7 @@
 
     <string name="repeater_ssid">Network name</string>
     <string name="repeater_password">Password</string>
+    <string name="repeater_addresses">Addresses</string>
     <string name="repeater_wps">WPS</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>

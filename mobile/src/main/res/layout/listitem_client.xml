@@ -29,8 +29,9 @@
             android:layout_height="0dp"/>
 
         <LinearLayout
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:orientation="vertical">
 
             <TextView
@@ -39,7 +40,7 @@
                 android:text="@{client.title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
                 android:textIsSelectable="true"
-                tools:text="192.168.49.123, 01:23:45:ab:cd:ef"/>
+                tools:text="192.168.49.123\t\t01:23:45:ab:cd:ef"/>
 
             <TextView
                 android:layout_width="match_parent"

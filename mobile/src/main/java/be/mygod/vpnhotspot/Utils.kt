@@ -9,6 +9,8 @@ import android.support.annotation.DrawableRes
 import android.util.Log
 import android.widget.ImageView
 import java.io.IOException
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
@@ -26,6 +28,14 @@ fun intentFilter(vararg actions: String): IntentFilter {
 
 @BindingAdapter("android:src")
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
+
+fun NetworkInterface.formatAddresses() =
+        (this.interfaceAddresses.asSequence()
+                .filter { !it.address.isLinkLocalAddress }
+                .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
+                .toList() +
+                listOfNotNull(this.hardwareAddress?.joinToString(":") { "%02x".format(it) }))
+                .joinToString("\n")
 
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"

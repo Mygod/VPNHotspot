@@ -26,19 +26,37 @@
             android:layout_width="16dp"
             android:layout_height="0dp"/>
 
-        <Switch
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@{data.iface.name}"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:textIsSelectable="true"
+                tools:text="wlan0"/>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@{data.iface.addresses}"
+                tools:text="192.168.43.1/24\n01:23:45:ab:cd:ef"/>
+        </LinearLayout>
+
+        <Switch
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
             android:checked="@{data.active}"
             android:clickable="false"
             android:ellipsize="end"
             android:focusable="false"
             android:focusableInTouchMode="false"
-            android:gravity="center_vertical"
-            android:text="@{data.iface}"
-            tools:text="wlan0"/>
+            android:gravity="center_vertical"/>
 
     </LinearLayout>
 </layout>

@@ -21,6 +21,8 @@ import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 class TetheringFragment : Fragment(), ServiceConnection {
     companion object {
@@ -42,11 +44,11 @@ class TetheringFragment : Fragment(), ServiceConnection {
     private open class DefaultSorter<T : Comparable<T>> : BaseSorter<T>() {
         override fun compareNonNull(o1: T, o2: T): Int = o1.compareTo(o2)
     }
-    private object StringSorter : DefaultSorter<String>()
+    private object TetheredInterfaceSorter : DefaultSorter<TetheredInterface>()
 
-    inner class Data(val iface: String) : BaseObservable() {
-        val icon: Int get() = TetherType.ofInterface(iface).icon
-        var active = binder?.active?.contains(iface) == true
+    inner class Data(val iface: TetheredInterface) : BaseObservable() {
+        val icon: Int get() = TetherType.ofInterface(iface.name).icon
+        val active = binder?.active?.contains(iface.name) == true
     }
 
     private class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
@@ -59,10 +61,9 @@ class TetheringFragment : Fragment(), ServiceConnection {
             val context = itemView.context
             val data = binding.data!!
             if (data.active) context.startService(Intent(context, TetheringService::class.java)
-                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, data.iface))
+                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, data.iface.name))
             else ContextCompat.startForegroundService(context, Intent(context, TetheringService::class.java)
-                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE, data.iface))
-            data.active = !data.active
+                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE, data.iface.name))
         }
     }
     private class ManageViewHolder(view: View) : RecyclerView.ViewHolder(view), View.OnClickListener {
@@ -73,12 +74,18 @@ class TetheringFragment : Fragment(), ServiceConnection {
         override fun onClick(v: View?) = itemView.context.startActivity(Intent()
                 .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
     }
+    class TetheredInterface(val name: String, lookup: Map<String, NetworkInterface>) : Comparable<TetheredInterface> {
+        val addresses = lookup[name]!!.formatAddresses()
+
+        override fun compareTo(other: TetheredInterface) = name.compareTo(other.name)
+    }
     inner class TetheringAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        private val tethered = SortedList(String::class.java, StringSorter)
+        private val tethered = SortedList(TetheredInterface::class.java, TetheredInterfaceSorter)
 
         fun update(data: Set<String>) {
+            val lookup = NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             tethered.clear()
-            tethered.addAll(data)
+            tethered.addAll(data.map { TetheredInterface(it, lookup) })
             notifyDataSetChanged()
         }
 
@@ -104,7 +111,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     private var binder: TetheringService.TetheringBinder? = null
     val adapter = TetheringAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(ConnectivityManagerHelper.getTetheredIfaces(intent.extras).toSet())
+        adapter.update(ConnectivityManagerHelper.getTetheredIfaces(intent.extras))
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
