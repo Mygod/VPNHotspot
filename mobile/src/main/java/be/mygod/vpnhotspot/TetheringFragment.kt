@@ -90,7 +90,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             return when (viewType) {
                 VIEW_TYPE_INTERFACE -> InterfaceViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
                 VIEW_TYPE_MANAGE -> ManageViewHolder(inflater.inflate(R.layout.listitem_manage, parent, false))
-                else -> throw IllegalArgumentException()
+                else -> throw IllegalArgumentException("Invalid view type")
             }
         }
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
