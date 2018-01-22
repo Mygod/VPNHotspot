@@ -30,9 +30,13 @@ fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageVi
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
 fun loggerSu(command: String): String? {
-    val process = ProcessBuilder("su", "-c", command)
-            .redirectErrorStream(true)
-            .start()
+    val process = try {
+        ProcessBuilder("su", "-c", command)
+                .redirectErrorStream(true)
+                .start()
+    } catch (e: IOException) {
+        return null
+    }
     process.waitFor()
     try {
         val err = process.errorStream.bufferedReader().readText()

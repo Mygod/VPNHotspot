@@ -140,13 +140,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             }
             App.ACTION_CLEAN_ROUTINGS -> {
                 val routing = routing
-                try {
-                    routing!!.started = false
-                    if (status == Status.ACTIVE && !initRouting(upstream!!, routing.downstream, routing.hostAddress))
-                        Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
-                } catch (e: Exception) {
-                    Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_SHORT).show()
-                }
+                routing!!.started = false
+                if (status == Status.ACTIVE && !initRouting(upstream!!, routing.downstream, routing.hostAddress))
+                    Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
             }
         }
     }
@@ -240,7 +236,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                 if (!initRouting(ifname, routing.downstream, routing.hostAddress))
                     Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             }
-            else -> throw RuntimeException("RepeaterService is in unexpected state when receiving onAvailable")
+            else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
         }
     }
     override fun onLost(ifname: String) {
@@ -273,9 +269,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
     }
     private fun onGroupCreated(info: WifiP2pInfo, group: WifiP2pGroup) {
-        val owner = info.groupOwnerAddress
-        val downstream = group.`interface`
-        if (!info.groupFormed || !info.isGroupOwner || downstream == null || owner == null) return
+        if (!info.groupFormed || !info.isGroupOwner) return
+        val owner = info.groupOwnerAddress ?: return
+        val downstream = group.`interface` ?: return
         receiverRegistered = true
         try {
             if (initRouting(upstream!!, downstream, owner)) doStart(group)
