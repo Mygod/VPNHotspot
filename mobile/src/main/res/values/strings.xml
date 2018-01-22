@@ -54,6 +54,7 @@
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
 
+    <string name="notification_tethering_title">VPN tethering active</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d device connected to %s</item>

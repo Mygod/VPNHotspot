@@ -52,6 +52,7 @@
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
 
+    <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
     <plurals name="notification_connected_devices">
         <item quantity="other">%d 个设备已连接到 %s</item>

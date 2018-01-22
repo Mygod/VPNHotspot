@@ -20,7 +20,7 @@ object ServiceNotification {
         val builder = NotificationCompat.Builder(context, CHANNEL)
                 .setWhen(0)
                 .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
-                .setContentTitle("VPN tethering active")
+                .setContentTitle(context.getText(R.string.notification_tethering_title))
                 .setSmallIcon(R.drawable.ic_device_wifi_tethering)
                 .setContentIntent(PendingIntent.getActivity(context, 0,
                         Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
