@@ -9,7 +9,6 @@ import android.support.annotation.DrawableRes
 import android.util.Log
 import android.widget.ImageView
 import java.io.IOException
-import java.net.Inet4Address
 import java.net.NetworkInterface
 
 fun debugLog(tag: String?, message: String?) {
