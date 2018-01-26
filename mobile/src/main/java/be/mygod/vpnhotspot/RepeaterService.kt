@@ -45,8 +45,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
          *
          * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.3_r0.9/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#958
          */
-        private val startWps = WifiP2pManager::class.java.getDeclaredMethod("startWps",
-                WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
+        private val startWps by lazy {
+            WifiP2pManager::class.java.getDeclaredMethod("startWps",
+                    WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
+        }
         private fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo,
                                             listener: WifiP2pManager.ActionListener) {
             startWps.invoke(this, c, wps, listener)
@@ -57,8 +59,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
          *
          * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#1353
          */
-        private val deletePersistentGroup = WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
-                WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
+        private val deletePersistentGroup by lazy {
+            WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
+                    WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
+        }
         private fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
                                                          listener: WifiP2pManager.ActionListener) {
             deletePersistentGroup.invoke(this, c, netId, listener)
@@ -69,7 +73,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
          *
          * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
          */
-        private val getNetworkId = WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId")
+        private val getNetworkId by lazy { WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId") }
         private val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
     }
 
