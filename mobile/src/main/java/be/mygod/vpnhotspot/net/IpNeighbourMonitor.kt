@@ -29,7 +29,8 @@ class IpNeighbourMonitor private constructor() {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return
             val monitor = instance ?: return
             instance = null
-            monitor.monitor?.destroy()
+            val process = monitor.monitor
+            if (process != null) thread(TAG + "-killer") { process.destroy() }
         }
 
         /**
