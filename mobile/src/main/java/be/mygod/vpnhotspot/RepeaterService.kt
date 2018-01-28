@@ -140,8 +140,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             App.ACTION_CLEAN_ROUTINGS -> {
                 val routing = routing
                 routing!!.started = false
-                if (status == Status.ACTIVE && !initRouting(upstream!!, routing.downstream, routing.hostAddress))
-                    Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
+                if (status == Status.ACTIVE) {
+                    val upstream = upstream
+                    if (upstream != null && !initRouting(upstream, routing.downstream, routing.hostAddress))
+                        Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -209,12 +212,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                     !matcher.find() -> startFailure(getString(R.string.root_unavailable))
                     matcher.group(2) == "true" -> {
                         unregisterReceiver()
+                        upstream = ifname
                         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
                         LocalBroadcastManager.getInstance(this)
                                 .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
                         receiverRegistered = true
-                        upstream = ifname
                         p2pManager.requestGroupInfo(channel, {
                             when {
                                 it == null -> doStart()
@@ -280,8 +283,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         val downstream = group.`interface` ?: return
         receiverRegistered = true
         try {
-            if (initRouting(upstream!!, downstream, owner)) doStart(group)
-            else startFailure(getText(R.string.noisy_su_failure), group)
+            if (initRouting(upstream ?: throw Routing.InterfaceNotFoundException(), downstream, owner))
+                doStart(group) else startFailure(getText(R.string.noisy_su_failure), group)
         } catch (e: Routing.InterfaceNotFoundException) {
             startFailure(e.message, group)
             return
