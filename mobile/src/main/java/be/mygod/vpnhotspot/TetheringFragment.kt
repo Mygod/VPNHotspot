@@ -21,7 +21,6 @@ import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
-import java.net.Inet4Address
 import java.net.NetworkInterface
 
 class TetheringFragment : Fragment(), ServiceConnection {
@@ -75,7 +74,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
     }
     class TetheredInterface(val name: String, lookup: Map<String, NetworkInterface>) : Comparable<TetheredInterface> {
-        val addresses = lookup[name]!!.formatAddresses()
+        val addresses = lookup[name]?.formatAddresses() ?: ""
 
         override fun compareTo(other: TetheredInterface) = name.compareTo(other.name)
     }
