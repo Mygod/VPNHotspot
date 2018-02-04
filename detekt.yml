@@ -1,4 +1,7 @@
-# https://github.com/arturbosch/detekt/blob/e38c02e2ed1c90cc7e052945b1c584153dba6c28/detekt-cli/src/main/resources/default-detekt-config.yml
+# https://github.com/arturbosch/detekt/blob/801994bd60cc759b181649356cea045b8125301b/detekt-cli/src/main/resources/default-detekt-config.yml
+
+comments:
+  active: false
 
 complexity:
   active: true
@@ -46,6 +49,8 @@ complexity:
 
 empty-blocks:
   active: true
+  EmptyCatchBlock:
+    active: false
   EmptyClassBlock:
     active: true
   EmptyDefaultConstructor:
@@ -82,6 +87,8 @@ exceptions:
     active: true
   NotImplementedDeclaration:
     active: true
+  PrintStackTrace:
+    active: false
   RethrowCaughtException:
     active: true
   ReturnFromFinally:
@@ -124,7 +131,7 @@ naming:
     classPattern: '[A-Z$][a-zA-Z0-9$]*'
   EnumNaming:
     active: true
-    enumEntryPattern: '^[A-Z][_A-Z0-9]*$'
+    enumEntryPattern: '^[A-Z][_a-zA-Z0-9]*'
   ForbiddenClassName:
     active: true
     forbiddenName: ''
@@ -139,6 +146,8 @@ naming:
     functionPattern: '^([a-z$][a-zA-Z$0-9]*)|(`.*`)$'
   MatchingDeclarationName:
     active: true
+  MemberNameEqualsClassName:
+    active: false
   ObjectPropertyNaming:
     active: true
     propertyPattern: '[A-Za-z][_A-Za-z0-9]*'
@@ -186,10 +195,16 @@ potential-bugs:
     active: true
   IteratorNotThrowingNoSuchElementException:
     active: true
+  LateinitUsage:
+    active: false
   UnconditionalJumpStatementInLoop:
     active: true
   UnreachableCode:
     active: true
+  UnsafeCallOnNullableType:
+    active: false
+  UnsafeCast:
+    active: false
   UselessPostfixExpression:
     active: true
   WrongEqualsTypeParameter:
@@ -219,6 +234,8 @@ style:
   LoopWithTooManyJumpStatements:
     active: true
     maxJumpCount: 1
+  MagicNumber:
+    active: false
   MaxLineLength:
     active: true
     maxLineLength: 120
@@ -232,6 +249,8 @@ style:
     active: true
   OptionalAbstractKeyword:
     active: true
+  OptionalReturnKeyword:
+    active: true
   OptionalUnit:
     active: true
   OptionalWhenBraces:
@@ -240,6 +259,8 @@ style:
     active: true
   RedundantVisibilityModifierRule:
     active: true
+  ReturnCount:
+    active: false
   SafeCast:
     active: true
   SerialVersionUIDInSerializableClass:
@@ -259,5 +280,9 @@ style:
     active: true
   UnusedImports:
     active: true
+  UseDataClass:
+    active: false
   UtilityClassWithPublicConstructor:
     active: true
+  WildcardImport:
+    active: false
