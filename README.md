@@ -38,7 +38,7 @@ You'll have to use WPS for now to make the repeater switch to 2.4GHz.
 
 ### IPv6 tethering?
 
-There's no IPv6 tethering in AOSP and I don't currently plan to support it either.
+~There's no IPv6 tethering in AOSP and I don't currently plan to support it either.~ [Maybe it will be supported sometime in the future.](https://android.googlesource.com/platform/frameworks/base/+/7747fd4/services/core/java/com/android/server/connectivity/tethering/IPv6TetheringCoordinator.java).
 
 ### Start repeater without VPN?
 
