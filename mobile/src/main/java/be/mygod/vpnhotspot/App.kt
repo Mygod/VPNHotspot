@@ -28,7 +28,7 @@ class App : Application() {
 
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(this) }
-    val dns: String get() = app.pref.getString("service.dns", "8.8.8.8")
+    val dns: String get() = pref.getString("service.dns", "8.8.8.8")
 
-    fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(app, resId, Toast.LENGTH_SHORT).show() }
+    fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(this, resId, Toast.LENGTH_SHORT).show() }
 }
