@@ -30,7 +30,6 @@ fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageVi
 
 fun NetworkInterface.formatAddresses() =
         (this.interfaceAddresses.asSequence()
-                .filter { !it.address.isLinkLocalAddress }
                 .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
                 .toList() +
                 listOfNotNull(this.hardwareAddress?.joinToString(":") { "%02x".format(it) }))
