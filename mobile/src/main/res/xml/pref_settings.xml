@@ -7,7 +7,7 @@
             android:title="@string/settings_service_dns"
             android:summary="%s"
             android:singleLine="true"
-            android:defaultValue="8.8.8.8:53"/>
+            android:defaultValue="8.8.8.8"/>
         <Preference
             android:key="service.clean"
             android:title="@string/settings_service_clean"/>
