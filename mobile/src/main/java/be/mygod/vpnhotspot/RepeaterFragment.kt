@@ -101,14 +101,13 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
         fun recreate() {
             clients.clear()
-            val map = HashMap(p2p.associateBy { it.deviceAddress })
-            for (neighbour in neighbours) {
-                val client = map.remove(neighbour.lladdr)
-                if (client != null) clients.add(Client(client, neighbour))
-                else if (tetheredInterfaces.contains(neighbour.dev) || neighbour.dev == p2pInterface)
-                    clients.add(Client(neighbour = neighbour))
-            }
-            clients.addAll(map.map { Client(it.value) })
+            val p2p = HashMap(p2p.associateBy { it.deviceAddress })
+            for (neighbour in neighbours)
+                if (neighbour.dev == p2pInterface) {
+                    val client = p2p.remove(neighbour.lladdr)
+                    if (client != null) clients.add(Client(client, neighbour))
+                } else if (tetheredInterfaces.contains(neighbour.dev)) clients.add(Client(neighbour = neighbour))
+            clients.addAll(p2p.map { Client(it.value) })
             clients.sortWith(compareBy<Client> { it.ip }.thenBy { it.mac })
             notifyDataSetChanged()  // recreate everything
             binding.swipeRefresher.isRefreshing = false
