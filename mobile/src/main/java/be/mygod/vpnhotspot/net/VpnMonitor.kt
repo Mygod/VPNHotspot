@@ -41,9 +41,21 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
         callbacks.forEach { it.onLost(ifname) }
     }
 
-    fun registerCallback(callback: Callback) {
+    fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
         if (!callbacks.add(callback)) return
-        if (registered) available.forEach { callback.onAvailable(it.value) } else {
+        if (registered) {
+            if (failfast != null && available.isEmpty()) {
+                callbacks.remove(callback)
+                failfast()
+            } else available.forEach { callback.onAvailable(it.value) }
+        } else if (failfast != null && manager.allNetworks.all {
+                    val cap = manager.getNetworkCapabilities(it)
+                    !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                            cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                }) {
+            callbacks.remove(callback)
+            failfast()
+        } else {
             manager.registerNetworkCallback(request, this)
             registered = true
         }

@@ -9,7 +9,6 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
-import android.os.Handler
 import android.os.Looper
 import android.support.annotation.StringRes
 import android.support.v4.content.LocalBroadcastManager
@@ -118,7 +117,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         }
     }
 
-    private lateinit var handler: Handler
     private lateinit var p2pManager: WifiP2pManager
     private lateinit var channel: WifiP2pManager.Channel
     var group: WifiP2pGroup? = null
@@ -148,7 +146,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             }
         }
     }
-    private val onVpnUnavailable = Runnable { startFailure(getString(R.string.repeater_vpn_unavailable)) }
 
     val ssid get() = if (status == Status.ACTIVE) group?.networkName else null
     val password get() = if (status == Status.ACTIVE) group?.passphrase else null
@@ -173,7 +170,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
 
     override fun onCreate() {
         super.onCreate()
-        handler = Handler()
         p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
         onChannelDisconnected()
     }
@@ -190,8 +186,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
-        handler.postDelayed(onVpnUnavailable, 4000)
-        VpnMonitor.registerCallback(this)
+        VpnMonitor.registerCallback(this) { startFailure(getString(R.string.repeater_vpn_unavailable)) }
         return START_NOT_STICKY
     }
     private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
@@ -203,50 +198,47 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     /**
      * startService 2nd stop, also called when VPN re-established
      */
-    override fun onAvailable(ifname: String) {
-        handler.removeCallbacks(onVpnUnavailable)
-        when (status) {
-            Status.STARTING -> {
-                val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
-                when {
-                    !matcher.find() -> startFailure(getString(R.string.root_unavailable))
-                    matcher.group(2) == "true" -> {
-                        unregisterReceiver()
-                        upstream = ifname
-                        registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-                        LocalBroadcastManager.getInstance(this)
-                                .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
-                        receiverRegistered = true
-                        p2pManager.requestGroupInfo(channel, {
-                            when {
-                                it == null -> doStart()
-                                it.isGroupOwner -> doStart(it)
-                                else -> {
-                                    Log.i(TAG, "Removing old group ($it)")
-                                    p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                        override fun onSuccess() = doStart()
-                                        override fun onFailure(reason: Int) {
-                                            Toast.makeText(this@RepeaterService,
-                                                    formatReason(R.string.repeater_remove_old_group_failure, reason),
-                                                    Toast.LENGTH_SHORT).show()
-                                        }
-                                    })
-                                }
+    override fun onAvailable(ifname: String) = when (status) {
+        Status.STARTING -> {
+            val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
+            when {
+                !matcher.find() -> startFailure(getString(R.string.root_unavailable))
+                matcher.group(2) == "true" -> {
+                    unregisterReceiver()
+                    upstream = ifname
+                    registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+                    LocalBroadcastManager.getInstance(this)
+                            .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
+                    receiverRegistered = true
+                    p2pManager.requestGroupInfo(channel, {
+                        when {
+                            it == null -> doStart()
+                            it.isGroupOwner -> doStart(it)
+                            else -> {
+                                Log.i(TAG, "Removing old group ($it)")
+                                p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                                    override fun onSuccess() = doStart()
+                                    override fun onFailure(reason: Int) {
+                                        Toast.makeText(this@RepeaterService,
+                                                formatReason(R.string.repeater_remove_old_group_failure, reason),
+                                                Toast.LENGTH_SHORT).show()
+                                    }
+                                })
                             }
-                        })
-                    }
-                    else -> startFailure(getString(R.string.repeater_p2p_unavailable))
+                        }
+                    })
                 }
+                else -> startFailure(getString(R.string.repeater_p2p_unavailable))
             }
-            Status.ACTIVE -> {
-                val routing = routing
-                check(!routing!!.started)
-                if (!initRouting(ifname, routing.downstream, routing.hostAddress))
-                    Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-            }
-            else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
         }
+        Status.ACTIVE -> {
+            val routing = routing
+            check(!routing!!.started)
+            if (!initRouting(ifname, routing.downstream, routing.hostAddress))
+                Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show() else { }
+        }
+        else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
     }
     override fun onLost(ifname: String) {
         if (routing?.stop() == false)
