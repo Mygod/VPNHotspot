@@ -16,10 +16,10 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
          * Parser based on:
          *   https://android.googlesource.com/platform/external/iproute2/+/ad0a6a2/ip/ipneigh.c#194
          *   https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
-         * Assumptions: IP addr (key) always present, IPv4 only, RTM_GETNEIGH is never used and show_stats = 0
+         * Assumptions: IP addr (key) always present, RTM_GETNEIGH is never used and show_stats = 0
          */
-        private val parser =
-                "^(Deleted )?(.+?) (dev (.+?) )?(lladdr (.+?))?( proxy)?( ([INCOMPLET,RAHBSDYF]+))?\$".toRegex()
+        private val parser = ("^(Deleted )?(.+?) (dev (.+?) )?(lladdr (.+?))?( router)?( proxy)?" +
+                "( ([INCOMPLET,RAHBSDYF]+))?\$").toRegex()
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
         fun parse(line: String): IpNeighbour? {
@@ -36,16 +36,17 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
                     .filter { it[ARP_IP_ADDRESS] == ip && it[ARP_DEVICE] == dev }
                     .map { it[ARP_HW_ADDRESS] }
                     .singleOrNull() ?: "")
-            val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[9]) {
-                "", "INCOMPLETE" -> State.INCOMPLETE
-                "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
-                "FAILED" -> State.FAILED
-                "NOARP" -> return null  // skip
-                else -> {
-                    Log.w(TAG, "Unknown state encountered: ${match.groupValues[9]}")
-                    return null
+            val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
+                when (match.groupValues[10]) {
+                    "", "INCOMPLETE" -> State.INCOMPLETE
+                    "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
+                    "FAILED" -> State.FAILED
+                    "NOARP" -> return null  // skip
+                    else -> {
+                        Log.w(TAG, "Unknown state encountered: ${match.groupValues[10]}")
+                        return null
+                    }
                 }
-            }
             return IpNeighbour(ip, dev, lladdr, state)
         }
 

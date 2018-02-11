@@ -101,7 +101,10 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     }
     override fun postIpNeighbourAvailable() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
-            neighbours.count { it.state != IpNeighbour.State.FAILED }
+            neighbours
+                    .filter { it.state != IpNeighbour.State.FAILED }
+                    .distinctBy { it.lladdr }
+                    .size
         }
         ServiceNotification.startForeground(this, routings.keys.associate { Pair(it, sizeLookup[it] ?: 0) })
     }

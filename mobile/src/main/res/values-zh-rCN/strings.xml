@@ -36,9 +36,9 @@
     <string name="tethering_manage">管理…</string>
 
     <string name="connected_devices">已连接设备</string>
-    <string name="connected_state_incomplete">正在通过 %s 连接</string>
-    <string name="connected_state_valid">已连接到 %s</string>
-    <string name="connected_state_failed">已从 %s 断开</string>
+    <string name="connected_state_incomplete">%s (正在连接)</string>
+    <string name="connected_state_valid">%s (已连上)</string>
+    <string name="connected_state_failed">%s (已断开)</string>
 
     <string name="settings_service">服务</string>
     <string name="settings_service_dns">下游 DNS 服务器[:端口]</string>

@@ -29,6 +29,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 import java.net.NetworkInterface
+import java.util.*
 
 class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, IpNeighbourMonitor.Callback {
     inner class Data : BaseObservable() {
@@ -79,19 +80,21 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val statusListener = broadcastReceiver { _, _ -> onStatusChanged() }
     }
 
-    inner class Client(p2p: WifiP2pDevice? = null, private val neighbour: IpNeighbour? = null) {
-        private val iface = neighbour?.dev ?: p2pInterface!!
-        val mac = neighbour?.lladdr ?: p2p!!.deviceAddress!!
-        val ip = neighbour?.ip
+    inner class Client(p2p: WifiP2pDevice? = null, neighbour: IpNeighbour? = null) {
+        val iface = neighbour?.dev ?: p2pInterface!!
+        val mac = p2p?.deviceAddress ?: neighbour?.lladdr!!
+        val ip = TreeMap<String, IpNeighbour.State>()
 
         val icon get() = TetherType.ofInterface(iface, p2pInterface).icon
-        val title get() = listOf(ip, mac).filter { !it.isNullOrEmpty() }.joinToString("\t\t")
-        val description get() = getString(when (neighbour?.state) {
-            IpNeighbour.State.INCOMPLETE, null -> R.string.connected_state_incomplete
-            IpNeighbour.State.VALID -> R.string.connected_state_valid
-            IpNeighbour.State.FAILED -> R.string.connected_state_failed
-            else -> throw IllegalStateException("Invalid IpNeighbour.State")
-        }, iface)
+        val title get() = "$mac%$iface"
+        val description get() = ip.entries.joinToString("\n") { (ip, state) ->
+            getString(when (state) {
+                IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
+                IpNeighbour.State.VALID -> R.string.connected_state_valid
+                IpNeighbour.State.FAILED -> R.string.connected_state_failed
+                else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
+            }, ip)
+        }
     }
     private class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
     private inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
@@ -100,15 +103,20 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         var neighbours = emptyList<IpNeighbour>()
 
         fun recreate() {
+            val p2p = HashMap(p2p.associateBy({ Pair(p2pInterface, it.deviceAddress) }, { Client(it) }))
+            for (neighbour in neighbours) {
+                val key = Pair(neighbour.dev, neighbour.lladdr)
+                var client = p2p[key]
+                if (client == null) {
+                    if (!tetheredInterfaces.contains(neighbour.dev)) continue
+                    client = Client(neighbour = neighbour)
+                    p2p[key] = client
+                }
+                client.ip += Pair(neighbour.ip, neighbour.state)
+            }
             clients.clear()
-            val p2p = HashMap(p2p.associateBy { it.deviceAddress })
-            for (neighbour in neighbours)
-                if (neighbour.dev == p2pInterface) {
-                    val client = p2p.remove(neighbour.lladdr)
-                    if (client != null) clients.add(Client(client, neighbour))
-                } else if (tetheredInterfaces.contains(neighbour.dev)) clients.add(Client(neighbour = neighbour))
-            clients.addAll(p2p.map { Client(it.value) })
-            clients.sortWith(compareBy<Client> { it.ip }.thenBy { it.mac })
+            clients.addAll(p2p.values)
+            clients.sortWith(compareBy<Client> { it.iface }.thenBy { it.mac })
             notifyDataSetChanged()  // recreate everything
             binding.swipeRefresher.isRefreshing = false
         }

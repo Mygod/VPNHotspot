@@ -58,7 +58,7 @@ class IpNeighbourMonitor private constructor() {
     init {
         thread(name = TAG + "-input") {
             // monitor may get rejected by SELinux
-            val monitor = ProcessBuilder("sh", "-c", "ip -4 monitor neigh || su -c ip -4 monitor neigh")
+            val monitor = ProcessBuilder("sh", "-c", "ip monitor neigh || su -c ip monitor neigh")
                     .redirectErrorStream(true)
                     .start()
             this.monitor = monitor
@@ -85,7 +85,7 @@ class IpNeighbourMonitor private constructor() {
     }
 
     fun flush() = thread(name = TAG + "-flush") {
-        val process = ProcessBuilder("ip", "-4", "neigh")
+        val process = ProcessBuilder("ip", "neigh")
                 .redirectErrorStream(true)
                 .start()
         process.waitFor()
@@ -94,7 +94,11 @@ class IpNeighbourMonitor private constructor() {
         process.inputStream.bufferedReader().useLines {
             synchronized(neighbours) {
                 neighbours.clear()
-                neighbours.putAll(it.map(IpNeighbour.Companion::parse).filterNotNull().associateBy { it.ip })
+                neighbours.putAll(it
+                        .map(IpNeighbour.Companion::parse)
+                        .filterNotNull()
+                        .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
+                        .associateBy { it.ip })
                 postUpdateLocked()
             }
         }

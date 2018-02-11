@@ -38,9 +38,9 @@
     <string name="tethering_manage">Manage…</string>
 
     <string name="connected_devices">Connected devices</string>
-    <string name="connected_state_incomplete">Connecting to %s</string>
-    <string name="connected_state_valid">Connected to %s</string>
-    <string name="connected_state_failed">Lost from %s</string>
+    <string name="connected_state_incomplete">%s (connecting)</string>
+    <string name="connected_state_valid">%s (reachable)</string>
+    <string name="connected_state_failed">%s (lost)</string>
 
     <string name="settings_service">Service</string>
     <string name="settings_service_dns">Downstream DNS server[:port]</string>
