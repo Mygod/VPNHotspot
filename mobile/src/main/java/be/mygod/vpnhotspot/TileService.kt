@@ -26,10 +26,16 @@ class TileService : BaseTileService(), ServiceConnection {
         set(value) {
             qsTile.state = value
             when (value) {
-                Tile.STATE_ACTIVE -> qsTile.icon = Icon.createWithResource(application,
-                        R.drawable.ic_quick_settings_tile_on)
-                Tile.STATE_INACTIVE -> qsTile.icon = Icon.createWithResource(application,
-                        R.drawable.ic_quick_settings_tile_off)
+                Tile.STATE_ACTIVE -> {
+                    qsTile.icon = Icon.createWithResource(application,
+                            R.drawable.ic_quick_settings_tile_on)
+                    qsTile.label = "${getString(R.string.repeater_password)}:\n${binder?.service?.password}"
+                }
+                Tile.STATE_INACTIVE -> {
+                    qsTile.icon = Icon.createWithResource(application,
+                            R.drawable.ic_quick_settings_tile_off)
+                    qsTile.label = getString(R.string.app_name)
+                }
             }
             qsTile.updateTile()
         }
