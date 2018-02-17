@@ -27,7 +27,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     /**
      * Obtaining ifname in onLost doesn't work so we need to cache it in onAvailable.
      */
-    private val available = HashMap<Network, String>()
+    val available = HashMap<Network, String>()
     override fun onAvailable(network: Network) {
         val ifname = manager.getLinkProperties(network)?.interfaceName ?: return
         if (available.put(network, ifname) != null) return
