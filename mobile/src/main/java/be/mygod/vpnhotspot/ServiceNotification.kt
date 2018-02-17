@@ -21,7 +21,7 @@ object ServiceNotification {
                 .setWhen(0)
                 .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
                 .setContentTitle(context.getText(R.string.notification_tethering_title))
-                .setSmallIcon(R.drawable.ic_device_wifi_tethering)
+                .setSmallIcon(R.drawable.ic_quick_settings_tile_on)
                 .setContentIntent(PendingIntent.getActivity(context, 0,
                         Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
