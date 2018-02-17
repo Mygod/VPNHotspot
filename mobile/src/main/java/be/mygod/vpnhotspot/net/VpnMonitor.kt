@@ -30,37 +30,45 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     val available = HashMap<Network, String>()
     override fun onAvailable(network: Network) {
         val ifname = manager.getLinkProperties(network)?.interfaceName ?: return
-        if (available.put(network, ifname) != null) return
-        debugLog(TAG, "onAvailable: $ifname")
-        callbacks.forEach { it.onAvailable(ifname) }
+        synchronized(this) {
+            if (available.put(network, ifname) != null) return
+            debugLog(TAG, "onAvailable: $ifname")
+            callbacks.forEach { it.onAvailable(ifname) }
+        }
     }
 
-    override fun onLost(network: Network) {
+    override fun onLost(network: Network) = synchronized(this) {
         val ifname = available.remove(network) ?: return
         debugLog(TAG, "onLost: $ifname")
         callbacks.forEach { it.onLost(ifname) }
     }
 
     fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
-        if (!callbacks.add(callback)) return
-        if (registered) {
-            if (failfast != null && available.isEmpty()) {
+        if (synchronized(this) {
+            if (!callbacks.add(callback)) return
+            if (registered) {
+                if (failfast != null && available.isEmpty()) {
+                    callbacks.remove(callback)
+                     true
+                } else {
+                    available.forEach { callback.onAvailable(it.value) }
+                    false
+                }
+            } else if (failfast != null && manager.allNetworks.all {
+                        val cap = manager.getNetworkCapabilities(it)
+                        !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                                cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                    }) {
                 callbacks.remove(callback)
-                failfast()
-            } else available.forEach { callback.onAvailable(it.value) }
-        } else if (failfast != null && manager.allNetworks.all {
-                    val cap = manager.getNetworkCapabilities(it)
-                    !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                            cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                }) {
-            callbacks.remove(callback)
-            failfast()
-        } else {
-            manager.registerNetworkCallback(request, this)
-            registered = true
-        }
+                true
+            } else {
+                manager.registerNetworkCallback(request, this)
+                registered = true
+                false
+            }
+        }) failfast!!()
     }
-    fun unregisterCallback(callback: Callback) {
+    fun unregisterCallback(callback: Callback) = synchronized(this) {
         if (!callbacks.remove(callback) || callbacks.isNotEmpty() || !registered) return
         manager.unregisterNetworkCallback(this)
         registered = false
