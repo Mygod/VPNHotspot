@@ -1,9 +1,6 @@
 package be.mygod.vpnhotspot
 
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
+import android.content.*
 import android.databinding.BaseObservable
 import android.databinding.DataBindingUtil
 import android.os.Bundle
@@ -70,8 +67,13 @@ class TetheringFragment : Fragment(), ServiceConnection {
             view.setOnClickListener(this)
         }
 
-        override fun onClick(v: View?) = itemView.context.startActivity(Intent()
-                .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
+        override fun onClick(v: View?) = try {
+            itemView.context.startActivity(Intent()
+                    .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
+        } catch (e: ActivityNotFoundException) {
+            itemView.context.startActivity(Intent()
+                    .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
+        }
     }
     class TetheredInterface(val name: String, lookup: Map<String, NetworkInterface>) : Comparable<TetheredInterface> {
         val addresses = lookup[name]?.formatAddresses() ?: ""
