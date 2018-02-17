@@ -44,5 +44,5 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     }
 
     private fun displayFragment(fragment: Fragment) =
-            supportFragmentManager.beginTransaction().replace(R.id.fragmentHolder, fragment).commit()
+            supportFragmentManager.beginTransaction().replace(R.id.fragmentHolder, fragment).commitAllowingStateLoss()
 }
