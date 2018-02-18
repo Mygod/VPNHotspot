@@ -7,6 +7,7 @@ import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.*
+import java.net.InetAddress
 
 class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Callback {
     companion object {
@@ -23,6 +24,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     private val routings = HashMap<String, Routing?>()
     private var neighbours = emptyList<IpNeighbour>()
     private var upstream: String? = null
+    private var dns: List<InetAddress> = emptyList()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -49,7 +51,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
                 for ((downstream, value) in routings) if (value == null) {
                     // system tethering already has working forwarding rules
                     // so it doesn't make sense to add additional forwarding rules
-                    val routing = Routing(upstream, downstream).rule().forward(true).dnsRedirect(app.dns)
+                    val routing = Routing(upstream, downstream).rule().forward(true).dnsRedirect(dns)
                     if (routing.start()) routings[downstream] = routing else {
                         failed = true
                         routing.stop()
@@ -81,15 +83,17 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
         return START_NOT_STICKY
     }
 
-    override fun onAvailable(ifname: String) {
+    override fun onAvailable(ifname: String, dns: List<InetAddress>) {
         check(upstream == null || upstream == ifname)
         upstream = ifname
+        this.dns = dns
         updateRoutings()
     }
 
     override fun onLost(ifname: String) {
         check(upstream == null || upstream == ifname)
         upstream = null
+        this.dns = emptyList()
         var failed = false
         for ((iface, routing) in routings) {
             if (routing?.stop() == false) failed = true

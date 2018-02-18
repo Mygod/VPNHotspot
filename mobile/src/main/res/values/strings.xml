@@ -42,9 +42,9 @@
     <string name="connected_state_failed">%s (lost)</string>
 
     <string name="settings_service">Service</string>
-    <string name="settings_service_dns">Downstream DNS server[:port]</string>
     <string name="settings_service_repeater_strict">Strict mode (repeater only)</string>
     <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel</string>
+    <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_misc_logcat">Export logcat</string>

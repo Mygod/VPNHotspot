@@ -138,7 +138,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             App.ACTION_CLEAN_ROUTINGS -> {
                 val routing = routing
                 routing!!.started = false
-                if (status == Status.ACTIVE) resetup(routing, upstream)
+                if (status == Status.ACTIVE) resetup(routing, upstream, dns)
             }
         }
     }
@@ -147,6 +147,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     val password get() = if (status == Status.ACTIVE) group?.passphrase else null
 
     private var upstream: String? = null
+    private var dns: List<InetAddress> = emptyList()
     private var routing: Routing? = null
 
     var status = Status.IDLE
@@ -194,13 +195,14 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     /**
      * startService 2nd stop, also called when VPN re-established
      */
-    private fun setup(ifname: String? = null) {
+    private fun setup(ifname: String? = null, dns: List<InetAddress> = emptyList()) {
         val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
         when {
             !matcher.find() -> startFailure(getString(R.string.root_unavailable))
             matcher.group(2) == "true" -> {
                 unregisterReceiver()
                 upstream = ifname
+                this.dns = dns
                 registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                         WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
                 LocalBroadcastManager.getInstance(this)
@@ -228,18 +230,18 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         }
     }
 
-    private fun resetup(routing: Routing, ifname: String? = null) =
-            initRouting(ifname, routing.downstream, routing.hostAddress)
+    private fun resetup(routing: Routing, ifname: String? = null, dns: List<InetAddress> = emptyList()) =
+            initRouting(ifname, routing.downstream, routing.hostAddress, dns)
 
-    override fun onAvailable(ifname: String) = when (status) {
-        Status.STARTING -> setup(ifname)
+    override fun onAvailable(ifname: String, dns: List<InetAddress>) = when (status) {
+        Status.STARTING -> setup(ifname, dns)
         Status.ACTIVE -> {
             val routing = routing!!
             if (routing.started) {
                 routing.stop()
                 check(routing.upstream == null)
             }
-            resetup(routing, ifname)
+            resetup(routing, ifname, dns)
             while (false) { }
         }
         else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
@@ -280,23 +282,21 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         val downstream = group.`interface` ?: return
         receiverRegistered = true
         try {
-            if (initRouting(upstream, downstream, owner)) doStart(group)
+            if (initRouting(upstream, downstream, owner, dns)) doStart(group)
         } catch (e: Routing.InterfaceNotFoundException) {
             startFailure(e.message, group)
             return
         }
     }
-    private fun initRouting(upstream: String?, downstream: String, owner: InetAddress): Boolean {
+    private fun initRouting(upstream: String?, downstream: String,
+                            owner: InetAddress, dns: List<InetAddress>): Boolean {
         val routing = Routing(upstream, downstream, owner)
         this.routing = routing
+        this.dns = dns
         val strict = app.pref.getBoolean("service.repeater.strict", false)
-        if (strict && upstream == null) return true // in this case, nothing to be done
-        return if (routing
-                        .ipForward()   // Wi-Fi direct doesn't enable ip_forward
-                        .rule()
-                        .forward(strict)
-                        .dnsRedirect(app.dns)
-                        .start()) true else {
+        return if (strict && upstream == null ||    // in this case, nothing to be done
+                routing.ipForward()                 // Wi-Fi direct doesn't enable ip_forward
+                        .rule().forward(strict).dnsRedirect(dns).start()) true else {
             routing.stop()
             Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             false

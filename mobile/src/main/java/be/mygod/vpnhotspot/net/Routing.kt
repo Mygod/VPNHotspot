@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.noisySu
 import java.io.IOException
 import java.net.Inet4Address
@@ -82,8 +83,11 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
         return this
     }
 
-    fun dnsRedirect(dns: String): Routing {
+    fun dnsRedirect(dnses: List<InetAddress>): Routing {
         val hostAddress = hostAddress.hostAddress
+        val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress
+                ?: app.pref.getString("service.dns", "8.8.8.8")
+        debugLog("Routing", "Using $dns from ($dnses)")
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         stopScript.addFirst("$IPTABLES -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")

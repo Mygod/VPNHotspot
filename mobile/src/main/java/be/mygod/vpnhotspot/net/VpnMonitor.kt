@@ -7,10 +7,11 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.debugLog
+import java.net.InetAddress
 
 object VpnMonitor : ConnectivityManager.NetworkCallback() {
     interface Callback {
-        fun onAvailable(ifname: String)
+        fun onAvailable(ifname: String, dns: List<InetAddress>)
         fun onLost(ifname: String)
     }
 
@@ -27,13 +28,14 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     /**
      * Obtaining ifname in onLost doesn't work so we need to cache it in onAvailable.
      */
-    val available = HashMap<Network, String>()
+    private val available = HashMap<Network, String>()
     override fun onAvailable(network: Network) {
-        val ifname = manager.getLinkProperties(network)?.interfaceName ?: return
+        val properties = manager.getLinkProperties(network)
+        val ifname = properties?.interfaceName ?: return
         synchronized(this) {
             if (available.put(network, ifname) != null) return
-            debugLog(TAG, "onAvailable: $ifname")
-            callbacks.forEach { it.onAvailable(ifname) }
+            debugLog(TAG, "onAvailable: $ifname, ${properties.dnsServers.joinToString()}")
+            callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
         }
     }
 
@@ -55,7 +57,9 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
                                     cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                         }
                     } else if (available.isEmpty()) true else {
-                        available.forEach { callback.onAvailable(it.value) }
+                        available.forEach {
+                            callback.onAvailable(it.value, manager.getLinkProperties(it.key)?.dnsServers ?: emptyList())
+                        }
                         false
                     }
         }) failfast?.invoke()
