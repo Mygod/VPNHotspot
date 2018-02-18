@@ -23,7 +23,6 @@
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
     <string name="repeater_inactive">Service inactive</string>
-    <string name="repeater_vpn_unavailable">VPN unavailable, please enable any VPN</string>
     <string name="repeater_p2p_unavailable">Wi-Fi direct unavailable</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
@@ -44,6 +43,8 @@
 
     <string name="settings_service">Service</string>
     <string name="settings_service_dns">Downstream DNS server[:port]</string>
+    <string name="settings_service_repeater_strict">Strict mode (repeater only)</string>
+    <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_misc_logcat">Export logcat</string>

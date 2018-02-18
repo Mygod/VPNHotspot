@@ -47,7 +47,9 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
             if (upstream != null) {
                 var failed = false
                 for ((downstream, value) in routings) if (value == null) {
-                    val routing = Routing(upstream, downstream).rule().forward().dnsRedirect(app.dns)
+                    // system tethering already has working forwarding rules
+                    // so it doesn't make sense to add additional forwarding rules
+                    val routing = Routing(upstream, downstream).rule().forward(true).dnsRedirect(app.dns)
                     if (routing.start()) routings[downstream] = routing else {
                         failed = true
                         routing.stop()

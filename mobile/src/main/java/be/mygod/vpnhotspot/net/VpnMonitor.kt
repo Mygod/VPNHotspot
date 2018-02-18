@@ -45,28 +45,20 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
 
     fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
         if (synchronized(this) {
-            if (!callbacks.add(callback)) return
-            if (registered) {
-                if (failfast != null && available.isEmpty()) {
-                    callbacks.remove(callback)
-                     true
-                } else {
-                    available.forEach { callback.onAvailable(it.value) }
-                    false
-                }
-            } else if (failfast != null && manager.allNetworks.all {
-                        val cap = manager.getNetworkCapabilities(it)
-                        !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                                cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                    }) {
-                callbacks.remove(callback)
-                true
-            } else {
-                manager.registerNetworkCallback(request, this)
-                registered = true
-                false
-            }
-        }) failfast!!()
+                    if (!callbacks.add(callback)) return
+                    if (!registered) {
+                        manager.registerNetworkCallback(request, this)
+                        registered = true
+                        manager.allNetworks.all {
+                            val cap = manager.getNetworkCapabilities(it)
+                            !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                                    cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                        }
+                    } else if (available.isEmpty()) true else {
+                        available.forEach { callback.onAvailable(it.value) }
+                        false
+                    }
+        }) failfast?.invoke()
     }
     fun unregisterCallback(callback: Callback) = synchronized(this) {
         if (!callbacks.remove(callback) || callbacks.isNotEmpty() || !registered) return

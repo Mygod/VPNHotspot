@@ -138,11 +138,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             App.ACTION_CLEAN_ROUTINGS -> {
                 val routing = routing
                 routing!!.started = false
-                if (status == Status.ACTIVE) {
-                    val upstream = upstream
-                    if (upstream != null && !initRouting(upstream, routing.downstream, routing.hostAddress))
-                        Toast.makeText(this@RepeaterService, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
-                }
+                if (status == Status.ACTIVE) resetup(routing, upstream)
             }
         }
     }
@@ -186,7 +182,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
-        VpnMonitor.registerCallback(this) { startFailure(getString(R.string.repeater_vpn_unavailable)) }
+        VpnMonitor.registerCallback(this) { setup() }
         return START_NOT_STICKY
     }
     private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
@@ -198,45 +194,53 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     /**
      * startService 2nd stop, also called when VPN re-established
      */
-    override fun onAvailable(ifname: String) = when (status) {
-        Status.STARTING -> {
-            val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
-            when {
-                !matcher.find() -> startFailure(getString(R.string.root_unavailable))
-                matcher.group(2) == "true" -> {
-                    unregisterReceiver()
-                    upstream = ifname
-                    registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-                    LocalBroadcastManager.getInstance(this)
-                            .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
-                    receiverRegistered = true
-                    p2pManager.requestGroupInfo(channel, {
-                        when {
-                            it == null -> doStart()
-                            it.isGroupOwner -> doStart(it)
-                            else -> {
-                                Log.i(TAG, "Removing old group ($it)")
-                                p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                    override fun onSuccess() = doStart()
-                                    override fun onFailure(reason: Int) {
-                                        Toast.makeText(this@RepeaterService,
-                                                formatReason(R.string.repeater_remove_old_group_failure, reason),
-                                                Toast.LENGTH_SHORT).show()
-                                    }
-                                })
-                            }
+    private fun setup(ifname: String? = null) {
+        val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
+        when {
+            !matcher.find() -> startFailure(getString(R.string.root_unavailable))
+            matcher.group(2) == "true" -> {
+                unregisterReceiver()
+                upstream = ifname
+                registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                        WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+                LocalBroadcastManager.getInstance(this)
+                        .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
+                receiverRegistered = true
+                p2pManager.requestGroupInfo(channel, {
+                    when {
+                        it == null -> doStart()
+                        it.isGroupOwner -> doStart(it)
+                        else -> {
+                            Log.i(TAG, "Removing old group ($it)")
+                            p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                                override fun onSuccess() = doStart()
+                                override fun onFailure(reason: Int) {
+                                    Toast.makeText(this@RepeaterService,
+                                            formatReason(R.string.repeater_remove_old_group_failure, reason),
+                                            Toast.LENGTH_SHORT).show()
+                                }
+                            })
                         }
-                    })
-                }
-                else -> startFailure(getString(R.string.repeater_p2p_unavailable))
+                    }
+                })
             }
+            else -> startFailure(getString(R.string.repeater_p2p_unavailable))
         }
+    }
+
+    private fun resetup(routing: Routing, ifname: String? = null) =
+            initRouting(ifname, routing.downstream, routing.hostAddress)
+
+    override fun onAvailable(ifname: String) = when (status) {
+        Status.STARTING -> setup(ifname)
         Status.ACTIVE -> {
-            val routing = routing
-            check(!routing!!.started)
-            if (!initRouting(ifname, routing.downstream, routing.hostAddress))
-                Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show() else { }
+            val routing = routing!!
+            if (routing.started) {
+                routing.stop()
+                check(routing.upstream == null)
+            }
+            resetup(routing, ifname)
+            while (false) { }
         }
         else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
     }
@@ -244,6 +248,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         if (routing?.stop() == false)
             Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
         upstream = null
+        if (status == Status.ACTIVE) resetup(routing!!)
     }
 
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
@@ -275,22 +280,25 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         val downstream = group.`interface` ?: return
         receiverRegistered = true
         try {
-            if (initRouting(upstream ?: throw Routing.InterfaceNotFoundException(), downstream, owner))
-                doStart(group) else startFailure(getText(R.string.noisy_su_failure), group)
+            if (initRouting(upstream, downstream, owner)) doStart(group)
         } catch (e: Routing.InterfaceNotFoundException) {
             startFailure(e.message, group)
             return
         }
     }
-    private fun initRouting(upstream: String, downstream: String, owner: InetAddress): Boolean {
+    private fun initRouting(upstream: String?, downstream: String, owner: InetAddress): Boolean {
         val routing = Routing(upstream, downstream, owner)
-                .ipForward()   // Wi-Fi direct doesn't enable ip_forward
-                .rule().forward().dnsRedirect(app.dns)
-        return if (routing.start()) {
-            this.routing = routing
-            true
-        } else {
+        this.routing = routing
+        val strict = app.pref.getBoolean("service.repeater.strict", false)
+        if (strict && upstream == null) return true // in this case, nothing to be done
+        return if (routing
+                        .ipForward()   // Wi-Fi direct doesn't enable ip_forward
+                        .rule()
+                        .forward(strict)
+                        .dnsRedirect(app.dns)
+                        .start()) true else {
             routing.stop()
+            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             false
         }
     }

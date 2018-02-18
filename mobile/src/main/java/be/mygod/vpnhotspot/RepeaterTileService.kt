@@ -11,10 +11,9 @@ import android.service.quicksettings.TileService
 import android.support.annotation.RequiresApi
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
-import be.mygod.vpnhotspot.net.VpnMonitor
 
 @RequiresApi(24)
-class RepeaterTileService : TileService(), ServiceConnection, VpnMonitor.Callback {
+class RepeaterTileService : TileService(), ServiceConnection {
     private val statusListener = broadcastReceiver { _, _ -> updateTile() }
     private val tileOff by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_off) }
     private val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
@@ -44,7 +43,6 @@ class RepeaterTileService : TileService(), ServiceConnection, VpnMonitor.Callbac
     override fun onServiceConnected(name: ComponentName?, service: IBinder) {
         binder = service as RepeaterService.RepeaterBinder
         updateTile()
-        VpnMonitor.registerCallback(this)
         LocalBroadcastManager.getInstance(this).registerReceiver(statusListener,
                 intentFilter(RepeaterService.ACTION_STATUS_CHANGED))
     }
@@ -52,11 +50,10 @@ class RepeaterTileService : TileService(), ServiceConnection, VpnMonitor.Callbac
     override fun onServiceDisconnected(name: ComponentName?) {
         binder = null
         LocalBroadcastManager.getInstance(this).unregisterReceiver(statusListener)
-        VpnMonitor.unregisterCallback(this)
     }
 
     private fun updateTile() {
-        when (if (VpnMonitor.available.isEmpty()) null else binder?.service?.status) {
+        when (binder?.service?.status) {
             RepeaterService.Status.IDLE -> {
                 qsTile.state = Tile.STATE_INACTIVE
                 qsTile.icon = tileOff
@@ -80,6 +77,4 @@ class RepeaterTileService : TileService(), ServiceConnection, VpnMonitor.Callbac
         }
         qsTile.updateTile()
     }
-    override fun onAvailable(ifname: String) = updateTile()
-    override fun onLost(ifname: String) = updateTile()
 }

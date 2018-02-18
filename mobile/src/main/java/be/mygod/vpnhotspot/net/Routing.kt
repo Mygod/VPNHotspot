@@ -10,7 +10,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.util.*
 
-class Routing(private val upstream: String, val downstream: String, ownerAddress: InetAddress? = null) {
+class Routing(val upstream: String?, val downstream: String, ownerAddress: InetAddress? = null) {
     companion object {
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -23,6 +23,7 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
         fun clean() = noisySu(
                 "$IPTABLES -t nat -F PREROUTING",
                 "quiet while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done",
+                "quiet while $IPTABLES -t nat -D POSTROUTING -j MASQUERADE; do done",
                 "$IPTABLES -F vpnhotspot_fwd",
                 "$IPTABLES -X vpnhotspot_fwd",
                 "quiet while ip rule del priority 17900; do done")
@@ -50,19 +51,33 @@ class Routing(private val upstream: String, val downstream: String, ownerAddress
      * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
      */
     fun rule(): Routing {
-        startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17900")
-        // by the time stopScript is called, table entry for upstream may already get removed
-        stopScript.addFirst("ip rule del from all iif $downstream priority 17900")
+        if (upstream != null) {
+            startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17900")
+            // by the time stopScript is called, table entry for upstream may already get removed
+            stopScript.addFirst("ip rule del from all iif $downstream priority 17900")
+        }
         return this
     }
 
-    fun forward(): Routing {
+    fun forward(strict: Boolean = true): Routing {
         startScript.add("quiet $IPTABLES -N vpnhotspot_fwd 2>/dev/null")
-        startScript.add("$IPTABLES -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-        startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+        if (strict) {
+            check(upstream != null)
+            startScript.add("$IPTABLES -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+            startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+        } else {
+            // for not strict mode, allow downstream packets to be redirected to anywhere
+            // also enable unconditional NAT masquerade
+            startScript.add("$IPTABLES -A vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+            startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -j ACCEPT")
+            startScript.add("$IPTABLES -t nat -A POSTROUTING -j MASQUERADE")
+            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -j ACCEPT")
+            stopScript.addFirst("$IPTABLES -t nat -D POSTROUTING -j MASQUERADE")
+        }
         startScript.add("$IPTABLES -I FORWARD -j vpnhotspot_fwd")
-        stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-        stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
         stopScript.addFirst("$IPTABLES -D FORWARD -j vpnhotspot_fwd")
         return this
     }

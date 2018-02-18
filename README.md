@@ -38,11 +38,6 @@ You'll have to use WPS for now to make the repeater switch to 2.4GHz.
 
 ### [IPv6 tethering?](https://github.com/Mygod/VPNHotspot/issues/6)
 
-### Start repeater without VPN?
-
-This app is designed for VPN interface as upstreams to simplify handling of connection change and NAT issues.
-You could use stub VPN apps like [Blokada](https://github.com/blokadaorg/blokada) together with this app as a workaround.
-
 ### No root?
 
 Without root, you can only:

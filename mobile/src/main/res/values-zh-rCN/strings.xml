@@ -21,7 +21,6 @@
     <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
 
     <string name="repeater_inactive">未打开</string>
-    <string name="repeater_vpn_unavailable">无法找到 VPN，请启用任意 VPN</string>
     <string name="repeater_p2p_unavailable">Wi-Fi 直连不可用</string>
     <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
@@ -42,6 +41,8 @@
 
     <string name="settings_service">服务</string>
     <string name="settings_service_dns">下游 DNS 服务器[:端口]</string>
+    <string name="settings_service_repeater_strict">严格模式 (仅用于中继)</string>
+    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>
     <string name="settings_misc_logcat">导出日志</string>
