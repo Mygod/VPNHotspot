@@ -43,9 +43,10 @@ fun loggerSuStream(command: String): InputStream? {
     val process = try {
         ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
-                .directory(app.cacheDir)
+                .directory(app.deviceContext.cacheDir)
                 .start()
     } catch (e: IOException) {
+        e.printStackTrace()
         return null
     }
     try {

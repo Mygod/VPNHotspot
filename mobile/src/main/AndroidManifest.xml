@@ -39,12 +39,15 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".RepeaterService">
+        <service
+            android:name=".RepeaterService"
+            android:directBootAware="true">
         </service>
         <service android:name=".TetheringService">
         </service>
         <service
             android:name=".RepeaterTileService"
+            android:directBootAware="true"
             android:icon="@drawable/ic_quick_settings_tile_off"
             android:label="@string/title_repeater"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
