@@ -32,10 +32,10 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
 
         fun dump() = loggerSu("""
                 |echo iptables
-                |iptables-save
+                |sh -c 'exec -a iptables-save iptables'
                 |echo
                 |echo iptables -t nat
-                |iptables-save -t nat
+                |sh -c 'exec -a iptables-save iptables -t nat'
                 |echo
                 |echo ip rule
                 |ip rule
