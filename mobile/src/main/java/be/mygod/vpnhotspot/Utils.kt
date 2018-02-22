@@ -8,7 +8,9 @@ import android.databinding.BindingAdapter
 import android.support.annotation.DrawableRes
 import android.util.Log
 import android.widget.ImageView
+import be.mygod.vpnhotspot.App.Companion.app
 import java.io.IOException
+import java.io.InputStream
 import java.net.NetworkInterface
 
 fun debugLog(tag: String?, message: String?) {
@@ -37,23 +39,27 @@ fun NetworkInterface.formatAddresses() =
 
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
-fun loggerSu(command: String): String? {
+fun loggerSuStream(command: String): InputStream? {
     val process = try {
         ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
+                .directory(app.cacheDir)
                 .start()
     } catch (e: IOException) {
         return null
     }
-    process.waitFor()
     try {
         val err = process.errorStream.bufferedReader().readText()
         if (err.isNotBlank()) Log.e(NOISYSU_TAG, err)
     } catch (e: IOException) {
         e.printStackTrace()
     }
+    return process.inputStream
+}
+fun loggerSu(command: String): String? {
+    val stream = loggerSuStream(command) ?: return null
     return try {
-        process.inputStream.bufferedReader().readText()
+        stream.bufferedReader().readText()
     } catch (e: IOException) {
         e.printStackTrace()
         null

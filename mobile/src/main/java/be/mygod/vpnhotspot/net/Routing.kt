@@ -4,9 +4,10 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
-import be.mygod.vpnhotspot.loggerSu
+import be.mygod.vpnhotspot.loggerSuStream
 import be.mygod.vpnhotspot.noisySu
 import java.io.IOException
+import java.io.InputStream
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -30,19 +31,28 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
                 "$IPTABLES -X vpnhotspot_fwd",
                 "quiet while ip rule del priority 17900; do done")
 
-        fun dump() = loggerSu("""
-            |echo logcat-su
-            |logcat -d
-            |echo
-            |echo iptables
-            |sh -c 'exec -a iptables-save iptables'
-            |echo
-            |echo iptables -t nat
-            |sh -c 'exec -a iptables-save iptables -t nat'
-            |echo
-            |echo ip rule
-            |ip rule
-        """.trimMargin())
+        fun dump(): InputStream? {
+            val commands = StringBuilder()
+            // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
+            val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else {
+                commands.appendln("ln -sf /system/bin/iptables ./iptables-save")
+                "./iptables-save"
+            }
+            commands.append("""
+                |echo logcat-su
+                |logcat -d
+                |echo
+                |echo iptables
+                |$iptablesSave
+                |echo
+                |echo iptables -t nat
+                |$iptablesSave -t nat
+                |echo
+                |echo ip rule
+                |ip rule
+            """.trimMargin())
+            return loggerSuStream(commands.toString())
+        }
     }
 
     class InterfaceNotFoundException : IOException() {

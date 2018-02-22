@@ -13,6 +13,7 @@ import be.mygod.vpnhotspot.net.Routing
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.File
 import java.io.IOException
+import java.io.PrintWriter
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -31,19 +32,23 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             val logDir = File(activity.cacheDir, "log")
             logDir.mkdir()
             val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
-            logFile.printWriter().use { writer ->
-                writer.write("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n\n")
-                try {
-                    writer.write(Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
-                            .inputStream.bufferedReader().readText())
-                } catch (e: IOException) {
-                    e.printStackTrace(writer)
-                }
-                writer.write("\n")
-                try {
-                    writer.write(Routing.dump())
-                } catch (e: IOException) {
-                    e.printStackTrace(writer)
+            logFile.outputStream().use { out ->
+                PrintWriter(out.bufferedWriter()).use { writer ->
+                    writer.write("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n\n")
+                    writer.flush()
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
+                    } catch (e: IOException) {
+                        e.printStackTrace(writer)
+                    }
+                    writer.write("\n")
+                    writer.flush()
+                    try {
+                        Routing.dump()?.use { it.copyTo(out) }
+                    } catch (e: IOException) {
+                        e.printStackTrace(writer)
+                        writer.flush()
+                    }
                 }
             }
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
