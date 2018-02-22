@@ -4,6 +4,7 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.loggerSu
 import be.mygod.vpnhotspot.noisySu
 import java.io.IOException
 import java.net.Inet4Address
@@ -28,6 +29,17 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
                 "$IPTABLES -F vpnhotspot_fwd",
                 "$IPTABLES -X vpnhotspot_fwd",
                 "quiet while ip rule del priority 17900; do done")
+
+        fun dump() = loggerSu("""
+                |echo iptables
+                |iptables-save
+                |echo
+                |echo iptables -t nat
+                |iptables-save -t nat
+                |echo
+                |echo ip rule
+                |ip rule
+            """.trimMargin())
     }
 
     class InterfaceNotFoundException : IOException() {

@@ -47,7 +47,7 @@
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
-    <string name="settings_misc_logcat">Export logcat</string>
+    <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
     <string name="settings_misc_source">View on GitHub</string>
     <string name="settings_misc_source_summary">Star, submit issues and contribute</string>
@@ -67,5 +67,5 @@
 
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="root_unavailable">Root unavailable</string>
-    <string name="noisy_su_failure">Something went wrong, please check logcat.</string>
+    <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
 </resources>

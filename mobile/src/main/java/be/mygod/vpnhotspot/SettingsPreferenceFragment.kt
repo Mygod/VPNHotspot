@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
@@ -10,6 +11,8 @@ import android.widget.Toast
 import be.mygod.vpnhotspot.net.Routing
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.IOException
+import java.io.PrintWriter
+import java.io.StringWriter
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -24,16 +27,27 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
-            try {
-                val intent = Intent(Intent.ACTION_SEND)
-                        .setType("text/plain")
-                        .putExtra(Intent.EXTRA_TEXT, Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
-                                .inputStream.bufferedReader().readText())
-                startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
-            } catch (e: IOException) {
+            fun handle(e: IOException): String {
                 Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-                e.printStackTrace()
+                val writer = StringWriter()
+                e.printStackTrace(PrintWriter(writer))
+                return writer.toString()
             }
+            val logcat = try {
+                Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.bufferedReader().readText()
+            } catch (e: IOException) {
+                handle(e)
+            }
+            val debug = try {
+                Routing.dump()
+            } catch (e: IOException) {
+                handle(e)
+            }
+            val intent = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT,
+                            "${BuildConfig.VERSION_CODE} running on ${Build.VERSION.SDK_INT}\n$logcat\n$debug")
+            startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {

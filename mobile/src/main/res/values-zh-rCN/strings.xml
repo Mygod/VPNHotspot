@@ -45,7 +45,7 @@
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>
-    <string name="settings_misc_logcat">导出日志</string>
+    <string name="settings_misc_logcat">导出调试信息</string>
     <string name="settings_misc_logcat_summary">这种非常有用哇</string>
     <string name="settings_misc_source">查看 GitHub 上的源码</string>
     <string name="settings_misc_source_summary">Star, 提交 issues, 合作</string>
@@ -63,5 +63,5 @@
 
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="root_unavailable">似乎没有 root</string>
-    <string name="noisy_su_failure">发生异常，详情请查看日志。</string>
+    <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
 </resources>
