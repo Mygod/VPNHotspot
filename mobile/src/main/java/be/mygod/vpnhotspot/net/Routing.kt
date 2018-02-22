@@ -31,15 +31,18 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
                 "quiet while ip rule del priority 17900; do done")
 
         fun dump() = loggerSu("""
-                |echo iptables
-                |sh -c 'exec -a iptables-save iptables'
-                |echo
-                |echo iptables -t nat
-                |sh -c 'exec -a iptables-save iptables -t nat'
-                |echo
-                |echo ip rule
-                |ip rule
-            """.trimMargin())
+            |echo logcat-su
+            |logcat -d
+            |echo
+            |echo iptables
+            |sh -c 'exec -a iptables-save iptables'
+            |echo
+            |echo iptables -t nat
+            |sh -c 'exec -a iptables-save iptables -t nat'
+            |echo
+            |echo ip rule
+            |ip rule
+        """.trimMargin())
     }
 
     class InterfaceNotFoundException : IOException() {
