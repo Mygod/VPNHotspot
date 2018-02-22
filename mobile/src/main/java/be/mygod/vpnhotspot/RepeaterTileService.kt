@@ -53,6 +53,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
     }
 
     private fun updateTile() {
+        val qsTile = qsTile ?: return
         when (binder?.service?.status) {
             RepeaterService.Status.IDLE -> {
                 qsTile.state = Tile.STATE_INACTIVE
