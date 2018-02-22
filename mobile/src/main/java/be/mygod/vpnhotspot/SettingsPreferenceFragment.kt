@@ -6,13 +6,13 @@ import android.os.Build
 import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
+import android.support.v4.content.FileProvider
 import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.net.Routing
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
+import java.io.File
 import java.io.IOException
-import java.io.PrintWriter
-import java.io.StringWriter
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -27,27 +27,31 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
-            fun handle(e: IOException): String {
-                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
-                val writer = StringWriter()
-                e.printStackTrace(PrintWriter(writer))
-                return writer.toString()
+            val activity = activity!!
+            val logDir = File(activity.cacheDir, "log")
+            logDir.mkdir()
+            val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
+            logFile.printWriter().use { writer ->
+                writer.write("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n\n")
+                try {
+                    writer.write(Runtime.getRuntime().exec(arrayOf("logcat", "-d"))
+                            .inputStream.bufferedReader().readText())
+                } catch (e: IOException) {
+                    e.printStackTrace(writer)
+                }
+                writer.write("\n")
+                try {
+                    writer.write(Routing.dump())
+                } catch (e: IOException) {
+                    e.printStackTrace(writer)
+                }
             }
-            val logcat = try {
-                Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.bufferedReader().readText()
-            } catch (e: IOException) {
-                handle(e)
-            }
-            val debug = try {
-                Routing.dump()
-            } catch (e: IOException) {
-                handle(e)
-            }
-            val intent = Intent(Intent.ACTION_SEND)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_TEXT,
-                            "${BuildConfig.VERSION_CODE} running on ${Build.VERSION.SDK_INT}\n$logcat\n$debug")
-            startActivity(Intent.createChooser(intent, getString(R.string.abc_shareactionprovider_share_with)))
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
+                    .setType("text/x-log")
+                    .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    .putExtra(Intent.EXTRA_STREAM,
+                            FileProvider.getUriForFile(activity, "be.mygod.vpnhotspot.log", logFile)),
+                    getString(R.string.abc_shareactionprovider_share_with)))
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
