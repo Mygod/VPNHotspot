@@ -10,8 +10,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 27
         resConfigs "zh-rCN"
-        versionCode 8
-        versionName "1.1.0"
+        versionCode 9
+        versionName "1.1.1"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
