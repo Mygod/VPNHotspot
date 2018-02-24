@@ -43,6 +43,17 @@ fun NetworkInterface.formatAddresses() =
                 }))
                 .joinToString("\n")
 
+/**
+ * Wrapper for kotlin.concurrent.thread that silences uncaught exceptions.
+ */
+fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
+           contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
+    val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
+    thread.setUncaughtExceptionHandler { _, _ -> app.toast(R.string.noisy_su_failure) }
+    if (start) thread.start()
+    return thread
+}
+
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
 fun loggerSuStream(command: String): InputStream? {
@@ -55,11 +66,12 @@ fun loggerSuStream(command: String): InputStream? {
         e.printStackTrace()
         return null
     }
-    try {
+    thread("LoggerSU-error") {
         val err = process.errorStream.bufferedReader().readText()
-        if (err.isNotBlank()) Log.e(NOISYSU_TAG, err)
-    } catch (e: IOException) {
-        e.printStackTrace()
+        if (err.isNotBlank()) {
+            Log.e(NOISYSU_TAG, err)
+            app.toast(R.string.noisy_su_failure)
+        }
     }
     return process.inputStream
 }

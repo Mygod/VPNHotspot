@@ -5,6 +5,7 @@ import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.thread
 import java.io.InterruptedIOException
 
 class IpNeighbourMonitor private constructor() {
@@ -32,17 +33,6 @@ class IpNeighbourMonitor private constructor() {
             val process = monitor.monitor
             if (process != null) thread(TAG + "-killer") { process.destroy() }
         }
-
-        /**
-         * Wrapper for kotlin.concurrent.thread that silences uncaught exceptions.
-         */
-        private fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
-                           contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
-            val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
-            thread.setUncaughtExceptionHandler { _, _ -> app.toast(R.string.noisy_su_failure) }
-            if (start) thread.start()
-            return thread
-        }
     }
 
     interface Callback {
@@ -56,13 +46,13 @@ class IpNeighbourMonitor private constructor() {
     private var monitor: Process? = null
 
     init {
-        thread(name = TAG + "-input") {
+        thread(TAG + "-input") {
             // monitor may get rejected by SELinux
             val monitor = ProcessBuilder("sh", "-c", "ip monitor neigh || su -c ip monitor neigh")
                     .redirectErrorStream(true)
                     .start()
             this.monitor = monitor
-            thread(name = TAG + "-error") {
+            thread(TAG + "-error") {
                 try {
                     monitor.errorStream.bufferedReader().forEachLine { Log.e(TAG, it) }
                 } catch (ignore: InterruptedIOException) { }
@@ -84,13 +74,18 @@ class IpNeighbourMonitor private constructor() {
         }
     }
 
-    fun flush() = thread(name = TAG + "-flush") {
+    fun flush() = thread(TAG + "-flush") {
         val process = ProcessBuilder("ip", "neigh")
                 .redirectErrorStream(true)
                 .start()
         process.waitFor()
-        val err = process.errorStream.bufferedReader().readText()
-        if (err.isNotBlank()) Log.e(TAG, err)
+        thread(TAG + "-flush-error") {
+            val err = process.errorStream.bufferedReader().readText()
+            if (err.isNotBlank()) {
+                Log.e(TAG, err)
+                app.toast(R.string.noisy_su_failure)
+            }
+        }
         process.inputStream.bufferedReader().useLines {
             synchronized(neighbours) {
                 neighbours.clear()
