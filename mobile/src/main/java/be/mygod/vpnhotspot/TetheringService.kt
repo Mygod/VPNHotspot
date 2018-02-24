@@ -8,6 +8,7 @@ import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.*
 import java.net.InetAddress
+import java.net.SocketException
 
 class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Callback {
     companion object {
@@ -48,7 +49,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
             val upstream = upstream
             if (upstream != null) {
                 var failed = false
-                for ((downstream, value) in routings) if (value == null) {
+                for ((downstream, value) in routings) if (value == null) try {
                     // system tethering already has working forwarding rules
                     // so it doesn't make sense to add additional forwarding rules
                     val routing = Routing(upstream, downstream).rule().forward().dnsRedirect(dns)
@@ -57,6 +58,9 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
                         routing.stop()
                         routings.remove(downstream)
                     }
+                } catch (e: SocketException) {
+                    e.printStackTrace()
+                    failed = true
                 }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {

@@ -29,6 +29,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 import java.net.NetworkInterface
+import java.net.SocketException
 import java.util.*
 
 class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, IpNeighbourMonitor.Callback {
@@ -59,7 +60,12 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val ssid @Bindable get() = binder?.service?.ssid ?: getText(R.string.repeater_inactive)
         val password @Bindable get() = binder?.service?.password ?: ""
         val addresses @Bindable get(): String {
-            return NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
+            return try {
+                NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
+            } catch (e: SocketException) {
+                e.printStackTrace()
+                ""
+            }
         }
 
         fun onStatusChanged() {

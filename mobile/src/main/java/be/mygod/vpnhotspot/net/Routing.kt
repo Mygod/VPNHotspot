@@ -6,11 +6,11 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.loggerSuStream
 import be.mygod.vpnhotspot.noisySu
-import java.io.IOException
 import java.io.InputStream
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.SocketException
 import java.util.*
 
 class Routing(val upstream: String?, val downstream: String, ownerAddress: InetAddress? = null) {
@@ -55,7 +55,7 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
         }
     }
 
-    class InterfaceNotFoundException : IOException() {
+    class InterfaceNotFoundException : SocketException() {
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
     }
 

@@ -19,6 +19,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 import java.net.NetworkInterface
+import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection {
     companion object {
@@ -84,7 +85,12 @@ class TetheringFragment : Fragment(), ServiceConnection {
         private val tethered = SortedList(TetheredInterface::class.java, TetheredInterfaceSorter)
 
         fun update(data: Set<String>) {
-            val lookup = NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
+            val lookup = try {
+                NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
+            } catch (e: SocketException) {
+                e.printStackTrace()
+                emptyMap<String, NetworkInterface>()
+            }
             tethered.clear()
             tethered.addAll(data.map { TetheredInterface(it, lookup) })
             notifyDataSetChanged()

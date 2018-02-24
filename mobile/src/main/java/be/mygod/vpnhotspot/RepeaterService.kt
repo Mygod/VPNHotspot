@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.VpnMonitor
 import java.net.InetAddress
+import java.net.SocketException
 import java.util.regex.Pattern
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback {
@@ -283,7 +284,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         receiverRegistered = true
         try {
             if (initRouting(upstream, downstream, owner, dns)) doStart(group)
-        } catch (e: Routing.InterfaceNotFoundException) {
+        } catch (e: SocketException) {
             startFailure(e.message, group)
             return
         }

@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import java.io.IOException
 import java.io.InputStream
 import java.net.NetworkInterface
+import java.net.SocketException
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
@@ -31,10 +32,15 @@ fun intentFilter(vararg actions: String): IntentFilter {
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
 
 fun NetworkInterface.formatAddresses() =
-        (this.interfaceAddresses.asSequence()
+        (interfaceAddresses.asSequence()
                 .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
                 .toList() +
-                listOfNotNull(this.hardwareAddress?.joinToString(":") { "%02x".format(it) }))
+                listOfNotNull(try {
+                    hardwareAddress?.joinToString(":") { "%02x".format(it) }
+                } catch (e: SocketException) {
+                    e.printStackTrace()
+                    null
+                }))
                 .joinToString("\n")
 
 private const val NOISYSU_TAG = "NoisySU"
