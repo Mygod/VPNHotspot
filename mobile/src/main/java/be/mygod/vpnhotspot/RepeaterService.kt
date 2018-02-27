@@ -281,7 +281,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         if (!info.groupFormed || !info.isGroupOwner) return
         val owner = info.groupOwnerAddress ?: return
         val downstream = group.`interface` ?: return
-        receiverRegistered = true
         try {
             if (initRouting(upstream, downstream, owner, dns)) doStart(group)
         } catch (e: SocketException) {
