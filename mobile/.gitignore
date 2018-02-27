@@ -1,4 +1,5 @@
 /build
+/debug
 /release
 
 # tests aren't ready yet
