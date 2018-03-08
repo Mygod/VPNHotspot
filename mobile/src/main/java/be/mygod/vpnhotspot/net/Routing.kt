@@ -26,9 +26,11 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
         fun clean() = noisySu(
                 "$IPTABLES -t nat -F PREROUTING",
                 "quiet while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done",
-                "quiet while $IPTABLES -t nat -D POSTROUTING -j MASQUERADE; do done",
                 "$IPTABLES -F vpnhotspot_fwd",
                 "$IPTABLES -X vpnhotspot_fwd",
+                "quiet while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done",
+                "$IPTABLES -t nat -F vpnhotspot_masquerade",
+                "$IPTABLES -t nat -X vpnhotspot_masquerade",
                 "quiet while ip rule del priority 17900; do done")
 
         fun dump(): InputStream? {
@@ -95,16 +97,30 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
             stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
         } else {
             // for not strict mode, allow downstream packets to be redirected to anywhere
-            // also enable unconditional NAT masquerade
+            // because we don't wanna keep track of default network changes
             startScript.add("$IPTABLES -A vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
             startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -j ACCEPT")
-            startScript.add("$IPTABLES -t nat -A POSTROUTING -j MASQUERADE")
             stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
             stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -j ACCEPT")
-            stopScript.addFirst("$IPTABLES -t nat -D POSTROUTING -j MASQUERADE")
         }
         startScript.add("$IPTABLES -I FORWARD -j vpnhotspot_fwd")
         stopScript.addFirst("$IPTABLES -D FORWARD -j vpnhotspot_fwd")
+        return this
+    }
+
+    fun masquerade(strict: Boolean = true): Routing {
+        startScript.add("quiet $IPTABLES -t nat -N vpnhotspot_masquerade 2>/dev/null")
+        // note: specifying -i wouldn't work for POSTROUTING
+        if (strict) {
+            check(upstream != null)
+            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -o $upstream -j MASQUERADE")
+            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -o $upstream -j MASQUERADE")
+        } else {
+            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -j MASQUERADE")
+            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -j MASQUERADE")
+        }
+        startScript.add("$IPTABLES -t nat -I POSTROUTING -j vpnhotspot_masquerade")
+        stopScript.addFirst("$IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade")
         return this
     }
 

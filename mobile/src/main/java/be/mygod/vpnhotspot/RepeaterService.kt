@@ -296,7 +296,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         val strict = app.pref.getBoolean("service.repeater.strict", false)
         return if (strict && upstream == null ||    // in this case, nothing to be done
                 routing.ipForward()                 // Wi-Fi direct doesn't enable ip_forward
-                        .rule().forward(strict).dnsRedirect(dns).start()) true else {
+                        .rule().forward(strict).masquerade(strict).dnsRedirect(dns).start()) true else {
             routing.stop()
             Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             false
