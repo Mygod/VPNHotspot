@@ -168,8 +168,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
 
     override fun onCreate() {
         super.onCreate()
-        p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
-        onChannelDisconnected()
+        try {
+            p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+            onChannelDisconnected()
+        } catch (exc: TypeCastException) {
+            exc.printStackTrace()
+        }
     }
 
     override fun onBind(intent: Intent) = binder
