@@ -16,6 +16,8 @@ import android.support.v4.content.ContextCompat
 import android.support.v4.content.LocalBroadcastManager
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatDialog
+import android.support.v7.recyclerview.extensions.ListAdapter
+import android.support.v7.util.DiffUtil
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
@@ -101,10 +103,28 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
             }, ip)
         }
+
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+
+            other as Client
+
+            if (iface != other.iface) return false
+            if (mac != other.mac) return false
+            if (ip != other.ip) return false
+
+            return true
+        }
+        override fun hashCode() = Objects.hash(iface, mac, ip)
+    }
+    private object ClientDiffCallback : DiffUtil.ItemCallback<Client>() {
+        override fun areItemsTheSame(oldItem: Client, newItem: Client) =
+                oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
+        override fun areContentsTheSame(oldItem: Client, newItem: Client) = oldItem == newItem
     }
     private class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
-    private inner class ClientAdapter : RecyclerView.Adapter<ClientViewHolder>() {
-        private val clients = ArrayList<Client>()
+    private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(ClientDiffCallback) {
         var p2p: Collection<WifiP2pDevice> = emptyList()
         var neighbours = emptyList<IpNeighbour>()
 
@@ -120,10 +140,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 }
                 client.ip += Pair(neighbour.ip, neighbour.state)
             }
-            clients.clear()
-            clients.addAll(p2p.values)
-            clients.sortWith(compareBy<Client> { it.iface }.thenBy { it.mac })
-            notifyDataSetChanged()  // recreate everything
+            submitList(p2p.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.mac }))
             binding.swipeRefresher.isRefreshing = false
         }
 
@@ -131,11 +148,9 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context)))
 
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
-            holder.binding.client = clients[position]
+            holder.binding.client = getItem(position)
             holder.binding.executePendingBindings()
         }
-
-        override fun getItemCount() = clients.size
     }
 
     private lateinit var binding: FragmentRepeaterBinding
@@ -153,9 +168,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_repeater, container, false)
         binding.data = data
         binding.clients.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
-        val animator = DefaultItemAnimator()
-        animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
-        binding.clients.itemAnimator = animator
+        binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
         binding.swipeRefresher.setColorSchemeResources(R.color.colorAccent)
         binding.swipeRefresher.setOnRefreshListener {

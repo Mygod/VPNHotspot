@@ -4,8 +4,8 @@ buildscript {
     ext {
         androidPluginVersion = '3.0.1'
         kotlinVersion = '1.2.21'
-        supportLibraryVersion = '27.0.2'
-        takisoftFixVersion = '27.0.2.0'
+        supportLibraryVersion = '27.1.0'
+        takisoftFixVersion = '27.1.0.0'
     }
     repositories {
         google()

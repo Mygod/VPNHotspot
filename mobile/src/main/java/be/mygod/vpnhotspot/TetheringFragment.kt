@@ -7,7 +7,8 @@ import android.os.Bundle
 import android.os.IBinder
 import android.support.v4.app.Fragment
 import android.support.v4.content.ContextCompat
-import android.support.v7.util.SortedList
+import android.support.v7.recyclerview.extensions.ListAdapter
+import android.support.v7.util.DiffUtil
 import android.support.v7.widget.DefaultItemAnimator
 import android.support.v7.widget.LinearLayoutManager
 import android.support.v7.widget.RecyclerView
@@ -20,28 +21,13 @@ import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
 import be.mygod.vpnhotspot.net.TetherType
 import java.net.NetworkInterface
 import java.net.SocketException
+import java.util.*
 
 class TetheringFragment : Fragment(), ServiceConnection {
     companion object {
         private const val VIEW_TYPE_INTERFACE = 0
         private const val VIEW_TYPE_MANAGE = 1
     }
-
-    private abstract class BaseSorter<T> : SortedList.Callback<T>() {
-        override fun onInserted(position: Int, count: Int) { }
-        override fun areContentsTheSame(oldItem: T?, newItem: T?): Boolean = oldItem == newItem
-        override fun onMoved(fromPosition: Int, toPosition: Int) { }
-        override fun onChanged(position: Int, count: Int) { }
-        override fun onRemoved(position: Int, count: Int) { }
-        override fun areItemsTheSame(item1: T?, item2: T?): Boolean = item1 == item2
-        override fun compare(o1: T?, o2: T?): Int =
-                if (o1 == null) if (o2 == null) 0 else 1 else if (o2 == null) -1 else compareNonNull(o1, o2)
-        abstract fun compareNonNull(o1: T, o2: T): Int
-    }
-    private open class DefaultSorter<T : Comparable<T>> : BaseSorter<T>() {
-        override fun compareNonNull(o1: T, o2: T): Int = o1.compareTo(o2)
-    }
-    private object TetheredInterfaceSorter : DefaultSorter<TetheredInterface>()
 
     inner class Data(val iface: TetheredInterface) : BaseObservable() {
         val icon: Int get() = TetherType.ofInterface(iface.name).icon
@@ -80,10 +66,24 @@ class TetheringFragment : Fragment(), ServiceConnection {
         val addresses = lookup[name]?.formatAddresses() ?: ""
 
         override fun compareTo(other: TetheredInterface) = name.compareTo(other.name)
-    }
-    inner class TetheringAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
-        private val tethered = SortedList(TetheredInterface::class.java, TetheredInterfaceSorter)
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (javaClass != other?.javaClass) return false
+            other as TetheredInterface
+            if (name != other.name) return false
+            if (addresses != other.addresses) return false
+            return true
+        }
+        override fun hashCode(): Int = Objects.hash(name, addresses)
 
+        object DiffCallback : DiffUtil.ItemCallback<TetheredInterface>() {
+            override fun areItemsTheSame(oldItem: TetheredInterface, newItem: TetheredInterface) =
+                    oldItem.name == newItem.name
+            override fun areContentsTheSame(oldItem: TetheredInterface, newItem: TetheredInterface) = oldItem == newItem
+        }
+    }
+    inner class TetheringAdapter :
+            ListAdapter<TetheredInterface, RecyclerView.ViewHolder>(TetheredInterface.DiffCallback) {
         fun update(data: Set<String>) {
             val lookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
@@ -91,14 +91,12 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 e.printStackTrace()
                 emptyMap<String, NetworkInterface>()
             }
-            tethered.clear()
-            tethered.addAll(data.map { TetheredInterface(it, lookup) })
-            notifyDataSetChanged()
+            submitList(data.map { TetheredInterface(it, lookup) }.sorted())
         }
 
-        override fun getItemCount() = tethered.size() + 1
+        override fun getItemCount() = super.getItemCount() + 1
         override fun getItemViewType(position: Int) =
-                if (position == tethered.size()) VIEW_TYPE_MANAGE else VIEW_TYPE_INTERFACE
+                if (position == super.getItemCount()) VIEW_TYPE_MANAGE else VIEW_TYPE_INTERFACE
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val inflater = LayoutInflater.from(parent.context)
             return when (viewType) {
@@ -109,7 +107,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
         }
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
             when (holder) {
-                is InterfaceViewHolder -> holder.binding.data = Data(tethered[position])
+                is InterfaceViewHolder -> holder.binding.data = Data(getItem(position))
             }
         }
     }
@@ -124,9 +122,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
-        val animator = DefaultItemAnimator()
-        animator.supportsChangeAnimations = false   // prevent fading-in/out when rebinding
-        binding.interfaces.itemAnimator = animator
+        binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
         return binding.root
     }
