@@ -29,12 +29,20 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
      * Obtaining ifname in onLost doesn't work so we need to cache it in onAvailable.
      */
     private val available = HashMap<Network, String>()
+    private var currentNetwork: Network? = null
     override fun onAvailable(network: Network) {
         val properties = manager.getLinkProperties(network)
         val ifname = properties?.interfaceName ?: return
         synchronized(this) {
             if (available.put(network, ifname) != null) return
             debugLog(TAG, "onAvailable: $ifname, ${properties.dnsServers.joinToString()}")
+            val old = currentNetwork
+            if (old != null) {
+                val name = available[old]!!
+                debugLog(TAG, "Assuming old VPN interface $name is dying")
+                callbacks.forEach { it.onLost(name) }
+            }
+            currentNetwork = network
             callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
         }
     }
@@ -42,7 +50,14 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     override fun onLost(network: Network) = synchronized(this) {
         val ifname = available.remove(network) ?: return
         debugLog(TAG, "onLost: $ifname")
+        if (currentNetwork != network) return
+        val next = available.entries.firstOrNull()
+        currentNetwork = next?.key
         callbacks.forEach { it.onLost(ifname) }
+        if (next == null) return
+        debugLog(TAG, "Switching to ${next.value} as VPN interface")
+        val properties = manager.getLinkProperties(next.key)
+        callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
     }
 
     fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
