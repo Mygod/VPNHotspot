@@ -1,9 +1,11 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 
+apply plugin: 'com.github.ben-manes.versions'
+
 buildscript {
     ext {
         androidPluginVersion = '3.0.1'
-        kotlinVersion = '1.2.21'
+        kotlinVersion = '1.2.30'
         supportLibraryVersion = '27.1.0'
         takisoftFixVersion = '27.1.0.0'
     }
@@ -13,6 +15,7 @@ buildscript {
     }
     dependencies {
         classpath "com.android.tools.build:gradle:$androidPluginVersion"
+        classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
     }
 }
