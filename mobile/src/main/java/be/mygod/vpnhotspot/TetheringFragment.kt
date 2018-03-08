@@ -129,13 +129,13 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     override fun onStart() {
         super.onStart()
-        val context = context!!
+        val context = requireContext()
         context.registerReceiver(receiver, intentFilter(ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED))
         context.bindService(Intent(context, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
     }
 
     override fun onStop() {
-        val context = context!!
+        val context = requireContext()
         context.unbindService(this)
         context.unregisterReceiver(receiver)
         super.onStop()

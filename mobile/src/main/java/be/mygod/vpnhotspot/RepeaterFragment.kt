@@ -51,7 +51,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 when (binder?.service?.status) {
                     RepeaterService.Status.IDLE ->
                         if (value) {
-                            val context = context!!
+                            val context = requireContext()
                             ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
                         }
                     RepeaterService.Status.ACTIVE -> if (!value) binder.shutdown()
@@ -182,14 +182,14 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
     override fun onStart() {
         super.onStart()
-        val context = context!!
+        val context = requireContext()
         context.bindService(Intent(context, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         IpNeighbourMonitor.registerCallback(this)
         context.registerReceiver(receiver, intentFilter(ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED))
     }
 
     override fun onStop() {
-        val context = context!!
+        val context = requireContext()
         context.unregisterReceiver(receiver)
         IpNeighbourMonitor.unregisterCallback(this)
         onServiceDisconnected(null)
@@ -202,20 +202,20 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         binder.data = data
         this.binder = binder
         data.onStatusChanged()
-        LocalBroadcastManager.getInstance(context!!)
+        LocalBroadcastManager.getInstance(requireContext())
                 .registerReceiver(data.statusListener, intentFilter(RepeaterService.ACTION_STATUS_CHANGED))
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
         binder?.data = null
         binder = null
-        LocalBroadcastManager.getInstance(context!!).unregisterReceiver(data.statusListener)
+        LocalBroadcastManager.getInstance(requireContext()).unregisterReceiver(data.statusListener)
         data.onStatusChanged()
     }
 
     override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
         R.id.wps -> if (binder?.active == true) {
-            val dialog = AlertDialog.Builder(context!!)
+            val dialog = AlertDialog.Builder(requireContext())
                     .setTitle(R.string.repeater_wps_dialog_title)
                     .setView(R.layout.dialog_wps)
                     .setPositiveButton(android.R.string.ok, { dialog, _ -> binder?.startWps((dialog as AppCompatDialog)
@@ -228,7 +228,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             true
         } else false
         R.id.resetGroup -> {
-            AlertDialog.Builder(context!!)
+            AlertDialog.Builder(requireContext())
                     .setTitle(R.string.repeater_reset_credentials)
                     .setMessage(getString(R.string.repeater_reset_credentials_dialog_message))
                     .setPositiveButton(R.string.repeater_reset_credentials_dialog_reset,

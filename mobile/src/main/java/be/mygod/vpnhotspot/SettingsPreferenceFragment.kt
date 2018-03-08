@@ -17,19 +17,24 @@ import java.io.PrintWriter
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
-        CustomTabsIntent.Builder().setToolbarColor(ContextCompat.getColor(activity!!, R.color.colorPrimary)).build()
+        CustomTabsIntent.Builder()
+                .setToolbarColor(ContextCompat.getColor(requireContext(), R.color.colorPrimary))
+                .build()
     }
 
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference("service.clean").setOnPreferenceClickListener {
-            if (Routing.clean() == null) Toast.makeText(context!!, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
-            else LocalBroadcastManager.getInstance(context!!).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
+            if (Routing.clean() == null) {
+                Toast.makeText(requireContext(), R.string.root_unavailable, Toast.LENGTH_SHORT).show()
+            } else {
+                LocalBroadcastManager.getInstance(requireContext()).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
+            }
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
-            val activity = activity!!
-            val logDir = File(activity.cacheDir, "log")
+            val context = requireContext()
+            val logDir = File(context.cacheDir, "log")
             logDir.mkdir()
             val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
             logFile.outputStream().use { out ->
@@ -55,7 +60,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                     .setType("text/x-log")
                     .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     .putExtra(Intent.EXTRA_STREAM,
-                            FileProvider.getUriForFile(activity, "be.mygod.vpnhotspot.log", logFile)),
+                            FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
                     getString(R.string.abc_shareactionprovider_share_with)))
             true
         }
