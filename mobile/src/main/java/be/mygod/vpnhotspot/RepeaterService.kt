@@ -198,7 +198,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     }
 
     /**
-     * startService 2nd stop, also called when VPN re-established
+     * startService 2nd stop
      */
     private fun setup(ifname: String? = null, dns: List<InetAddress> = emptyList()) {
         val matcher = patternNetworkInfo.matcher(loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
@@ -343,6 +343,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
 
     override fun onDestroy() {
         if (status != Status.IDLE) binder.shutdown()
+        clean() // force clean to prevent leakage
         super.onDestroy()
     }
 }
