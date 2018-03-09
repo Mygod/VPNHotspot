@@ -84,5 +84,6 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
         manager.unregisterNetworkCallback(this)
         registered = false
         available.clear()
+        currentNetwork = null
     }
 }
