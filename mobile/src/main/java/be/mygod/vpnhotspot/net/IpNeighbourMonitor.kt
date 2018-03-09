@@ -31,7 +31,7 @@ class IpNeighbourMonitor private constructor() {
             val monitor = instance ?: return
             instance = null
             val process = monitor.monitor
-            if (process != null) thread(TAG + "-killer") { process.destroy() }
+            if (process != null) thread("$TAG-killer") { process.destroy() }
         }
     }
 
@@ -46,13 +46,13 @@ class IpNeighbourMonitor private constructor() {
     private var monitor: Process? = null
 
     init {
-        thread(TAG + "-input") {
+        thread("$TAG-input") {
             // monitor may get rejected by SELinux
-            val monitor = ProcessBuilder("sh", "-c", "ip monitor neigh || su -c ip monitor neigh")
+            val monitor = ProcessBuilder("sh", "-c", "ip monitor neigh || su -c 'ip monitor neigh'")
                     .redirectErrorStream(true)
                     .start()
             this.monitor = monitor
-            thread(TAG + "-error") {
+            thread("$TAG-error") {
                 try {
                     monitor.errorStream.bufferedReader().forEachLine { Log.e(TAG, it) }
                 } catch (ignore: InterruptedIOException) { }
@@ -74,12 +74,12 @@ class IpNeighbourMonitor private constructor() {
         }
     }
 
-    fun flush() = thread(TAG + "-flush") {
+    fun flush() = thread("$TAG-flush") {
         val process = ProcessBuilder("ip", "neigh")
                 .redirectErrorStream(true)
                 .start()
         process.waitFor()
-        thread(TAG + "-flush-error") {
+        thread("$TAG-flush-error") {
             val err = process.errorStream.bufferedReader().readText()
             if (err.isNotBlank()) {
                 Log.e(TAG, err)
