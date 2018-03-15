@@ -272,28 +272,20 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
      * startService 3rd stop (if a group isn't already available), also called when connection changed
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
-        when {
-            routing == null -> onGroupCreated(info, group)
-            group.isGroupOwner -> showNotification(group)
-            else -> {   // P2P shutdown
-                clean()
-                return
-            }
-        }
-        this.group = group
-        binder.data?.onGroupChanged(group)
         debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
-    }
-    private fun onGroupCreated(info: WifiP2pInfo, group: WifiP2pGroup) {
-        if (!info.groupFormed || !info.isGroupOwner) return
-        val owner = info.groupOwnerAddress ?: return
-        val downstream = group.`interface` ?: return
-        try {
-            if (initRouting(upstream, downstream, owner, dns)) doStart(group)
+        if (!info.groupFormed || !info.isGroupOwner || !group.isGroupOwner) {
+            if (routing != null) clean()    // P2P shutdown
+            return
+        }
+        if (routing == null) try {
+            if (initRouting(upstream, group.`interface` ?: return, info.groupOwnerAddress ?: return, dns))
+                doStart(group)
         } catch (e: SocketException) {
             startFailure(e.message, group)
             return
         }
+        this.group = group
+        binder.data?.onGroupChanged(group)
     }
     private fun initRouting(upstream: String?, downstream: String,
                             owner: InetAddress, dns: List<InetAddress>): Boolean {
