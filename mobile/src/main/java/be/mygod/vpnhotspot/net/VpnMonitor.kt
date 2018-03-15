@@ -51,13 +51,19 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
         val ifname = available.remove(network) ?: return
         debugLog(TAG, "onLost: $ifname")
         if (currentNetwork != network) return
-        val next = available.entries.firstOrNull()
-        currentNetwork = next?.key
         callbacks.forEach { it.onLost(ifname) }
-        if (next == null) return
-        debugLog(TAG, "Switching to ${next.value} as VPN interface")
-        val properties = manager.getLinkProperties(next.key)
-        callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
+        while (available.isNotEmpty()) {
+            val next = available.entries.first()
+            currentNetwork = next.key
+            val properties = manager.getLinkProperties(next.key)
+            if (properties != null) {
+                debugLog(TAG, "Switching to ${next.value} as VPN interface")
+                callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
+                return
+            }
+            available.remove(next.key)
+        }
+        currentNetwork = null
     }
 
     fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
