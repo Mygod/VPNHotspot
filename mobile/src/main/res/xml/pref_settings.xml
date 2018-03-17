@@ -26,9 +26,5 @@
             android:key="misc.source"
             android:title="@string/settings_misc_source"
             android:summary="@string/settings_misc_source_summary"/>
-        <Preference
-            android:key="misc.donate"
-            android:title="@string/settings_misc_donate"
-            android:summary="@string/settings_misc_donate_summary"/>
     </PreferenceCategory>
 </PreferenceScreen>

@@ -49,8 +49,6 @@
     <string name="settings_misc_logcat_summary">这种非常有用哇</string>
     <string name="settings_misc_source">查看 GitHub 上的源码</string>
     <string name="settings_misc_source_summary">Star, 提交 issues, 合作</string>
-    <string name="settings_misc_donate">捐款</string>
-    <string name="settings_misc_donate_summary">请给我钱</string>
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>

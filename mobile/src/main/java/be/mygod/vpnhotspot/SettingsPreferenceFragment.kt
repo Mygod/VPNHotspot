@@ -68,9 +68,5 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             customTabsIntent.launchUrl(activity, Uri.parse("https://github.com/Mygod/VPNHotspot"))
             true
         }
-        findPreference("misc.donate").setOnPreferenceClickListener {
-            customTabsIntent.launchUrl(activity, Uri.parse("https://mygod.be/donate/"))
-            true
-        }
     }
 }
