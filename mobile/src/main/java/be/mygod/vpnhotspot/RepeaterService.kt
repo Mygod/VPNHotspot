@@ -283,7 +283,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         } catch (e: SocketException) {
             startFailure(e.message, group)
             return
-        }
+        } else showNotification(group)
         this.group = group
         binder.data?.onGroupChanged(group)
     }
