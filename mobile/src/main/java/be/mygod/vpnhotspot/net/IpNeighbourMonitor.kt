@@ -7,8 +7,11 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.thread
 import java.io.InterruptedIOException
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
-class IpNeighbourMonitor private constructor() {
+class IpNeighbourMonitor private constructor() : Runnable {
     companion object {
         private const val TAG = "IpNeighbourMonitor"
         private val callbacks = HashSet<Callback>()
@@ -28,10 +31,8 @@ class IpNeighbourMonitor private constructor() {
         }
         fun unregisterCallback(callback: Callback) {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return
-            val monitor = instance ?: return
+            instance?.destroy()
             instance = null
-            val process = monitor.monitor
-            if (process != null) thread("$TAG-killer") { process.destroy() }
         }
     }
 
@@ -44,6 +45,7 @@ class IpNeighbourMonitor private constructor() {
     private var updatePosted = false
     val neighbours = HashMap<String, IpNeighbour>()
     private var monitor: Process? = null
+    private var pool: ScheduledExecutorService? = null
 
     init {
         thread("$TAG-input") {
@@ -69,12 +71,18 @@ class IpNeighbourMonitor private constructor() {
                     }
                 }
                 monitor.waitFor()
-                if (monitor.exitValue() != 0) app.toast(R.string.noisy_su_failure)
             } catch (ignore: InterruptedIOException) { }
+            if (monitor.exitValue() == 0) return@thread
+            Log.w(TAG, "Failed to set up monitor, switching to polling")
+            val pool = Executors.newScheduledThreadPool(1)
+            pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
+            this.pool = pool
         }
     }
 
-    fun flush() = thread("$TAG-flush") {
+    fun flush() = thread("$TAG-flush") { run() }
+
+    override fun run() {
         val process = ProcessBuilder("ip", "neigh")
                 .redirectErrorStream(true)
                 .start()
@@ -109,5 +117,11 @@ class IpNeighbourMonitor private constructor() {
             for (callback in callbacks) callback.postIpNeighbourAvailable()
         }
         updatePosted = true
+    }
+
+    fun destroy() {
+        val monitor = monitor
+        if (monitor != null) thread("$TAG-killer") { monitor.destroy() }
+        pool?.shutdown()
     }
 }
