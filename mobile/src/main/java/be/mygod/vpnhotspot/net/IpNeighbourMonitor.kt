@@ -71,12 +71,12 @@ class IpNeighbourMonitor private constructor() : Runnable {
                     }
                 }
                 monitor.waitFor()
+                if (monitor.exitValue() == 0) return@thread
+                Log.w(TAG, "Failed to set up monitor, switching to polling")
+                val pool = Executors.newScheduledThreadPool(1)
+                pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
+                this.pool = pool
             } catch (ignore: InterruptedIOException) { }
-            if (monitor.exitValue() == 0) return@thread
-            Log.w(TAG, "Failed to set up monitor, switching to polling")
-            val pool = Executors.newScheduledThreadPool(1)
-            pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
-            this.pool = pool
         }
     }
 
