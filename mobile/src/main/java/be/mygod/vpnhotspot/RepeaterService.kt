@@ -136,10 +136,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
-            App.ACTION_CLEAN_ROUTINGS -> {
+            App.ACTION_CLEAN_ROUTINGS -> if (status == Status.ACTIVE) {
                 val routing = routing
                 routing!!.started = false
-                if (status == Status.ACTIVE) resetup(routing, upstream, dns)
+                resetup(routing, upstream, dns)
             }
         }
     }
