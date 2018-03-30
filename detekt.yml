@@ -1,4 +1,4 @@
-# https://github.com/arturbosch/detekt/blob/f59aa94c2571878e654d085db20d0a851c6f0239/detekt-cli/src/main/resources/default-detekt-config.yml
+# https://github.com/arturbosch/detekt/blob/RC6-4/detekt-cli/src/main/resources/default-detekt-config.yml
 
 comments:
   active: false
@@ -51,7 +51,7 @@ empty-blocks:
   active: true
   EmptyCatchBlock:
     active: true
-    allowedExceptionNameRegex: "^(ignore|expected).*"
+    allowedExceptionNameRegex: "^(_|ignore|expected).*"
   EmptyClassBlock:
     active: true
   EmptyDefaultConstructor:
@@ -66,6 +66,7 @@ empty-blocks:
     active: true
   EmptyFunctionBlock:
     active: true
+    ignoreOverriddenFunctions: false
   EmptyIfBlock:
     active: true
   EmptyInitBlock:
@@ -250,6 +251,8 @@ style:
     active: true
   NewLineAtEndOfFile:
     active: true
+  NoTabs:
+    active: true
   OptionalAbstractKeyword:
     active: true
   OptionalUnit:
@@ -271,6 +274,8 @@ style:
   ThrowsCount:
     active: true
     max: 2
+  TrailingWhitespace:
+    active: true
   UnnecessaryAbstractClass:
     active: true
   UnnecessaryInheritance:
