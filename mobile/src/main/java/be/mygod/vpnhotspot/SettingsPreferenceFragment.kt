@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -48,8 +49,30 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                     }
                     writer.write("\n")
                     writer.flush()
+                    val commands = StringBuilder()
+                    // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
+                    val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else {
+                        commands.appendln("ln -sf /system/bin/iptables ./iptables-save")
+                        "./iptables-save"
+                    }
+                    commands.append("""
+                        |echo logcat-su
+                        |logcat -d
+                        |echo
+                        |echo dumpsys ${Context.WIFI_P2P_SERVICE}
+                        |dumpsys ${Context.WIFI_P2P_SERVICE}
+                        |echo
+                        |echo iptables
+                        |$iptablesSave
+                        |echo
+                        |echo iptables -t nat
+                        |$iptablesSave -t nat
+                        |echo
+                        |echo ip rule
+                        |ip rule
+                    """.trimMargin())
                     try {
-                        Routing.dump()?.use { it.copyTo(out) }
+                        loggerSuStream(commands.toString())?.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         e.printStackTrace(writer)
                         writer.flush()
