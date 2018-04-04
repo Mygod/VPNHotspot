@@ -52,5 +52,7 @@ Without root, you can only:
 * View connected devices for system tethering and monitor them if your SELinux status is not enforcing
   (otherwise you can still do manual refreshes);
 * Play around with settings;
-* Alternatively you can use [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
-  (requires manual proxy configuration) for normal repeater tethering.
+* Alternatively you can use try these apps (requires manual proxy configuration or client apps) for normal repeater
+  tethering/bypassing tethering limits: (note: these apps are neither free nor open source)
+  * [PdaNet+](https://play.google.com/store/apps/details?id=com.pdanet)
+  * [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
