@@ -16,7 +16,7 @@ This app is useful for:
 * Connecting things that don't support VPN like Chromecasts behind corporate firewalls;
 * Setting up [gapps](https://support.google.com/pixelphone/answer/7158475) behind corporate firewalls;
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
-* Bypassing tethering limits. (theoretically but unverified, please let me know if it works)
+* Bypassing tethering limits.
 
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/)
 and [Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/).
