@@ -17,8 +17,9 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     }
 
     inner class TetheringBinder : Binder() {
-        val active get() = routings.keys
         var fragment: TetheringFragment? = null
+
+        fun isActive(iface: String): Boolean = synchronized(routings) { routings.keys.contains(iface) }
     }
 
     private val binder = TetheringBinder()
@@ -28,19 +29,21 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
     private var dns: List<InetAddress> = emptyList()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        when (intent.action) {
-            ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED -> {
-                val remove = routings.keys - ConnectivityManagerHelper.getTetheredIfaces(intent.extras)
-                if (remove.isEmpty()) return@broadcastReceiver
-                val failed = remove.any { routings.remove(it)?.stop() == false }
-                if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+        synchronized(routings) {
+            when (intent.action) {
+                ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED -> {
+                    val remove = routings.keys - ConnectivityManagerHelper.getTetheredIfaces(intent.extras)
+                    if (remove.isEmpty()) return@broadcastReceiver
+                    val failed = remove.any { routings.remove(it)?.stop() == false }
+                    if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+                }
+                App.ACTION_CLEAN_ROUTINGS -> for (iface in routings.keys) routings[iface] = null
             }
-            App.ACTION_CLEAN_ROUTINGS -> for (iface in routings.keys) routings[iface] = null
+            updateRoutingsLocked()
         }
-        updateRoutings()
     }
 
-    private fun updateRoutings() {
+    private fun updateRoutingsLocked() {
         if (routings.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
@@ -80,10 +83,12 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
 
     override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
         val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
-        if (iface != null) routings[iface] = null
-        if (routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop() == false)
-            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-        updateRoutings()
+        synchronized(routings) {
+            if (iface != null) routings[iface] = null
+            if (routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop() == false)
+                Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+            updateRoutingsLocked()
+        }
         return START_NOT_STICKY
     }
 
@@ -91,7 +96,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
         check(upstream == null || upstream == ifname)
         upstream = ifname
         this.dns = dns
-        updateRoutings()
+        synchronized(routings) { updateRoutingsLocked() }
     }
 
     override fun onLost(ifname: String) {
@@ -99,9 +104,11 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
         upstream = null
         this.dns = emptyList()
         var failed = false
-        for ((iface, routing) in routings) {
-            if (routing?.stop() == false) failed = true
-            routings[iface] = null
+        synchronized(routings) {
+            for ((iface, routing) in routings) {
+                if (routing?.stop() == false) failed = true
+                routings[iface] = null
+            }
         }
         if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
     }
@@ -116,7 +123,9 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
                     .distinctBy { it.lladdr }
                     .size
         }
-        ServiceNotification.startForeground(this, routings.keys.associate { Pair(it, sizeLookup[it] ?: 0) })
+        ServiceNotification.startForeground(this, synchronized(routings) {
+            routings.keys.associate { Pair(it, sizeLookup[it] ?: 0) }
+        })
     }
 
     override fun onDestroy() {

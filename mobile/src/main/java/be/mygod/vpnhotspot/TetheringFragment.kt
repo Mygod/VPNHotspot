@@ -31,7 +31,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     inner class Data(val iface: TetheredInterface) : BaseObservable() {
         val icon: Int get() = TetherType.ofInterface(iface.name).icon
-        val active = binder?.active?.contains(iface.name) == true
+        val active = binder?.isActive(iface.name) == true
     }
 
     private class InterfaceViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
