@@ -62,8 +62,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                         |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                         |dumpsys ${Context.WIFI_P2P_SERVICE}
                         |echo
-                        |echo iptables
-                        |$iptablesSave
+                        |echo iptables -t filter
+                        |$iptablesSave -t filter
                         |echo
                         |echo iptables -t nat
                         |$iptablesSave -t nat
