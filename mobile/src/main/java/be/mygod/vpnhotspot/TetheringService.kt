@@ -137,6 +137,7 @@ class TetheringService : Service(), VpnMonitor.Callback, IpNeighbourMonitor.Call
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
+            IpNeighbourMonitor.unregisterCallback(this)
             VpnMonitor.unregisterCallback(this)
             upstream = null
             receiverRegistered = false
