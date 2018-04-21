@@ -15,6 +15,7 @@ import android.widget.Toast
 class App : Application() {
     companion object {
         const val ACTION_CLEAN_ROUTINGS = "be.mygod.vpnhotspot.CLEAN_ROUTINGS"
+        private const val KEY_DNS = "service.dns"
 
         @SuppressLint("StaticFieldLeak")
         lateinit var app: App
@@ -27,6 +28,8 @@ class App : Application() {
             deviceContext = createDeviceProtectedStorageContext()
             deviceContext.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
         } else deviceContext = this
+        // workaround for support lib PreferenceDataStore bug
+        dns = dns
         ServiceNotification.updateNotificationChannels()
     }
 
@@ -39,6 +42,10 @@ class App : Application() {
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceContext) }
     val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
+
+    var dns: String
+        get() = pref.getString(KEY_DNS, "8.8.8.8")
+        set(value) = pref.edit().putString(KEY_DNS, value).apply()
 
     fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(this, resId, Toast.LENGTH_SHORT).show() }
 }

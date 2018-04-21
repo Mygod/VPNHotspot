@@ -10,6 +10,7 @@ import android.support.v4.content.ContextCompat
 import android.support.v4.content.FileProvider
 import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.File
@@ -24,6 +25,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     }
 
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
+        preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference("service.clean").setOnPreferenceClickListener {
             if (Routing.clean() == null) {

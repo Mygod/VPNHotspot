@@ -101,8 +101,7 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
 
     fun dnsRedirect(dnses: List<InetAddress>): Routing {
         val hostAddress = hostAddress.hostAddress
-        val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress
-                ?: app.pref.getString("service.dns", "8.8.8.8")
+        val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress ?: app.dns
         debugLog("Routing", "Using $dns from ($dnses)")
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
