@@ -28,7 +28,7 @@ import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
-import be.mygod.vpnhotspot.net.ConnectivityManagerHelper
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetherType
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -160,7 +160,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     private var p2pInterface: String? = null
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        tetheredInterfaces = ConnectivityManagerHelper.getTetheredIfaces(intent.extras).toSet()
+        tetheredInterfaces = TetheringManager.getTetheredIfaces(intent.extras).toSet()
         adapter.recreate()
     }
 
@@ -185,7 +185,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         val context = requireContext()
         context.bindService(Intent(context, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         IpNeighbourMonitor.registerCallback(this)
-        context.registerReceiver(receiver, intentFilter(ConnectivityManagerHelper.ACTION_TETHER_STATE_CHANGED))
+        context.registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
 
     override fun onStop() {

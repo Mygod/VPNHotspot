@@ -45,6 +45,11 @@ You'll have to use WPS for now to make the repeater switch to 2.4GHz.
 
 ### [IPv6 tethering?](https://github.com/Mygod/VPNHotspot/issues/6)
 
+### Missing `android.permission.MANAGE_USB` permission?
+
+Toggling USB tethering only works if you install this app as a system app (`/system/priv-app`).
+Alternatively, use the toggle in your system settings instead.
+
 ### No root?
 
 Without root, you can only:

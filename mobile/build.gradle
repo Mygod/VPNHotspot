@@ -34,6 +34,7 @@ dependencies {
     implementation "com.android.support:design:$supportLibraryVersion"
     implementation "com.android.support:preference-v14:$supportLibraryVersion"
     implementation 'com.android.support.constraint:constraint-layout:1.1.0'
+    implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.16.0'
     implementation "com.takisoft.fix:preference-v7:$takisoftFixVersion"
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jre7:$kotlinVersion"
     testImplementation 'junit:junit:4.12'

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <data>
+        <import type="be.mygod.vpnhotspot.TetheringFragment"/>
+        <variable
+            name="icon"
+            type="Integer"/>
+        <variable
+            name="title"
+            type="String"/>
+        <variable
+            name="tetherListener"
+            type="TetheringFragment.TetherListener"/>
+        <variable
+            name="type"
+            type="be.mygod.vpnhotspot.net.TetherType"/>
+    </data>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?android:attr/selectableItemBackground"
+        android:focusable="true"
+        android:padding="16dp"
+        android:paddingStart="56dp"
+        tools:ignore="RtlSymmetry">
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:src="@{safeUnbox(icon)}"
+            android:tint="?android:attr/textColorPrimary"
+            tools:src="@drawable/ic_device_network_wifi"/>
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="0dp"/>
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_gravity="center_vertical"
+            android:text="@{title}"
+            android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+            tools:text="@string/tethering_manage_wifi"/>
+
+        <Switch
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:checked="@{tetherListener.isStarted(type, tetherListener.enabledTypes)}"
+            android:clickable="false"
+            android:ellipsize="end"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:gravity="center_vertical"/>
+
+    </LinearLayout>
+</layout>

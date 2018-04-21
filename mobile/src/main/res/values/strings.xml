@@ -23,18 +23,30 @@
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
     <string name="repeater_inactive">Service inactive</string>
-    <string name="repeater_p2p_unavailable">Wi-Fi direct unavailable</string>
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
     <string name="repeater_remove_old_group_failure">Failed to remove old P2P group (reason: %s)</string>
 
     <string name="repeater_failure_reason_error">internal error</string>
-    <string name="repeater_failure_reason_p2p_unsupported">Wi-Fi direct unsupported</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct unsupported</string>
     <string name="repeater_failure_reason_busy">framework is busy</string>
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
     <string name="repeater_failure_reason_unknown">unknown #%d</string>
 
     <string name="tethering_manage">Manage…</string>
+    <!--
+     Values copied from:
+        * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
+        * https://android.googlesource.com/platform/packages/apps/Settings/+/e5ed810/res/values/strings.xml
+        * @string/usb_tethering_button_text
+        * @string/wifi_hotspot_checkbox_text
+        * @string/bluetooth_tether_checkbox_text
+      -->
+    <string name="tethering_manage_usb">USB tethering</string>
+    <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
+    <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>
+    <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
 
     <string name="connected_devices">Connected devices</string>
     <string name="connected_state_incomplete">%s (connecting)</string>

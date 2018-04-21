@@ -17,7 +17,6 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
 
     private const val TAG = "VpnMonitor"
 
-    private val manager = app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -31,7 +30,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     private val available = HashMap<Network, String>()
     private var currentNetwork: Network? = null
     override fun onAvailable(network: Network) {
-        val properties = manager.getLinkProperties(network)
+        val properties = app.connectivity.getLinkProperties(network)
         val ifname = properties?.interfaceName ?: return
         synchronized(this) {
             if (available.put(network, ifname) != null) return
@@ -55,7 +54,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
         while (available.isNotEmpty()) {
             val next = available.entries.first()
             currentNetwork = next.key
-            val properties = manager.getLinkProperties(next.key)
+            val properties = app.connectivity.getLinkProperties(next.key)
             if (properties != null) {
                 debugLog(TAG, "Switching to ${next.value} as VPN interface")
                 callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
@@ -70,16 +69,17 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
         if (synchronized(this) {
                     if (!callbacks.add(callback)) return
                     if (!registered) {
-                        manager.registerNetworkCallback(request, this)
+                        app.connectivity.registerNetworkCallback(request, this)
                         registered = true
-                        manager.allNetworks.all {
-                            val cap = manager.getNetworkCapabilities(it)
+                        app.connectivity.allNetworks.all {
+                            val cap = app.connectivity.getNetworkCapabilities(it)
                             !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
                                     cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                         }
                     } else if (available.isEmpty()) true else {
                         available.forEach {
-                            callback.onAvailable(it.value, manager.getLinkProperties(it.key)?.dnsServers ?: emptyList())
+                            callback.onAvailable(it.value,
+                                    app.connectivity.getLinkProperties(it.key)?.dnsServers ?: emptyList())
                         }
                         false
                     }
@@ -87,7 +87,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
     }
     fun unregisterCallback(callback: Callback) = synchronized(this) {
         if (!callbacks.remove(callback) || callbacks.isNotEmpty() || !registered) return
-        manager.unregisterNetworkCallback(this)
+        app.connectivity.unregisterNetworkCallback(this)
         registered = false
         available.clear()
         currentNetwork = null
