@@ -10,6 +10,9 @@
         android:name="android.hardware.touchscreen"
         android:required="false"/>
     <uses-feature
+        android:name="android.hardware.usb.accessory"
+        android:required="false"/>
+    <uses-feature
         android:name="android.hardware.wifi"
         android:required="false"/>
     <uses-feature
