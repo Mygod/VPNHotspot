@@ -25,6 +25,7 @@
     <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_old_group_failure">关闭 P2P 群组失败（原因：%s）</string>
+    <string name="repeater_set_oc_failure">设置运行频段失败（原因：%s）</string>
 
     <string name="repeater_failure_reason_error">内部异常</string>
     <string name="repeater_failure_reason_p2p_unsupported">设备不支持 Wi\u2011Fi 直连</string>
@@ -53,7 +54,9 @@
     <string name="connected_state_failed">%s (已断开)</string>
 
     <string name="settings_service">服务</string>
-    <string name="settings_service_repeater_strict">严格模式 (仅用于中继)</string>
+    <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段</string>
+    <string name="settings_service_repeater_oc_summary">"%s (0 = 自动, 1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
+    <string name="settings_service_repeater_strict">严格模式</string>
     <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>

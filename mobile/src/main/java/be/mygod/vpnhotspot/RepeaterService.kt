@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.NetworkInfo
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
@@ -21,7 +22,8 @@ import java.net.InetAddress
 import java.net.SocketException
 import java.util.regex.Pattern
 
-class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback {
+class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback,
+        SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         const val KEY_NET_ID = "netId"
@@ -39,6 +41,21 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
          *   https://android.googlesource.com/platform/frameworks/base.git/+/220871a/core/java/android/net/NetworkInfo.java#415
          */
         private val patternNetworkInfo = "^mNetworkInfo .* (isA|a)vailable: (true|false)".toPattern(Pattern.MULTILINE)
+
+        /**
+         * Available since Android 4.4.
+         *
+         * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.4_r1/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#994
+         * Implementation: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/d72d2f4/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHal.java#1159
+         */
+        private val setWifiP2pChannels by lazy {
+            WifiP2pManager::class.java.getDeclaredMethod("setWifiP2pChannels", WifiP2pManager.Channel::class.java,
+                    Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
+        }
+        private fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
+                                                      listener: WifiP2pManager.ActionListener) {
+            setWifiP2pChannels.invoke(this, c, lc, oc, listener)
+        }
 
         /**
          * Available since Android 4.3.
@@ -171,6 +188,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         try {
             p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
             onChannelDisconnected()
+            app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (exc: TypeCastException) {
             exc.printStackTrace()
         }
@@ -178,8 +196,28 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
 
     override fun onBind(intent: Intent) = binder
 
+    private fun setOperatingChannel(init: Boolean = false) {
+        val oc = app.operatingChannel
+        if (!init || oc > 0) {
+            // we don't care about listening channel
+            debugLog(TAG, "Setting OC to $oc")
+            p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
+                override fun onSuccess() { }
+                override fun onFailure(reason: Int) {
+                    Toast.makeText(this@RepeaterService, formatReason(R.string.repeater_set_oc_failure, reason),
+                            Toast.LENGTH_SHORT).show()
+                }
+            })
+        }
+    }
+
     override fun onChannelDisconnected() {
         channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
+        setOperatingChannel(true)
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        if (key == App.KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
     /**
@@ -339,6 +377,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     override fun onDestroy() {
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
+        app.pref.unregisterOnSharedPreferenceChangeListener(this)
         super.onDestroy()
     }
 }

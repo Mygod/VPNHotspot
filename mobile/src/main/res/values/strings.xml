@@ -27,6 +27,7 @@
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
     <string name="repeater_remove_old_group_failure">Failed to remove old P2P group (reason: %s)</string>
+    <string name="repeater_set_oc_failure">Failed to set operating channel (reason: %s)</string>
 
     <string name="repeater_failure_reason_error">internal error</string>
     <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct unsupported</string>
@@ -55,7 +56,9 @@
     <string name="connected_state_failed">%s (lost)</string>
 
     <string name="settings_service">Service</string>
-    <string name="settings_service_repeater_strict">Strict mode (repeater only)</string>
+    <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel</string>
+    <string name="settings_service_repeater_oc_summary">%s (0 = auto, 1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
+    <string name="settings_service_repeater_strict">Strict mode</string>
     <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>

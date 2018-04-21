@@ -39,10 +39,6 @@ SSID is hardcoded to `DIRECT-<random 2 char>-<your device name>` so the only thi
 system Wi-Fi direct settings. Password is hardcoded to a random 8 char string. Changing anything else requires replacing
 driver `wpa_supplicant` which we are not considering implementing.
 
-### Connect a 2.4GHz-only device to a 5GHz repeater?
-
-You'll have to use WPS for now to make the repeater switch to 2.4GHz.
-
 ### [IPv6 tethering?](https://github.com/Mygod/VPNHotspot/issues/6)
 
 ### Missing `android.permission.MANAGE_USB` permission?
