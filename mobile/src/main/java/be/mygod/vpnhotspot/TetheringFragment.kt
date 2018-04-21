@@ -104,7 +104,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 VIEW_TYPE_WIFI -> R.string.tethering_manage_wifi
                 VIEW_TYPE_WIFI_LEGACY -> R.string.tethering_manage_wifi_legacy
                 VIEW_TYPE_BLUETOOTH -> R.string.tethering_manage_bluetooth
-                else -> throw IllegalStateException()
+                else -> throw IllegalStateException("Unexpected view type")
             })
             binding.tetherListener = tetherListener
             binding.type = tetherType
@@ -155,7 +155,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
         override fun onTetheringStarted() = tetherListener.notifyPropertyChanged(BR.enabledTypes)
         override fun onTetheringFailed() {
             app.handler.post {
-                Toast.makeText(requireContext(), "Android system has failed to start tethering.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(), R.string.tethering_manage_failed, Toast.LENGTH_SHORT).show()
             }
         }
     }

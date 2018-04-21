@@ -47,6 +47,7 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
+    <string name="tethering_manage_failed">Android system has failed to start tethering.</string>
 
     <string name="connected_devices">Connected devices</string>
     <string name="connected_state_incomplete">%s (connecting)</string>

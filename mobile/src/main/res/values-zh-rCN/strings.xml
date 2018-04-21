@@ -45,6 +45,7 @@
     <string name="tethering_manage_wifi">WLAN 热点</string>
     <string name="tethering_manage_wifi_legacy">WLAN 热点 (旧 API)</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
+    <string name="tethering_manage_failed">Android 系统无法打开网络共享。</string>
 
     <string name="connected_devices">已连接设备</string>
     <string name="connected_state_incomplete">%s (正在连接)</string>
