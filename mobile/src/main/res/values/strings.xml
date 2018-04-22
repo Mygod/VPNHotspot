@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+ Values copied from:
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/e5ed810/res/values/strings.xml
+    * @string/wifi_tether_configure_ap_text
+    * @string/usb_tethering_button_text
+    * @string/wifi_hotspot_checkbox_text
+    * @string/bluetooth_tether_checkbox_text
+  -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
     <string name="title_repeater">Repeater</string>
     <string name="title_tethering">Tethering</string>
     <string name="title_settings">Settings</string>
 
-    <string name="repeater_ssid">Network name</string>
-    <string name="repeater_password">Password</string>
     <string name="repeater_addresses">Addresses</string>
     <string name="repeater_wps">WPS</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
@@ -15,10 +22,9 @@
         device.</string>
     <string name="repeater_wps_success_keypad">PIN registered.</string>
     <string name="repeater_wps_failure">Failed to start WPS (reason: %s)</string>
-    <string name="repeater_reset_credentials">Reset credentials</string>
-    <string name="repeater_reset_credentials_dialog_message">Android system will generate new network name and password
-        next time repeater is activated. This is irreversible.</string>
-    <string name="repeater_reset_credentials_dialog_reset">Reset</string>
+    <string name="repeater_configure">Configure Wi\u2011Fi repeater</string>
+    <string name="repeater_configure_failure">Valid config not found. Please start repeater first.</string>
+    <string name="repeater_reset_credentials">Reset</string>
     <string name="repeater_reset_credentials_success">Credentials reset.</string>
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
@@ -36,14 +42,6 @@
     <string name="repeater_failure_reason_unknown">unknown #%d</string>
 
     <string name="tethering_manage">Manage…</string>
-    <!--
-     Values copied from:
-        * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-        * https://android.googlesource.com/platform/packages/apps/Settings/+/e5ed810/res/values/strings.xml
-        * @string/usb_tethering_button_text
-        * @string/wifi_hotspot_checkbox_text
-        * @string/bluetooth_tether_checkbox_text
-      -->
     <string name="tethering_manage_usb">USB tethering</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>
@@ -82,4 +80,12 @@
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="root_unavailable">Root unavailable</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
+
+    <string name="wifi_ssid">Network name</string>
+    <string name="wifi_ssid_hint">Enter the SSID</string>
+    <string name="wifi_password">Password</string>
+    <string name="wifi_show_password">Show password</string>
+    <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
+    <string name="wifi_save">Save</string>
+    <string name="wifi_cancel">Cancel</string>
 </resources>

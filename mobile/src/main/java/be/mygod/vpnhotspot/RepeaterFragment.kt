@@ -1,12 +1,10 @@
 package be.mygod.vpnhotspot
 
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
+import android.content.*
 import android.databinding.BaseObservable
 import android.databinding.Bindable
 import android.databinding.DataBindingUtil
+import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
@@ -24,12 +22,15 @@ import android.support.v7.widget.RecyclerView
 import android.support.v7.widget.Toolbar
 import android.view.*
 import android.widget.EditText
+import android.widget.Toast
 import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
+import be.mygod.vpnhotspot.net.wifi.WifiApDialog
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.*
@@ -60,7 +61,6 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             }
 
         val ssid @Bindable get() = binder?.ssid ?: getText(R.string.repeater_inactive)
-        val password @Bindable get() = binder?.password ?: ""
         val addresses @Bindable get(): String {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -78,7 +78,6 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         }
         fun onGroupChanged(group: WifiP2pGroup?) {
             notifyPropertyChanged(BR.ssid)
-            notifyPropertyChanged(BR.password)
             p2pInterface = group?.`interface`
             notifyPropertyChanged(BR.addresses)
             adapter.p2p = group?.clientList ?: emptyList()
@@ -227,17 +226,44 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             dialog.show()
             true
         } else false
-        R.id.resetGroup -> {
-            AlertDialog.Builder(requireContext())
-                    .setTitle(R.string.repeater_reset_credentials)
-                    .setMessage(getString(R.string.repeater_reset_credentials_dialog_message))
-                    .setPositiveButton(R.string.repeater_reset_credentials_dialog_reset,
-                            { _, _ -> binder?.resetCredentials() })
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .show()
+        R.id.edit -> {
+            editConfigurations()
             true
         }
         else -> false
+    }
+
+    private fun editConfigurations() {
+        val binder = binder
+        val ssid = binder?.ssid
+        val context = requireContext()
+        if (ssid != null) {
+            val wifi = WifiConfiguration()
+            val conf = P2pSupplicantConfiguration()
+            wifi.SSID = ssid
+            wifi.preSharedKey = binder.password
+            if (wifi.preSharedKey == null || wifi.preSharedKey.length < 8) wifi.preSharedKey = conf.readPsk()
+            if (wifi.preSharedKey == null || wifi.preSharedKey.length < 8) {
+                Toast.makeText(context, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (wifi.preSharedKey != null && wifi.preSharedKey.length >= 8) {
+                var dialog: WifiApDialog? = null
+                dialog = WifiApDialog(context, DialogInterface.OnClickListener { _, which ->
+                    when (which) {
+                        DialogInterface.BUTTON_POSITIVE -> when (conf.update(dialog!!.config!!)) {
+                            true -> binder.requestGroupUpdate()
+                            false -> Toast.makeText(context, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
+                            null -> Toast.makeText(context, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
+                        }
+                        DialogInterface.BUTTON_NEUTRAL -> binder.resetCredentials()
+                    }
+                }, wifi)
+                dialog.show()
+                return
+            }
+        }
+        Toast.makeText(context, R.string.repeater_configure_failure, Toast.LENGTH_LONG).show()
     }
 
     override fun onIpNeighbourAvailable(neighbours: Map<String, IpNeighbour>) {

@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Source: https://android.googlesource.com/platform/packages/apps/Settings/+/6b4a31c/res/layout/wifi_ap_dialog.xml -->
+<!-- Copyright (C) 2010 The Android Open Source Project
+     Licensed under the Apache License, Version 2.0 (the "License");
+     you may not use this file except in compliance with the License.
+     You may obtain a copy of the License at
+          http://www.apache.org/licenses/LICENSE-2.0
+     Unless required by applicable law or agreed to in writing, software
+     distributed under the License is distributed on an "AS IS" BASIS,
+     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+     See the License for the specific language governing permissions and
+     limitations under the License.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+            android:layout_width="300sp"
+            android:layout_height="wrap_content"
+            android:fadeScrollbars="false">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:descendantFocusability="beforeDescendants"
+        android:focusableInTouchMode="true"
+        android:orientation="vertical">
+        <LinearLayout android:id="@+id/info"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      style="@style/wifi_section" />
+        <LinearLayout android:id="@+id/type"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      style="@style/wifi_section">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_label"
+                    android:layout_marginTop="8dip"
+                    android:text="@string/wifi_ssid" />
+                <EditText android:id="@+id/ssid"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          style="@style/wifi_item_edit_content"
+                          android:hint="@string/wifi_ssid_hint"
+                          android:inputType="textNoSuggestions"
+                          android:maxLength="32" />
+            </LinearLayout>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/fields"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      style="@style/wifi_section">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_label"
+                    android:layout_marginTop="8dip"
+                    android:text="@string/wifi_password" />
+                <EditText android:id="@+id/password"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          style="@style/wifi_item_edit_content"
+                          android:singleLine="true"
+                          android:inputType="textPassword"
+                          android:maxLength="63"
+                          android:imeOptions="flagForceAscii" />
+            </LinearLayout>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item">
+                <TextView android:id="@+id/hint"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          style="@style/wifi_item_label"
+                          android:text="@string/credentials_password_too_short"
+                          android:layout_marginTop="8dip"
+                          android:layout_marginBottom="10sp"/>
+                <CheckBox android:id="@+id/show_password"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          style="@style/wifi_item_content"
+                          android:text="@string/wifi_show_password" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

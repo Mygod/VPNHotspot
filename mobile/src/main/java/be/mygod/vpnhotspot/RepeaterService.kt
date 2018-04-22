@@ -18,12 +18,12 @@ import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.VpnMonitor
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper.deletePersistentGroup
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper.netId
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper.requestPersistentGroupInfo
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper.setWifiP2pChannels
-import be.mygod.vpnhotspot.net.WifiP2pManagerHelper.startWps
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import java.net.InetAddress
 import java.net.SocketException
 
@@ -73,6 +73,22 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                 override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
                         formatReason(R.string.repeater_reset_credentials_failure, reason), Toast.LENGTH_SHORT).show()
             })
+        }
+
+        fun requestGroupUpdate() {
+            group = null
+            try {
+                p2pManager.requestPersistentGroupInfo(channel, {
+                    when (it.size) {
+                        0 -> { }
+                        1 -> group = it.single()
+                        else -> Log.w(TAG, "Unexpected groups: $it")
+                    }
+                })
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -152,18 +168,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     override fun onChannelDisconnected() {
         channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
         setOperatingChannel(true)
-        try {
-            p2pManager.requestPersistentGroupInfo(channel, {
-                when (it.size) {
-                    0 -> { }
-                    1 -> group = it.single()
-                    else -> Log.w(TAG, "Unexpected groups: $it")
-                }
-            })
-        } catch (e: Exception) {
-            e.printStackTrace()
-            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
-        }
+        binder.requestGroupUpdate()
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {

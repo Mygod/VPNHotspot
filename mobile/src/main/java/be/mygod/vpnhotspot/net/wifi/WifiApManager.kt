@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.wifi
 
 import android.content.Context
 import android.net.wifi.WifiConfiguration

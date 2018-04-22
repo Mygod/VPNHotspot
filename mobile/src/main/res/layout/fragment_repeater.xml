@@ -40,7 +40,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/repeater_ssid"
+                android:text="@string/wifi_ssid"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
             <Space
@@ -57,31 +57,13 @@
                 android:focusable="false"
                 android:text="@{data.ssid}"
                 android:textIsSelectable="true"
-                tools:text="DIRECT-rAnd0m"/>
+                tools:text="DIRECT-rA-nd0m"/>
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_column="0"
                 android:layout_row="1"
-                android:text="@string/repeater_password"
-                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="2"
-                android:layout_row="1"
-                android:focusable="false"
-                android:text="@{data.password}"
-                android:textIsSelectable="true"
-                tools:text="p4ssW0rd"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="0"
-                android:layout_row="2"
                 android:text="@string/repeater_addresses"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
@@ -89,7 +71,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_column="2"
-                android:layout_row="2"
+                android:layout_row="1"
                 android:focusable="false"
                 android:text="@{data.addresses}"
                 android:textIsSelectable="true"

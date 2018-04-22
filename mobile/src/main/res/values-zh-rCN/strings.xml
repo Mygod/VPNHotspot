@@ -5,15 +5,15 @@
     <string name="title_tethering">系统共享</string>
     <string name="title_settings">设置选项</string>
 
-    <string name="repeater_ssid">中继名称</string>
-    <string name="repeater_password">中继密码</string>
     <string name="repeater_addresses">中继地址</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
     <string name="repeater_wps_success_keypad">成功注册 PIN。</string>
     <string name="repeater_wps_failure">打开 WPS 失败（原因：%s）</string>
-    <string name="repeater_reset_credentials">重置凭据</string>
+    <string name="repeater_configure">设置 WLAN 中继</string>
+    <string name="repeater_configure_failure">未能找到有效的档案。请尝试先打开中继。</string>
+    <string name="repeater_reset_credentials">重置</string>
     <string name="repeater_reset_credentials_dialog_message">Android
         系统将在下次打开中继时生成新的中继名称和密码。该操作不可撤销。</string>
     <string name="repeater_reset_credentials_dialog_reset">重置</string>
@@ -78,4 +78,12 @@
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="root_unavailable">似乎没有 root</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
+
+    <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
+    <string name="wifi_ssid_hint" msgid="897593601067321355">"输入 SSID"</string>
+    <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
+    <string name="wifi_show_password" msgid="6461249871236968884">"显示密码"</string>
+    <string name="credentials_password_too_short" msgid="7502749986405522663">"密码至少应包含 8 个字符。"</string>
+    <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
+    <string name="wifi_cancel" msgid="6763568902542968964">"取消"</string>
 </resources>

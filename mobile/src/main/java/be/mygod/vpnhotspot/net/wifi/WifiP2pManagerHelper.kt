@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo

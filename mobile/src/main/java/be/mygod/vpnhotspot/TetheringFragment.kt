@@ -30,7 +30,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.databinding.ListitemManageTetherBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 import java.net.SocketException

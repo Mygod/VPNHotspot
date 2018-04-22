@@ -8,8 +8,8 @@
         android:title="@string/repeater_wps"
         app:showAsAction="ifRoom"/>
     <item
-        android:id="@+id/resetGroup"
-        android:icon="@drawable/ic_action_autorenew"
+        android:id="@+id/edit"
+        android:icon="@drawable/ic_image_edit"
         android:title="@string/repeater_reset_credentials"
         app:showAsAction="ifRoom"/>
 </menu>
