@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.net.wifi.WifiConfiguration
+import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -53,8 +54,10 @@ class P2pSupplicantConfiguration {
                 Log.w(TAG, "Invalid conf ($ssidFound, $pskFound): $content")
                 return false
             }
+            // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",
-                    "killall wpa_supplicant")
+                    if (Build.VERSION.SDK_INT >= 23) "pkill wpa_supplicant"
+                    else "set `ps | grep wpa_supplicant`; kill \$2")
         } finally {
             if (!tempFile.delete()) tempFile.deleteOnExit()
         }
