@@ -243,10 +243,6 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             wifi.SSID = ssid
             wifi.preSharedKey = binder.password
             if (wifi.preSharedKey == null || wifi.preSharedKey.length < 8) wifi.preSharedKey = conf.readPsk()
-            if (wifi.preSharedKey == null || wifi.preSharedKey.length < 8) {
-                Toast.makeText(context, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
-                return
-            }
             if (wifi.preSharedKey != null && wifi.preSharedKey.length >= 8) {
                 var dialog: WifiP2pDialog? = null
                 dialog = WifiP2pDialog(context, DialogInterface.OnClickListener { _, which ->
