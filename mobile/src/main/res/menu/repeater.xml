@@ -10,6 +10,6 @@
     <item
         android:id="@+id/edit"
         android:icon="@drawable/ic_image_edit"
-        android:title="@string/repeater_reset_credentials"
+        android:title="@string/repeater_configure"
         app:showAsAction="ifRoom"/>
 </menu>
