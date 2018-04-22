@@ -97,7 +97,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     var group: WifiP2pGroup? = null
         private set(value) {
             field = value
-            binder.data?.onGroupChanged(group)
+            binder.data?.onGroupChanged(value)
         }
     private val binder = RepeaterBinder()
     private var receiverRegistered = false

@@ -44,7 +44,7 @@
                           android:layout_height="wrap_content"
                           style="@style/wifi_item_edit_content"
                           android:hint="@string/wifi_ssid_hint"
-                          android:inputType="textNoSuggestions"
+                          android:inputType="textMultiLine|textNoSuggestions"
                           android:maxLength="32" />
             </LinearLayout>
         </LinearLayout>

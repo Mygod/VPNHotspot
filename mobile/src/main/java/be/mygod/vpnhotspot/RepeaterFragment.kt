@@ -23,6 +23,7 @@ import android.support.v7.widget.Toolbar
 import android.view.*
 import android.widget.EditText
 import android.widget.Toast
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbour
@@ -172,6 +173,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         binding.swipeRefresher.setColorSchemeResources(R.color.colorAccent)
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
+            val binder = binder
+            if (binder?.active == false) binder.requestGroupUpdate()
             adapter.recreate()
         }
         binding.toolbar.inflateMenu(R.menu.repeater)
@@ -248,7 +251,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 dialog = WifiP2pDialog(context, DialogInterface.OnClickListener { _, which ->
                     when (which) {
                         DialogInterface.BUTTON_POSITIVE -> when (conf.update(dialog!!.config!!)) {
-                            true -> binder.requestGroupUpdate()
+                            true -> app.handler.postDelayed(binder::requestGroupUpdate, 1000)
                             false -> Toast.makeText(context, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
                             null -> Toast.makeText(context, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
                         }
