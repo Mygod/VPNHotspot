@@ -4,7 +4,7 @@
           package="be.mygod.vpnhotspot">
 
     <uses-feature
-        android:name="android.bluetooth"
+        android:name="android.hardware.bluetooth"
         android:required="false"/>
     <uses-feature
         android:name="android.hardware.touchscreen"
