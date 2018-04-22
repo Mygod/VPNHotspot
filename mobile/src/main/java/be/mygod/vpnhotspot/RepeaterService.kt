@@ -85,7 +85,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                         else -> Log.w(TAG, "Unexpected groups: $it")
                     }
                 })
-            } catch (e: Exception) {
+            } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
                 Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_LONG).show()
             }

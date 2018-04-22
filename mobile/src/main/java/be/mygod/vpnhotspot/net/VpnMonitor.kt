@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.net
 
-import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities

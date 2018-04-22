@@ -22,7 +22,7 @@ class P2pSupplicantConfiguration {
     fun readPsk(): String? {
         return try {
             pskParser.findAll(content ?: return null).single().groupValues[1]
-        } catch (e: Exception) {
+        } catch (e: RuntimeException) {
             Log.w(TAG, content)
             e.printStackTrace()
             Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()

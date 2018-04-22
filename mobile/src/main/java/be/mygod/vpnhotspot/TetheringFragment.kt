@@ -179,13 +179,12 @@ class TetheringFragment : Fragment(), ServiceConnection {
         /**
          * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
          */
-        fun isStarted(type: TetherType, enabledTypes: Set<TetherType> = this.enabledTypes): Boolean {
-            return if (type == TetherType.BLUETOOTH) {
-                val pan = pan
-                BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && pan != null &&
-                        isTetheringOn.invoke(pan) as Boolean
-            } else enabledTypes.contains(type)
-        }
+        fun isStarted(type: TetherType, enabledTypes: Set<TetherType> = this.enabledTypes) =
+                if (type == TetherType.BLUETOOTH) {
+                    val pan = pan
+                    BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && pan != null &&
+                            isTetheringOn.invoke(pan) as Boolean
+                } else enabledTypes.contains(type)
     }
     class TetheredInterface(val name: String, lookup: Map<String, NetworkInterface>) : Comparable<TetheredInterface> {
         val addresses = lookup[name]?.formatAddresses() ?: ""
