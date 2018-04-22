@@ -59,8 +59,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 }
             }
 
-        val ssid @Bindable get() = binder?.service?.ssid ?: getText(R.string.repeater_inactive)
-        val password @Bindable get() = binder?.service?.password ?: ""
+        val ssid @Bindable get() = binder?.ssid ?: getText(R.string.repeater_inactive)
+        val password @Bindable get() = binder?.password ?: ""
         val addresses @Bindable get(): String {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""

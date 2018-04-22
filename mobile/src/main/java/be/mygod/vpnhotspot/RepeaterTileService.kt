@@ -68,7 +68,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
             RepeaterService.Status.ACTIVE -> {
                 qsTile.state = Tile.STATE_ACTIVE
                 qsTile.icon = tileOn
-                qsTile.label = binder?.service?.ssid
+                qsTile.label = binder?.ssid
             }
             null -> {
                 qsTile.state = Tile.STATE_UNAVAILABLE
