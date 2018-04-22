@@ -56,7 +56,6 @@
                 android:layout_row="0"
                 android:focusable="false"
                 android:text="@{data.ssid}"
-                android:textIsSelectable="true"
                 tools:text="DIRECT-rA-nd0m"/>
 
             <TextView
