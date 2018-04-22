@@ -53,7 +53,8 @@ class P2pSupplicantConfiguration {
                 Log.w(TAG, "Invalid conf ($ssidFound, $pskFound): $content")
                 return false
             }
-            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf", "killall wpa_supplicant")
+            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",
+                    "killall wpa_supplicant")
         } finally {
             if (!tempFile.delete()) tempFile.deleteOnExit()
         }

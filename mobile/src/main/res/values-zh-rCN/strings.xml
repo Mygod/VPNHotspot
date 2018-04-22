@@ -14,9 +14,6 @@
     <string name="repeater_configure">设置 WLAN 中继</string>
     <string name="repeater_configure_failure">未能找到有效的档案。请尝试先打开中继。</string>
     <string name="repeater_reset_credentials">重置</string>
-    <string name="repeater_reset_credentials_dialog_message">Android
-        系统将在下次打开中继时生成新的中继名称和密码。该操作不可撤销。</string>
-    <string name="repeater_reset_credentials_dialog_reset">重置</string>
     <string name="repeater_reset_credentials_success">凭据已重置。</string>
     <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
 

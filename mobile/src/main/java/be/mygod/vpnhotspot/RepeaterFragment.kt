@@ -30,7 +30,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
-import be.mygod.vpnhotspot.net.wifi.WifiApDialog
+import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.*
@@ -248,8 +248,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 return
             }
             if (wifi.preSharedKey != null && wifi.preSharedKey.length >= 8) {
-                var dialog: WifiApDialog? = null
-                dialog = WifiApDialog(context, DialogInterface.OnClickListener { _, which ->
+                var dialog: WifiP2pDialog? = null
+                dialog = WifiP2pDialog(context, DialogInterface.OnClickListener { _, which ->
                     when (which) {
                         DialogInterface.BUTTON_POSITIVE -> when (conf.update(dialog!!.config!!)) {
                             true -> binder.requestGroupUpdate()

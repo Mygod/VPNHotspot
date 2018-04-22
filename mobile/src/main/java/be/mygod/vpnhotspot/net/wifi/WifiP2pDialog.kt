@@ -19,8 +19,9 @@ import java.nio.charset.Charset
 /**
  * https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
  */
-class WifiApDialog(mContext: Context, private val mListener: DialogInterface.OnClickListener,
-                   private val mWifiConfig: WifiConfiguration?) : AlertDialog(mContext), View.OnClickListener, TextWatcher {
+class WifiP2pDialog(mContext: Context, private val mListener: DialogInterface.OnClickListener,
+                    private val mWifiConfig: WifiConfiguration?) :
+        AlertDialog(mContext), View.OnClickListener, TextWatcher {
     companion object {
         private const val BUTTON_SUBMIT = DialogInterface.BUTTON_POSITIVE
     }
