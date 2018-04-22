@@ -10,17 +10,7 @@ import java.lang.reflect.Proxy
 import java.util.regex.Pattern
 
 object WifiP2pManagerHelper {
-    /** Interface for callback invocation when stored group info list is available {@hide} */
-    interface PersistentGroupInfoListener {
-        /**
-         * The requested stored p2p group info list is available
-         * @param groups Wi-Fi p2p group info list
-         */
-        fun onPersistentGroupInfoAvailable(groups: Collection<WifiP2pGroup>)
-    }
-
-    const val TAG = "WifiP2pManagerHelper"
-    const val TEMPORARY_NET_ID = -1
+    private const val TAG = "WifiP2pManagerHelper"
 
     /**
      * Matches the output of dumpsys wifip2p. This part is available since Android 4.2.
