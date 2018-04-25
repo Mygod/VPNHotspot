@@ -5,6 +5,7 @@ import android.content.DialogInterface
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
 import android.os.Bundle
+import android.support.design.widget.TextInputLayout
 import android.support.v7.app.AlertDialog
 import android.text.Editable
 import android.text.InputType
@@ -20,8 +21,7 @@ import java.nio.charset.Charset
  * https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
  */
 class WifiP2pDialog(mContext: Context, private val mListener: DialogInterface.OnClickListener,
-                    private val mWifiConfig: WifiConfiguration?) :
-        AlertDialog(mContext), View.OnClickListener, TextWatcher {
+                    private val mWifiConfig: WifiConfiguration?) : AlertDialog(mContext), TextWatcher {
     companion object {
         private const val BUTTON_SUBMIT = DialogInterface.BUTTON_POSITIVE
     }
@@ -29,12 +29,6 @@ class WifiP2pDialog(mContext: Context, private val mListener: DialogInterface.On
     private lateinit var mView: View
     private lateinit var mSsid: TextView
     private lateinit var mPassword: EditText
-    /**
-     * TODO: SSID in WifiConfiguration for soft ap
-     * is being stored as a raw string without quotes.
-     * This is not the case on the client side. We need to
-     * make things consistent and clean it up
-     */
     val config: WifiConfiguration?
         get() {
             val config = WifiConfiguration()
@@ -64,30 +58,17 @@ class WifiP2pDialog(mContext: Context, private val mListener: DialogInterface.On
         }
         mSsid.addTextChangedListener(this)
         mPassword.addTextChangedListener(this)
-        (mView.findViewById(R.id.show_password) as CheckBox).setOnClickListener(this)
         super.onCreate(savedInstanceState)
         validate()
     }
 
-    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
-        super.onRestoreInstanceState(savedInstanceState)
-        mPassword.inputType = InputType.TYPE_CLASS_TEXT or
-                if ((mView.findViewById(R.id.show_password) as CheckBox).isChecked)
-                    InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-                else InputType.TYPE_TEXT_VARIATION_PASSWORD
-    }
-
     private fun validate() {
         val mSsidString = mSsid.text.toString()
-        getButton(BUTTON_SUBMIT).isEnabled = mSsid.length() != 0 &&
-                mPassword.length() >= 8 && Charset.forName("UTF-8").encode(mSsidString).limit() <= 32
-    }
-
-    override fun onClick(view: View) {
-        mPassword.inputType = InputType.TYPE_CLASS_TEXT or if ((view as CheckBox).isChecked)
-            InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-        else
-            InputType.TYPE_TEXT_VARIATION_PASSWORD
+        val ssidValid = mSsid.length() != 0 && Charset.forName("UTF-8").encode(mSsidString).limit() <= 32
+        val passwordValid = mPassword.length() >= 8
+        mView.findViewById<TextInputLayout>(R.id.password_wrapper).error =
+                if (passwordValid) null else context.getString(R.string.credentials_password_too_short)
+        getButton(BUTTON_SUBMIT).isEnabled = ssidValid && passwordValid
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }

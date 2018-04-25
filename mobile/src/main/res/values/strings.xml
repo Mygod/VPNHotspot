@@ -82,9 +82,7 @@
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
 
     <string name="wifi_ssid">Network name</string>
-    <string name="wifi_ssid_hint">Enter the SSID</string>
     <string name="wifi_password">Password</string>
-    <string name="wifi_show_password">Show password</string>
     <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
     <string name="wifi_save">Save</string>
     <string name="wifi_cancel">Cancel</string>

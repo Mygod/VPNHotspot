@@ -77,9 +77,7 @@
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
 
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
-    <string name="wifi_ssid_hint" msgid="897593601067321355">"输入 SSID"</string>
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
-    <string name="wifi_show_password" msgid="6461249871236968884">"显示密码"</string>
     <string name="credentials_password_too_short" msgid="7502749986405522663">"密码至少应包含 8 个字符。"</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
     <string name="wifi_cancel" msgid="6763568902542968964">"取消"</string>
