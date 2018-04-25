@@ -30,6 +30,15 @@ and/or break your Internet using this app *under normal conditions*. However the
 
 ## Q & A
 
+### Failed to create group due to internal error/repeater shuts down after a while?
+
+This could caused by the Wi-Fi channel you selected is no longer available, due to:
+
+1. Your device doesn't support operating on this channel, or
+2. There is some nearby Wi-Fi direct device that broadcasted that they can't operate on the channel you picked.
+
+For maximum stability, you need to set channel = 0 so that your device will pick a channel automatically.
+
 ### [IPv6 tethering?](https://github.com/Mygod/VPNHotspot/issues/6)
 
 ### Missing `android.permission.MANAGE_USB` permission?
