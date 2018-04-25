@@ -24,6 +24,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
+import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
 import java.net.SocketException
 
@@ -150,24 +151,24 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(init: Boolean = false) {
-        val oc = app.operatingChannel
-        if (!init || oc > 0) {
-            // we don't care about listening channel
-            debugLog(TAG, "Setting OC to $oc")
-            p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() { }
-                override fun onFailure(reason: Int) {
-                    Toast.makeText(this@RepeaterService, formatReason(R.string.repeater_set_oc_failure, reason),
-                            Toast.LENGTH_SHORT).show()
-                }
-            })
-        }
+    private fun setOperatingChannel(oc: Int = app.operatingChannel) = try {
+        // we don't care about listening channel
+        p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() { }
+            override fun onFailure(reason: Int) {
+                Toast.makeText(this@RepeaterService, formatReason(R.string.repeater_set_oc_failure, reason),
+                        Toast.LENGTH_SHORT).show()
+            }
+        })
+    } catch (e: InvocationTargetException) {
+        if (oc != 0)
+            Toast.makeText(this, getString(R.string.repeater_set_oc_failure, e.message), Toast.LENGTH_SHORT).show()
+        e.printStackTrace()
     }
 
     override fun onChannelDisconnected() {
         channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-        setOperatingChannel(true)
+        setOperatingChannel()
         binder.requestGroupUpdate()
     }
 
