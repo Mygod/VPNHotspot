@@ -4,8 +4,8 @@ apply plugin: 'com.github.ben-manes.versions'
 
 buildscript {
     ext {
-        androidPluginVersion = '3.1.1'
-        kotlinVersion = '1.2.31'
+        androidPluginVersion = '3.1.2'
+        kotlinVersion = '1.2.40'
         supportLibraryVersion = '27.1.1'
         takisoftFixVersion = '27.1.1.0'
     }
