@@ -41,7 +41,8 @@ enum class TetherType {
                     .map { it.toPattern() }
         }
 
-        fun ofInterface(iface: String, p2pDev: String? = null) = when {
+        fun ofInterface(iface: String?, p2pDev: String? = null) = when {
+            iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
             usbRegexes.any { it.matcher(iface).matches() } -> USB
             wifiRegexes.any { it.matcher(iface).matches() } -> WIFI

@@ -89,7 +89,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     }
 
     inner class Client(p2p: WifiP2pDevice? = null, neighbour: IpNeighbour? = null) {
-        val iface = neighbour?.dev ?: p2pInterface!!
+        val iface = neighbour?.dev ?: p2pInterface
         val mac = p2p?.deviceAddress ?: neighbour?.lladdr!!
         val ip = TreeMap<String, IpNeighbour.State>()
 
