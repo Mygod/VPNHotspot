@@ -55,7 +55,7 @@
 
     <string name="settings_service">Service</string>
     <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
-    <string name="settings_service_repeater_oc_summary">%s (0 = auto, 1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
+    <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_repeater_strict">Strict mode</string>
     <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
