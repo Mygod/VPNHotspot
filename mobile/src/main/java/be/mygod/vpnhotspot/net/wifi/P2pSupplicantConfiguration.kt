@@ -20,9 +20,9 @@ class P2pSupplicantConfiguration {
          */
         private val ssidMatcher = "^[\\r\\t ]*ssid=".toRegex()
         /**
-         * PSK parser can be found here: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#448
+         * PSK parser can be found here: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
          */
-        private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64})".toRegex(RegexOption.MULTILINE)
+        private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
     }
 
     private val content by lazy { loggerSu("cat /data/misc/wifi/p2p_supplicant.conf") }
