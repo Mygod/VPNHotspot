@@ -65,7 +65,9 @@ class LocalOnlyHotspotService : BaseTetheringService() {
                     Toast.makeText(this@LocalOnlyHotspotService, "Failed to start hotspot (reason: $reason)", Toast.LENGTH_SHORT).show()
                 }
             }, app.handler)
-        } catch (_: IllegalStateException) { }
+        } catch (e: IllegalStateException) {
+            e.printStackTrace()
+        }
         return START_STICKY
     }
 }

@@ -264,7 +264,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             submitList(data.map { TetheredInterface(it, lookup) }.sorted())
         }
 
-        override fun getItemCount() = super.getItemCount() + (if (Build.VERSION.SDK_INT < 24) 2 else 5)
+        override fun getItemCount() = super.getItemCount() + if (Build.VERSION.SDK_INT < 24) 2 else 5
         override fun getItemViewType(position: Int) = if (Build.VERSION.SDK_INT < 26) {
             when (position - super.getItemCount()) {
                 0 -> VIEW_TYPE_MANAGE
@@ -327,7 +327,6 @@ class TetheringFragment : Fragment(), ServiceConnection {
     override fun onStart() {
         super.onStart()
         val context = requireContext()
-        context.registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         context.bindService(Intent(context, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
         if (Build.VERSION.SDK_INT >= 26) {
             context.bindService(Intent(context, LocalOnlyHotspotService::class.java), this, Context.BIND_AUTO_CREATE)
@@ -344,9 +343,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     }
 
     override fun onStop() {
-        val context = requireContext()
-        context.unbindService(this)
-        context.unregisterReceiver(receiver)
+        requireContext().unbindService(this)
         super.onStop()
     }
 
@@ -359,6 +356,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
         is TetheringService.TetheringBinder -> {
             tetheringBinder = service
             service.fragment = this
+            requireContext().registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+            while (false) { }
         }
         is LocalOnlyHotspotService.HotspotBinder -> {
             hotspotBinder = service
@@ -374,11 +373,11 @@ class TetheringFragment : Fragment(), ServiceConnection {
             ComponentName(context, TetheringService::class.java) -> {
                 tetheringBinder?.fragment = null
                 tetheringBinder = null
+                context.unregisterReceiver(receiver)
             }
             ComponentName(context, LocalOnlyHotspotService::class.java) -> {
                 hotspotBinder?.fragment = null
                 hotspotBinder = null
-                adapter.updateLocalOnlyViewHolder()
             }
             else -> throw IllegalArgumentException("name")
         }

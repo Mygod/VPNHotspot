@@ -16,8 +16,6 @@ import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.VpnMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
@@ -26,10 +24,8 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
-import java.net.SocketException
 
-class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Callback,
-        SharedPreferences.OnSharedPreferenceChangeListener {
+class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         private const val TAG = "RepeaterService"
@@ -110,17 +106,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
-            App.ACTION_CLEAN_ROUTINGS -> if (status == Status.ACTIVE) {
-                val routing = routing
-                routing!!.started = false
-                resetup(routing, upstream, dns)
-            }
         }
     }
-
-    private var upstream: String? = null
-    private var dns: List<InetAddress> = emptyList()
-    private var routing: Routing? = null
+    private var routingManager: LocalOnlyInterfaceManager? = null
 
     var status = Status.IDLE
         private set(value) {
@@ -176,36 +164,19 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     }
 
     /**
-     * startService 1st stop
+     * startService Step 1
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
-        VpnMonitor.registerCallback(this) { setup() }
-        return START_NOT_STICKY
-    }
-    private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-        showNotification()
-        if (group != null) removeGroup() else clean()
-    }
-
-    /**
-     * startService 2nd stop
-     */
-    private fun setup(ifname: String? = null, dns: List<InetAddress> = emptyList()) {
         val matcher = WifiP2pManagerHelper.patternNetworkInfo.matcher(
                 loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
         when {
             !matcher.find() -> startFailure(getString(R.string.root_unavailable))
             matcher.group(2) == "true" -> {
                 unregisterReceiver()
-                upstream = ifname
-                this.dns = dns
                 registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                         WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-                LocalBroadcastManager.getInstance(this)
-                        .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
                 receiverRegistered = true
                 p2pManager.requestGroupInfo(channel, {
                     when {
@@ -227,72 +198,40 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             }
             else -> startFailure(getString(R.string.repeater_p2p_unavailable))
         }
+        return START_NOT_STICKY
     }
-
-    private fun resetup(routing: Routing, ifname: String? = null, dns: List<InetAddress> = emptyList()) =
-            initRouting(ifname, routing.downstream, routing.hostAddress, dns)
-
-    override fun onAvailable(ifname: String, dns: List<InetAddress>) = when (status) {
-        Status.STARTING -> setup(ifname, dns)
-        Status.ACTIVE -> {
-            val routing = routing!!
-            if (routing.started) {
-                routing.stop()
-                check(routing.upstream == null)
-            }
-            resetup(routing, ifname, dns)
-            while (false) { }
-        }
-        else -> throw IllegalStateException("RepeaterService is in unexpected state when receiving onAvailable")
-    }
-    override fun onLost(ifname: String) {
-        if (routing?.stop() == false)
-            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-        upstream = null
-        if (status == Status.ACTIVE) resetup(routing!!)
-    }
-
+    /**
+     * startService Step 2 (if a group isn't already available)
+     */
     private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
         override fun onFailure(reason: Int) = startFailure(formatReason(R.string.repeater_create_group_failure, reason))
-        override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire
+        override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
     })
-    private fun doStart(group: WifiP2pGroup) {
-        this.group = group
-        status = Status.ACTIVE
-        showNotification(group)
-    }
-
     /**
-     * startService 3rd stop (if a group isn't already available), also called when connection changed
+     * Used during step 2, also called when connection changed
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
         debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
         if (!info.groupFormed || !info.isGroupOwner || !group.isGroupOwner) {
-            if (routing != null) clean()    // P2P shutdown
-            return
-        }
-        if (routing == null) try {
-            if (initRouting(upstream, group.`interface` ?: return, info.groupOwnerAddress ?: return, dns))
-                doStart(group)
-        } catch (e: SocketException) {
-            startFailure(e.message, group)
-            return
-        } else showNotification(group)
-        this.group = group
+            if (routingManager != null) clean()    // P2P shutdown
+        } else if (routingManager != null) {
+            this.group = group
+            showNotification(group)
+        } else doStart(group, info.groupOwnerAddress)
     }
-    private fun initRouting(upstream: String?, downstream: String,
-                            owner: InetAddress, dns: List<InetAddress>): Boolean {
-        val routing = Routing(upstream, downstream, owner)
-        this.routing = routing
-        this.dns = dns
-        val strict = app.pref.getBoolean("service.repeater.strict", false)
-        return if (strict && upstream == null ||    // in this case, nothing to be done
-                routing.ipForward()                 // Wi-Fi direct doesn't enable ip_forward
-                        .rule().forward(strict).masquerade(strict).dnsRedirect(dns).start()) true else {
-            routing.stop()
-            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-            false
-        }
+    /**
+     * startService Step 3
+     */
+    private fun doStart(group: WifiP2pGroup, ownerAddress: InetAddress? = null) {
+        this.group = group
+        routingManager = LocalOnlyInterfaceManager(group.`interface`!!, ownerAddress)
+        status = Status.ACTIVE
+        showNotification(group)
+    }
+    private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        showNotification()
+        if (group != null) removeGroup() else clean()
     }
 
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
@@ -314,16 +253,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
             receiverRegistered = false
         }
     }
     private fun clean() {
-        VpnMonitor.unregisterCallback(this)
         unregisterReceiver()
-        if (routing?.stop() == false)
-            Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-        routing = null
+        routingManager?.stop()
+        routingManager = null
         status = Status.IDLE
         ServiceNotification.stopForeground(this)
         stopSelf()

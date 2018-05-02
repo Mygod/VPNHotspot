@@ -32,11 +32,7 @@ abstract class BaseTetheringService : Service(), VpnMonitor.Callback, IpNeighbou
     }
 
     protected open fun updateRoutingsLocked() {
-        if (routings.isEmpty()) {
-            unregisterReceiver()
-            ServiceNotification.stopForeground(this)
-            stopSelf()
-        } else {
+        if (routings.isNotEmpty()) {
             val upstream = upstream
             if (upstream != null) {
                 var failed = false
@@ -44,18 +40,21 @@ abstract class BaseTetheringService : Service(), VpnMonitor.Callback, IpNeighbou
                     // system tethering already has working forwarding rules
                     // so it doesn't make sense to add additional forwarding rules
                     val routing = Routing(upstream, downstream).rule().forward().masquerade().dnsRedirect(dns)
-                    if (routing.start()) routings[downstream] = routing else {
-                        failed = true
-                        routing.stop()
-                        routings.remove(downstream)
-                    }
+                    routings[downstream] = routing
+                    if (!routing.start()) failed = true
                 } catch (e: SocketException) {
                     e.printStackTrace()
+                    routings.remove(downstream)
                     failed = true
                 }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else registerReceiver()
             postIpNeighbourAvailable()
+        }
+        if (routings.isEmpty()) {
+            unregisterReceiver()
+            ServiceNotification.stopForeground(this)
+            stopSelf()
         }
     }
 

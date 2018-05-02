@@ -113,7 +113,8 @@ class Routing(val upstream: String?, val downstream: String, ownerAddress: InetA
     fun start(): Boolean {
         if (started) return true
         started = true
-        return noisySu(startScript) == true
+        if (noisySu(startScript) != true) stop()
+        return started
     }
     fun stop(): Boolean {
         if (!started) return true
