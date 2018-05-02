@@ -245,8 +245,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
             val conf = P2pSupplicantConfiguration()
             wifi.SSID = ssid
             wifi.preSharedKey = binder.password
-            if (wifi.preSharedKey == null || wifi.preSharedKey.length < 8) wifi.preSharedKey = conf.readPsk()
-            if (wifi.preSharedKey != null && wifi.preSharedKey.length >= 8) {
+            if (wifi.preSharedKey == null) wifi.preSharedKey = conf.readPsk()
+            if (wifi.preSharedKey != null) {
                 var dialog: WifiP2pDialog? = null
                 dialog = WifiP2pDialog(context, DialogInterface.OnClickListener { _, which ->
                     when (which) {

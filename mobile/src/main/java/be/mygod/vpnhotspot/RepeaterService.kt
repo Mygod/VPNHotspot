@@ -47,6 +47,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
         val ssid get() = group?.networkName
         val password get() = group?.passphrase
 
+        private var groups: Collection<WifiP2pGroup> = emptyList()
+
         fun startWps(pin: String? = null) {
             if (!active) return
             val wps = WpsInfo()
@@ -67,8 +69,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             if (active) removeGroup()
         }
 
-        fun resetCredentials() {
-            p2pManager.deletePersistentGroup(channel, (group ?: return).netId, object : WifiP2pManager.ActionListener {
+        fun resetCredentials() = (groups + group).filterNotNull().forEach {
+            p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = Toast.makeText(this@RepeaterService,
                         R.string.repeater_reset_credentials_success, Toast.LENGTH_SHORT).show()
                 override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
@@ -80,11 +82,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, VpnMonitor.Ca
             group = null
             try {
                 p2pManager.requestPersistentGroupInfo(channel, {
-                    when (it.size) {
-                        0 -> { }
-                        1 -> group = it.single()
-                        else -> Log.w(TAG, "Unexpected groups: $it")
-                    }
+                    groups = it
+                    if (it.size == 1) group = it.single()
                 })
             } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
