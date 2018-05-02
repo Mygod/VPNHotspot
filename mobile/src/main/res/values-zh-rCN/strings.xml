@@ -4,6 +4,7 @@
     <string name="title_repeater">无线中继</string>
     <string name="title_tethering">系统共享</string>
     <string name="title_settings">设置选项</string>
+    <string name="service_inactive">未打开</string>
 
     <string name="repeater_addresses">中继地址</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
@@ -17,7 +18,6 @@
     <string name="repeater_reset_credentials_success">凭据已重置。</string>
     <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
 
-    <string name="repeater_inactive">未打开</string>
     <string name="repeater_p2p_unavailable">Wi\u2011Fi 直连不可用</string>
     <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>

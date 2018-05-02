@@ -125,7 +125,11 @@ object TetheringManager {
         stopTethering.invoke(app.connectivity, type)
     }
 
-    fun getTetheredIfaces(extras: Bundle) = if (Build.VERSION.SDK_INT >= 26)
+    fun getAllTetheredIfaces(extras: Bundle) = if (Build.VERSION.SDK_INT >= 26)
         extras.getStringArrayList(EXTRA_ACTIVE_TETHER).toSet() + extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY)
     else extras.getStringArrayList(EXTRA_ACTIVE_TETHER_LEGACY).toSet()
+    fun getTetheredIfaces(extras: Bundle) = extras.getStringArrayList(
+            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
+    @RequiresApi(26)
+    fun getLocalOnlyTetheredIfaces(extras: Bundle) = extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY)
 }

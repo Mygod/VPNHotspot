@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.ConnectivityManager
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
@@ -43,6 +44,7 @@ class App : Application() {
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceContext) }
     val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
+    val wifi by lazy { app.getSystemService(Context.WIFI_SERVICE) as WifiManager }
 
     val operatingChannel: Int get() {
         val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
