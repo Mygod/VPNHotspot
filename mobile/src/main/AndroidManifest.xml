@@ -30,6 +30,7 @@
     <uses-permission android:name="android.permission.TETHER_PRIVILEGE"/>
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <application
         android:name=".App"
@@ -53,6 +54,8 @@
             </intent-filter>
         </activity>
 
+        <service android:name=".LocalOnlyHotspotService">
+        </service>
         <service
             android:name=".RepeaterService"
             android:directBootAware="true">

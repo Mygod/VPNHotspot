@@ -13,6 +13,7 @@
     <string name="title_repeater">Repeater</string>
     <string name="title_tethering">Tethering</string>
     <string name="title_settings">Settings</string>
+    <string name="service_inactive">Service inactive</string>
 
     <string name="repeater_addresses">Addresses</string>
     <string name="repeater_wps">WPS</string>
@@ -28,7 +29,6 @@
     <string name="repeater_reset_credentials_success">Credentials reset.</string>
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
-    <string name="repeater_inactive">Service inactive</string>
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
@@ -39,7 +39,13 @@
     <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct unsupported</string>
     <string name="repeater_failure_reason_busy">framework is busy</string>
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
-    <string name="repeater_failure_reason_unknown">unknown #%d</string>
+
+    <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
+    <string name="tethering_temp_hotspot_failure">Failed to start hotspot (reason: %s)</string>
+    <string name="tethering_temp_hotspot_failure_no_channel">no channel</string>
+    <string name="tethering_temp_hotspot_failure_generic">generic error</string>
+    <string name="tethering_temp_hotspot_failure_incompatible_mode">incompatible mode</string>
+    <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering disallowed</string>
 
     <string name="tethering_manage">Manage…</string>
     <string name="tethering_manage_usb">USB tethering</string>
@@ -57,7 +63,8 @@
     <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
     <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_repeater_strict">Strict mode</string>
-    <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel</string>
+    <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel, also
+        applies to temporary Wi\u2011Fi hotspot.</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
@@ -77,6 +84,7 @@
         <item quantity="other">%d interfaces</item>
     </plurals>
 
+    <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="root_unavailable">Root unavailable</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>

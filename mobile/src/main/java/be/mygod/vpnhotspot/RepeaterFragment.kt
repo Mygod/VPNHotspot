@@ -61,7 +61,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 }
             }
 
-        val ssid @Bindable get() = binder?.ssid ?: getText(R.string.repeater_inactive)
+        val ssid @Bindable get() = binder?.ssid ?: getText(R.string.service_inactive)
         val addresses @Bindable get(): String {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -160,7 +160,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     private var p2pInterface: String? = null
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        tetheredInterfaces = TetheringManager.getTetheredIfaces(intent.extras).toSet()
+        tetheredInterfaces = TetheringManager.getTetheredIfaces(intent.extras).toSet() +
+                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras)
         adapter.recreate()
     }
 
