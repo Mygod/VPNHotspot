@@ -71,7 +71,6 @@
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="1"
-                android:focusable="false"
                 android:text="@{data.addresses}"
                 android:textIsSelectable="true"
                 tools:text="192.168.49.1/24\n01:23:45:ab:cd:ef"/>
@@ -93,7 +92,6 @@
 
         <android.support.v4.widget.SwipeRefreshLayout
             android:id="@+id/swipeRefresher"
-            android:descendantFocusability="blocksDescendants"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
 

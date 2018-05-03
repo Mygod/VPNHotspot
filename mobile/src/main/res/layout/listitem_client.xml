@@ -46,6 +46,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
+                android:textIsSelectable="true"
                 tools:text="Connected to p2p0"/>
         </LinearLayout>
     </LinearLayout>

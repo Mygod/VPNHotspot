@@ -66,12 +66,14 @@ class TetheringFragment : Fragment(), ServiceConnection {
         val title: CharSequence
         val text: CharSequence
         val active: Boolean
+        val selectable: Boolean
     }
     inner class TetheredData(val iface: TetheredInterface) : Data {
-        override val icon: Int get() = TetherType.ofInterface(iface.name).icon
+        override val icon get() = TetherType.ofInterface(iface.name).icon
         override val title get() = iface.name
         override val text get() = iface.addresses
         override val active = tetheringBinder?.isActive(iface.name) == true
+        override val selectable get() = true
     }
     inner class LocalHotspotData(private val lookup: Map<String, NetworkInterface>) : Data {
         override val icon: Int get() {
@@ -86,6 +88,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             "${configuration.SSID} - ${configuration.preSharedKey}\n${TetheredInterface(iface, lookup).addresses}"
         }
         override val active = hotspotBinder?.iface != null
+        override val selectable get() = active
     }
 
     private open class InterfaceViewHolder(val binding: ListitemInterfaceBinding) :

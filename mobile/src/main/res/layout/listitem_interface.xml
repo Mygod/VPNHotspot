@@ -37,13 +37,13 @@
                 android:layout_height="wrap_content"
                 android:text="@{data.title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
-                android:textIsSelectable="true"
                 tools:text="wlan0"/>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@{data.text}"
+                android:textIsSelectable="@{data.selectable}"
                 tools:text="192.168.43.1/24\n01:23:45:ab:cd:ef"/>
         </LinearLayout>
 
