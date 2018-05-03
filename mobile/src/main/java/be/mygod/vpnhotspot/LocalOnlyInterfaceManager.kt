@@ -11,7 +11,7 @@ import be.mygod.vpnhotspot.net.VpnMonitor
 import java.net.InetAddress
 import java.net.SocketException
 
-class LocalOnlyInterfaceManager(private val downstream: String, private val owner: InetAddress? = null) :
+class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetAddress? = null) :
         BroadcastReceiver(), VpnMonitor.Callback {
     private var routing: Routing? = null
     private var dns = emptyList<InetAddress>()

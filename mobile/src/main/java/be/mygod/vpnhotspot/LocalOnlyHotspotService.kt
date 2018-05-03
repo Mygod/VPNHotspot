@@ -3,17 +3,17 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Binder
-import android.os.Bundle
 import android.os.IBinder
 import android.support.annotation.RequiresApi
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 
 @RequiresApi(26)
-class LocalOnlyHotspotService : BaseTetheringService() {
+class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     companion object {
-        private val TAG = "LocalOnlyHotspotService"
+        private const val TAG = "LocalOnlyHotspotService"
     }
 
     inner class HotspotBinder : Binder() {
@@ -26,20 +26,30 @@ class LocalOnlyHotspotService : BaseTetheringService() {
 
     private val binder = HotspotBinder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
-
-    override fun onTetherStateChangedLocked(extras: Bundle) {
-        val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(extras)
+    private var routingManager: LocalOnlyInterfaceManager? = null
+    private var receiverRegistered = false
+    private val receiver = broadcastReceiver { _, intent ->
+        val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(intent.extras)
         debugLog(TAG, "onTetherStateChangedLocked: $ifaces")
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
         binder.iface = iface
-        if (iface == null) removeRoutingsLocked(routings.keys) else routings.getOrPut(iface) { null }
+        if (iface == null) {
+            routingManager?.stop()
+            routingManager = null
+            unregisterReceiver()
+            ServiceNotification.stopForeground(this)
+            stopSelf()
+        } else {
+            val routingManager = routingManager
+            if (routingManager == null) {
+                this.routingManager = LocalOnlyInterfaceManager(iface)
+                IpNeighbourMonitor.registerCallback(this)
+            } else check(iface == routingManager.downstream)
+        }
+        app.handler.post { binder.fragment?.adapter?.updateLocalOnlyViewHolder() }
     }
-
-    override fun updateRoutingsLocked() {
-        super.updateRoutingsLocked()
-        app.handler.post { binder.fragment?.adapter?.notifyDataSetChanged() }
-    }
+    override val activeIfaces get() = listOfNotNull(binder.iface)
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -52,7 +62,10 @@ class LocalOnlyHotspotService : BaseTetheringService() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) onFailed(-1) else {
                         this@LocalOnlyHotspotService.reservation = reservation
-                        registerReceiver()
+                        if (!receiverRegistered) {
+                            registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                            receiverRegistered = true
+                        }
                     }
                 }
 
@@ -69,5 +82,18 @@ class LocalOnlyHotspotService : BaseTetheringService() {
             e.printStackTrace()
         }
         return START_STICKY
+    }
+
+    override fun onDestroy() {
+        unregisterReceiver()
+        super.onDestroy()
+    }
+
+    private fun unregisterReceiver() {
+        if (receiverRegistered) {
+            unregisterReceiver(receiver)
+            IpNeighbourMonitor.unregisterCallback(this)
+            receiverRegistered = false
+        }
     }
 }

@@ -203,7 +203,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
         }
     }
 
-    class TetherListener : BaseObservable(), BluetoothProfile.ServiceListener {
+    inner class TetherListener : BaseObservable(), BluetoothProfile.ServiceListener {
         var enabledTypes = emptySet<TetherType>()
             @Bindable get
             set(value) {
@@ -253,15 +253,17 @@ class TetheringFragment : Fragment(), ServiceConnection {
             ListAdapter<TetheredInterface, RecyclerView.ViewHolder>(TetheredInterface.DiffCallback) {
         private var lookup: Map<String, NetworkInterface> = emptyMap()
 
-        fun update(data: ArrayList<String>) {
+        fun update(activeIfaces: List<String>, localOnlyIfaces: List<String>) {
             lookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
                 e.printStackTrace()
                 emptyMap()
             }
-            this@TetheringFragment.tetherListener.enabledTypes = data.map { TetherType.ofInterface(it) }.toSet()
-            submitList(data.map { TetheredInterface(it, lookup) }.sorted())
+            this@TetheringFragment.tetherListener.enabledTypes =
+                    (activeIfaces + localOnlyIfaces).map { TetherType.ofInterface(it) }.toSet()
+            submitList(activeIfaces.map { TetheredInterface(it, lookup) }.sorted())
+            if (Build.VERSION.SDK_INT >= 26) updateLocalOnlyViewHolder()
         }
 
         override fun getItemCount() = super.getItemCount() + if (Build.VERSION.SDK_INT < 24) 2 else 5
@@ -303,7 +305,11 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 is InterfaceViewHolder -> holder.binding.data = TetheredData(getItem(position))
             }
         }
-        fun updateLocalOnlyViewHolder() = notifyItemChanged(super.getItemCount())
+        @RequiresApi(26)
+        fun updateLocalOnlyViewHolder() {
+            notifyItemChanged(super.getItemCount())
+            notifyItemChanged(super.getItemCount() + 3)
+        }
     }
 
     private val tetherListener = TetherListener()
@@ -312,7 +318,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
     private var tetheringBinder: TetheringService.TetheringBinder? = null
     val adapter = TetheringAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(TetheringManager.getTetheredIfaces(intent.extras))
+        adapter.update(TetheringManager.getTetheredIfaces(intent.extras),
+                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras))
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -359,7 +366,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             requireContext().registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
             while (false) { }
         }
-        is LocalOnlyHotspotService.HotspotBinder -> {
+        is LocalOnlyHotspotService.HotspotBinder -> @TargetApi(26) {
             hotspotBinder = service
             service.fragment = this
             adapter.updateLocalOnlyViewHolder()

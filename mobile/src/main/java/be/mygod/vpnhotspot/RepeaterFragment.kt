@@ -160,7 +160,8 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     private var p2pInterface: String? = null
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        tetheredInterfaces = TetheringManager.getAllTetheredIfaces(intent.extras)
+        tetheredInterfaces = TetheringManager.getTetheredIfaces(intent.extras).toSet() +
+                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras)
         adapter.recreate()
     }
 
