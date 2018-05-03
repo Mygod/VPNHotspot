@@ -60,7 +60,7 @@
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_repeater_strict">严格模式</string>
-    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过</string>
+    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过，也适用于临时热点</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>
