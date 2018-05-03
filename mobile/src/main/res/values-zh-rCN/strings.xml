@@ -28,7 +28,13 @@
     <string name="repeater_failure_reason_p2p_unsupported">设备不支持 Wi\u2011Fi 直连</string>
     <string name="repeater_failure_reason_busy">系统忙</string>
     <string name="repeater_failure_reason_no_service_requests">未添加服务请求</string>
-    <string name="repeater_failure_reason_unknown">未知 #%d</string>
+
+    <string name="tethering_temp_hotspot">临时 WLAN 热点</string>
+    <string name="tethering_temp_hotspot_failure">打开热点失败 (原因：%s)</string>
+    <string name="tethering_temp_hotspot_failure_no_channel">无频段</string>
+    <string name="tethering_temp_hotspot_failure_generic">通用错误</string>
+    <string name="tethering_temp_hotspot_failure_incompatible_mode">模式不兼容</string>
+    <string name="tethering_temp_hotspot_failure_tethering_disallowed">共享被禁用</string>
 
     <string name="tethering_manage">管理…</string>
     <!--
@@ -72,6 +78,7 @@
         <item quantity="other">%d 个接口</item>
     </plurals>
 
+    <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="root_unavailable">似乎没有 root</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>

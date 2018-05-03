@@ -78,7 +78,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             val iface = hotspotBinder?.iface ?: return TetherType.WIFI.icon
             return TetherType.ofInterface(iface).icon
         }
-        override val title get() = "Temporary Wi-Fi hotspot"
+        override val title get() = getString(R.string.tethering_temp_hotspot)
         override val text by lazy {
             val binder = hotspotBinder
             val configuration = binder?.configuration ?: return@lazy getText(R.string.service_inactive)

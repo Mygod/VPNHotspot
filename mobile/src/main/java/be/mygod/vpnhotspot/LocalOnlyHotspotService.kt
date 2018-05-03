@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Binder
-import android.os.IBinder
 import android.support.annotation.RequiresApi
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -51,7 +50,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
     override val activeIfaces get() = listOfNotNull(binder.iface)
 
-    override fun onBind(intent: Intent?): IBinder = binder
+    override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
@@ -60,7 +59,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         try {
             app.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
-                    if (reservation == null) onFailed(-1) else {
+                    if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
                         if (!receiverRegistered) {
                             registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
@@ -75,7 +74,18 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 }
 
                 override fun onFailed(reason: Int) {
-                    Toast.makeText(this@LocalOnlyHotspotService, "Failed to start hotspot (reason: $reason)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@LocalOnlyHotspotService, getString(R.string.tethering_temp_hotspot_failure,
+                            when (reason) {
+                                WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL ->
+                                    getString(R.string.tethering_temp_hotspot_failure_no_channel)
+                                WifiManager.LocalOnlyHotspotCallback.ERROR_GENERIC ->
+                                    getString(R.string.tethering_temp_hotspot_failure_generic)
+                                WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE ->
+                                    getString(R.string.tethering_temp_hotspot_failure_incompatible_mode)
+                                WifiManager.LocalOnlyHotspotCallback.ERROR_TETHERING_DISALLOWED ->
+                                    getString(R.string.tethering_temp_hotspot_failure_tethering_disallowed)
+                                else -> getString(R.string.failure_reason_unknown, reason)
+                            }), Toast.LENGTH_SHORT).show()
                 }
             }, app.handler)
         } catch (e: IllegalStateException) {

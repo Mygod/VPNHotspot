@@ -48,7 +48,7 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
             this.dns = dns
             val strict = app.pref.getBoolean("service.repeater.strict", false)
             if (strict && upstream == null) return  // in this case, nothing to be done
-            if (routing.ipForward()                // local only interfaces may not enable ip_forward
+            if (routing.ipForward()                 // local only interfaces may not enable ip_forward
                             .rule().forward(strict).masquerade(strict).dnsRedirect(dns).start()) return
             app.toast(R.string.noisy_su_failure)
         } catch (e: SocketException) {
