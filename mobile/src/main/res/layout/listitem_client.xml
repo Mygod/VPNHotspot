@@ -40,14 +40,14 @@
                 android:text="@{client.title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
                 android:textIsSelectable="true"
-                tools:text="192.168.49.123\t\t01:23:45:ab:cd:ef"/>
+                tools:text="01:23:45:ab:cd:ef%p2p-p2p0-0"/>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
                 android:textIsSelectable="true"
-                tools:text="Connected to p2p0"/>
+                tools:text="192.168.49.123 (reachable)\nfe80::abcd:efff:1234:5678%p2p-p2p0-0 (reachable)"/>
         </LinearLayout>
     </LinearLayout>
 </layout>

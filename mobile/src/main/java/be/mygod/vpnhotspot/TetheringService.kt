@@ -44,7 +44,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
     }
     override val activeIfaces get() = synchronized(routings) { routings.keys.toList() }
 
-    fun updateRoutingsLocked() {
+    private fun updateRoutingsLocked() {
         if (routings.isNotEmpty()) {
             val upstream = upstream
             if (upstream != null) {

@@ -50,11 +50,13 @@
                 android:layout_row="0"/>
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="0"
                 android:focusable="false"
+                android:layout_gravity="fill_horizontal"
+                android:layout_columnWeight="1"
                 android:text="@{data.ssid}"
                 tools:text="DIRECT-rA-nd0m"/>
 
@@ -67,13 +69,15 @@
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
             <TextView
-                android:layout_width="wrap_content"
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_column="2"
                 android:layout_row="1"
+                android:layout_gravity="fill_horizontal"
+                android:layout_columnWeight="1"
                 android:text="@{data.addresses}"
                 android:textIsSelectable="true"
-                tools:text="192.168.49.1/24\n01:23:45:ab:cd:ef"/>
+                tools:text="192.168.49.1/24\nfe80::abcd:efff:1234:5678%p2p-p2p0-0/64\n01:23:45:ab:cd:ef"/>
         </GridLayout>
 
         <TextView
