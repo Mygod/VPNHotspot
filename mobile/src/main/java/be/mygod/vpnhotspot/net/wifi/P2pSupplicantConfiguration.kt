@@ -52,7 +52,7 @@ class P2pSupplicantConfiguration {
                     ssidMatcher.containsMatchIn(line) -> {
                         ssidFound += 1
                         "\tssid=" + config.SSID.toByteArray()
-                                .joinToString("") { it.toInt().toString(16).padStart(2, '0') }
+                                .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
                     }
                     pskParser.containsMatchIn(line) -> {
                         pskFound += 1
