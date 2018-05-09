@@ -76,8 +76,9 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
             notifyPropertyChanged(BR.serviceStarted)
+            if (binder?.active != true) onGroupChanged()
         }
-        fun onGroupChanged(group: WifiP2pGroup? = binder?.service?.group) {
+        fun onGroupChanged(group: WifiP2pGroup? = null) {
             notifyPropertyChanged(BR.ssid)
             p2pInterface = group?.`interface`
             notifyPropertyChanged(BR.addresses)
@@ -208,7 +209,6 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         binder.groupChanged -= this
         this.binder = null
         data.onStatusChanged()
-        data.onGroupChanged()
     }
 
     override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
