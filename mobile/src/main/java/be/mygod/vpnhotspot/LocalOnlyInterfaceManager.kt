@@ -1,9 +1,5 @@
 package be.mygod.vpnhotspot
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -11,13 +7,12 @@ import be.mygod.vpnhotspot.net.VpnMonitor
 import java.net.InetAddress
 import java.net.SocketException
 
-class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetAddress? = null) :
-        BroadcastReceiver(), VpnMonitor.Callback {
+class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetAddress? = null) : VpnMonitor.Callback {
     private var routing: Routing? = null
     private var dns = emptyList<InetAddress>()
 
     init {
-        LocalBroadcastManager.getInstance(app).registerReceiver(this, intentFilter(App.ACTION_CLEAN_ROUTINGS))
+        app.cleanRoutings[this] = this::clean
         VpnMonitor.registerCallback(this) { initRouting() }
     }
 
@@ -34,7 +29,8 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
         if (!routing.stop()) app.toast(R.string.noisy_su_failure)
         initRouting(null, routing.hostAddress, emptyList())
     }
-    override fun onReceive(context: Context?, intent: Intent?) {
+
+    private fun clean() {
         val routing = routing ?: return
         routing.started = false
         initRouting(routing.upstream, routing.hostAddress, dns)
@@ -59,7 +55,7 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
 
     fun stop() {
         VpnMonitor.unregisterCallback(this)
-        LocalBroadcastManager.getInstance(app).unregisterReceiver(this)
+        app.cleanRoutings -= this
         if (routing?.stop() == false) app.toast(R.string.noisy_su_failure)
     }
 }

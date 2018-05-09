@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.IBinder
 import android.support.v4.app.Fragment
 import android.support.v4.content.ContextCompat
-import android.support.v4.content.LocalBroadcastManager
 import android.support.v7.app.AlertDialog
 import android.support.v7.app.AppCompatDialog
 import android.support.v7.recyclerview.extensions.ListAdapter
@@ -28,8 +27,8 @@ import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
-import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
 import java.net.NetworkInterface
@@ -61,7 +60,7 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
                 }
             }
 
-        val ssid @Bindable get() = binder?.ssid ?: getText(R.string.service_inactive)
+        val ssid @Bindable get() = binder?.service?.group?.networkName ?: getText(R.string.service_inactive)
         val addresses @Bindable get(): String {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -74,18 +73,14 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
             notifyPropertyChanged(BR.serviceStarted)
-            val binder = binder
-            onGroupChanged(if (binder?.active == true) binder.service.group else null)
         }
-        fun onGroupChanged(group: WifiP2pGroup?) {
+        fun onGroupChanged(group: WifiP2pGroup? = binder?.service?.group) {
             notifyPropertyChanged(BR.ssid)
             p2pInterface = group?.`interface`
             notifyPropertyChanged(BR.addresses)
             adapter.p2p = group?.clientList ?: emptyList()
             adapter.recreate()
         }
-
-        val statusListener = broadcastReceiver { _, _ -> onStatusChanged() }
     }
 
     inner class Client(p2p: WifiP2pDevice? = null, neighbour: IpNeighbour? = null) {
@@ -202,18 +197,18 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         val binder = service as RepeaterService.RepeaterBinder
-        binder.data = data
         this.binder = binder
-        data.onStatusChanged()
-        LocalBroadcastManager.getInstance(requireContext())
-                .registerReceiver(data.statusListener, intentFilter(RepeaterService.ACTION_STATUS_CHANGED))
+        binder.statusChanged[this] = data::onStatusChanged
+        binder.groupChanged[this] = data::onGroupChanged
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        binder?.data = null
-        binder = null
-        LocalBroadcastManager.getInstance(requireContext()).unregisterReceiver(data.statusListener)
+        val binder = binder ?: return
+        binder.statusChanged -= this
+        binder.groupChanged -= this
+        this.binder = null
         data.onStatusChanged()
+        data.onGroupChanged()
     }
 
     override fun onMenuItemClick(item: MenuItem) = when (item.itemId) {
@@ -239,13 +234,14 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
 
     private fun editConfigurations() {
         val binder = binder
-        val ssid = binder?.ssid
+        val group = binder?.service?.group
+        val ssid = group?.networkName
         val context = requireContext()
         if (ssid != null) {
             val wifi = WifiConfiguration()
             val conf = P2pSupplicantConfiguration()
             wifi.SSID = ssid
-            wifi.preSharedKey = binder.password
+            wifi.preSharedKey = group.passphrase
             if (wifi.preSharedKey == null) wifi.preSharedKey = conf.readPsk()
             if (wifi.preSharedKey != null) {
                 var dialog: WifiP2pDialog? = null

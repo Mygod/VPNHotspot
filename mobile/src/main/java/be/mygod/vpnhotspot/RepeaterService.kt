@@ -12,7 +12,6 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Binder
 import android.os.Looper
 import android.support.annotation.StringRes
-import android.support.v4.content.LocalBroadcastManager
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -22,12 +21,13 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
+import be.mygod.vpnhotspot.util.StickyEvent0
+import be.mygod.vpnhotspot.util.StickyEvent1
 import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
-        const val ACTION_STATUS_CHANGED = "be.mygod.vpnhotspot.RepeaterService.STATUS_CHANGED"
         private const val TAG = "RepeaterService"
     }
 
@@ -37,11 +37,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     inner class RepeaterBinder : Binder() {
         val service get() = this@RepeaterService
-        var data: RepeaterFragment.Data? = null
         val active get() = status == Status.ACTIVE
-
-        val ssid get() = group?.networkName
-        val password get() = group?.passphrase
+        val statusChanged = StickyEvent0()
+        val groupChanged = StickyEvent1 { group }
 
         private var groups: Collection<WifiP2pGroup> = emptyList()
 
@@ -93,7 +91,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     var group: WifiP2pGroup? = null
         private set(value) {
             field = value
-            binder.data?.onGroupChanged(value)
+            binder.groupChanged(value)
         }
     private val binder = RepeaterBinder()
     private var receiverRegistered = false
@@ -114,7 +112,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         private set(value) {
             if (field == value) return
             field = value
-            LocalBroadcastManager.getInstance(this).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
+            binder.statusChanged()
         }
 
     private fun formatReason(@StringRes resId: Int, reason: Int) = getString(resId, when (reason) {
@@ -245,7 +243,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     Toast.makeText(this@RepeaterService,
                             formatReason(R.string.repeater_remove_group_failure, reason), Toast.LENGTH_SHORT).show()
                     status = Status.ACTIVE
-                    LocalBroadcastManager.getInstance(this@RepeaterService).sendBroadcast(Intent(ACTION_STATUS_CHANGED))
                 }
             }
         })

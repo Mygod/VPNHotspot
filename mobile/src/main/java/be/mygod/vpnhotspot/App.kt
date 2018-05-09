@@ -12,10 +12,10 @@ import android.os.Handler
 import android.preference.PreferenceManager
 import android.support.annotation.StringRes
 import android.widget.Toast
+import be.mygod.vpnhotspot.util.Event0
 
 class App : Application() {
     companion object {
-        const val ACTION_CLEAN_ROUTINGS = "be.mygod.vpnhotspot.CLEAN_ROUTINGS"
         const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
         private const val KEY_DNS = "service.dns"
 
@@ -53,6 +53,8 @@ class App : Application() {
     var dns: String
         get() = pref.getString(KEY_DNS, "8.8.8.8")
         set(value) = pref.edit().putString(KEY_DNS, value).apply()
+
+    val cleanRoutings = Event0()
 
     fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(this, resId, Toast.LENGTH_SHORT).show() }
 }

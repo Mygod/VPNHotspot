@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.FileProvider
-import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -30,9 +29,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
         findPreference("service.clean").setOnPreferenceClickListener {
             if (Routing.clean() == null) {
                 Toast.makeText(requireContext(), R.string.root_unavailable, Toast.LENGTH_SHORT).show()
-            } else {
-                LocalBroadcastManager.getInstance(requireContext()).sendBroadcastSync(Intent(App.ACTION_CLEAN_ROUTINGS))
-            }
+            } else app.cleanRoutings()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {

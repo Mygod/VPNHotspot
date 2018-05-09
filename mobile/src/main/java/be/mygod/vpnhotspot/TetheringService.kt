@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.os.Binder
-import android.support.v4.content.LocalBroadcastManager
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
@@ -31,14 +30,9 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         synchronized(routings) {
-            when (intent.action) {
-                TetheringManager.ACTION_TETHER_STATE_CHANGED -> {
-                    val failed = (routings.keys - TetheringManager.getTetheredIfaces(intent.extras))
-                            .any { routings.remove(it)?.stop() == false }
-                    if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
-                }
-                App.ACTION_CLEAN_ROUTINGS -> for (iface in routings.keys) routings[iface] = null
-            }
+            val failed = (routings.keys - TetheringManager.getTetheredIfaces(intent.extras))
+                    .any { routings.remove(it)?.stop() == false }
+            if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             updateRoutingsLocked()
         }
     }
@@ -63,8 +57,12 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                LocalBroadcastManager.getInstance(this)
-                        .registerReceiver(receiver, intentFilter(App.ACTION_CLEAN_ROUTINGS))
+                app.cleanRoutings[this] = {
+                    synchronized(routings) {
+                        for (iface in routings.keys) routings[iface] = null
+                        updateRoutingsLocked()
+                    }
+                }
                 IpNeighbourMonitor.registerCallback(this)
                 VpnMonitor.registerCallback(this)
                 receiverRegistered = true
@@ -121,7 +119,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
-            LocalBroadcastManager.getInstance(this).unregisterReceiver(receiver)
+            app.cleanRoutings -= this
             IpNeighbourMonitor.unregisterCallback(this)
             VpnMonitor.unregisterCallback(this)
             upstream = null
