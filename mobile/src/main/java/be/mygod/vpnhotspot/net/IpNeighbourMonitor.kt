@@ -4,8 +4,8 @@ import android.os.Handler
 import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.debugLog
-import be.mygod.vpnhotspot.thread
+import be.mygod.vpnhotspot.util.debugLog
+import be.mygod.vpnhotspot.util.thread
 import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -57,7 +57,8 @@ class IpNeighbourMonitor private constructor() : Runnable {
             thread("$TAG-error") {
                 try {
                     monitor.errorStream.bufferedReader().forEachLine { Log.e(TAG, it) }
-                } catch (ignore: InterruptedIOException) { }
+                } catch (ignore: InterruptedIOException) {
+                }
             }
             try {
                 monitor.inputStream.bufferedReader().forEachLine {
@@ -76,7 +77,8 @@ class IpNeighbourMonitor private constructor() : Runnable {
                 val pool = Executors.newScheduledThreadPool(1)
                 pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
                 this.pool = pool
-            } catch (ignore: InterruptedIOException) { }
+            } catch (ignore: InterruptedIOException) {
+            }
         }
     }
 

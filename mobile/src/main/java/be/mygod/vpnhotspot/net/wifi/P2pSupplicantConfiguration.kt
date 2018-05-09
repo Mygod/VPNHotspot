@@ -5,8 +5,8 @@ import android.os.Build
 import android.util.Log
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.loggerSu
-import be.mygod.vpnhotspot.noisySu
+import be.mygod.vpnhotspot.util.loggerSu
+import be.mygod.vpnhotspot.util.noisySu
 import java.io.File
 
 class P2pSupplicantConfiguration {

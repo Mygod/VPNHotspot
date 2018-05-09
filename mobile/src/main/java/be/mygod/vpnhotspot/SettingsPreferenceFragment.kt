@@ -11,6 +11,7 @@ import android.support.v4.content.FileProvider
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.util.loggerSuStream
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.File
 import java.io.IOException

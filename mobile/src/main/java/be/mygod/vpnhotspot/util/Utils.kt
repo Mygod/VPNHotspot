@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot
+package be.mygod.vpnhotspot.util
 
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -9,6 +9,8 @@ import android.support.annotation.DrawableRes
 import android.util.Log
 import android.widget.ImageView
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.BuildConfig
+import be.mygod.vpnhotspot.R
 import java.io.IOException
 import java.io.InputStream
 import java.net.NetworkInterface

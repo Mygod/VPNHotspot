@@ -3,8 +3,8 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.debugLog
-import be.mygod.vpnhotspot.noisySu
+import be.mygod.vpnhotspot.util.debugLog
+import be.mygod.vpnhotspot.util.noisySu
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface

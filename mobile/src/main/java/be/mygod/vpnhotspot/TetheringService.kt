@@ -8,6 +8,8 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.VpnMonitor
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.intentFilter
 import java.net.InetAddress
 import java.net.SocketException
 

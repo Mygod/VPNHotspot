@@ -31,6 +31,9 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.formatAddresses
+import be.mygod.vpnhotspot.util.intentFilter
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.*

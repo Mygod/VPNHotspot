@@ -5,7 +5,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.util.debugLog
 import java.net.InetAddress
 
 object VpnMonitor : ConnectivityManager.NetworkCallback() {
