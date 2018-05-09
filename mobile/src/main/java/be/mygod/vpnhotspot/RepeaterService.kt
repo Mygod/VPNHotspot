@@ -9,7 +9,6 @@ import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
-import android.os.Binder
 import android.os.Looper
 import android.support.annotation.StringRes
 import android.util.Log
@@ -34,7 +33,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         IDLE, STARTING, ACTIVE
     }
 
-    inner class RepeaterBinder : Binder() {
+    inner class Binder : android.os.Binder() {
         val service get() = this@RepeaterService
         val active get() = status == Status.ACTIVE
         val statusChanged = StickyEvent0()
@@ -92,7 +91,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             field = value
             binder.groupChanged(value)
         }
-    private val binder = RepeaterBinder()
+    private val binder = Binder()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {

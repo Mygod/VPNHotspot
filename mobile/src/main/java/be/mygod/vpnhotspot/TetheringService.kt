@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Binder
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
@@ -19,13 +18,13 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
     }
 
-    inner class TetheringBinder : Binder() {
+    inner class Binder : android.os.Binder() {
         var fragment: TetheringFragment? = null
 
         fun isActive(iface: String): Boolean = synchronized(routings) { routings.keys.contains(iface) }
     }
 
-    private val binder = TetheringBinder()
+    private val binder = Binder()
     private val routings = HashMap<String, Routing?>()
     private var upstream: String? = null
     private var dns: List<InetAddress> = emptyList()

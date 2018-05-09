@@ -54,14 +54,11 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".LocalOnlyHotspotService">
-        </service>
+        <service android:name=".LocalOnlyHotspotService"/>
         <service
             android:name=".RepeaterService"
-            android:directBootAware="true">
-        </service>
-        <service android:name=".TetheringService">
-        </service>
+            android:directBootAware="true"/>
+        <service android:name=".TetheringService"/>
         <service
             android:name=".RepeaterTileService"
             android:directBootAware="true"

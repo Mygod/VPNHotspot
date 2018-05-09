@@ -17,7 +17,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
     private val tileOff by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_off) }
     private val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
-    private var binder: RepeaterService.RepeaterBinder? = null
+    private var binder: RepeaterService.Binder? = null
 
     override fun onStartListening() {
         super.onStartListening()
@@ -40,7 +40,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder) {
-        val binder = service as RepeaterService.RepeaterBinder
+        val binder = service as RepeaterService.Binder
         this.binder = binder
         binder.statusChanged[this] = { updateTile() }
         binder.groupChanged[this] = this::updateTile

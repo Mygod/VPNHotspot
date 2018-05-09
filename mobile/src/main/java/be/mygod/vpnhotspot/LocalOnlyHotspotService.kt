@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
-import android.os.Binder
 import android.support.annotation.RequiresApi
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -18,7 +17,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         private const val TAG = "LocalOnlyHotspotService"
     }
 
-    inner class HotspotBinder : Binder() {
+    inner class Binder : android.os.Binder() {
         var fragment: TetheringFragment? = null
         var iface: String? = null
         val configuration get() = reservation?.wifiConfiguration
@@ -26,7 +25,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         fun stop() = reservation?.close()
     }
 
-    private val binder = HotspotBinder()
+    private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var routingManager: LocalOnlyInterfaceManager? = null
     private var receiverRegistered = false

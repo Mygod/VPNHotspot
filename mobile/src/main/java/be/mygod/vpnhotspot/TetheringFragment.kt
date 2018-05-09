@@ -320,8 +320,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     private val tetherListener = TetherListener()
     private lateinit var binding: FragmentTetheringBinding
-    private var hotspotBinder: LocalOnlyHotspotService.HotspotBinder? = null
-    private var tetheringBinder: TetheringService.TetheringBinder? = null
+    private var hotspotBinder: LocalOnlyHotspotService.Binder? = null
+    private var tetheringBinder: TetheringService.Binder? = null
     val adapter = TetheringAdapter()
     private val receiver = broadcastReceiver { _, intent ->
         adapter.update(TetheringManager.getTetheredIfaces(intent.extras),
@@ -354,13 +354,13 @@ class TetheringFragment : Fragment(), ServiceConnection {
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) = when (service) {
-        is TetheringService.TetheringBinder -> {
+        is TetheringService.Binder -> {
             tetheringBinder = service
             service.fragment = this
             requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
             while (false) { }
         }
-        is LocalOnlyHotspotService.HotspotBinder -> @TargetApi(26) {
+        is LocalOnlyHotspotService.Binder -> @TargetApi(26) {
             hotspotBinder = service
             service.fragment = this
             adapter.updateLocalOnlyViewHolder()
