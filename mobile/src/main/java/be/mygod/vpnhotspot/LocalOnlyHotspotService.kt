@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Binder
 import android.support.annotation.RequiresApi
@@ -10,7 +11,6 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.debugLog
-import be.mygod.vpnhotspot.util.intentFilter
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
@@ -65,7 +65,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                     if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
                         if (!receiverRegistered) {
-                            registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                            registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                             receiverRegistered = true
                         }
                     }

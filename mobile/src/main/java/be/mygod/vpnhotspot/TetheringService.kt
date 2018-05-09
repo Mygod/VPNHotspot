@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Binder
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
@@ -9,7 +10,6 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.VpnMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.intentFilter
 import java.net.InetAddress
 import java.net.SocketException
 
@@ -58,7 +58,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
                 }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
-                registerReceiver(receiver, intentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 app.cleanRoutings[this] = {
                     synchronized(routings) {
                         for (iface in routings.keys) routings[iface] = null
