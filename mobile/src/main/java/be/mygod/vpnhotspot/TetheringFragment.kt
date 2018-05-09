@@ -34,6 +34,7 @@ import be.mygod.vpnhotspot.databinding.ListitemManageTetherBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.formatAddresses
 import java.lang.reflect.InvocationTargetException
@@ -333,16 +334,9 @@ class TetheringFragment : Fragment(), ServiceConnection {
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
         BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(requireContext(), tetherListener, PAN)
+        ServiceForegroundConnector(this, if (Build.VERSION.SDK_INT >= 26)
+            listOf(TetheringService::class, LocalOnlyHotspotService::class) else listOf(TetheringService::class))
         return binding.root
-    }
-
-    override fun onStart() {
-        super.onStart()
-        val context = requireContext()
-        context.bindService(Intent(context, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
-        if (Build.VERSION.SDK_INT >= 26) {
-            context.bindService(Intent(context, LocalOnlyHotspotService::class.java), this, Context.BIND_AUTO_CREATE)
-        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -352,11 +346,6 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
             }
         } else super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-    }
-
-    override fun onStop() {
-        requireContext().unbindService(this)
-        super.onStop()
     }
 
     override fun onDestroy() {

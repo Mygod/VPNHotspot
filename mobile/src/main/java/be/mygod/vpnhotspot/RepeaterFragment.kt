@@ -31,6 +31,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
+import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.formatAddresses
 import java.net.NetworkInterface
@@ -177,23 +178,20 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         }
         binding.toolbar.inflateMenu(R.menu.repeater)
         binding.toolbar.setOnMenuItemClickListener(this)
+        ServiceForegroundConnector(this, RepeaterService::class)
         return binding.root
     }
 
     override fun onStart() {
         super.onStart()
-        val context = requireContext()
-        context.bindService(Intent(context, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         IpNeighbourMonitor.registerCallback(this)
-        context.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
 
     override fun onStop() {
-        val context = requireContext()
-        context.unregisterReceiver(receiver)
+        requireContext().unregisterReceiver(receiver)
         IpNeighbourMonitor.unregisterCallback(this)
         onServiceDisconnected(null)
-        context.unbindService(this)
         super.onStop()
     }
 
