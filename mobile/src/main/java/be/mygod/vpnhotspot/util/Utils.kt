@@ -1,9 +1,6 @@
 package be.mygod.vpnhotspot.util
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
+import android.content.*
 import android.databinding.BindingAdapter
 import android.support.annotation.DrawableRes
 import android.util.Log
@@ -52,4 +49,9 @@ fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = fals
     thread.setUncaughtExceptionHandler { _, _ -> app.toast(R.string.noisy_su_failure) }
     if (start) thread.start()
     return thread
+}
+
+fun Context.stopAndUnbind(connection: ServiceConnection) {
+    connection.onServiceDisconnected(null)
+    unbindService(connection)
 }

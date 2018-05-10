@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.stopAndUnbind
 
 class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Callback {
     inner class Binder : android.os.Binder() {
@@ -70,7 +71,7 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
     override fun onDestroy() {
         unregisterReceiver(receiver)
         IpNeighbourMonitor.unregisterCallback(this)
-        unbindService(this)
+        stopAndUnbind(this)
         super.onDestroy()
     }
 

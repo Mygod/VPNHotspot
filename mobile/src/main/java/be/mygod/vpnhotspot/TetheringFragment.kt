@@ -370,17 +370,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     override fun onServiceDisconnected(name: ComponentName?) {
         val context = requireContext()
-        when (name) {
-            ComponentName(context, TetheringService::class.java) -> {
-                tetheringBinder?.fragment = null
-                tetheringBinder = null
-                context.unregisterReceiver(receiver)
-            }
-            ComponentName(context, LocalOnlyHotspotService::class.java) -> {
-                hotspotBinder?.fragment = null
-                hotspotBinder = null
-            }
-            else -> throw IllegalArgumentException("name")
-        }
+        tetheringBinder?.fragment = null
+        tetheringBinder = null
+        context.unregisterReceiver(receiver)
+        hotspotBinder?.fragment = null
+        hotspotBinder = null
     }
 }

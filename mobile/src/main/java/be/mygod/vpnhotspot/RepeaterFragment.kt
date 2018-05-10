@@ -137,11 +137,10 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        if (name == ComponentName(requireContext(), ClientMonitorService::class.java)) {
-            val clients = clients ?: return
+        val clients = clients
+        if (clients != null) {
             this.clients = null
             clients.clientsChanged -= this
-            return
         }
         val binder = binder ?: return
         this.binder = null

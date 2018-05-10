@@ -30,5 +30,5 @@ class ServiceForegroundConnector(private val host: ServiceConnection, private va
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
-    fun onStop() = context.unbindService(host)
+    fun onStop() = context.stopAndUnbind(host)
 }

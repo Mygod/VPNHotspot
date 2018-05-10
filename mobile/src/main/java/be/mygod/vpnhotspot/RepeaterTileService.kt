@@ -11,6 +11,7 @@ import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.support.annotation.RequiresApi
 import android.support.v4.content.ContextCompat
+import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(24)
 class RepeaterTileService : TileService(), ServiceConnection {
@@ -26,7 +27,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
 
     override fun onStopListening() {
         super.onStopListening()
-        unbindService(this)
+        stopAndUnbind(this)
     }
 
     override fun onClick() {
