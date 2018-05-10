@@ -5,7 +5,7 @@
     <data>
         <variable
             name="client"
-            type="be.mygod.vpnhotspot.RepeaterFragment.Client"/>
+            type="be.mygod.vpnhotspot.client.Client"/>
     </data>
 
     <LinearLayout

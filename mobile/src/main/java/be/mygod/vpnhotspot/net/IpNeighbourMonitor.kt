@@ -25,8 +25,7 @@ class IpNeighbourMonitor private constructor() : Runnable {
                 instance = monitor
                 monitor.flush()
             } else {
-                synchronized(monitor.neighbours) { callback.onIpNeighbourAvailable(monitor.neighbours) }
-                callback.postIpNeighbourAvailable()
+                callback.onIpNeighbourAvailable(synchronized(monitor.neighbours) { monitor.neighbours.values.toList() })
             }
         }
         fun unregisterCallback(callback: Callback) {
@@ -37,8 +36,7 @@ class IpNeighbourMonitor private constructor() : Runnable {
     }
 
     interface Callback {
-        fun onIpNeighbourAvailable(neighbours: Map<String, IpNeighbour>)
-        fun postIpNeighbourAvailable()
+        fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>)
     }
 
     private val handler = Handler()
@@ -112,11 +110,11 @@ class IpNeighbourMonitor private constructor() : Runnable {
     private fun postUpdateLocked() {
         if (updatePosted || instance != this) return
         handler.post {
-            synchronized(neighbours) {
-                for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
+            val neighbours = synchronized(neighbours) {
                 updatePosted = false
+                neighbours.values.toList()
             }
-            for (callback in callbacks) callback.postIpNeighbourAvailable()
+            for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
         }
         updatePosted = true
     }

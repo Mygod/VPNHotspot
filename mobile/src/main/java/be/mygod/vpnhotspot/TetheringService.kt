@@ -68,7 +68,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
                 VpnMonitor.registerCallback(this)
                 receiverRegistered = true
             }
-            postIpNeighbourAvailable()
+            updateNotification()
         }
         if (routings.isEmpty()) {
             unregisterReceiver()
