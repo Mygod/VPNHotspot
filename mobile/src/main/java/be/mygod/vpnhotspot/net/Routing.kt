@@ -11,7 +11,7 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.*
 
-class Routing(val upstream: String?, val downstream: String, ownerAddress: InetAddress? = null) {
+class Routing(val upstream: String?, private val downstream: String, ownerAddress: InetAddress? = null) {
     companion object {
         /**
          * -w <seconds> is not supported on 7.1-.
