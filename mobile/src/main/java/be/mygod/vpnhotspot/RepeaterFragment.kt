@@ -116,7 +116,13 @@ class RepeaterFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickL
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
             val binder = binder
-            if (binder?.active == false) binder.requestGroupUpdate()
+            if (binder?.active == false) {
+                try {
+                    binder.requestGroupUpdate()
+                } catch (exc: UninitializedPropertyAccessException) {
+                    exc.printStackTrace()
+                }
+            }
         }
         binding.toolbar.inflateMenu(R.menu.repeater)
         binding.toolbar.setOnMenuItemClickListener(this)
