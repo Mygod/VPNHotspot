@@ -55,8 +55,7 @@ class IpNeighbourMonitor private constructor() : Runnable {
             thread("$TAG-error") {
                 try {
                     monitor.errorStream.bufferedReader().forEachLine { Log.e(TAG, it) }
-                } catch (ignore: InterruptedIOException) {
-                }
+                } catch (_: InterruptedIOException) { }
             }
             try {
                 monitor.inputStream.bufferedReader().forEachLine {
@@ -75,8 +74,7 @@ class IpNeighbourMonitor private constructor() : Runnable {
                 val pool = Executors.newScheduledThreadPool(1)
                 pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
                 this.pool = pool
-            } catch (ignore: InterruptedIOException) {
-            }
+            } catch (_: InterruptedIOException) { }
         }
     }
 
