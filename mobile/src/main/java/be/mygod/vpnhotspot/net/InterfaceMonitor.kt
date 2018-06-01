@@ -7,7 +7,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         /**
          * Based on: https://android.googlesource.com/platform/external/iproute2/+/70556c1/ip/ipaddress.c#1053
          */
-        private val parser = ("^(Deleted )?-?\\d+: ([^:@]+)").toRegex()
+        private val parser = "^(Deleted )?-?\\d+: ([^:@]+)".toRegex()
     }
 
     private inner class IpLinkMonitor : IpMonitor() {
