@@ -2,111 +2,18 @@
 <layout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
-    <data>
-        <variable
-            name="data"
-            type="be.mygod.vpnhotspot.RepeaterFragment.Data"/>
-    </data>
-    <LinearLayout
-        android:orientation="vertical"
+
+    <android.support.v4.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresher"
         android:layout_width="match_parent"
         android:layout_height="match_parent">
-        <android.support.v7.widget.Toolbar
-            android:layout_height="?attr/actionBarSize"
+
+        <android.support.v7.widget.RecyclerView
+            android:id="@+id/clients"
             android:layout_width="match_parent"
-            android:background="?attr/colorPrimary"
-            android:elevation="4dp"
-            android:touchscreenBlocksFocus="false"
-            android:id="@+id/toolbar">
-
-            <Switch
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:layout_marginEnd="8dp"
-                android:enabled="@{data.switchEnabled}"
-                android:checked="@{data.serviceStarted}"
-                android:onCheckedChanged="@{(_, checked) -> data.setServiceStarted(checked)}"
-                android:text="@string/app_name"
-                android:textAppearance="@style/TextAppearance.Widget.AppCompat.Toolbar.Title"/>
-        </android.support.v7.widget.Toolbar>
-
-        <GridLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingBottom="8dp"
-            android:paddingEnd="16dp"
-            android:paddingStart="16dp"
-            android:paddingTop="16dp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/wifi_ssid"
-                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-            <Space
-                android:layout_width="8dp"
-                android:layout_height="0dp"
-                android:layout_column="1"
-                android:layout_row="0"/>
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_column="2"
-                android:layout_row="0"
-                android:focusable="false"
-                android:layout_gravity="fill_horizontal"
-                android:layout_columnWeight="1"
-                android:text="@{data.ssid}"
-                tools:text="DIRECT-rA-nd0m"/>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_column="0"
-                android:layout_row="1"
-                android:text="@string/repeater_addresses"
-                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_column="2"
-                android:layout_row="1"
-                android:layout_gravity="fill_horizontal"
-                android:layout_columnWeight="1"
-                android:text="@{data.addresses}"
-                android:textIsSelectable="true"
-                tools:text="192.168.49.1/24\nfe80::abcd:efff:1234:5678%p2p-p2p0-0/64\n01:23:45:ab:cd:ef"/>
-        </GridLayout>
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="@string/connected_devices"
-            android:textAppearance="@style/TextAppearance.AppCompat.Medium"/>
-
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="1dp"
-            android:background="#000"
-            android:backgroundTint="?android:attr/textColorSecondary"/>
-
-        <android.support.v4.widget.SwipeRefreshLayout
-            android:id="@+id/swipeRefresher"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <android.support.v7.widget.RecyclerView
-                android:id="@+id/clients"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
-                android:scrollbars="vertical"
-                tools:listitem="@layout/listitem_client"/>
-        </android.support.v4.widget.SwipeRefreshLayout>
-    </LinearLayout>
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:scrollbars="vertical"
+            tools:listitem="@layout/listitem_client"/>
+    </android.support.v4.widget.SwipeRefreshLayout>
 </layout>

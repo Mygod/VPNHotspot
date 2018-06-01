@@ -12,10 +12,9 @@
     <string name="app_name">VPN Hotspot</string>
     <string name="title_repeater">Repeater</string>
     <string name="title_tethering">Tethering</string>
+    <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
-    <string name="service_inactive">Service inactive</string>
 
-    <string name="repeater_addresses">Addresses</string>
     <string name="repeater_wps">WPS</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
@@ -54,7 +53,6 @@
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_failed">Android system has failed to start tethering.</string>
 
-    <string name="connected_devices">Connected devices</string>
     <string name="connected_state_incomplete">%s (connecting)</string>
     <string name="connected_state_valid">%s (reachable)</string>
     <string name="connected_state_failed">%s (lost)</string>
@@ -63,8 +61,8 @@
     <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
     <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_repeater_strict">Strict mode</string>
-    <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel, also
-        applies to temporary Wi\u2011Fi hotspot.</string>
+    <string name="settings_service_repeater_strict_summary">Only allow packets that goes through VPN tunnel. Does not
+        apply to system tethering.</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>

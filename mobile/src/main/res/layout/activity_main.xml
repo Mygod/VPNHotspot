@@ -8,16 +8,22 @@
         android:layout_height="match_parent"
         tools:context="be.mygod.vpnhotspot.MainActivity">
 
+        <android.support.v7.widget.Toolbar
+            android:layout_height="?attr/actionBarSize"
+            android:layout_width="match_parent"
+            android:background="?attr/colorPrimary"
+            android:elevation="4dp"
+            app:title="@string/app_name"
+            android:id="@+id/toolbar"/>
+
         <FrameLayout
             android:id="@+id/fragmentHolder"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:layout_marginEnd="0dp"
-            android:layout_marginStart="0dp"
             app:layout_constraintBottom_toTopOf="@+id/navigation"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"/>
+            app:layout_constraintTop_toBottomOf="@+id/toolbar"/>
 
         <android.support.design.widget.BottomNavigationView
             android:id="@+id/navigation"

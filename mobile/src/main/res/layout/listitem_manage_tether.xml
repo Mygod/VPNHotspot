@@ -3,19 +3,9 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <data>
-        <import type="be.mygod.vpnhotspot.TetheringFragment"/>
         <variable
-            name="icon"
-            type="Integer"/>
-        <variable
-            name="title"
-            type="String"/>
-        <variable
-            name="tetherListener"
-            type="TetheringFragment.TetherListener"/>
-        <variable
-            name="type"
-            type="be.mygod.vpnhotspot.net.TetherType"/>
+            name="data"
+            type="be.mygod.vpnhotspot.manage.TetherManager.Data"/>
     </data>
     <LinearLayout
         android:layout_width="match_parent"
@@ -30,7 +20,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
-            android:src="@{safeUnbox(icon)}"
+            android:src="@{data.tetherType.icon}"
             android:tint="?android:attr/textColorPrimary"
             tools:src="@drawable/ic_device_network_wifi"/>
 
@@ -43,7 +33,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_gravity="center_vertical"
-            android:text="@{title}"
+            android:text="@{data.title}"
             android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
             tools:text="@string/tethering_manage_wifi"/>
 
@@ -51,7 +41,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center_vertical"
-            android:checked="@{tetherListener.isStarted(type, tetherListener.enabledTypes)}"
+            android:checked="@{data.isStarted}"
             android:clickable="false"
             android:ellipsize="end"
             android:focusable="false"

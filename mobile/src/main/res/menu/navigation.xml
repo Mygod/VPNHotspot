@@ -2,14 +2,14 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
-        android:id="@+id/navigation_repeater"
-        android:icon="@drawable/ic_device_network_wifi"
-        android:title="@string/title_repeater"/>
-
-    <item
         android:id="@+id/navigation_tethering"
         android:icon="@drawable/ic_device_wifi_tethering"
         android:title="@string/title_tethering"/>
+
+    <item
+        android:id="@+id/navigation_clients"
+        android:icon="@drawable/ic_device_devices"
+        android:title="@string/title_clients"/>
 
     <item
         android:id="@+id/navigation_settings"

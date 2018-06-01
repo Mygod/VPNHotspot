@@ -8,7 +8,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import java.util.*
 
 abstract class Client {
-    companion object : DiffUtil.ItemCallback<Client>() {
+    companion object DiffCallback : DiffUtil.ItemCallback<Client>() {
         override fun areItemsTheSame(oldItem: Client, newItem: Client) =
                 oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
         override fun areContentsTheSame(oldItem: Client, newItem: Client) = oldItem == newItem

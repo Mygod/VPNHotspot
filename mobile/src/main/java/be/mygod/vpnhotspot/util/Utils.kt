@@ -4,6 +4,7 @@ import android.content.*
 import android.databinding.BindingAdapter
 import android.support.annotation.DrawableRes
 import android.util.Log
+import android.view.View
 import android.widget.ImageView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
@@ -27,6 +28,11 @@ fun intentFilter(vararg actions: String): IntentFilter {
 
 @BindingAdapter("android:src")
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
+
+@BindingAdapter("android:visibility")
+fun setVisibility(view: View, value: Boolean) {
+    view.visibility = if (value) View.VISIBLE else View.GONE
+}
 
 fun NetworkInterface.formatAddresses() =
         (interfaceAddresses.asSequence()

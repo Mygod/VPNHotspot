@@ -12,23 +12,26 @@ import android.support.v4.app.Fragment
 import kotlin.reflect.KClass
 
 /**
- * host also needs to be Context/Fragment and LifecycleOwner.
+ * owner also needs to be Context/Fragment.
  */
-class ServiceForegroundConnector(private val host: ServiceConnection, private val classes: List<KClass<out Service>>) :
-        LifecycleObserver {
+class ServiceForegroundConnector(private val owner: LifecycleOwner, private val connection: ServiceConnection,
+                                 private val clazz: KClass<out Service>) : LifecycleObserver {
     init {
-        (host as LifecycleOwner).lifecycle.addObserver(this)
+        owner.lifecycle.addObserver(this)
     }
-    constructor(host: ServiceConnection, vararg classes: KClass<out Service>) : this(host, classes.toList())
 
-    private val context get() = if (host is Context) host else (host as Fragment).requireContext()
+    private val context get() = when (owner) {
+        is Context -> owner
+        is Fragment -> owner.requireContext()
+        else -> throw UnsupportedOperationException("Unsupported owner")
+    }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_START)
     fun onStart() {
         val context = context
-        for (clazz in classes) context.bindService(Intent(context, clazz.java), host, Context.BIND_AUTO_CREATE)
+        context.bindService(Intent(context, clazz.java), connection, Context.BIND_AUTO_CREATE)
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_STOP)
-    fun onStop() = context.stopAndUnbind(host)
+    fun onStop() = context.stopAndUnbind(connection)
 }

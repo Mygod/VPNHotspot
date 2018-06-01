@@ -2,11 +2,10 @@
 <resources>
     <string name="app_name">VPN 热点</string>
     <string name="title_repeater">无线中继</string>
-    <string name="title_tethering">系统共享</string>
+    <string name="title_tethering">共享管理</string>
+    <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
-    <string name="service_inactive">未打开</string>
 
-    <string name="repeater_addresses">中继地址</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
@@ -51,7 +50,6 @@
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_failed">Android 系统无法打开网络共享。</string>
 
-    <string name="connected_devices">已连接设备</string>
     <string name="connected_state_incomplete">%s (正在连接)</string>
     <string name="connected_state_valid">%s (已连上)</string>
     <string name="connected_state_failed">%s (已断开)</string>
@@ -60,7 +58,7 @@
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_repeater_strict">严格模式</string>
-    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过，也适用于临时热点</string>
+    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过，不适用于系统共享</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager

@@ -1,21 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <PreferenceCategory
-        android:title="@string/title_repeater">
-        <AutoSummaryEditTextPreference
-            android:key="service.repeater.oc"
-            android:title="@string/settings_service_repeater_oc"
-            android:summary="@string/settings_service_repeater_oc_summary"
-            android:hint="@string/settings_service_repeater_oc_summary"
-            android:inputType="number"
-            android:maxLength="3"/>
+        android:title="@string/settings_service">
         <SwitchPreference
             android:key="service.repeater.strict"
             android:title="@string/settings_service_repeater_strict"
             android:summary="@string/settings_service_repeater_strict_summary"/>
-    </PreferenceCategory>
-    <PreferenceCategory
-        android:title="@string/settings_service">
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="@string/settings_service_dns"

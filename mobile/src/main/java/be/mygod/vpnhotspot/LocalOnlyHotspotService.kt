@@ -6,6 +6,7 @@ import android.net.wifi.WifiManager
 import android.support.annotation.RequiresApi
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -18,7 +19,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     inner class Binder : android.os.Binder() {
-        var fragment: TetheringFragment? = null
+        var manager: LocalOnlyHotspotManager? = null
         var iface: String? = null
         val configuration get() = reservation?.wifiConfiguration
 
@@ -48,7 +49,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }
-        app.handler.post { binder.fragment?.adapter?.updateLocalOnlyViewHolder() }
+        app.handler.post { binder.manager?.update() }
     }
     override val activeIfaces get() = listOfNotNull(binder.iface)
 

@@ -5,7 +5,7 @@
     <data>
         <variable
             name="data"
-            type="be.mygod.vpnhotspot.TetheringFragment.Data"/>
+            type="be.mygod.vpnhotspot.manage.Data"/>
     </data>
     <LinearLayout
         android:layout_width="match_parent"
@@ -30,7 +30,8 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:orientation="vertical">
+            android:orientation="vertical"
+            android:layout_gravity="center_vertical">
 
             <TextView
                 android:layout_width="match_parent"
@@ -39,7 +40,7 @@
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
                 tools:text="wlan0"/>
 
-            <TextView
+            <be.mygod.vpnhotspot.widget.AutoCollapseTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="@{data.text}"
