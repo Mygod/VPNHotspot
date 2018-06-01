@@ -55,6 +55,7 @@ abstract class TetherManager private constructor(protected val parent: Tethering
                     cause = cause.cause
                     if (cause != null && cause !is InvocationTargetException) {
                         Toast.makeText(context, cause.message, Toast.LENGTH_LONG).show()
+                        ManageBar.start(itemView.context)
                         break
                     }
                 }
