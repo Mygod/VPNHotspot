@@ -8,14 +8,20 @@ import android.os.Bundle
 import android.support.customtabs.CustomTabsIntent
 import android.support.v4.content.ContextCompat
 import android.support.v4.content.FileProvider
+import android.support.v7.preference.Preference
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.UpstreamMonitor
+import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
+import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
+import be.mygod.vpnhotspot.util.put
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
+import java.net.NetworkInterface
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -91,5 +97,15 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
             customTabsIntent.launchUrl(activity, Uri.parse("https://github.com/Mygod/VPNHotspot"))
             true
         }
+    }
+
+    override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
+        UpstreamMonitor.KEY -> displayPreferenceDialog(
+                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), UpstreamMonitor.KEY,
+                Bundle().put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
+                        NetworkInterface.getNetworkInterfaces().asSequence()
+                                .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
+                                .map { it.name }.sorted().toList().toTypedArray()))
+        else -> super.onDisplayPreferenceDialog(preference)
     }
 }

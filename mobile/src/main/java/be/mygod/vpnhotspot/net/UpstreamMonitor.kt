@@ -6,7 +6,7 @@ import java.net.InetAddress
 
 abstract class UpstreamMonitor {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
-        private const val KEY = "service.upstream"
+        const val KEY = "service.upstream"
 
         init {
             app.pref.registerOnSharedPreferenceChangeListener(this)

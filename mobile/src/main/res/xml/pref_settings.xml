@@ -18,7 +18,7 @@
             android:title="@string/settings_service_dns"
             android:singleLine="true"
             android:defaultValue="8.8.8.8"/>
-        <AutoSummaryEditTextPreference
+        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
             android:key="service.upstream"
             android:title="@string/settings_service_upstream"
             android:summary="@string/settings_service_upstream_auto"

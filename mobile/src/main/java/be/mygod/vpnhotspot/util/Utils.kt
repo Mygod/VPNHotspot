@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.util
 
 import android.content.*
 import android.databinding.BindingAdapter
+import android.os.Bundle
 import android.support.annotation.DrawableRes
 import android.util.Log
 import android.view.View
@@ -24,6 +25,11 @@ fun intentFilter(vararg actions: String): IntentFilter {
     val result = IntentFilter()
     actions.forEach { result.addAction(it) }
     return result
+}
+
+fun Bundle.put(key: String, map: Array<String>): Bundle {
+    putStringArray(key, map)
+    return this
 }
 
 @BindingAdapter("android:src")

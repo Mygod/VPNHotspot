@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot
+package be.mygod.vpnhotspot.preference
 
 import android.content.SharedPreferences
 import android.support.v7.preference.PreferenceDataStore
