@@ -2,6 +2,9 @@
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <PreferenceCategory
         android:title="@string/settings_service">
+        <Preference
+            android:key="service.clean"
+            android:title="@string/settings_service_clean"/>
         <SwitchPreference
             android:key="service.repeater.strict"
             android:title="@string/settings_service_repeater_strict"
@@ -15,9 +18,12 @@
             android:title="@string/settings_service_dns"
             android:singleLine="true"
             android:defaultValue="8.8.8.8"/>
-        <Preference
-            android:key="service.clean"
-            android:title="@string/settings_service_clean"/>
+        <AutoSummaryEditTextPreference
+            android:key="service.upstream"
+            android:title="@string/settings_service_upstream"
+            android:summary="@string/settings_service_upstream_auto"
+            android:hint="@string/settings_service_upstream_auto"
+            android:singleLine="true"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_misc">

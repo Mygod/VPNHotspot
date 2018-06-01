@@ -37,8 +37,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         val iface = ifaces.singleOrNull()
         binder.iface = iface
         if (iface == null) {
-            routingManager?.stop()
-            routingManager = null
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
@@ -103,6 +101,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     private fun unregisterReceiver() {
+        routingManager?.stop()
+        routingManager = null
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             IpNeighbourMonitor.unregisterCallback(this)

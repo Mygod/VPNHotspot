@@ -67,6 +67,8 @@
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
+    <string name="settings_service_upstream">Upstream network interface</string>
+    <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_misc_logcat">Export debug information</string>

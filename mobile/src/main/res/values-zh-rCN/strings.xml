@@ -63,6 +63,8 @@
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 IPv6 VPN 泄漏。</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
+    <string name="settings_service_upstream">上游网络接口</string>
+    <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_misc">杂项</string>
     <string name="settings_misc_logcat">导出调试信息</string>

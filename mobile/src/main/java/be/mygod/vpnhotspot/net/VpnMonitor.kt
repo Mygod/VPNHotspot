@@ -6,21 +6,14 @@ import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.debugLog
-import java.net.InetAddress
 
-object VpnMonitor : ConnectivityManager.NetworkCallback() {
-    interface Callback {
-        fun onAvailable(ifname: String, dns: List<InetAddress>)
-        fun onLost(ifname: String)
-    }
-
+object VpnMonitor : UpstreamMonitor() {
     private const val TAG = "VpnMonitor"
 
     private val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .build()
-    private val callbacks = HashSet<Callback>()
     private var registered = false
 
     /**
@@ -28,65 +21,64 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
      */
     private val available = HashMap<Network, String>()
     private var currentNetwork: Network? = null
-    override fun onAvailable(network: Network) {
-        val properties = app.connectivity.getLinkProperties(network)
-        val ifname = properties?.interfaceName ?: return
-        synchronized(this) {
-            if (available.put(network, ifname) != null) return
-            debugLog(TAG, "onAvailable: $ifname, ${properties.dnsServers.joinToString()}")
-            val old = currentNetwork
-            if (old != null) {
-                val name = available[old]!!
-                debugLog(TAG, "Assuming old VPN interface $name is dying")
-                callbacks.forEach { it.onLost(name) }
+    override val currentIface: String? get() {
+        val currentNetwork = currentNetwork
+        return if (currentNetwork == null) null else available[currentNetwork]
+    }
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            val properties = app.connectivity.getLinkProperties(network)
+            val ifname = properties?.interfaceName ?: return
+            synchronized(this@VpnMonitor) {
+                if (available.put(network, ifname) != null) return
+                debugLog(TAG, "onAvailable: $ifname, ${properties.dnsServers.joinToString()}")
+                val old = currentNetwork
+                if (old != null) debugLog(TAG, "Assuming old VPN interface ${available[old]} is dying")
+                currentNetwork = network
+                callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
             }
-            currentNetwork = network
-            callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+        }
+
+        override fun onLost(network: Network) = synchronized(this@VpnMonitor) {
+            val ifname = available.remove(network) ?: return
+            debugLog(TAG, "onLost: $ifname")
+            if (currentNetwork != network) return
+            while (available.isNotEmpty()) {
+                val next = available.entries.first()
+                currentNetwork = next.key
+                val properties = app.connectivity.getLinkProperties(next.key)
+                if (properties != null) {
+                    debugLog(TAG, "Switching to ${next.value} as VPN interface")
+                    callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
+                    return
+                }
+                available.remove(next.key)
+            }
+            callbacks.forEach { it.onLost() }
+            currentNetwork = null
         }
     }
 
-    override fun onLost(network: Network) = synchronized(this) {
-        val ifname = available.remove(network) ?: return
-        debugLog(TAG, "onLost: $ifname")
-        if (currentNetwork != network) return
-        callbacks.forEach { it.onLost(ifname) }
-        while (available.isNotEmpty()) {
-            val next = available.entries.first()
-            currentNetwork = next.key
-            val properties = app.connectivity.getLinkProperties(next.key)
-            if (properties != null) {
-                debugLog(TAG, "Switching to ${next.value} as VPN interface")
-                callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
-                return
-            }
-            available.remove(next.key)
+    override fun registerCallbackLocked(callback: Callback) = if (registered) {
+        val currentNetwork = currentNetwork
+        if (currentNetwork == null) true else {
+            callback.onAvailable(available[currentNetwork]!!,
+                    app.connectivity.getLinkProperties(currentNetwork)?.dnsServers ?: emptyList())
+            false
         }
-        currentNetwork = null
+    } else {
+        app.connectivity.registerNetworkCallback(request, networkCallback)
+        registered = true
+        app.connectivity.allNetworks.all {
+            val cap = app.connectivity.getNetworkCapabilities(it)
+            cap == null || !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                    cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        }
     }
 
-    fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
-        if (synchronized(this) {
-                    if (!callbacks.add(callback)) return
-                    if (!registered) {
-                        app.connectivity.registerNetworkCallback(request, this)
-                        registered = true
-                        app.connectivity.allNetworks.all {
-                            val cap = app.connectivity.getNetworkCapabilities(it)
-                            cap == null || !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                                    cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                        }
-                    } else if (available.isEmpty()) true else {
-                        available.forEach {
-                            callback.onAvailable(it.value,
-                                    app.connectivity.getLinkProperties(it.key)?.dnsServers ?: emptyList())
-                        }
-                        false
-                    }
-        }) failfast?.invoke()
-    }
-    fun unregisterCallback(callback: Callback) = synchronized(this) {
-        if (!callbacks.remove(callback) || callbacks.isNotEmpty() || !registered) return
-        app.connectivity.unregisterNetworkCallback(this)
+    override fun destroyLocked() {
+        if (!registered) return
+        app.connectivity.unregisterNetworkCallback(networkCallback)
         registered = false
         available.clear()
         currentNetwork = null

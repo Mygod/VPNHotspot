@@ -115,9 +115,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        val context = requireContext()
-        tetheringBinder?.fragment = null
+        (tetheringBinder ?: return).fragment = null
         tetheringBinder = null
-        context.unregisterReceiver(receiver)
+        requireContext().unregisterReceiver(receiver)
     }
 }

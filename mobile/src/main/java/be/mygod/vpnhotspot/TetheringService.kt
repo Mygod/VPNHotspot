@@ -8,12 +8,12 @@ import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.VpnMonitor
+import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import java.net.InetAddress
 import java.net.SocketException
 
-class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
+class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callback {
     companion object {
         const val EXTRA_ADD_INTERFACE = "interface.add"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
@@ -45,18 +45,20 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
             val upstream = upstream
             if (upstream != null) {
                 var failed = false
-                for ((downstream, value) in routings) if (value == null) try {
-                    // system tethering already has working forwarding rules
-                    // so it doesn't make sense to add additional forwarding rules
-                    val routing = Routing(upstream, downstream).rule().forward().masquerade().dnsRedirect(dns)
-                    if (app.pref.getBoolean("service.disableIpv6", false)) routing.disableIpv6()
-                    routings[downstream] = routing
-                    if (!routing.start()) failed = true
-                } catch (e: SocketException) {
-                    e.printStackTrace()
-                    routings.remove(downstream)
-                    failed = true
-                }
+                for ((downstream, value) in routings) if (value == null || value.upstream != upstream)
+                    try {
+                        if (value?.stop() == false) failed = true
+                        // system tethering already has working forwarding rules
+                        // so it doesn't make sense to add additional forwarding rules
+                        val routing = Routing(upstream, downstream).rule().forward().masquerade().dnsRedirect(dns)
+                        if (app.pref.getBoolean("service.disableIpv6", false)) routing.disableIpv6()
+                        routings[downstream] = routing
+                        if (!routing.start()) failed = true
+                    } catch (e: SocketException) {
+                        e.printStackTrace()
+                        routings.remove(downstream)
+                        failed = true
+                    }
                 if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
@@ -67,7 +69,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
                     }
                 }
                 IpNeighbourMonitor.registerCallback(this)
-                VpnMonitor.registerCallback(this)
+                UpstreamMonitor.registerCallback(this)
                 receiverRegistered = true
             }
             updateNotification()
@@ -94,14 +96,13 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
     }
 
     override fun onAvailable(ifname: String, dns: List<InetAddress>) {
-        check(upstream == null || upstream == ifname)
+        if (upstream == ifname) return
         upstream = ifname
         this.dns = dns
         synchronized(routings) { updateRoutingsLocked() }
     }
 
-    override fun onLost(ifname: String) {
-        check(upstream == null || upstream == ifname)
+    override fun onLost() {
         upstream = null
         this.dns = emptyList()
         var failed = false
@@ -124,7 +125,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
             unregisterReceiver(receiver)
             app.cleanRoutings -= this
             IpNeighbourMonitor.unregisterCallback(this)
-            VpnMonitor.unregisterCallback(this)
+            UpstreamMonitor.unregisterCallback(this)
             upstream = null
             receiverRegistered = false
         }

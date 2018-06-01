@@ -59,10 +59,8 @@ class ClientsFragment : Fragment(), ServiceConnection {
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        val clients = clients
-        if (clients != null) {
-            clients.clientsChanged -= this
-            this.clients = null
-        }
+        val clients = clients ?: return
+        clients.clientsChanged -= this
+        this.clients = null
     }
 }

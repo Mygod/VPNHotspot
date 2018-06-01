@@ -177,7 +177,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 p2pManager.requestGroupInfo(channel, {
                     when {
                         it == null -> doStart()
-                        it.isGroupOwner -> doStart(it)
+                        it.isGroupOwner -> if (routingManager == null) doStart(it)
                         else -> {
                             Log.i(TAG, "Removing old group ($it)")
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
@@ -220,6 +220,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      */
     private fun doStart(group: WifiP2pGroup, ownerAddress: InetAddress? = null) {
         this.group = group
+        check(routingManager == null)
         routingManager = LocalOnlyInterfaceManager(group.`interface`!!, ownerAddress)
         status = Status.ACTIVE
         showNotification(group)
