@@ -17,7 +17,7 @@ complexity:
     threshold: 10
     ignoreSingleWhenExpression: false
   LabeledExpression:
-    active: true
+    active: false
   LargeClass:
     active: true
     threshold: 150
