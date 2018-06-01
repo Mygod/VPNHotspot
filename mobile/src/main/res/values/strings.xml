@@ -40,6 +40,7 @@
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
+    <string name="tethering_temp_hotspot_location">Temporary hotspot requires location to be turned on.</string>
     <string name="tethering_temp_hotspot_failure">Failed to start hotspot (reason: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">no channel</string>
     <string name="tethering_temp_hotspot_failure_generic">generic error</string>
