@@ -6,6 +6,10 @@
             android:key="service.repeater.strict"
             android:title="@string/settings_service_repeater_strict"
             android:summary="@string/settings_service_repeater_strict_summary"/>
+        <SwitchPreference
+            android:key="service.disableIpv6"
+            android:title="@string/settings_service_disable_ipv6"
+            android:summary="@string/settings_service_disable_ipv6_summary"/>
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:title="@string/settings_service_dns"

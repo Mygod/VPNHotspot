@@ -47,6 +47,12 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         return this
     }
 
+    fun disableIpv6(): Routing {
+        startScript.add("echo 1 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
+        stopScript.add("echo 0 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
+        return this
+    }
+
     /**
      * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
      * This also works for Wi-Fi direct where there's no rule at 18000.

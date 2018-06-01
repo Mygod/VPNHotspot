@@ -49,6 +49,7 @@ class TetheringService : IpNeighbourMonitoringService(), VpnMonitor.Callback {
                     // system tethering already has working forwarding rules
                     // so it doesn't make sense to add additional forwarding rules
                     val routing = Routing(upstream, downstream).rule().forward().masquerade().dnsRedirect(dns)
+                    if (app.pref.getBoolean("service.disableIpv6", false)) routing.disableIpv6()
                     routings[downstream] = routing
                     if (!routing.start()) failed = true
                 } catch (e: SocketException) {
