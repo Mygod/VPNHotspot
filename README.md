@@ -51,8 +51,7 @@ Alternatively, use the toggle in your system settings instead.
 
 Without root, you can only:
 
-* View connected devices for system tethering and monitor them if your SELinux status is not enforcing
-  (otherwise you can still do manual refreshes);
+* View connected devices for system tethering and monitor them;
 * Toggle tether switches if you can't do it already;
 * Play around with settings and the user interface in general;
 * Alternatively you can use try these apps (requires manual proxy configuration or client apps) for normal repeater
