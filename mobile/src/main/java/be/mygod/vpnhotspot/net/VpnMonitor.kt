@@ -72,7 +72,7 @@ object VpnMonitor : ConnectivityManager.NetworkCallback() {
                         registered = true
                         app.connectivity.allNetworks.all {
                             val cap = app.connectivity.getNetworkCapabilities(it)
-                            !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
+                            cap == null || !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
                                     cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                         }
                     } else if (available.isEmpty()) true else {
