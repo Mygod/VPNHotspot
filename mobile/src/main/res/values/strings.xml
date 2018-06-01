@@ -28,7 +28,7 @@
     <string name="repeater_reset_credentials_success">Credentials reset.</string>
     <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
 
-    <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable</string>
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
     <string name="repeater_remove_old_group_failure">Failed to remove old P2P group (reason: %s)</string>

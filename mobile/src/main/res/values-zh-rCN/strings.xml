@@ -17,7 +17,7 @@
     <string name="repeater_reset_credentials_success">凭据已重置。</string>
     <string name="repeater_reset_credentials_failure">重置凭据失败（原因：%s）</string>
 
-    <string name="repeater_p2p_unavailable">Wi\u2011Fi 直连不可用</string>
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi 直连不可用，请打开 Wi\u2011Fi</string>
     <string name="repeater_create_group_failure">创建 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_old_group_failure">关闭 P2P 群组失败（原因：%s）</string>
