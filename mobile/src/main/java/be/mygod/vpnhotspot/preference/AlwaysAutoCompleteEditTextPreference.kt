@@ -16,7 +16,7 @@ open class AlwaysAutoCompleteEditTextPreference @JvmOverloads constructor(
         editText.id = android.R.id.edit
     }
 
-    override fun setText(text: String) {
+    override fun setText(text: String?) {
         val oldText = getText()
         super.setText(text)
         if (!TextUtils.equals(text, oldText)) notifyChanged()
