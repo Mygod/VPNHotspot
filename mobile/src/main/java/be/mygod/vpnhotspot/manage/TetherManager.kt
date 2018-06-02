@@ -6,6 +6,7 @@ import android.arch.lifecycle.LifecycleObserver
 import android.arch.lifecycle.OnLifecycleEvent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.databinding.BaseObservable
 import android.net.Uri
@@ -40,10 +41,12 @@ abstract class TetherManager private constructor(protected val parent: Tethering
         override fun onClick(v: View?) {
             val manager = manager!!
             val context = manager.parent.requireContext()
-            if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) {
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) try {
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                         Uri.parse("package:${context.packageName}")))
                 return
+            } catch (exc: ActivityNotFoundException) {
+                exc.printStackTrace()
             }
             val started = manager.isStarted
             try {

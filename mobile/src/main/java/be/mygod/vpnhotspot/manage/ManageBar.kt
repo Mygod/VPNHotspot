@@ -22,8 +22,12 @@ object ManageBar : Manager() {
             context.startActivity(Intent()
                     .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
         } catch (e: ActivityNotFoundException) {
-            context.startActivity(Intent()
-                    .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
+            try {
+                context.startActivity(Intent()
+                        .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
+            } catch (e: ActivityNotFoundException) {
+                e.printStackTrace()
+            }
         }
     }
 }

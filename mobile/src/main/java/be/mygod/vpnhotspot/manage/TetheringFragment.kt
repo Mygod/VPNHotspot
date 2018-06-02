@@ -95,6 +95,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
+        adapter.update(emptyList(), emptyList())
         ServiceForegroundConnector(this, this, TetheringService::class)
         return binding.root
     }
