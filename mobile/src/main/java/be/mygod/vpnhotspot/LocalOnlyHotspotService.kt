@@ -93,6 +93,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         } catch (e: IllegalStateException) {
             e.printStackTrace()
             Crashlytics.logException(e)
+        } catch (e: SecurityException) {
+            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            e.printStackTrace()
+            Crashlytics.logException(e)
         }
         return START_STICKY
     }
