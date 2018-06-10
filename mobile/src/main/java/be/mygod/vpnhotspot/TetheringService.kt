@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
 import java.net.SocketException
 
@@ -56,6 +57,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                         if (!routing.start()) failed = true
                     } catch (e: SocketException) {
                         e.printStackTrace()
+                        Crashlytics.logException(e)
                         routings.remove(downstream)
                         failed = true
                     }

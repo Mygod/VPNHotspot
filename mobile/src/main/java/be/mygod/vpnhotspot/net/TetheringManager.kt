@@ -9,6 +9,7 @@ import android.support.annotation.RequiresApi
 import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
+import com.crashlytics.android.Crashlytics
 
 /**
  * Heavily based on:
@@ -91,7 +92,7 @@ object TetheringManager {
         val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback)
                 .dexCache(app.cacheDir)
                 .handler { proxy, method, args ->
-                    if (args.isNotEmpty()) Log.w(TAG, "Unexpected args for ${method.name}: $args")
+                    if (args.isNotEmpty()) Crashlytics.log(Log.WARN, TAG, "Unexpected args for ${method.name}: $args")
                     when (method.name) {
                         "onTetheringStarted" -> {
                             callback.onTetheringStarted()
@@ -102,7 +103,7 @@ object TetheringManager {
                             null
                         }
                         else -> {
-                            Log.w(TAG, "Unexpected method, calling super: $method")
+                            Crashlytics.log(Log.WARN, TAG, "Unexpected method, calling super: $method")
                             ProxyBuilder.callSuper(proxy, method, args)
                         }
                     }

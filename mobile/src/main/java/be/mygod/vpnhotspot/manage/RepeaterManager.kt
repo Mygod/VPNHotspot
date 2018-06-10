@@ -26,6 +26,7 @@ import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
+import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -49,6 +50,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
             } catch (e: SocketException) {
                 e.printStackTrace()
+                Crashlytics.logException(e)
                 ""
             }
         }

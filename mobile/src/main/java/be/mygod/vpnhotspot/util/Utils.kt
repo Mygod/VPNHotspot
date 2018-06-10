@@ -10,11 +10,13 @@ import android.widget.ImageView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
+import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 import java.net.SocketException
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
+    Crashlytics.log("$tag: $message")
 }
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
@@ -48,6 +50,7 @@ fun NetworkInterface.formatAddresses() =
                     hardwareAddress?.joinToString(":") { "%02x".format(it) }
                 } catch (e: SocketException) {
                     e.printStackTrace()
+                    Crashlytics.logException(e)
                     null
                 }))
                 .joinToString("\n")
@@ -58,7 +61,10 @@ fun NetworkInterface.formatAddresses() =
 fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
            contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
     val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
-    thread.setUncaughtExceptionHandler { _, _ -> app.toast(R.string.noisy_su_failure) }
+    thread.setUncaughtExceptionHandler { _, e ->
+        app.toast(R.string.noisy_su_failure)
+        Crashlytics.logException(e)
+    }
     if (start) thread.start()
     return thread
 }

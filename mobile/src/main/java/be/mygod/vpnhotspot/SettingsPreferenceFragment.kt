@@ -17,6 +17,7 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
 import be.mygod.vpnhotspot.util.put
+import com.crashlytics.android.Crashlytics
 import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
 import java.io.File
 import java.io.IOException
@@ -53,6 +54,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         e.printStackTrace(writer)
+                        Crashlytics.logException(e)
                     }
                     writer.write("\n")
                     writer.flush()
@@ -82,6 +84,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                         loggerSuStream(commands.toString())?.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         e.printStackTrace(writer)
+                        Crashlytics.logException(e)
                         writer.flush()
                     }
                 }
@@ -110,6 +113,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
                                     .map { it.name }.sorted().toList().toTypedArray()
                         } catch (e: SocketException) {
                             e.printStackTrace()
+                            Crashlytics.logException(e)
                             emptyArray<String>()
                         }))
         else -> super.onDisplayPreferenceDialog(preference)

@@ -4,6 +4,7 @@ import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
+import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
 import java.net.SocketException
 
@@ -49,6 +50,7 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
             app.toast(R.string.noisy_su_failure)
         } catch (e: SocketException) {
             Toast.makeText(app, e.message, Toast.LENGTH_SHORT).show()
+            Crashlytics.logException(e)
             routing = null
         }
     }

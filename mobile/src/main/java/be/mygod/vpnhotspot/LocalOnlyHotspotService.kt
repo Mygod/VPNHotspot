@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.debugLog
+import com.crashlytics.android.Crashlytics
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
@@ -91,6 +92,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
             }, app.handler)
         } catch (e: IllegalStateException) {
             e.printStackTrace()
+            Crashlytics.logException(e)
         }
         return START_STICKY
     }

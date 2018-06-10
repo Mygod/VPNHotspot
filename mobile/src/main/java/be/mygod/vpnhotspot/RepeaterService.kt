@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupI
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.util.*
+import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
 
@@ -79,6 +80,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 })
             } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
+                Crashlytics.logException(e)
                 Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_LONG).show()
             }
         }
@@ -129,6 +131,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (exc: TypeCastException) {
             exc.printStackTrace()
+            Crashlytics.logException(exc)
         }
     }
 
@@ -147,6 +150,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (oc != 0)
             Toast.makeText(this, getString(R.string.repeater_set_oc_failure, e.message), Toast.LENGTH_SHORT).show()
         e.printStackTrace()
+        Crashlytics.logException(e)
     }
 
     override fun onChannelDisconnected() {
@@ -179,7 +183,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                         it == null -> doStart()
                         it.isGroupOwner -> if (routingManager == null) doStart(it)
                         else -> {
-                            Log.i(TAG, "Removing old group ($it)")
+                            Crashlytics.log(Log.INFO, TAG, "Removing old group ($it)")
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                                 override fun onSuccess() = doStart()
                                 override fun onFailure(reason: Int) {

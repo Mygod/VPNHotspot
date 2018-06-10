@@ -7,6 +7,7 @@ import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.loggerSu
 import be.mygod.vpnhotspot.util.noisySu
+import com.crashlytics.android.Crashlytics
 import java.io.File
 
 class P2pSupplicantConfiguration {
@@ -34,8 +35,9 @@ class P2pSupplicantConfiguration {
             check(result.length in 8..63)
             result
         } catch (e: RuntimeException) {
-            Log.w(TAG, content)
+            Crashlytics.log(Log.WARN, TAG, content)
             e.printStackTrace()
+            Crashlytics.logException(e)
             Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()
             null
         }
@@ -61,7 +63,9 @@ class P2pSupplicantConfiguration {
                     else -> line                            // do nothing
                 })
             }
-            if (ssidFound != 1 || pskFound != 1) Log.w(TAG, "Invalid conf ($ssidFound, $pskFound): $content")
+            if (ssidFound != 1 || pskFound != 1) {
+                Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
+            }
             if (ssidFound == 0 || pskFound == 0) return false
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",

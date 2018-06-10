@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
+import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 
 @TargetApi(26)
@@ -52,6 +53,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                         view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     } catch (exc: ActivityNotFoundException) {
                         exc.printStackTrace()
+                        Crashlytics.logException(exc)
                     }
                     return
                 }

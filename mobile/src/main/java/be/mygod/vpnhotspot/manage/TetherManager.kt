@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.databinding.ListitemManageTetherBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
 abstract class TetherManager private constructor(protected val parent: TetheringFragment) : Manager(),
@@ -47,12 +48,14 @@ abstract class TetherManager private constructor(protected val parent: Tethering
                 return
             } catch (exc: ActivityNotFoundException) {
                 exc.printStackTrace()
+                Crashlytics.logException(exc)
             }
             val started = manager.isStarted
             try {
                 if (started) manager.stop() else manager.start()
             } catch (e: InvocationTargetException) {
                 e.printStackTrace()
+                Crashlytics.logException(e)
                 var cause: Throwable? = e
                 while (cause != null) {
                     cause = cause.cause

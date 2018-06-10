@@ -1,29 +1,34 @@
 package be.mygod.vpnhotspot.util
 
 import android.util.Log
-import be.mygod.vpnhotspot.App
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import com.crashlytics.android.Crashlytics
 import java.io.IOException
 import java.io.InputStream
 
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
 
+private class SuFailure : RuntimeException()
+
 fun loggerSuStream(command: String): InputStream? {
     val process = try {
         ProcessBuilder("su", "-c", command)
                 .redirectErrorStream(true)
-                .directory(App.app.deviceContext.cacheDir)
+                .directory(app.deviceContext.cacheDir)
                 .start()
     } catch (e: IOException) {
         e.printStackTrace()
+        Crashlytics.logException(e)
         return null
     }
     thread("LoggerSU-error") {
         val err = process.errorStream.bufferedReader().readText()
         if (err.isNotBlank()) {
-            Log.e(NOISYSU_TAG, err)
-            App.app.toast(R.string.noisy_su_failure)
+            Crashlytics.log(Log.ERROR, NOISYSU_TAG, err)
+            Crashlytics.logException(SuFailure())
+            app.toast(R.string.noisy_su_failure)
         }
     }
     return process.inputStream
@@ -35,6 +40,7 @@ fun loggerSu(command: String): String? {
         stream.bufferedReader().readText()
     } catch (e: IOException) {
         e.printStackTrace()
+        Crashlytics.logException(e)
         null
     }
 }
@@ -45,7 +51,10 @@ ${commands.joinToString("\n") { if (it.startsWith("quiet ")) it.substring(6) els
 echo $NOISYSU_SUFFIX""")
     val result = if (out == null) null else out == NOISYSU_SUFFIX
     out = out?.removeSuffix(NOISYSU_SUFFIX)
-    if (!out.isNullOrBlank()) Log.i(NOISYSU_TAG, out)
+    if (!out.isNullOrBlank()) {
+        Crashlytics.log(Log.INFO, NOISYSU_TAG, out)
+        Crashlytics.logException(SuFailure())
+    }
     return result
 }
 fun noisySu(vararg commands: String) = noisySu(commands.asIterable())
