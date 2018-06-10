@@ -26,6 +26,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
         fun stop() = reservation?.close()
     }
+    private class StartFailure(message: String) : RuntimeException(message)
 
     private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
@@ -76,7 +77,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 }
 
                 override fun onFailed(reason: Int) {
-                    Toast.makeText(this@LocalOnlyHotspotService, getString(R.string.tethering_temp_hotspot_failure,
+                    val message = getString(R.string.tethering_temp_hotspot_failure,
                             when (reason) {
                                 WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL ->
                                     getString(R.string.tethering_temp_hotspot_failure_no_channel)
@@ -87,7 +88,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                 WifiManager.LocalOnlyHotspotCallback.ERROR_TETHERING_DISALLOWED ->
                                     getString(R.string.tethering_temp_hotspot_failure_tethering_disallowed)
                                 else -> getString(R.string.failure_reason_unknown, reason)
-                            }), Toast.LENGTH_SHORT).show()
+                            })
+                    Toast.makeText(this@LocalOnlyHotspotService, message, Toast.LENGTH_SHORT).show()
+                    Crashlytics.logException(StartFailure(message))
                 }
             }, app.handler)
         } catch (e: IllegalStateException) {

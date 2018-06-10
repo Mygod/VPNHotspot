@@ -33,6 +33,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     enum class Status {
         IDLE, STARTING, ACTIVE
     }
+    private class Failure(message: String) : RuntimeException(message)
 
     inner class Binder : android.os.Binder() {
         val service get() = this@RepeaterService
@@ -115,13 +116,17 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             binder.statusChanged()
         }
 
-    private fun formatReason(@StringRes resId: Int, reason: Int) = getString(resId, when (reason) {
-        WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
-        WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
-        WifiP2pManager.BUSY -> getString(R.string.repeater_failure_reason_busy)
-        WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
-        else -> getString(R.string.failure_reason_unknown, reason)
-    })
+    private fun formatReason(@StringRes resId: Int, reason: Int): String? {
+        val result = getString(resId, when (reason) {
+            WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
+            WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
+            WifiP2pManager.BUSY -> getString(R.string.repeater_failure_reason_busy)
+            WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
+            else -> getString(R.string.failure_reason_unknown, reason)
+        })
+        Crashlytics.logException(Failure(result))
+        return result
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -147,8 +152,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             }
         })
     } catch (e: InvocationTargetException) {
-        if (oc != 0)
-            Toast.makeText(this, getString(R.string.repeater_set_oc_failure, e.message), Toast.LENGTH_SHORT).show()
+        if (oc != 0) {
+            val message = getString(R.string.repeater_set_oc_failure, e.message)
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            Crashlytics.logException(Failure(message))
+        }
         e.printStackTrace()
         Crashlytics.logException(e)
     }
