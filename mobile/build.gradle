@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'io.fabric'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
@@ -34,6 +35,7 @@ dependencies {
     implementation "com.android.support:design:$supportLibraryVersion"
     implementation "com.android.support:preference-v14:$supportLibraryVersion"
     implementation 'com.android.support.constraint:constraint-layout:1.1.1'
+    implementation 'com.crashlytics.sdk.android:crashlytics:2.9.3'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.16.0'
     implementation "com.takisoft.fix:preference-v7:$takisoftFixVersion"
@@ -44,3 +46,4 @@ dependencies {
 }
 
 kapt.generateStubs = true
+apply plugin: 'com.google.gms.google-services'
