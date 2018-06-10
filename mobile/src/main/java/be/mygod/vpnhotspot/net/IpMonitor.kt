@@ -34,10 +34,10 @@ abstract class IpMonitor : Runnable {
                     monitor.errorStream.bufferedReader().forEachLine {
                         Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
                     }
-                } catch (e: IOException) {
+                } catch (_: InterruptedIOException) { } catch (e: IOException) {
                     e.printStackTrace()
                     Crashlytics.logException(e)
-                } catch (_: InterruptedIOException) { }
+                }
             }
             try {
                 monitor.inputStream.bufferedReader().forEachLine(this::processLine)
@@ -48,10 +48,10 @@ abstract class IpMonitor : Runnable {
                 val pool = Executors.newScheduledThreadPool(1)
                 pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
                 this.pool = pool
-            } catch (e: IOException) {
+            } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
-            } catch (_: InterruptedIOException) { }
+            }
         }
     }
 
