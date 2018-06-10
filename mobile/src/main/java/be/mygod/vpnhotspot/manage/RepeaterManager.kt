@@ -142,13 +142,11 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         (viewHolder as ViewHolder).binding.data = data
     }
 
-    fun update() = data.notifyChange()
-
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as RepeaterService.Binder
         service.statusChanged[this] = data::onStatusChanged
         service.groupChanged[this] = data::onGroupChanged
-        update()
+        data.notifyChange()
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {

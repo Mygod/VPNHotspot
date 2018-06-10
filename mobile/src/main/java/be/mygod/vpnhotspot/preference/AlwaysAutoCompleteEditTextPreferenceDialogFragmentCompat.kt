@@ -37,7 +37,7 @@ open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : Preference
 
     override fun needInputMethod(): Boolean = true
 
-    protected fun onAddEditTextToDialogView(dialogView: View, editText: EditText) {
+    protected open fun onAddEditTextToDialogView(dialogView: View, editText: EditText) {
         val oldEditText = dialogView.findViewById<View>(android.R.id.edit)
         if (oldEditText != null) {
             val container = oldEditText.parent as? ViewGroup?

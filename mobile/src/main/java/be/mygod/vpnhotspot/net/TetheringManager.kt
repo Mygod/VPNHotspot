@@ -127,7 +127,8 @@ object TetheringManager {
     }
 
     fun getTetheredIfaces(extras: Bundle) = extras.getStringArrayList(
-            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
+            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)!!
     fun getLocalOnlyTetheredIfaces(extras: Bundle) =
-            if (Build.VERSION.SDK_INT >= 26) extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY) else emptyList<String>()
+            if (Build.VERSION.SDK_INT >= 26) extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY)!!
+            else emptyList<String>()
 }

@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.location.LocationManager
+import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.support.v7.widget.RecyclerView
@@ -46,8 +48,10 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                  * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
                  * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
                  */
-                if (Settings.Secure.getInt(view.context.contentResolver, Settings.Secure.LOCATION_MODE,
-                                Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF) {
+                if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
+                            Settings.Secure.getInt(view.context.contentResolver, Settings.Secure.LOCATION_MODE,
+                                    Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
+                        } else !context.getSystemService(LocationManager::class.java).isLocationEnabled) {
                     Toast.makeText(view.context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     try {
                         view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
