@@ -8,13 +8,14 @@ import android.os.Build
 import android.support.v4.app.NotificationCompat
 import android.support.v4.content.ContextCompat
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.systemService
 
 object ServiceNotification {
     private const val CHANNEL = "tethering"
     private const val CHANNEL_ID = 1
 
     private val deviceCountsMap = HashMap<Service, Map<String, Int>>()
-    private val manager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    private val manager = app.systemService<NotificationManager>()
 
     private fun buildNotification(context: Context): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL)

@@ -131,7 +131,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onCreate() {
         super.onCreate()
         try {
-            p2pManager = getSystemService(Context.WIFI_P2P_SERVICE) as WifiP2pManager
+            p2pManager = systemService()
             onChannelDisconnected()
             app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (exc: TypeCastException) {

@@ -13,6 +13,7 @@ import android.preference.PreferenceManager
 import android.support.annotation.StringRes
 import android.widget.Toast
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.systemService
 
 class App : Application() {
     companion object {
@@ -43,8 +44,8 @@ class App : Application() {
     lateinit var deviceContext: Context
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceContext) }
-    val connectivity by lazy { getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager }
-    val wifi by lazy { app.getSystemService(Context.WIFI_SERVICE) as WifiManager }
+    val connectivity by lazy { systemService<ConnectivityManager>() }
+    val wifi by lazy { systemService<WifiManager>() }
 
     val operatingChannel: Int get() {
         val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0

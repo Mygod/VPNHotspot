@@ -4,6 +4,7 @@ import android.content.*
 import android.databinding.BindingAdapter
 import android.os.Bundle
 import android.support.annotation.DrawableRes
+import android.support.v4.content.ContextCompat
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -28,6 +29,8 @@ fun intentFilter(vararg actions: String): IntentFilter {
     actions.forEach { result.addAction(it) }
     return result
 }
+
+inline fun <reified T> Context.systemService() = ContextCompat.getSystemService(this, T::class.java)!!
 
 fun Bundle.put(key: String, map: Array<String>): Bundle {
     putStringArray(key, map)

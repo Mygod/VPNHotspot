@@ -18,14 +18,14 @@ import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
 import be.mygod.vpnhotspot.util.put
 import com.crashlytics.android.Crashlytics
-import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompatDividers
+import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompat
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
 import java.net.NetworkInterface
 import java.net.SocketException
 
-class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
+class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     private val customTabsIntent by lazy {
         CustomTabsIntent.Builder()
                 .setToolbarColor(ContextCompat.getColor(requireContext(), R.color.colorPrimary))
