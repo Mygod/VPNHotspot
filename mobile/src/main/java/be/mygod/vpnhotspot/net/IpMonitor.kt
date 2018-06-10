@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.thread
 import com.crashlytics.android.Crashlytics
+import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
@@ -33,6 +34,9 @@ abstract class IpMonitor : Runnable {
                     monitor.errorStream.bufferedReader().forEachLine {
                         Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
                     }
+                } catch (e: IOException) {
+                    e.printStackTrace()
+                    Crashlytics.logException(e)
                 } catch (_: InterruptedIOException) { }
             }
             try {
@@ -44,6 +48,9 @@ abstract class IpMonitor : Runnable {
                 val pool = Executors.newScheduledThreadPool(1)
                 pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
                 this.pool = pool
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Crashlytics.logException(e)
             } catch (_: InterruptedIOException) { }
         }
     }
