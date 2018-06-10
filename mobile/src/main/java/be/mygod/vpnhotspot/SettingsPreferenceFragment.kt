@@ -22,6 +22,7 @@ import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
 import java.net.NetworkInterface
+import java.net.SocketException
 
 class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
     private val customTabsIntent by lazy {
@@ -103,9 +104,14 @@ class SettingsPreferenceFragment : PreferenceFragmentCompatDividers() {
         UpstreamMonitor.KEY -> displayPreferenceDialog(
                 AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), UpstreamMonitor.KEY,
                 Bundle().put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
-                        NetworkInterface.getNetworkInterfaces().asSequence()
-                                .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
-                                .map { it.name }.sorted().toList().toTypedArray()))
+                        try {
+                            NetworkInterface.getNetworkInterfaces().asSequence()
+                                    .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
+                                    .map { it.name }.sorted().toList().toTypedArray()
+                        } catch (e: SocketException) {
+                            e.printStackTrace()
+                            emptyArray<String>()
+                        }))
         else -> super.onDisplayPreferenceDialog(preference)
     }
 }
