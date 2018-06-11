@@ -91,6 +91,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                             })
                     Toast.makeText(this@LocalOnlyHotspotService, message, Toast.LENGTH_SHORT).show()
                     Crashlytics.logException(StartFailure(message))
+                    updateNotification()
+                    ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
                 }
             }, app.handler)
         } catch (e: IllegalStateException) {
