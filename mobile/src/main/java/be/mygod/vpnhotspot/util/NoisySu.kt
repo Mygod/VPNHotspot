@@ -45,7 +45,7 @@ fun loggerSu(command: String): String? {
     }
 }
 
-fun noisySu(commands: Iterable<String>): Boolean? {
+fun noisySu(commands: Iterable<String>, report: Boolean = true): Boolean? {
     var out = loggerSu("""function noisy() { "$@" || echo "$@" exited with $?; }
 ${commands.joinToString("\n") { if (it.startsWith("quiet ")) it.substring(6) else "noisy $it" }}
 echo $NOISYSU_SUFFIX""")
@@ -53,8 +53,8 @@ echo $NOISYSU_SUFFIX""")
     out = out?.removeSuffix(NOISYSU_SUFFIX)
     if (!out.isNullOrBlank()) {
         Crashlytics.log(Log.INFO, NOISYSU_TAG, out)
-        Crashlytics.logException(SuFailure())
+        if (report) Crashlytics.logException(SuFailure())
     }
     return result
 }
-fun noisySu(vararg commands: String) = noisySu(commands.asIterable())
+fun noisySu(vararg commands: String, report: Boolean = true) = noisySu(commands.asIterable(), report)

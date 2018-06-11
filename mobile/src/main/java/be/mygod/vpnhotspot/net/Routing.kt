@@ -29,7 +29,8 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
                 "quiet while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done",
                 "$IPTABLES -t nat -F vpnhotspot_masquerade",
                 "$IPTABLES -t nat -X vpnhotspot_masquerade",
-                "quiet while ip rule del priority 17900; do done")
+                "quiet while ip rule del priority 17900; do done",
+                report = false)
     }
 
     class InterfaceNotFoundException : SocketException() {
@@ -125,6 +126,6 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     fun stop(): Boolean {
         if (!started) return true
         started = false
-        return noisySu(stopScript) == true
+        return noisySu(stopScript, false) == true
     }
 }
