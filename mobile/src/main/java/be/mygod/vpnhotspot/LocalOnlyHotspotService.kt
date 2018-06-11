@@ -90,20 +90,25 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                 else -> getString(R.string.failure_reason_unknown, reason)
                             })
                     Toast.makeText(this@LocalOnlyHotspotService, message, Toast.LENGTH_SHORT).show()
-                    Crashlytics.logException(StartFailure(message))
-                    updateNotification()
-                    ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
+                    startFailure(StartFailure(message))
                 }
             }, app.handler)
         } catch (e: IllegalStateException) {
             e.printStackTrace()
-            Crashlytics.logException(e)
+            startFailure(e)
         } catch (e: SecurityException) {
             Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
             e.printStackTrace()
-            Crashlytics.logException(e)
+            startFailure(e)
         }
         return START_STICKY
+    }
+
+    private fun startFailure(e: Exception) {
+        Crashlytics.logException(e)
+        updateNotification()
+        ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
+        stopSelf()
     }
 
     override fun onDestroy() {
