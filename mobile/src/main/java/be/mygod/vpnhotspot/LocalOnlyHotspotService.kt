@@ -90,7 +90,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                 else -> getString(R.string.failure_reason_unknown, reason)
                             })
                     Toast.makeText(this@LocalOnlyHotspotService, message, Toast.LENGTH_SHORT).show()
-                    startFailure(StartFailure(message))
+                    startFailure(if (reason == WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE) null else
+                        StartFailure(message))
                 }
             }, app.handler)
         } catch (e: IllegalStateException) {
@@ -104,7 +105,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         return START_STICKY
     }
 
-    private fun startFailure(e: Exception) {
+    private fun startFailure(e: Exception?) {
         Crashlytics.logException(e)
         updateNotification()
         ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
