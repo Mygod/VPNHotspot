@@ -134,7 +134,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             p2pManager = systemService()
             onChannelDisconnected()
             app.pref.registerOnSharedPreferenceChangeListener(this)
-        } catch (exc: TypeCastException) {
+        } catch (exc: KotlinNullPointerException) {
             exc.printStackTrace()
             Crashlytics.logException(exc)
         }
