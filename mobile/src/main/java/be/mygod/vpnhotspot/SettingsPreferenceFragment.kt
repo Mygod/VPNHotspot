@@ -98,7 +98,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            customTabsIntent.launchUrl(activity, Uri.parse("https://github.com/Mygod/VPNHotspot"))
+            customTabsIntent.launchUrl(requireActivity(), Uri.parse("https://github.com/Mygod/VPNHotspot"))
             true
         }
     }

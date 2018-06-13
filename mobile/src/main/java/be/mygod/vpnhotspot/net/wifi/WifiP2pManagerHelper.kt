@@ -12,6 +12,7 @@ import java.util.regex.Pattern
 
 object WifiP2pManagerHelper {
     private const val TAG = "WifiP2pManagerHelper"
+    const val UNSUPPORTED = -2
 
     /**
      * Matches the output of dumpsys wifip2p. This part is available since Android 4.2.
@@ -36,8 +37,14 @@ object WifiP2pManagerHelper {
                 Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
     fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
-                                                  listener: WifiP2pManager.ActionListener) {
-        setWifiP2pChannels.invoke(this, c, lc, oc, listener)
+                                          listener: WifiP2pManager.ActionListener) {
+        try {
+            setWifiP2pChannels.invoke(this, c, lc, oc, listener)
+        } catch (e: NoSuchMethodException) {
+            e.printStackTrace()
+            Crashlytics.logException(e)
+            listener.onFailure(UNSUPPORTED)
+        }
     }
 
     /**
@@ -49,9 +56,14 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("startWps",
                 WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
     }
-    fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo,
-                                        listener: WifiP2pManager.ActionListener) {
-        startWps.invoke(this, c, wps, listener)
+    fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo, listener: WifiP2pManager.ActionListener) {
+        try {
+            startWps.invoke(this, c, wps, listener)
+        } catch (e: NoSuchMethodException) {
+            e.printStackTrace()
+            Crashlytics.logException(e)
+            listener.onFailure(UNSUPPORTED)
+        }
     }
 
     /**
@@ -65,7 +77,13 @@ object WifiP2pManagerHelper {
     }
     fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
                                                      listener: WifiP2pManager.ActionListener) {
-        deletePersistentGroup.invoke(this, c, netId, listener)
+        try {
+            deletePersistentGroup.invoke(this, c, netId, listener)
+        } catch (e: NoSuchMethodException) {
+            e.printStackTrace()
+            Crashlytics.logException(e)
+            listener.onFailure(UNSUPPORTED)
+        }
     }
 
     private val interfacePersistentGroupInfoListener by lazy @SuppressLint("PrivateApi") {

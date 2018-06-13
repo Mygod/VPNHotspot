@@ -122,6 +122,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
             WifiP2pManager.BUSY -> getString(R.string.repeater_failure_reason_busy)
             WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
+            WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
             else -> getString(R.string.failure_reason_unknown, reason)
         })
         Crashlytics.logException(Failure(result))
