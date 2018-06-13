@@ -61,7 +61,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                         routings.remove(downstream)
                         failed = true
                     }
-                if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+                if (failed) app.toast(R.string.noisy_su_failure)
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 app.cleanRoutings[this] = {
