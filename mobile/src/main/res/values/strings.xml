@@ -60,6 +60,9 @@
     <string name="connected_state_failed">%s (lost)</string>
 
     <string name="settings_service">Service</string>
+    <string name="settings_service_masquerade">IP Masquerade</string>
+    <string name="settings_service_masquerade_summary">Recommended to disable this option for dummy VPNs like
+        ad-blockers and socksifiers.</string>
     <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
     <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_repeater_strict">Strict mode</string>

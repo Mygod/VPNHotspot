@@ -7,6 +7,12 @@
             android:icon="@drawable/ic_action_settings_backup_restore"
             android:title="@string/settings_service_clean"/>
         <SwitchPreference
+            android:key="service.masquerade"
+            android:icon="@drawable/ic_social_people"
+            android:title="@string/settings_service_masquerade"
+            android:summary="@string/settings_service_masquerade_summary"
+            android:defaultValue="true"/>
+        <SwitchPreference
             android:key="service.repeater.strict"
             android:icon="@drawable/ic_action_pan_tool"
             android:title="@string/settings_service_repeater_strict"

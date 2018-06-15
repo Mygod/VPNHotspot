@@ -45,9 +45,10 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
             this.dns = dns
             val strict = app.pref.getBoolean("service.repeater.strict", false)
             if (strict && upstream == null) return  // in this case, nothing to be done
-            if (routing.ipForward()                 // local only interfaces may not enable ip_forward
-                            .rule().forward(strict).masquerade(strict).dnsRedirect(dns).start()) return
-            app.toast(R.string.noisy_su_failure)
+            routing.ipForward()                     // local only interfaces need not enable ip_forward
+                    .rule().forward(strict)
+            if (app.masquerade) routing.masquerade(strict)
+            if (!routing.dnsRedirect(dns).start()) app.toast(R.string.noisy_su_failure)
         } catch (e: SocketException) {
             Toast.makeText(app, e.message, Toast.LENGTH_SHORT).show()
             Crashlytics.logException(e)

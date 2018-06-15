@@ -19,6 +19,7 @@ class App : Application() {
     companion object {
         const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
         private const val KEY_DNS = "service.dns"
+        private const val KEY_MASQUERADE = "service.masquerade"
 
         @SuppressLint("StaticFieldLeak")
         lateinit var app: App
@@ -33,6 +34,7 @@ class App : Application() {
         } else deviceContext = this
         // workaround for support lib PreferenceDataStore bug
         dns = dns
+        masquerade = masquerade
         ServiceNotification.updateNotificationChannels()
     }
 
@@ -54,6 +56,9 @@ class App : Application() {
     var dns: String
         get() = pref.getString(KEY_DNS, "8.8.8.8")
         set(value) = pref.edit().putString(KEY_DNS, value).apply()
+    var masquerade: Boolean
+        get() = pref.getBoolean(KEY_MASQUERADE, true)
+        set(value) = pref.edit().putBoolean(KEY_MASQUERADE, value).apply()
 
     val cleanRoutings = Event0()
 

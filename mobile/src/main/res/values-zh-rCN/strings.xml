@@ -57,6 +57,8 @@
     <string name="connected_state_failed">%s (已断开)</string>
 
     <string name="settings_service">服务</string>
+    <string name="settings_service_masquerade">IP 掩蔽</string>
+    <string name="settings_service_masquerade_summary">建议使用广告拦截器与 socksfier 等虚拟 VPN 应用时禁用此选项。</string>
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_repeater_strict">严格模式</string>

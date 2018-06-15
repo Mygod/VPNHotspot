@@ -23,7 +23,6 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.util.*
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
-import java.net.InetAddress
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
