@@ -226,15 +226,15 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         } else if (routingManager != null) {
             this.group = group
             showNotification(group)
-        } else doStart(group, info.groupOwnerAddress)
+        } else doStart(group)
     }
     /**
      * startService Step 3
      */
-    private fun doStart(group: WifiP2pGroup, ownerAddress: InetAddress? = null) {
+    private fun doStart(group: WifiP2pGroup) {
         this.group = group
         check(routingManager == null)
-        routingManager = LocalOnlyInterfaceManager(group.`interface`!!, ownerAddress)
+        routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
         status = Status.ACTIVE
         showNotification(group)
     }

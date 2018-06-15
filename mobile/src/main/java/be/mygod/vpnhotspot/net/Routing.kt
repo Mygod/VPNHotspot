@@ -5,13 +5,10 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.debugLog
 import be.mygod.vpnhotspot.util.noisySu
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.NetworkInterface
-import java.net.SocketException
+import java.net.*
 import java.util.*
 
-class Routing(val upstream: String?, private val downstream: String, ownerAddress: InetAddress? = null) {
+class Routing(val upstream: String?, private val downstream: String, ownerAddress: InterfaceAddress? = null) {
     companion object {
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -37,8 +34,8 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
     }
 
-    val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.inetAddresses?.asSequence()
-            ?.singleOrNull { it is Inet4Address } ?: throw InterfaceNotFoundException()
+    val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.interfaceAddresses?.asSequence()
+            ?.singleOrNull { it.address is Inet4Address } ?: throw InterfaceNotFoundException()
     private val startScript = LinkedList<String>()
     private val stopScript = LinkedList<String>()
     var started = false
@@ -91,15 +88,16 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     }
 
     fun masquerade(strict: Boolean = true): Routing {
+        val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
         startScript.add("quiet $IPTABLES -t nat -N vpnhotspot_masquerade 2>/dev/null")
         // note: specifying -i wouldn't work for POSTROUTING
         if (strict) {
             check(upstream != null)
-            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -o $upstream -j MASQUERADE")
-            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -o $upstream -j MASQUERADE")
+            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
+            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
         } else {
-            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -j MASQUERADE")
-            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -j MASQUERADE")
+            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE")
+            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE")
         }
         startScript.add("$IPTABLES -t nat -I POSTROUTING -j vpnhotspot_masquerade")
         stopScript.addFirst("$IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade")
@@ -107,7 +105,7 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     }
 
     fun dnsRedirect(dnses: List<InetAddress>): Routing {
-        val hostAddress = hostAddress.hostAddress
+        val hostAddress = hostAddress.address.hostAddress
         val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress ?: app.dns
         debugLog("Routing", "Using $dns from ($dnses)")
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")

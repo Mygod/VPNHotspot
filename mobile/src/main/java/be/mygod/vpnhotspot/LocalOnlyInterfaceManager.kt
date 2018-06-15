@@ -6,10 +6,10 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
+import java.net.InterfaceAddress
 import java.net.SocketException
 
-class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetAddress? = null) :
-        UpstreamMonitor.Callback {
+class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callback {
     private var routing: Routing? = null
     private var dns = emptyList<InetAddress>()
 
@@ -20,7 +20,7 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
 
     override fun onAvailable(ifname: String, dns: List<InetAddress>) {
         val routing = routing
-        initRouting(ifname, if (routing == null) owner else {
+        initRouting(ifname, if (routing == null) null else {
             routing.stop()
             routing.hostAddress
         }, dns)
@@ -37,7 +37,7 @@ class LocalOnlyInterfaceManager(val downstream: String, private val owner: InetA
         initRouting(routing.upstream, routing.hostAddress, dns)
     }
 
-    private fun initRouting(upstream: String? = null, owner: InetAddress? = this.owner,
+    private fun initRouting(upstream: String? = null, owner: InterfaceAddress? = null,
                             dns: List<InetAddress> = this.dns) {
         try {
             val routing = Routing(upstream, downstream, owner)
