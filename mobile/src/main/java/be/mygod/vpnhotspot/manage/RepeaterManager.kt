@@ -89,10 +89,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val dialog = AlertDialog.Builder(parent.requireContext())
                     .setTitle(R.string.repeater_wps_dialog_title)
                     .setView(R.layout.dialog_wps)
-                    .setPositiveButton(android.R.string.ok, { dialog, _ -> binder?.startWps((dialog as AppCompatDialog)
-                            .findViewById<EditText>(android.R.id.edit)!!.text.toString()) })
+                    .setPositiveButton(android.R.string.ok) { dialog, _ ->
+                        binder?.startWps((dialog as AppCompatDialog)
+                            .findViewById<EditText>(android.R.id.edit)!!.text.toString())
+                    }
                     .setNegativeButton(android.R.string.cancel, null)
-                    .setNeutralButton(R.string.repeater_wps_dialog_pbc, { _, _ -> binder?.startWps(null) })
+                    .setNeutralButton(R.string.repeater_wps_dialog_pbc) { _, _ -> binder?.startWps(null) }
                     .create()
             dialog.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
             dialog.show()

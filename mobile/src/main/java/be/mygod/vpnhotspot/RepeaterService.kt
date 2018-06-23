@@ -74,10 +74,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         fun requestGroupUpdate() {
             group = null
             try {
-                p2pManager.requestPersistentGroupInfo(channel, {
+                p2pManager.requestPersistentGroupInfo(channel) {
                     groups = it
                     if (it.size == 1) group = it.single()
-                })
+                }
             } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
@@ -186,7 +186,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                         WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
                 receiverRegistered = true
-                p2pManager.requestGroupInfo(channel, {
+                p2pManager.requestGroupInfo(channel) {
                     when {
                         it == null -> doStart()
                         it.isGroupOwner -> if (routingManager == null) doStart(it)
@@ -202,7 +202,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                             })
                         }
                     }
-                })
+                }
             }
             else -> startFailure(getString(R.string.repeater_p2p_unavailable))
         }

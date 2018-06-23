@@ -105,16 +105,16 @@ object WifiP2pManagerHelper {
     fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel,
                                                   listener: (Collection<WifiP2pGroup>) -> Unit) {
         val proxy = Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
-                arrayOf(interfacePersistentGroupInfoListener), { proxy, method, args ->
-            if (method.name == "onPersistentGroupInfoAvailable") {
-                if (args.size != 1) Crashlytics.log(Log.WARN, TAG, "Unexpected args: $args")
-                listener(getGroupList.invoke(args[0]) as Collection<WifiP2pGroup>)
-                null
-            } else {
-                Crashlytics.log(Log.WARN, TAG, "Unexpected method, calling super: $method")
-                ProxyBuilder.callSuper(proxy, method, args)
-            }
-        })
+                arrayOf(interfacePersistentGroupInfoListener)) { proxy, method, args ->
+                    if (method.name == "onPersistentGroupInfoAvailable") {
+                        if (args.size != 1) Crashlytics.log(Log.WARN, TAG, "Unexpected args: $args")
+                        listener(getGroupList.invoke(args[0]) as Collection<WifiP2pGroup>)
+                        null
+                    } else {
+                        Crashlytics.log(Log.WARN, TAG, "Unexpected method, calling super: $method")
+                        ProxyBuilder.callSuper(proxy, method, args)
+                    }
+                }
         requestPersistentGroupInfo.invoke(this, c, proxy)
     }
 
