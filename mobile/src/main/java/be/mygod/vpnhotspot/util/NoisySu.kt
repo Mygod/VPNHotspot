@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.util
 
 import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.R
 import com.crashlytics.android.Crashlytics
 import java.io.IOException
 import java.io.InputStream
@@ -16,19 +15,12 @@ fun loggerSuStream(command: String): InputStream? {
     val process = try {
         ProcessBuilder("su", "-c", command)
                 .directory(app.deviceContext.cacheDir)
+                .redirectErrorStream(true)
                 .start()
     } catch (e: IOException) {
         e.printStackTrace()
         Crashlytics.logException(e)
         return null
-    }
-    thread("LoggerSU-error") {
-        val err = process.errorStream.bufferedReader().readText()
-        if (err.isNotBlank()) {
-            Crashlytics.log(Log.ERROR, NOISYSU_TAG, err)
-            Crashlytics.logException(SuFailure())
-            app.toast(R.string.noisy_su_failure)
-        }
     }
     return process.inputStream
 }
