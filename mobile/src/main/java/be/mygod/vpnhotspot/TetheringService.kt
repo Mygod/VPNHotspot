@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.content.IntentFilter
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
@@ -33,9 +32,8 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         synchronized(routings) {
-            val failed = (routings.keys - TetheringManager.getTetheredIfaces(intent.extras))
-                    .any { routings.remove(it)?.stop() == false }
-            if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+            for (iface in routings.keys - TetheringManager.getTetheredIfaces(intent.extras))
+                routings.remove(iface)?.stop()
             updateRoutingsLocked()
         }
     }
@@ -48,7 +46,6 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                 var failed = false
                 for ((downstream, value) in routings) if (value == null || value.upstream != upstream)
                     try {
-                        if (value?.stop() == false) failed = true
                         // system tethering already has working forwarding rules
                         // so it doesn't make sense to add additional forwarding rules
                         val routing = Routing(upstream, downstream).rule().forward()
@@ -92,8 +89,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
         val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
         synchronized(routings) {
             if (iface != null) routings[iface] = null
-            if (routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop() == false)
-                Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
+            routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
             updateRoutingsLocked()
         }
         return START_NOT_STICKY
@@ -109,14 +105,12 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     override fun onLost() {
         upstream = null
         this.dns = emptyList()
-        var failed = false
         synchronized(routings) {
             for ((iface, routing) in routings) {
-                if (routing?.stop() == false) failed = true
+                routing?.stop()
                 routings[iface] = null
             }
         }
-        if (failed) Toast.makeText(this, getText(R.string.noisy_su_failure), Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {

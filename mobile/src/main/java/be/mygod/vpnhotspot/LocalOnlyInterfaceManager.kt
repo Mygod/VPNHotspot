@@ -27,7 +27,7 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
     }
     override fun onLost() {
         val routing = routing ?: return
-        if (!routing.stop()) app.toast(R.string.noisy_su_failure)
+        routing.stop()
         initRouting(null, routing.hostAddress, emptyList())
     }
 
@@ -59,6 +59,6 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
     fun stop() {
         UpstreamMonitor.unregisterCallback(this)
         app.cleanRoutings -= this
-        if (routing?.stop() == false) app.toast(R.string.noisy_su_failure)
+        routing?.stop()
     }
 }
