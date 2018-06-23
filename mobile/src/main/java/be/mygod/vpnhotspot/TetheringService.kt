@@ -85,13 +85,15 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
 
     override fun onBind(intent: Intent?) = binder
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
-        val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
-        synchronized(routings) {
-            if (iface != null) routings[iface] = null
-            routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
-            updateRoutingsLocked()
-        }
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent != null) {
+            val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
+            synchronized(routings) {
+                if (iface != null) routings[iface] = null
+                routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
+                updateRoutingsLocked()
+            }
+        } else if (routings.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
 
