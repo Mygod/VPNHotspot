@@ -29,6 +29,8 @@ and/or break your Internet using this app *under normal conditions*. However the
 
 ## Q & A
 
+Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
+
 ### Failed to create group due to internal error/repeater shuts down after a while?
 
 This could caused by the Wi-Fi channel you selected is no longer available, due to:
@@ -38,13 +40,6 @@ This could caused by the Wi-Fi channel you selected is no longer available, due 
 
 For maximum stability, you need to set channel = 0 so that your device will pick a channel automatically.
 You can also use WPS to connect your 2.4GHz-only device to force the repeater to switch from 5GHz to 2.4GHz for this time.
-
-### [IPv6 tethering?](https://github.com/Mygod/VPNHotspot/issues/6)
-
-### Missing `android.permission.MANAGE_USB` permission?
-
-Toggling USB tethering only works if you install this app as a system app (`/system/priv-app`).
-Alternatively, use the toggle in your system settings instead.
 
 ### No root?
 
