@@ -17,8 +17,9 @@ This app is useful for:
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
 * Bypassing tethering limits. (you might need more of a real VPN than an ad-blocker to fool a smarter cellular provider)
 
-P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/)
-and [Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/).
+P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
+[Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/),
+and [iOS](http://www.tetherme.net/).
 I don't know about you but I can't get my stupid Windows 10 to work with
 [hosted network](https://msdn.microsoft.com/en-us/library/windows/desktop/dd815243(v=vs.85).aspx)
 now that they introduced this
