@@ -34,6 +34,9 @@ class P2pSupplicantConfiguration {
             val result = match.groupValues[2] + match.groupValues[3]    // only one will match and hold non-empty value
             check(result.length in 8..63)
             result
+        } catch (e: NoSuchElementException) {
+            Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()
+            null
         } catch (e: RuntimeException) {
             Crashlytics.log(Log.WARN, TAG, content)
             e.printStackTrace()
