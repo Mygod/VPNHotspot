@@ -19,7 +19,7 @@ install:
     - unzip -q tools.zip
     - popd
     - touch $HOME/.android/repositories.cfg
-    - yes | sdkmanager --licenses
+    - yes | sdkmanager --licenses > /dev/null
 
 script:
     - ./gradlew assembleDebug check
