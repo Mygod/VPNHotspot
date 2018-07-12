@@ -31,9 +31,11 @@ class P2pSupplicantConfiguration {
     fun readPsk(): String? {
         return try {
             val match = pskParser.findAll(content ?: return null).single()
-            val result = match.groupValues[2] + match.groupValues[3]    // only one will match and hold non-empty value
-            check(result.length in 8..63)
-            result
+            if (match.groups[2] == null && match.groups[3] == null) "" else {
+                val result = match.groupValues[2] + match.groupValues[3]    // only one will match and hold non-empty value
+                check(result.length in 8..63)
+                result
+            }
         } catch (e: NoSuchElementException) {
             Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()
             null
