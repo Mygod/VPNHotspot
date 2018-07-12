@@ -37,6 +37,8 @@ fun Bundle.put(key: String, map: Array<String>): Bundle {
     return this
 }
 
+fun View.setPaddingStart(value: Int) = setPaddingRelative(value, paddingTop, paddingEnd, paddingBottom)
+
 @BindingAdapter("android:src")
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
 

@@ -8,7 +8,6 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.databinding.BaseObservable
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -18,18 +17,21 @@ import android.view.View
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.databinding.ListitemManageTetherBinding
+import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.setPaddingStart
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
 abstract class TetherManager private constructor(protected val parent: TetheringFragment) : Manager(),
         TetheringManager.OnStartTetheringCallback {
-    class ViewHolder(val binding: ListitemManageTetherBinding) : RecyclerView.ViewHolder(binding.root),
+    class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
+            itemView.setPaddingStart(itemView.resources.getDimensionPixelOffset(
+                    R.dimen.listitem_manage_tether_padding_start))
             itemView.setOnClickListener(this)
         }
 
@@ -72,10 +74,11 @@ abstract class TetherManager private constructor(protected val parent: Tethering
     /**
      * A convenient class to delegate stuff to BaseObservable.
      */
-    inner class Data : BaseObservable() {
-        val tetherType get() = this@TetherManager.tetherType
-        val title get() = this@TetherManager.title
-        val isStarted get() = this@TetherManager.isStarted
+    inner class Data : be.mygod.vpnhotspot.manage.Data() {
+        override val icon get() = tetherType.icon
+        override val title get() = this@TetherManager.title
+        override var text: CharSequence = ""
+        override val active get() = isStarted
     }
 
     val data = Data()
@@ -95,6 +98,27 @@ abstract class TetherManager private constructor(protected val parent: Tethering
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).manager = this
+    }
+
+    fun updateErrorMessage(errored: List<String>) {
+        data.text = errored.filter { TetherType.ofInterface(it) == tetherType }.joinToString("\n") {
+            val error = TetheringManager.getLastTetherError(it)
+            "$it: " + when (error) {
+                TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
+                TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
+                TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
+                TetheringManager.TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
+                TetheringManager.TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
+                TetheringManager.TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
+                TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
+                TetheringManager.TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
+                TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
+                TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
+                TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
+                else -> app.getString(R.string.failure_reason_unknown, error)
+            }
+        }
+        data.notifyChange()
     }
 
     @RequiresApi(24)

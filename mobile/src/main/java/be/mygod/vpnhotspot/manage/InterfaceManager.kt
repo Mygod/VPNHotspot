@@ -33,7 +33,6 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
         override val title get() = iface
         override val text get() = addresses
         override val active get() = parent.tetheringBinder?.isActive(iface) == true
-        override val selectable get() = true
     }
 
     val addresses = parent.ifaceLookup[iface]?.formatAddresses() ?: ""

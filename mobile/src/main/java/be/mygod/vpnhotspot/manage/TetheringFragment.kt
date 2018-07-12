@@ -47,7 +47,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             TetherManager.WifiLegacy(this@TetheringFragment)
         }
 
-        fun update(activeIfaces: List<String>, localOnlyIfaces: List<String>) {
+        fun update(activeIfaces: List<String>, localOnlyIfaces: List<String>, erroredIfaces: List<String>) {
             ifaceLookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
@@ -67,7 +67,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             list.add(ManageBar)
             if (Build.VERSION.SDK_INT >= 24) {
                 list.addAll(tetherManagers)
-                tetherManagers.forEach { it.onTetheringStarted() }
+                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
             }
             if (Build.VERSION.SDK_INT < 26) {
                 list.add(wifiManagerLegacy)
@@ -89,7 +89,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
     val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
         adapter.update(TetheringManager.getTetheredIfaces(intent.extras),
-                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras))
+                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras),
+                intent.extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER))
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -97,7 +98,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
         binding.interfaces.layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
-        adapter.update(emptyList(), emptyList())
+        adapter.update(emptyList(), emptyList(), emptyList())
         ServiceForegroundConnector(this, this, TetheringService::class)
         return binding.root
     }

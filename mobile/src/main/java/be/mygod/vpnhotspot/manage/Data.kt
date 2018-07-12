@@ -7,5 +7,5 @@ abstract class Data : BaseObservable() {
     abstract val title: CharSequence
     abstract val text: CharSequence
     abstract val active: Boolean
-    abstract val selectable: Boolean
+    open val selectable get() = true
 }
