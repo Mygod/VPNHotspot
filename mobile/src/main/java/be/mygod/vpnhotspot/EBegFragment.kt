@@ -47,8 +47,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
             val skus = skus
             if (skus == null) {
-                openDialog(android.R.drawable.ic_dialog_alert,
-                        R.string.donations__google_android_market_not_supported_title,
+                openDialog(R.string.donations__google_android_market_not_supported_title,
                         getString(R.string.donations__google_android_market_not_supported))
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
                     .setSku(skus[googleSpinner.selectedItemPosition].sku).setType(BillingClient.SkuType.INAPP).build())
@@ -60,8 +59,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                 }
     }
 
-    private fun openDialog(icon: Int, title: Int, message: String) = AlertDialog.Builder(requireContext()).apply {
-        setIcon(icon)
+    private fun openDialog(title: Int, message: String) = AlertDialog.Builder(requireContext()).apply {
         setTitle(title)
         setMessage(message)
         isCancelable = true
@@ -96,8 +94,8 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     }
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
-            openDialog(android.R.drawable.ic_dialog_info, R.string.donations__thanks_dialog_title,
-                    getString(R.string.donations__thanks_dialog))
+            openDialog(R.string.donations__thanks_dialog_title, getString(R.string.donations__thanks_dialog))
+            dismiss()
         } else Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
     }
 }
