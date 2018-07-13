@@ -43,7 +43,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         private set
     private val dns get() = app.connectivity.allNetworks
             .map { app.connectivity.getLinkProperties(it) }
-            .singleOrNull { it.interfaceName == iface }
+            .singleOrNull { it?.interfaceName == iface }
             ?.dnsServers ?: emptyList()
 
     override fun registerCallbackLocked(callback: Callback): Boolean {
