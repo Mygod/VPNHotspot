@@ -1,10 +1,13 @@
 package be.mygod.vpnhotspot
 
 import android.content.ComponentName
+import android.content.Intent
 import android.content.ServiceConnection
 import android.databinding.DataBindingUtil
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
+import android.support.customtabs.CustomTabsIntent
 import android.support.design.internal.BottomNavigationMenuView
 import android.support.design.widget.BottomNavigationView
 import android.support.v4.app.Fragment
@@ -23,6 +26,12 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
     private var clients: ClientMonitorService.Binder? = null
+    private val customTabsIntent by lazy {
+        CustomTabsIntent.Builder()
+                .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
+                .build()
+    }
+    fun launchUrl(url: Uri) = customTabsIntent.launchUrl(this, url)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -76,4 +85,9 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
 
     private fun displayFragment(fragment: Fragment) =
             supportFragmentManager.beginTransaction().replace(R.id.fragmentHolder, fragment).commitAllowingStateLoss()
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        supportFragmentManager.findFragmentByTag("donationsFragment")?.onActivityResult(requestCode, resultCode, data)
+    }
 }

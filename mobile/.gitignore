@@ -1,6 +1,7 @@
 /build
 /debug
 /release
+/google/
 
 # tests aren't ready yet
 /src/androidTest

@@ -74,6 +74,9 @@
     <string name="settings_misc_logcat_summary">这种非常有用哇</string>
     <string name="settings_misc_source">查看 GitHub 上的源码</string>
     <string name="settings_misc_source_summary">Star, 提交 issues, 合作</string>
+    <string name="settings_misc_donate">捐款</string>
+    <string name="settings_misc_donate_summary">请给我钱</string>
+    <string name="settings_misc_donate_more">PayPal, Flattr 等其他方式…</string>
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
@@ -94,4 +97,17 @@
     <string name="credentials_password_too_short" msgid="7502749986405522663">"密码至少应包含 8 个字符。"</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
     <string name="wifi_cancel" msgid="6763568902542968964">"取消"</string>
+
+    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
+    <string name="donations__button_close">关闭</string>
+    <string name="donations__google_android_market">Google Play 商店</string>
+    <string name="donations__google_android_market_not_supported_title">不支持 In-App 捐赠。</string>
+    <string name="donations__google_android_market_not_supported">不支持 In-App 捐赠。你的 Google Play 商店是否安装正确了呢？</string>
+    <string name="donations__google_android_market_donate_button">捐赠！</string>
+    <string name="donations__google_android_market_text">捐赠多少？</string>
+    <string name="donations__thanks_dialog_title">谢谢！</string>
+    <string name="donations__thanks_dialog">谢谢捐赠！\n非常感谢您！</string>
+
+    <string name="donations__description">觉得此应用很有用？\n捐赠给该开发者以支持此应用的开发！</string>
+    <string name="donations__google_android_market_description">Google 收取 30% 的费用</string>
 </resources>

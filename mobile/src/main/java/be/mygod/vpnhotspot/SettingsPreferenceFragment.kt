@@ -5,8 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.support.customtabs.CustomTabsIntent
-import android.support.v4.content.ContextCompat
 import android.support.v4.content.FileProvider
 import android.support.v7.preference.Preference
 import android.widget.Toast
@@ -26,12 +24,6 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
-    private val customTabsIntent by lazy {
-        CustomTabsIntent.Builder()
-                .setToolbarColor(ContextCompat.getColor(requireContext(), R.color.colorPrimary))
-                .build()
-    }
-
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
@@ -98,7 +90,11 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            customTabsIntent.launchUrl(requireActivity(), Uri.parse("https://github.com/Mygod/VPNHotspot"))
+            (activity as MainActivity).launchUrl(Uri.parse("https://github.com/Mygod/VPNHotspot"))
+            true
+        }
+        findPreference("misc.donate").setOnPreferenceClickListener {
+            EBegFragment().show(fragmentManager, "ebeg_fragment")
             true
         }
     }

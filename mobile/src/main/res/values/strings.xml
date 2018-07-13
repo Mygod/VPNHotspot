@@ -79,6 +79,9 @@
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
     <string name="settings_misc_source">View on GitHub</string>
     <string name="settings_misc_source_summary">Star, submit issues and contribute</string>
+    <string name="settings_misc_donate">Donate</string>
+    <string name="settings_misc_donate_summary">I love money</string>
+    <string name="settings_misc_donate_more">PayPal, Flattr, more…</string>
 
     <string name="notification_tethering_title">VPN tethering active</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
@@ -101,4 +104,16 @@
     <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
     <string name="wifi_save">Save</string>
     <string name="wifi_cancel">Cancel</string>
+
+    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
+    <string name="donations__button_close">Close</string>
+    <string name="donations__description">Do you find this application useful?\nSupport its development by sending a donation to the developer!</string>
+    <string name="donations__google_android_market">Google Play Store</string>
+    <string name="donations__google_android_market_not_supported_title">In-App Donations are not supported.</string>
+    <string name="donations__google_android_market_not_supported">In-App Donations are not supported. Is Google Play Store installed correctly?</string>
+    <string name="donations__google_android_market_description">Google charges a fee of 30%</string>
+    <string name="donations__google_android_market_donate_button">Donate!</string>
+    <string name="donations__google_android_market_text">How much?</string>
+    <string name="donations__thanks_dialog_title">Thanks!</string>
+    <string name="donations__thanks_dialog">Thanks for donating!\nI really appreciate this!</string>
 </resources>

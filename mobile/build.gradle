@@ -11,8 +11,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 28
         resConfigs "zh-rCN"
-        versionCode 25
-        versionName "1.3.4"
+        versionCode 26
+        versionName "1.3.5"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -26,11 +26,23 @@ android {
         }
     }
     dataBinding.enabled = true
+    flavorDimensions("freedom")
+    productFlavors {
+        freedom {
+            dimension "freedom"
+            buildConfigField "boolean", "DONATIONS", "true"
+        }
+        google {
+            dimension "freedom"
+            buildConfigField "boolean", "DONATIONS", "false"
+        }
+    }
 }
 
 dependencies {
     kapt "androidx.databinding:databinding-compiler:$androidPluginVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.android.billingclient:billing:1.1'
     implementation "com.android.support:customtabs:$supportLibraryVersion"
     implementation "com.android.support:design:$supportLibraryVersion"
     implementation "com.android.support:preference-v14:$supportLibraryVersion"

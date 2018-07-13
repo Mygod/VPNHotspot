@@ -48,5 +48,10 @@
             android:icon="@drawable/ic_toggle_star"
             android:title="@string/settings_misc_source"
             android:summary="@string/settings_misc_source_summary"/>
+        <Preference
+            android:key="misc.donate"
+            android:icon="@drawable/ic_action_card_giftcard"
+            android:title="@string/settings_misc_donate"
+            android:summary="@string/settings_misc_donate_summary"/>
     </PreferenceCategory>
 </PreferenceScreen>
