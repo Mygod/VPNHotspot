@@ -14,8 +14,8 @@ import android.provider.Settings
 import android.support.annotation.RequiresApi
 import android.support.v7.widget.RecyclerView
 import android.view.View
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
@@ -43,10 +43,10 @@ abstract class TetherManager private constructor(protected val parent: Tethering
 
         override fun onClick(v: View?) {
             val manager = manager!!
-            val context = manager.parent.requireContext()
-            if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(context)) try {
+            val mainActivity = manager.parent.activity as MainActivity
+            if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(mainActivity)) try {
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                        Uri.parse("package:${context.packageName}")))
+                        Uri.parse("package:${mainActivity.packageName}")))
                 return
             } catch (exc: ActivityNotFoundException) {
                 exc.printStackTrace()
@@ -62,7 +62,7 @@ abstract class TetherManager private constructor(protected val parent: Tethering
                 while (cause != null) {
                     cause = cause.cause
                     if (cause != null && cause !is InvocationTargetException) {
-                        Toast.makeText(context, cause.message, Toast.LENGTH_LONG).show()
+                        mainActivity.snackbar(cause.message.toString()).show()
                         ManageBar.start(itemView.context)
                         break
                     }
@@ -90,11 +90,8 @@ abstract class TetherManager private constructor(protected val parent: Tethering
     protected abstract fun stop()
 
     override fun onTetheringStarted() = data.notifyChange()
-    override fun onTetheringFailed() {
-        app.handler.post {
-            Toast.makeText(parent.requireContext(), R.string.tethering_manage_failed, Toast.LENGTH_SHORT).show()
-        }
-    }
+    override fun onTetheringFailed() =
+            (parent.activity as MainActivity).snackbar().setText(R.string.tethering_manage_failed).show()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).manager = this

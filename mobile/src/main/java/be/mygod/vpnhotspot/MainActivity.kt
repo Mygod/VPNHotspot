@@ -10,6 +10,7 @@ import android.os.IBinder
 import android.support.customtabs.CustomTabsIntent
 import android.support.design.internal.BottomNavigationMenuView
 import android.support.design.widget.BottomNavigationView
+import android.support.design.widget.Snackbar
 import android.support.v4.app.Fragment
 import android.support.v4.content.ContextCompat
 import android.support.v7.app.AppCompatActivity
@@ -32,6 +33,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 .build()
     }
     fun launchUrl(url: Uri) = customTabsIntent.launchUrl(this, url)
+    fun snackbar(text: CharSequence = "") = Snackbar.make(binding.fragmentHolder, text, Snackbar.LENGTH_LONG)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

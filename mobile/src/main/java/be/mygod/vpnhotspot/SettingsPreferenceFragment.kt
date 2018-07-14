@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.support.v4.content.FileProvider
 import android.support.v7.preference.Preference
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
@@ -27,10 +26,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
+        val mainActivity = activity as MainActivity
         findPreference("service.clean").setOnPreferenceClickListener {
-            if (Routing.clean() == null) {
-                Toast.makeText(requireContext(), R.string.root_unavailable, Toast.LENGTH_SHORT).show()
-            } else app.cleanRoutings()
+            if (Routing.clean() == null) mainActivity.snackbar().setText(R.string.root_unavailable).show()
+            else app.cleanRoutings()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
@@ -90,7 +89,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            (activity as MainActivity).launchUrl(Uri.parse("https://github.com/Mygod/VPNHotspot"))
+            mainActivity.launchUrl(Uri.parse("https://github.com/Mygod/VPNHotspot"))
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {

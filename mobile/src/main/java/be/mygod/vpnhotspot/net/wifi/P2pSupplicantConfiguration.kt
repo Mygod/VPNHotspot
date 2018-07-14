@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.wifi
 import android.net.wifi.WifiConfiguration
 import android.os.Build
 import android.util.Log
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.loggerSu
 import be.mygod.vpnhotspot.util.noisySu
@@ -28,7 +27,7 @@ class P2pSupplicantConfiguration {
 
     private val content by lazy { loggerSu("cat /data/misc/wifi/p2p_supplicant.conf") }
 
-    fun readPsk(): String? {
+    fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {
         return try {
             val match = pskParser.findAll(content ?: return null).single()
             if (match.groups[2] == null && match.groups[3] == null) "" else {
@@ -37,13 +36,13 @@ class P2pSupplicantConfiguration {
                 result
             }
         } catch (e: NoSuchElementException) {
-            Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()
+            handler?.invoke(e)
             null
         } catch (e: RuntimeException) {
             Crashlytics.log(Log.WARN, TAG, content)
             e.printStackTrace()
             Crashlytics.logException(e)
-            Toast.makeText(app, e.message, Toast.LENGTH_LONG).show()
+            handler?.invoke(e)
             null
         }
     }

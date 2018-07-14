@@ -16,11 +16,8 @@ import android.support.v7.widget.RecyclerView
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.Toast
-import be.mygod.vpnhotspot.App
+import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.BR
-import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
@@ -104,21 +101,23 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val binder = binder
             val group = binder?.service?.group
             val ssid = group?.networkName
-            val context = parent.requireContext()
+            val mainActivity = parent.activity as MainActivity
             if (ssid != null) {
                 val wifi = WifiConfiguration()
                 val conf = P2pSupplicantConfiguration()
                 wifi.SSID = ssid
                 wifi.preSharedKey = group.passphrase
-                if (wifi.preSharedKey == null) wifi.preSharedKey = conf.readPsk()
+                if (wifi.preSharedKey == null) {
+                    wifi.preSharedKey = conf.readPsk { mainActivity.snackbar(it.message.toString()).show() }
+                }
                 if (wifi.preSharedKey != null) {
                     var dialog: WifiP2pDialog? = null
-                    dialog = WifiP2pDialog(context, DialogInterface.OnClickListener { _, which ->
+                    dialog = WifiP2pDialog(mainActivity, DialogInterface.OnClickListener { _, which ->
                         when (which) {
                             DialogInterface.BUTTON_POSITIVE -> when (conf.update(dialog!!.config!!)) {
-                                true -> App.app.handler.postDelayed(binder::requestGroupUpdate, 1000)
-                                false -> Toast.makeText(context, R.string.noisy_su_failure, Toast.LENGTH_SHORT).show()
-                                null -> Toast.makeText(context, R.string.root_unavailable, Toast.LENGTH_SHORT).show()
+                                true -> app.handler.postDelayed(binder::requestGroupUpdate, 1000)
+                                false -> mainActivity.snackbar().setText(R.string.noisy_su_failure).show()
+                                null -> mainActivity.snackbar().setText(R.string.root_unavailable).show()
                             }
                             DialogInterface.BUTTON_NEUTRAL -> binder.resetCredentials()
                         }
@@ -127,7 +126,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     return
                 }
             }
-            Toast.makeText(context, R.string.repeater_configure_failure, Toast.LENGTH_LONG).show()
+            mainActivity.snackbar().setText(R.string.repeater_configure_failure).show()
         }
     }
 
