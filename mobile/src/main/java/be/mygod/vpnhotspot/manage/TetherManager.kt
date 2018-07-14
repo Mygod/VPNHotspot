@@ -25,7 +25,7 @@ import be.mygod.vpnhotspot.util.setPaddingStart
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
-abstract class TetherManager private constructor(protected val parent: TetheringFragment) : Manager(),
+sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         TetheringManager.OnStartTetheringCallback {
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {

@@ -43,13 +43,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         private var groups: Collection<WifiP2pGroup> = emptyList()
 
         fun startWps(pin: String? = null) {
-            if (!active) return
-            val wps = WpsInfo()
-            if (pin == null) wps.setup = WpsInfo.PBC else {
-                wps.setup = WpsInfo.KEYPAD
-                wps.pin = pin
-            }
-            p2pManager.startWps(channel, wps, object : WifiP2pManager.ActionListener {
+            if (active) p2pManager.startWps(channel, WpsInfo().apply {
+                setup = if (pin == null) WpsInfo.PBC else {
+                    this.pin = pin
+                    WpsInfo.KEYPAD
+                }
+            }, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = Toast.makeText(this@RepeaterService,
                         if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad,
                         Toast.LENGTH_SHORT).show()
