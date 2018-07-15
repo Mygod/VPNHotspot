@@ -13,6 +13,7 @@ import android.os.Looper
 import androidx.annotation.StringRes
 import android.util.Log
 import android.widget.Toast
+import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
@@ -130,7 +131,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onCreate() {
         super.onCreate()
         try {
-            p2pManager = systemService()
+            p2pManager = getSystemService()!!
             onChannelDisconnected()
             app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (exc: KotlinNullPointerException) {

@@ -1,9 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.app.AlertDialog
-import android.net.Uri
 import android.os.Bundle
-import androidx.fragment.app.DialogFragment
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -12,6 +10,8 @@ import android.view.ViewStub
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
+import androidx.core.net.toUri
+import androidx.fragment.app.DialogFragment
 import com.android.billingclient.api.*
 import com.crashlytics.android.Crashlytics
 
@@ -55,7 +55,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
                 .setOnClickListener {
-                    (activity as MainActivity).launchUrl(Uri.parse("https://mygod.be/donate/"))
+                    (activity as MainActivity).launchUrl("https://mygod.be/donate/".toUri())
                 }
     }
 

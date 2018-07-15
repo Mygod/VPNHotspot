@@ -1,13 +1,12 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.*
-import androidx.databinding.BindingAdapter
-import android.os.Bundle
-import androidx.annotation.DrawableRes
-import androidx.core.content.ContextCompat
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
+import androidx.annotation.DrawableRes
+import androidx.core.view.isVisible
+import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
@@ -30,21 +29,12 @@ fun intentFilter(vararg actions: String): IntentFilter {
     return result
 }
 
-inline fun <reified T> Context.systemService() = ContextCompat.getSystemService(this, T::class.java)!!
-
-fun Bundle.put(key: String, map: Array<String>): Bundle {
-    putStringArray(key, map)
-    return this
-}
-
-fun View.setPaddingStart(value: Int) = setPaddingRelative(value, paddingTop, paddingEnd, paddingBottom)
-
 @BindingAdapter("android:src")
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
 
 @BindingAdapter("android:visibility")
 fun setVisibility(view: View, value: Boolean) {
-    view.visibility = if (value) View.VISIBLE else View.GONE
+    view.isVisible = value
 }
 
 fun NetworkInterface.formatAddresses() =

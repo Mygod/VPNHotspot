@@ -2,10 +2,11 @@ package be.mygod.vpnhotspot
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.FileProvider
+import androidx.core.net.toUri
+import androidx.core.os.bundleOf
 import androidx.preference.Preference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -13,7 +14,6 @@ import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
-import be.mygod.vpnhotspot.util.put
 import com.crashlytics.android.Crashlytics
 import com.takisoft.preferencex.PreferenceFragmentCompat
 import java.io.File
@@ -89,7 +89,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            mainActivity.launchUrl(Uri.parse("https://github.com/Mygod/VPNHotspot"))
+            mainActivity.launchUrl("https://github.com/Mygod/VPNHotspot".toUri())
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {
@@ -101,7 +101,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
         UpstreamMonitor.KEY -> displayPreferenceDialog(
                 AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), UpstreamMonitor.KEY,
-                Bundle().put(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
+                bundleOf(Pair(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
                         try {
                             NetworkInterface.getNetworkInterfaces().asSequence()
                                     .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
@@ -110,7 +110,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                             e.printStackTrace()
                             Crashlytics.logException(e)
                             emptyArray<String>()
-                        }))
+                        })))
         else -> super.onDisplayPreferenceDialog(preference)
     }
 }

@@ -1,19 +1,20 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.SuppressLint
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.annotation.RequiresApi
-import androidx.recyclerview.widget.RecyclerView
 import android.view.View
+import androidx.annotation.RequiresApi
+import androidx.core.net.toUri
+import androidx.core.view.updatePaddingRelative
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.OnLifecycleEvent
+import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
@@ -21,7 +22,6 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.util.setPaddingStart
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
@@ -30,7 +30,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
-            itemView.setPaddingStart(itemView.resources.getDimensionPixelOffset(
+            itemView.updatePaddingRelative(start = itemView.resources.getDimensionPixelOffset(
                     R.dimen.listitem_manage_tether_padding_start))
             itemView.setOnClickListener(this)
         }
@@ -46,7 +46,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             val mainActivity = manager.parent.activity as MainActivity
             if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(mainActivity)) try {
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
-                        Uri.parse("package:${mainActivity.packageName}")))
+                        "package:${mainActivity.packageName}".toUri()))
                 return
             } catch (exc: ActivityNotFoundException) {
                 exc.printStackTrace()

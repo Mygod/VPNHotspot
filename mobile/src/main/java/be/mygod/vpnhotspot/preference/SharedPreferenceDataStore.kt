@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.preference
 
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import androidx.preference.PreferenceDataStore
 
 class SharedPreferenceDataStore(private val pref: SharedPreferences) : PreferenceDataStore() {
@@ -11,10 +12,10 @@ class SharedPreferenceDataStore(private val pref: SharedPreferences) : Preferenc
     override fun getString(key: String?, defValue: String?): String? = pref.getString(key, defValue)
     override fun getStringSet(key: String?, defValue: MutableSet<String>?): MutableSet<String>? =
             pref.getStringSet(key, defValue)
-    override fun putBoolean(key: String?, value: Boolean) = pref.edit().putBoolean(key, value).apply()
-    override fun putFloat(key: String?, value: Float) = pref.edit().putFloat(key, value).apply()
-    override fun putInt(key: String?, value: Int) = pref.edit().putInt(key, value).apply()
-    override fun putLong(key: String?, value: Long) = pref.edit().putLong(key, value).apply()
-    override fun putString(key: String?, value: String?) = pref.edit().putString(key, value).apply()
-    override fun putStringSet(key: String?, value: MutableSet<String>?) = pref.edit().putStringSet(key, value).apply()
+    override fun putBoolean(key: String?, value: Boolean) = pref.edit { putBoolean(key, value) }
+    override fun putFloat(key: String?, value: Float) = pref.edit { putFloat(key, value) }
+    override fun putInt(key: String?, value: Int) = pref.edit { putInt(key, value) }
+    override fun putLong(key: String?, value: Long) = pref.edit { putLong(key, value) }
+    override fun putString(key: String?, value: String?) = pref.edit { putString(key, value) }
+    override fun putStringSet(key: String?, value: MutableSet<String>?) = pref.edit { putStringSet(key, value) }
 }

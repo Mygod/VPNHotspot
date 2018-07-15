@@ -12,13 +12,12 @@ import android.os.Handler
 import android.preference.PreferenceManager
 import androidx.annotation.StringRes
 import android.widget.Toast
+import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.util.Event0
-import be.mygod.vpnhotspot.util.systemService
 
 class App : Application() {
     companion object {
         const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
-        private const val KEY_DNS = "service.dns"
         private const val KEY_MASQUERADE = "service.masquerade"
 
         @SuppressLint("StaticFieldLeak")
@@ -32,9 +31,6 @@ class App : Application() {
             deviceContext = createDeviceProtectedStorageContext()
             deviceContext.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
         } else deviceContext = this
-        // workaround for support lib PreferenceDataStore bug
-        dns = dns
-        masquerade = masquerade
         ServiceNotification.updateNotificationChannels()
     }
 
@@ -46,19 +42,14 @@ class App : Application() {
     lateinit var deviceContext: Context
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceContext) }
-    val connectivity by lazy { systemService<ConnectivityManager>() }
-    val wifi by lazy { systemService<WifiManager>() }
+    val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
+    val wifi by lazy { getSystemService<WifiManager>()!! }
 
     val operatingChannel: Int get() {
         val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
         return if (result in 1..165) result else 0
     }
-    var dns: String
-        get() = pref.getString(KEY_DNS, "8.8.8.8")
-        set(value) = pref.edit().putString(KEY_DNS, value).apply()
-    var masquerade: Boolean
-        get() = pref.getBoolean(KEY_MASQUERADE, true)
-        set(value) = pref.edit().putBoolean(KEY_MASQUERADE, value).apply()
+    val masquerade: Boolean get() = pref.getBoolean(KEY_MASQUERADE, true)
 
     val cleanRoutings = Event0()
 
