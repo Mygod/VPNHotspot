@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
-import android.support.annotation.RequiresApi
+import androidx.annotation.RequiresApi
 import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager

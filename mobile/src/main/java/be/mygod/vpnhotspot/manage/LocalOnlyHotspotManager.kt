@@ -11,7 +11,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import android.support.v7.widget.RecyclerView
+import androidx.recyclerview.widget.RecyclerView
 import android.view.View
 import android.widget.Toast
 import be.mygod.vpnhotspot.LocalOnlyHotspotService

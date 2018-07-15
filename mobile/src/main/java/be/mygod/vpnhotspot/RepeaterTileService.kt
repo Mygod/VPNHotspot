@@ -9,8 +9,8 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import android.support.annotation.RequiresApi
-import android.support.v4.content.ContextCompat
+import androidx.annotation.RequiresApi
+import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(24)

@@ -1,7 +1,7 @@
 package be.mygod.vpnhotspot.preference
 
 import android.content.SharedPreferences
-import android.support.v7.preference.PreferenceDataStore
+import androidx.preference.PreferenceDataStore
 
 class SharedPreferenceDataStore(private val pref: SharedPreferences) : PreferenceDataStore() {
     override fun getBoolean(key: String?, defValue: Boolean) = pref.getBoolean(key, defValue)

@@ -1,6 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
-import android.databinding.BaseObservable
+import androidx.databinding.BaseObservable
 
 abstract class Data : BaseObservable() {
     abstract val icon: Int

@@ -5,8 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.support.v4.content.FileProvider
-import android.support.v7.preference.Preference
+import androidx.core.content.FileProvider
+import androidx.preference.Preference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
@@ -15,7 +15,7 @@ import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
 import be.mygod.vpnhotspot.util.put
 import com.crashlytics.android.Crashlytics
-import com.takisoft.fix.support.v7.preference.PreferenceFragmentCompat
+import com.takisoft.preferencex.PreferenceFragmentCompat
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter

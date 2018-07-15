@@ -1,7 +1,7 @@
 package be.mygod.vpnhotspot.preference
 
-import android.support.v7.preference.PreferenceDialogFragmentCompat
-import android.support.v7.widget.AppCompatAutoCompleteTextView
+import androidx.preference.PreferenceDialogFragmentCompat
+import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter

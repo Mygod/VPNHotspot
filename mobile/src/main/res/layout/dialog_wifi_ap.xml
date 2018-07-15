@@ -22,13 +22,13 @@
         android:descendantFocusability="beforeDescendants"
         android:focusableInTouchMode="true"
         style="@style/wifi_item">
-        <android.support.design.widget.TextInputLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ssid_wrapper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dip"
             android:layout_marginBottom="8dip">
-            <android.support.design.widget.TextInputEditText
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/ssid"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -36,14 +36,14 @@
                 android:hint="@string/wifi_ssid"
                 android:inputType="textMultiLine|textNoSuggestions"
                 android:maxLength="32" />
-        </android.support.design.widget.TextInputLayout>
-        <android.support.design.widget.TextInputLayout
+        </com.google.android.material.textfield.TextInputLayout>
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/password_wrapper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:passwordToggleEnabled="true"
             app:errorEnabled="true">
-            <android.support.design.widget.TextInputEditText
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/password"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -53,6 +53,6 @@
                 android:inputType="textPassword"
                 android:maxLength="63"
                 android:imeOptions="flagForceAscii" />
-        </android.support.design.widget.TextInputLayout>
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 </ScrollView>

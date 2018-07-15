@@ -10,7 +10,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
-import android.support.annotation.StringRes
+import androidx.annotation.StringRes
 import android.widget.Toast
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.systemService
