@@ -31,7 +31,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
             field = value
             googleSpinner.apply {
                 val adapter = ArrayAdapter(context ?: return, android.R.layout.simple_spinner_item,
-                        value?.map { it.price } ?: emptyList())
+                        value?.map { it.price } ?: listOf("…"))
                 adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
                 setAdapter(adapter)
             }
