@@ -37,7 +37,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">模式不兼容</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">共享被禁用</string>
 
-    <string name="tethering_manage">管理…</string>
+    <string name="tethering_manage">管理系统共享…</string>
     <!--
      Values copied from:
         * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
