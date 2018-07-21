@@ -1,21 +1,21 @@
 package be.mygod.vpnhotspot.manage
 
+import android.annotation.TargetApi
 import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
-import androidx.databinding.BaseObservable
-import androidx.databinding.Bindable
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.IBinder
-import androidx.core.content.ContextCompat
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatDialog
-import androidx.recyclerview.widget.RecyclerView
 import android.view.WindowManager
 import android.widget.EditText
-import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDialog
+import androidx.core.content.ContextCompat
+import androidx.databinding.BaseObservable
+import androidx.databinding.Bindable
+import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
@@ -114,7 +114,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     var dialog: WifiP2pDialog? = null
                     dialog = WifiP2pDialog(mainActivity, DialogInterface.OnClickListener { _, which ->
                         when (which) {
-                            DialogInterface.BUTTON_POSITIVE -> when (conf.update(dialog!!.config!!)) {
+                            DialogInterface.BUTTON_POSITIVE -> @TargetApi(23) when (conf.update(dialog!!.config!!)) {
                                 true -> app.handler.postDelayed(binder::requestGroupUpdate, 1000)
                                 false -> mainActivity.snackbar().setText(R.string.noisy_su_failure).show()
                                 null -> mainActivity.snackbar().setText(R.string.root_unavailable).show()

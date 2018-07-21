@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.net.wifi.WifiConfiguration
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.loggerSu
 import be.mygod.vpnhotspot.util.noisySu
@@ -47,6 +48,8 @@ class P2pSupplicantConfiguration {
         }
     }
 
+    // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
+    @RequiresApi(23)
     fun update(config: WifiConfiguration): Boolean? {
         val content = content ?: return null
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.cacheDir)
@@ -71,10 +74,7 @@ class P2pSupplicantConfiguration {
                 Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
             }
             if (ssidFound == 0 || pskFound == 0) return false
-            // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
-            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",
-                    if (Build.VERSION.SDK_INT >= 23) "pkill wpa_supplicant"
-                    else "set `ps | grep wpa_supplicant`; kill \$2")
+            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf", "pkill wpa_supplicant")
         } finally {
             if (!tempFile.delete()) tempFile.deleteOnExit()
         }

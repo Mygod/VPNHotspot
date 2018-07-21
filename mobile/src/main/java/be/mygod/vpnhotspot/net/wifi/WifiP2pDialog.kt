@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.DialogInterface
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
+import android.os.Build
 import android.os.Bundle
 import com.google.android.material.textfield.TextInputLayout
 import androidx.appcompat.app.AlertDialog
@@ -46,7 +47,10 @@ class WifiP2pDialog(mContext: Context, private val mListener: DialogInterface.On
         setTitle(R.string.repeater_configure)
         mSsid = mView.findViewById(R.id.ssid)
         mPassword = mView.findViewById(R.id.password)
-        setButton(BUTTON_SUBMIT, context.getString(R.string.wifi_save), mListener)
+        // Note: Reading persistent group information in p2p_supplicant.conf wasn't available until this commit:
+        // https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/
+        // which isn't merged until Android 6.0.
+        if (Build.VERSION.SDK_INT >= 23) setButton(BUTTON_SUBMIT, context.getString(R.string.wifi_save), mListener)
         setButton(DialogInterface.BUTTON_NEGATIVE,
                 context.getString(R.string.wifi_cancel), mListener)
         setButton(DialogInterface.BUTTON_NEUTRAL, context.getString(R.string.repeater_reset_credentials), mListener)
