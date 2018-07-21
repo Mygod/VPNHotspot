@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.ConnectivityManager
@@ -10,10 +9,13 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
-import androidx.annotation.StringRes
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
+import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
+import com.crashlytics.android.Crashlytics
+import io.fabric.sdk.android.Fabric
 
 class App : Application() {
     companion object {
@@ -28,9 +30,10 @@ class App : Application() {
         super.onCreate()
         app = this
         if (Build.VERSION.SDK_INT >= 24) {
-            deviceContext = createDeviceProtectedStorageContext()
-            deviceContext.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
-        } else deviceContext = this
+            deviceStorage = DeviceStorageApp(this)
+            deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
+        } else deviceStorage = this
+        Fabric.with(deviceStorage, Crashlytics())
         ServiceNotification.updateNotificationChannels()
     }
 
@@ -39,9 +42,9 @@ class App : Application() {
         ServiceNotification.updateNotificationChannels()
     }
 
-    lateinit var deviceContext: Context
+    lateinit var deviceStorage: Application
     val handler = Handler()
-    val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceContext) }
+    val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
     val wifi by lazy { getSystemService<WifiManager>()!! }
 

@@ -14,7 +14,7 @@ private class SuFailure : RuntimeException()
 fun loggerSuStream(command: String): InputStream? {
     val process = try {
         ProcessBuilder("su", "-c", command)
-                .directory(app.deviceContext.cacheDir)
+                .directory(app.deviceStorage.cacheDir)
                 .redirectErrorStream(true)
                 .start()
     } catch (e: IOException) {
