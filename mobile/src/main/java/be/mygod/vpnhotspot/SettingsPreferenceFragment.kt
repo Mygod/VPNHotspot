@@ -56,9 +56,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         "./iptables-save"
                     }
                     commands.append("""
-                        |echo logcat-su
-                        |logcat -d
-                        |echo
                         |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                         |dumpsys ${Context.WIFI_P2P_SERVICE}
                         |echo
@@ -70,6 +67,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |echo
                         |echo ip rule
                         |ip rule
+                        |echo
+                        |echo logcat-su
+                        |logcat -d
                     """.trimMargin())
                     try {
                         loggerSuStream(commands.toString())?.use { it.copyTo(out) }
