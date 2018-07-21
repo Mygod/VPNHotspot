@@ -15,7 +15,10 @@ This app is useful for:
 * Connecting things that don't support VPN like Chromecasts behind corporate firewalls;
 * Setting up [gapps](https://support.google.com/pixelphone/answer/7158475) behind corporate firewalls;
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
-* Bypassing tethering limits. (you might need more of a real VPN than an ad-blocker to fool a smarter cellular provider)
+* Bypassing tethering limits by:
+  * (recommended) Use this app with a real VPN/socksifier; (ad-blocker may not work)
+  * (might or might not work based on your carrier) Use this app with TTL editor like [TTL Master](https://github.com/TTLMaster/TTLMaster);
+  * Try your luck and simply use this app.
 
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
 [Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/),
