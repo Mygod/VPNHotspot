@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.net.wifi.WifiConfiguration
-import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app

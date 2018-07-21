@@ -25,7 +25,7 @@ object ServiceNotification {
                 .setSmallIcon(R.drawable.ic_quick_settings_tile_on)
                 .setContentIntent(PendingIntent.getActivity(context, 0,
                         Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-                .setVisibility(Notification.VISIBILITY_PUBLIC)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         val deviceCounts = deviceCountsMap.values.flatMap { it.entries }.sortedBy { it.key }
         return when (deviceCounts.size) {
             0 -> builder.build()

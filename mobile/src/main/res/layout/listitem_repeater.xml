@@ -150,6 +150,7 @@
                     android:text="@={data.oc}"
                     android:inputType="number"
                     android:imeOptions="actionDone"
+                    android:importantForAutofill="no"
                     android:maxLength="3"
                     android:hint="@string/settings_service_repeater_oc_summary"/>
             </LinearLayout>
