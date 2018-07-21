@@ -65,6 +65,7 @@
     <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过，不适用于系统共享</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 IPv6 VPN 泄漏。</string>
+    <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>

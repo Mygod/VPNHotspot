@@ -8,6 +8,7 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.preference.Preference
+import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
@@ -27,6 +28,12 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
         val mainActivity = activity as MainActivity
+        val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
+        boot.setOnPreferenceChangeListener { _, value ->
+            BootReceiver.enabled = value as Boolean
+            true
+        }
+        boot.isChecked = BootReceiver.enabled
         findPreference("service.clean").setOnPreferenceClickListener {
             if (Routing.clean() == null) mainActivity.snackbar().setText(R.string.root_unavailable).show()
             else app.cleanRoutings()

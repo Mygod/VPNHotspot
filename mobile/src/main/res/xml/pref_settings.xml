@@ -28,6 +28,10 @@
             android:title="@string/settings_service_dns"
             android:singleLine="true"
             android:defaultValue="8.8.8.8"/>
+        <SwitchPreference
+            android:key="service.repeater.startOnBoot"
+            android:icon="@drawable/ic_action_autorenew"
+            android:title="@string/settings_service_repeater_start_on_boot"/>
         <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
             android:key="service.upstream"
             android:icon="@drawable/ic_action_settings_ethernet"
