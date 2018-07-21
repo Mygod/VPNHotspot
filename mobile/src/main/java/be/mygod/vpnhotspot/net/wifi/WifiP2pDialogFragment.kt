@@ -46,32 +46,31 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
             return config
         }
 
-    override fun onCreateDialog(savedInstanceState: Bundle?): AlertDialog {
-        return AlertDialog.Builder(requireContext()).apply {
-            mView = requireActivity().layoutInflater.inflate(R.layout.dialog_wifi_ap, null)
-            setView(mView)
-            setTitle(R.string.repeater_configure)
-            mSsid = mView.findViewById(R.id.ssid)
-            mPassword = mView.findViewById(R.id.password)
-            // Note: Reading persistent group information in p2p_supplicant.conf wasn't available until this commit:
-            // https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/
-            // which isn't merged until Android 6.0.
-            if (Build.VERSION.SDK_INT >= 23) {
-                setPositiveButton(context.getString(R.string.wifi_save), this@WifiP2pDialogFragment)
-            }
-            setNegativeButton(context.getString(R.string.wifi_cancel), this@WifiP2pDialogFragment)
-            setNeutralButton(context.getString(R.string.repeater_reset_credentials), this@WifiP2pDialogFragment)
-            val arguments = arguments!!
-            configurer = arguments.getParcelable(KEY_CONFIGURER)
-            val mWifiConfig = arguments.getParcelable<WifiConfiguration>(KEY_CONFIGURATION)
-            if (mWifiConfig != null) {
-                mSsid.text = mWifiConfig.SSID
-                mPassword.setText(mWifiConfig.preSharedKey)
-            }
-            mSsid.addTextChangedListener(this@WifiP2pDialogFragment)
-            mPassword.addTextChangedListener(this@WifiP2pDialogFragment)
-        }.create()
-    }
+    override fun onCreateDialog(savedInstanceState: Bundle?): AlertDialog =
+            AlertDialog.Builder(requireContext()).apply {
+                mView = requireActivity().layoutInflater.inflate(R.layout.dialog_wifi_ap, null)
+                setView(mView)
+                setTitle(R.string.repeater_configure)
+                mSsid = mView.findViewById(R.id.ssid)
+                mPassword = mView.findViewById(R.id.password)
+                // Note: Reading persistent group information in p2p_supplicant.conf wasn't available until this commit:
+                // https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/
+                // which isn't merged until Android 6.0.
+                if (Build.VERSION.SDK_INT >= 23) {
+                    setPositiveButton(context.getString(R.string.wifi_save), this@WifiP2pDialogFragment)
+                }
+                setNegativeButton(context.getString(R.string.wifi_cancel), this@WifiP2pDialogFragment)
+                setNeutralButton(context.getString(R.string.repeater_reset_credentials), this@WifiP2pDialogFragment)
+                val arguments = arguments!!
+                configurer = arguments.getParcelable(KEY_CONFIGURER)
+                val mWifiConfig = arguments.getParcelable<WifiConfiguration>(KEY_CONFIGURATION)
+                if (mWifiConfig != null) {
+                    mSsid.text = mWifiConfig.SSID
+                    mPassword.setText(mWifiConfig.preSharedKey)
+                }
+                mSsid.addTextChangedListener(this@WifiP2pDialogFragment)
+                mPassword.addTextChangedListener(this@WifiP2pDialogFragment)
+            }.create()
 
     override fun onStart() {
         super.onStart()
@@ -101,9 +100,8 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
                 false -> (activity as MainActivity).snackbar().setText(R.string.noisy_su_failure).show()
                 null -> (activity as MainActivity).snackbar().setText(R.string.root_unavailable).show()
             }
-            DialogInterface.BUTTON_NEUTRAL -> {
+            DialogInterface.BUTTON_NEUTRAL ->
                 (targetFragment as TetheringFragment).adapter.repeaterManager.binder!!.resetCredentials()
-            }
         }
     }
 }
