@@ -1,8 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
-import android.annotation.TargetApi
 import android.content.ComponentName
-import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.wifi.WifiConfiguration
@@ -13,6 +11,7 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialog
 import androidx.core.content.ContextCompat
+import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.recyclerview.widget.RecyclerView
@@ -20,7 +19,7 @@ import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
-import be.mygod.vpnhotspot.net.wifi.WifiP2pDialog
+import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import com.crashlytics.android.Crashlytics
@@ -111,18 +110,11 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     wifi.preSharedKey = conf.readPsk { mainActivity.snackbar(it.message.toString()).show() }
                 }
                 if (wifi.preSharedKey != null) {
-                    var dialog: WifiP2pDialog? = null
-                    dialog = WifiP2pDialog(mainActivity, DialogInterface.OnClickListener { _, which ->
-                        when (which) {
-                            DialogInterface.BUTTON_POSITIVE -> @TargetApi(23) when (conf.update(dialog!!.config!!)) {
-                                true -> app.handler.postDelayed(binder::requestGroupUpdate, 1000)
-                                false -> mainActivity.snackbar().setText(R.string.noisy_su_failure).show()
-                                null -> mainActivity.snackbar().setText(R.string.root_unavailable).show()
-                            }
-                            DialogInterface.BUTTON_NEUTRAL -> binder.resetCredentials()
-                        }
-                    }, wifi)
-                    dialog.show()
+                    WifiP2pDialogFragment().apply {
+                        arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, wifi),
+                                Pair(WifiP2pDialogFragment.KEY_CONFIGURER, conf))
+                        setTargetFragment(parent, 0)
+                    }.show(parent.fragmentManager, WifiP2pDialogFragment.TAG)
                     return
                 }
             }
@@ -136,7 +128,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
     override val type get() = VIEW_TYPE_REPEATER
     private val data = Data()
-    private var binder: RepeaterService.Binder? = null
+    internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {

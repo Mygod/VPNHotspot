@@ -36,7 +36,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     }
 
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
-        private val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
+        internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         private val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
         private val tetherManagers by lazy @TargetApi(24) {
             listOf(TetherManager.Wifi(this@TetheringFragment),

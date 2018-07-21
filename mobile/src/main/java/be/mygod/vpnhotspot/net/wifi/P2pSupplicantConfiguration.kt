@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.net.wifi.WifiConfiguration
+import android.os.Parcel
+import android.os.Parcelable
 import android.util.Log
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -9,8 +11,11 @@ import be.mygod.vpnhotspot.util.noisySu
 import com.crashlytics.android.Crashlytics
 import java.io.File
 
-class P2pSupplicantConfiguration {
-    companion object {
+class P2pSupplicantConfiguration(private val initContent: String? = null) : Parcelable {
+    companion object CREATOR : Parcelable.Creator<P2pSupplicantConfiguration> {
+        override fun createFromParcel(parcel: Parcel) = P2pSupplicantConfiguration(parcel.readString())
+        override fun newArray(size: Int): Array<P2pSupplicantConfiguration?> = arrayOfNulls(size)
+
         private const val TAG = "P2pSupplicationConf"
         /**
          * Format for ssid is much more complicated, therefore we are only trying to find the line and rely on
@@ -25,7 +30,13 @@ class P2pSupplicantConfiguration {
         private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
     }
 
-    private val content by lazy { loggerSu("cat /data/misc/wifi/p2p_supplicant.conf") }
+    override fun writeToParcel(out: Parcel, flags: Int) {
+        out.writeString(if (contentDelegate.isInitialized()) content else null)
+    }
+    override fun describeContents() = 0
+
+    private val contentDelegate = lazy { initContent ?: loggerSu("cat /data/misc/wifi/p2p_supplicant.conf") }
+    private val content by contentDelegate
 
     fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {
         return try {
