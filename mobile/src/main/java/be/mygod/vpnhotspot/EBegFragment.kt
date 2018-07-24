@@ -45,12 +45,12 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         billingClient = BillingClient.newBuilder(view.context).setListener(this).build()
         onBillingServiceDisconnected()
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
-            val skus = skus
-            if (skus == null) {
+            val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
+            if (sku == null) {
                 openDialog(R.string.donations__google_android_market_not_supported_title,
                         getString(R.string.donations__google_android_market_not_supported))
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
-                    .setSku(skus[googleSpinner.selectedItemPosition].sku).setType(BillingClient.SkuType.INAPP).build())
+                    .setSku(sku.sku).setType(BillingClient.SkuType.INAPP).build())
         }
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
