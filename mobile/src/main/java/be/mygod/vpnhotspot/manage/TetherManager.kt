@@ -99,20 +99,25 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
     fun updateErrorMessage(errored: List<String>) {
         data.text = errored.filter { TetherType.ofInterface(it) == tetherType }.joinToString("\n") {
-            val error = TetheringManager.getLastTetherError(it)
-            "$it: " + when (error) {
-                TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
-                TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
-                TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
-                TetheringManager.TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
-                TetheringManager.TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
-                TetheringManager.TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
-                TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
-                TetheringManager.TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
-                TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
-                TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
-                TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
-                else -> app.getString(R.string.failure_reason_unknown, error)
+            "$it: " + try {
+                val error = TetheringManager.getLastTetherError(it)
+                when (error) {
+                    TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
+                    TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
+                    TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
+                    TetheringManager.TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
+                    TetheringManager.TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
+                    TetheringManager.TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
+                    TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
+                    TetheringManager.TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
+                    TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
+                    TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
+                    TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
+                    else -> app.getString(R.string.failure_reason_unknown, error)
+                }
+            } catch (e: SecurityException) {
+                Crashlytics.logException(e)
+                e.localizedMessage
             }
         }
         data.notifyChange()
