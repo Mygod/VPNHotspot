@@ -10,8 +10,10 @@ import android.view.ViewStub
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
+import androidx.annotation.StringRes
 import androidx.core.net.toUri
 import androidx.fragment.app.DialogFragment
+import be.mygod.vpnhotspot.App.Companion.app
 import com.android.billingclient.api.*
 import com.crashlytics.android.Crashlytics
 
@@ -48,7 +50,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
             val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
             if (sku == null) {
                 openDialog(R.string.donations__google_android_market_not_supported_title,
-                        getString(R.string.donations__google_android_market_not_supported))
+                        R.string.donations__google_android_market_not_supported)
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
                     .setSku(sku.sku).setType(BillingClient.SkuType.INAPP).build())
         }
@@ -59,12 +61,14 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                 }
     }
 
-    private fun openDialog(title: Int, message: String) = AlertDialog.Builder(requireContext()).apply {
-        setTitle(title)
-        setMessage(message)
-        isCancelable = true
-        setNeutralButton(R.string.donations__button_close) { dialog, _ -> dialog.dismiss() }
-    }.show()
+    private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
+        AlertDialog.Builder(context ?: app).apply {
+            setTitle(title)
+            setMessage(message)
+            isCancelable = true
+            setNeutralButton(R.string.donations__button_close) { dialog, _ -> dialog.dismiss() }
+        }.show()
+    }
 
     override fun onBillingServiceDisconnected() {
         skus = null
@@ -94,7 +98,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     }
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
-            openDialog(R.string.donations__thanks_dialog_title, getString(R.string.donations__thanks_dialog))
+            openDialog(R.string.donations__thanks_dialog_title, R.string.donations__thanks_dialog)
             dismiss()
         } else Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
     }
