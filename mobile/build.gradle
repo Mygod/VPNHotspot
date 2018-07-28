@@ -50,7 +50,7 @@ dependencies {
     implementation 'com.crashlytics.sdk.android:crashlytics:2.9.4'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation "com.google.android.material:material:$androidxVersion"
-    implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.0'
+    implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
     implementation 'com.takisoft.preferencex:preferencex:1.0.0-alpha2'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     testImplementation 'junit:junit:4.12'
