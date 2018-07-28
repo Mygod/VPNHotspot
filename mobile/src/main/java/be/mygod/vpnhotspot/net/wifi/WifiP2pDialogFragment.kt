@@ -1,10 +1,8 @@
 package be.mygod.vpnhotspot.net.wifi
 
-import android.annotation.TargetApi
 import android.content.DialogInterface
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
-import android.os.Build
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -53,12 +51,7 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
                 setTitle(R.string.repeater_configure)
                 mSsid = mView.findViewById(R.id.ssid)
                 mPassword = mView.findViewById(R.id.password)
-                // Note: Reading persistent group information in p2p_supplicant.conf wasn't available until this commit:
-                // https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/
-                // which isn't merged until Android 6.0.
-                if (Build.VERSION.SDK_INT >= 23) {
-                    setPositiveButton(context.getString(R.string.wifi_save), this@WifiP2pDialogFragment)
-                }
+                setPositiveButton(context.getString(R.string.wifi_save), this@WifiP2pDialogFragment)
                 setNegativeButton(context.getString(R.string.wifi_cancel), this@WifiP2pDialogFragment)
                 setNeutralButton(context.getString(R.string.repeater_reset_credentials), this@WifiP2pDialogFragment)
                 val arguments = arguments!!
@@ -92,7 +85,7 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
         when (which) {
-            DialogInterface.BUTTON_POSITIVE -> @TargetApi(23) when (configurer.update(config!!)) {
+            DialogInterface.BUTTON_POSITIVE -> when (configurer.update(config!!)) {
                 true -> {
                     app.handler.postDelayed((targetFragment as TetheringFragment).adapter.repeaterManager
                             .binder!!::requestGroupUpdate, 1000)

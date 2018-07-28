@@ -1,15 +1,16 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.net.wifi.WifiConfiguration
+import android.os.Build
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.Log
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.loggerSu
 import be.mygod.vpnhotspot.util.noisySu
 import com.crashlytics.android.Crashlytics
 import java.io.File
+import java.io.IOException
 
 class P2pSupplicantConfiguration(private val initContent: String? = null) : Parcelable {
     companion object CREATOR : Parcelable.Creator<P2pSupplicantConfiguration> {
@@ -29,6 +30,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
          */
         private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
     }
+    private class InvalidConfigurationError : IOException()
 
     override fun writeToParcel(out: Parcel, flags: Int) {
         out.writeString(if (contentDelegate.isInitialized()) content else null)
@@ -58,8 +60,6 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         }
     }
 
-    // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
-    @RequiresApi(23)
     fun update(config: WifiConfiguration): Boolean? {
         val content = content ?: return null
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.cacheDir)
@@ -82,9 +82,13 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
             }
             if (ssidFound != 1 || pskFound != 1) {
                 Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
+                Crashlytics.logException(InvalidConfigurationError())
             }
             if (ssidFound == 0 || pskFound == 0) return false
-            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf", "pkill wpa_supplicant")
+            // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
+            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",
+                    if (Build.VERSION.SDK_INT >= 23) "pkill wpa_supplicant"
+                    else "set `ps | grep wpa_supplicant`; kill \$2")
         } finally {
             if (!tempFile.delete()) tempFile.deleteOnExit()
         }
