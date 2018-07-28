@@ -56,3 +56,7 @@ Without root, you can only:
   tethering/bypassing tethering limits: (note: these apps are neither free nor open source)
   * [PdaNet+](https://play.google.com/store/apps/details?id=com.pdanet)
   * [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
+
+### Misc
+
+This app doesn't require Busybox, but if you have installed it, please make sure it's v1.28.1 or higher.

@@ -9,7 +9,7 @@ import java.io.InputStream
 private const val NOISYSU_TAG = "NoisySU"
 private const val NOISYSU_SUFFIX = "SUCCESS\n"
 
-private class SuFailure : RuntimeException()
+private class SuFailure(msg: String?) : RuntimeException(msg)
 
 fun loggerSuStream(command: String): InputStream? {
     val process = try {
@@ -44,7 +44,7 @@ echo $NOISYSU_SUFFIX""")
     out = out?.removeSuffix(NOISYSU_SUFFIX)
     if (!out.isNullOrBlank()) {
         Crashlytics.log(Log.INFO, NOISYSU_TAG, out)
-        if (report) Crashlytics.logException(SuFailure())
+        if (report) Crashlytics.logException(SuFailure(out))
     }
     return result
 }
