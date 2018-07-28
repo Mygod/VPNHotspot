@@ -44,7 +44,8 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         return try {
             val match = pskParser.findAll(content ?: return null).single()
             if (match.groups[2] == null && match.groups[3] == null) "" else {
-                val result = match.groupValues[2] + match.groupValues[3]    // only one will match and hold non-empty value
+                // only one will match and hold non-empty value
+                val result = match.groupValues[2] + match.groupValues[3]
                 check(result.length in 8..63)
                 result
             }

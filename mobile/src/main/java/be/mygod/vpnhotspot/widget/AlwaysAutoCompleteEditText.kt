@@ -2,9 +2,9 @@ package be.mygod.vpnhotspot.widget
 
 import android.content.Context
 import android.graphics.Rect
-import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import android.util.AttributeSet
 import android.view.View
+import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import be.mygod.vpnhotspot.R
 
 /**

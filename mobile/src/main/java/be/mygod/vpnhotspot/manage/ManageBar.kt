@@ -3,8 +3,8 @@ package be.mygod.vpnhotspot.manage
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import androidx.recyclerview.widget.RecyclerView
 import android.view.View
+import androidx.recyclerview.widget.RecyclerView
 import com.crashlytics.android.Crashlytics
 
 object ManageBar : Manager() {

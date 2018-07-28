@@ -1,14 +1,14 @@
 package be.mygod.vpnhotspot.util
 
 import android.app.Service
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.OnLifecycleEvent
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.OnLifecycleEvent
 import kotlin.reflect.KClass
 
 /**

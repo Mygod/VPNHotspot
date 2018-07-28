@@ -3,24 +3,24 @@ package be.mygod.vpnhotspot
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
-import androidx.databinding.DataBindingUtil
 import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
-import androidx.browser.customtabs.CustomTabsIntent
-import com.google.android.material.bottomnavigation.BottomNavigationView
-import com.google.android.material.snackbar.Snackbar
-import androidx.fragment.app.Fragment
-import androidx.core.content.ContextCompat
-import androidx.appcompat.app.AppCompatActivity
 import android.view.Gravity
 import android.view.MenuItem
+import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
+import androidx.databinding.DataBindingUtil
+import androidx.fragment.app.Fragment
 import be.mygod.vpnhotspot.client.ClientMonitorService
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
+import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.snackbar.Snackbar
 import q.rorbin.badgeview.QBadgeView
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener, ServiceConnection {

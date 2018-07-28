@@ -5,8 +5,8 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
-import androidx.annotation.RequiresApi
 import android.util.Log
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
 import com.crashlytics.android.Crashlytics

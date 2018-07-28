@@ -1,11 +1,11 @@
 package be.mygod.vpnhotspot.preference
 
-import androidx.preference.PreferenceDialogFragmentCompat
-import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.EditText
+import androidx.appcompat.widget.AppCompatAutoCompleteTextView
+import androidx.preference.PreferenceDialogFragmentCompat
 
 open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : PreferenceDialogFragmentCompat() {
     companion object {

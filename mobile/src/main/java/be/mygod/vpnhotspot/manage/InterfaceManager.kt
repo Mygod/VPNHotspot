@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
+import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
-import android.view.View
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType

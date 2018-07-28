@@ -11,10 +11,10 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import androidx.recyclerview.widget.RecyclerView
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
+import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding

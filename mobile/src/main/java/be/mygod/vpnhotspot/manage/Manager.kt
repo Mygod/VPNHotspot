@@ -1,10 +1,10 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
-import androidx.recyclerview.widget.DiffUtil
-import androidx.recyclerview.widget.RecyclerView
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
@@ -23,7 +23,7 @@ abstract class Manager {
         override fun areItemsTheSame(oldItem: Manager, newItem: Manager) = oldItem.isSameItemAs(newItem)
         override fun areContentsTheSame(oldItem: Manager, newItem: Manager) = oldItem == newItem
 
-        fun createViewHolder(inflater: LayoutInflater, parent: ViewGroup, type: Int): RecyclerView.ViewHolder = when (type) {
+        fun createViewHolder(inflater: LayoutInflater, parent: ViewGroup, type: Int) = when (type) {
             VIEW_TYPE_INTERFACE ->
                 InterfaceManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             VIEW_TYPE_MANAGE -> ManageBar.ViewHolder(inflater.inflate(R.layout.listitem_manage, parent, false))
