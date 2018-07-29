@@ -13,7 +13,6 @@ import android.widget.Spinner
 import androidx.annotation.StringRes
 import androidx.core.net.toUri
 import androidx.fragment.app.DialogFragment
-import be.mygod.vpnhotspot.App.Companion.app
 import com.android.billingclient.api.*
 import com.crashlytics.android.Crashlytics
 
@@ -62,7 +61,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     }
 
     private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
-        AlertDialog.Builder(context ?: app).apply {
+        AlertDialog.Builder(context ?: return).apply {
             setTitle(title)
             setMessage(message)
             isCancelable = true
