@@ -4,8 +4,8 @@ apply plugin: 'com.github.ben-manes.versions'
 
 buildscript {
     ext {
-        androidPluginVersion = '3.2.0-beta04'
-        kotlinVersion = '1.2.51'
+        androidPluginVersion = '3.2.0-beta05'
+        kotlinVersion = '1.2.60'
         androidxVersion = '1.0.0-beta01'
     }
     repositories {
