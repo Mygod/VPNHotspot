@@ -4,6 +4,8 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorAccent">@color/colorAccent</item>
+        <item name="android:navigationBarColor">@color/navigationBarColor</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
 
     <!-- https://android.googlesource.com/platform/packages/apps/Settings/+/7efcc35/res/values/styles.xml -->

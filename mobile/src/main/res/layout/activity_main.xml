@@ -44,12 +44,13 @@
         <View
             android:id="@+id/line"
             android:layout_width="0dp"
-            android:layout_height="1dp"
-            android:background="@android:color/white"
+            android:layout_height="0.1px"
+            android:background="@color/navigationBarColor"
             android:elevation="9dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"
-            app:layout_constraintRight_toRightOf="parent"/>
+            app:layout_constraintRight_toRightOf="parent"
+            tools:ignore="PxUsage"/>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 
