@@ -43,7 +43,6 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
-        billingClient = BillingClient.newBuilder(view.context).setListener(this).build()
         onBillingServiceDisconnected()
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
             val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
@@ -71,7 +70,8 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onBillingServiceDisconnected() {
         skus = null
-        billingClient.startConnection(this)
+        billingClient = BillingClient.newBuilder(view!!.context).setListener(this).build()
+                .also { it.startConnection(this) }
     }
     override fun onBillingSetupFinished(responseCode: Int) {
         if (responseCode == BillingClient.BillingResponse.OK) {
