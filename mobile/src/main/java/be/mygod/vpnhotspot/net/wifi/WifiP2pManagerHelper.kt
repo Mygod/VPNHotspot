@@ -76,7 +76,7 @@ object WifiP2pManagerHelper {
                 WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
     fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
-                                                     listener: WifiP2pManager.ActionListener) {
+                                             listener: WifiP2pManager.ActionListener) {
         try {
             deletePersistentGroup.invoke(this, c, netId, listener)
         } catch (e: NoSuchMethodException) {

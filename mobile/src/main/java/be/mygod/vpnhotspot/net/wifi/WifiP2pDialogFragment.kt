@@ -55,7 +55,7 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
                 setNegativeButton(context.getString(R.string.wifi_cancel), this@WifiP2pDialogFragment)
                 setNeutralButton(context.getString(R.string.repeater_reset_credentials), this@WifiP2pDialogFragment)
                 val arguments = arguments!!
-                configurer = arguments.getParcelable(KEY_CONFIGURER)
+                configurer = arguments.getParcelable(KEY_CONFIGURER)!!
                 val mWifiConfig = arguments.getParcelable<WifiConfiguration>(KEY_CONFIGURATION)
                 if (mWifiConfig != null) {
                     mSsid.text = mWifiConfig.SSID

@@ -4,7 +4,7 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
 android {
-    buildToolsVersion "28.0.1"
+    buildToolsVersion "28.0.2"
     compileSdkVersion 28
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"

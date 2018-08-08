@@ -92,7 +92,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     .setNegativeButton(android.R.string.cancel, null)
                     .setNeutralButton(R.string.repeater_wps_dialog_pbc) { _, _ -> binder?.startWps(null) }
                     .create()
-            dialog.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+            dialog.window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
             dialog.show()
         }
 

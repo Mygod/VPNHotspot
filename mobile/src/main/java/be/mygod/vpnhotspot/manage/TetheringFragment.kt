@@ -88,9 +88,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
     var tetheringBinder: TetheringService.Binder? = null
     val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(TetheringManager.getTetheredIfaces(intent.extras),
-                TetheringManager.getLocalOnlyTetheredIfaces(intent.extras),
-                intent.extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER))
+        val extras = intent.extras!!
+        adapter.update(TetheringManager.getTetheredIfaces(extras),
+                TetheringManager.getLocalOnlyTetheredIfaces(extras),
+                extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER)!!)
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {

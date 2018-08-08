@@ -113,6 +113,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
                     TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
                     TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
+                    TetheringManager.TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: SecurityException) {

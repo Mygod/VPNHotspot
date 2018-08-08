@@ -63,12 +63,10 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
         private var arpCacheTime = -ARP_CACHE_EXPIRE
         private fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
-                arpCache = File("/proc/net/arp").bufferedReader().useLines {
-                    it.map { it.split(spaces) }
-                            .drop(1)
-                            .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
-                            .toList()
-                }
+                arpCache = File("/proc/net/arp").bufferedReader().readLines()
+                        .map { it.split(spaces) }
+                        .drop(1)
+                        .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
             } catch (e: IOException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
