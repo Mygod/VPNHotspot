@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.view.View
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.view.updatePaddingRelative
@@ -62,7 +63,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 while (cause != null) {
                     cause = cause.cause
                     if (cause != null && cause !is InvocationTargetException) {
-                        mainActivity.snackbar(cause.message.toString()).show()
+                        Toast.makeText(mainActivity, cause.message.toString(), Toast.LENGTH_LONG).show()
                         ManageBar.start(itemView.context)
                         break
                     }
