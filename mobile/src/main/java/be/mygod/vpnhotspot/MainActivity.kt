@@ -18,12 +18,17 @@ import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.snackbar.Snackbar
 import q.rorbin.badgeview.QBadgeView
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener, ServiceConnection {
+    companion object {
+        var current: MainActivity? = null
+    }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
     private var clients: ClientMonitorService.Binder? = null
@@ -33,7 +38,6 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 .build()
     }
     fun launchUrl(url: Uri) = customTabsIntent.launchUrl(this, url)
-    fun snackbar(text: CharSequence = "") = Snackbar.make(binding.fragmentHolder, text, Snackbar.LENGTH_LONG)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +51,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         badge.badgeGravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         badge.setGravityOffset(16f, 0f, true)
         ServiceForegroundConnector(this, this, ClientMonitorService::class)
+        SmartSnackbar.Register(binding.fragmentHolder)
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {

@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
-import android.widget.Toast
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager
@@ -11,6 +10,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.debugLog
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 
 @RequiresApi(26)
@@ -89,7 +89,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                     getString(R.string.tethering_temp_hotspot_failure_tethering_disallowed)
                                 else -> getString(R.string.failure_reason_unknown, reason)
                             })
-                    Toast.makeText(this@LocalOnlyHotspotService, message, Toast.LENGTH_SHORT).show()
+                    SmartSnackbar.make(message).show()
                     startFailure(if (reason == WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE) null else
                         StartFailure(message))
                 }
@@ -98,7 +98,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
             e.printStackTrace()
             startFailure(e)
         } catch (e: SecurityException) {
-            Toast.makeText(this, e.message, Toast.LENGTH_LONG).show()
+            SmartSnackbar.make(e.localizedMessage).show()
             e.printStackTrace()
             startFailure(e)
         }

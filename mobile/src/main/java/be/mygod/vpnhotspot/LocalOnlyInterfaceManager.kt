@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot
 
-import android.widget.Toast
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
 import java.net.InterfaceAddress
@@ -48,9 +48,9 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
             routing.ipForward()                     // local only interfaces need not enable ip_forward
                     .rule().forward(strict)
             if (app.masquerade) routing.masquerade(strict)
-            if (!routing.dnsRedirect(dns).start()) app.toast(R.string.noisy_su_failure)
+            if (!routing.dnsRedirect(dns).start()) SmartSnackbar.make(R.string.noisy_su_failure).show()
         } catch (e: SocketException) {
-            Toast.makeText(app, e.message, Toast.LENGTH_SHORT).show()
+            SmartSnackbar.make(e.localizedMessage).show()
             Crashlytics.logException(e)
             routing = null
         }

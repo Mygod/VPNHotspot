@@ -9,6 +9,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
 import java.net.SocketException
@@ -32,7 +33,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         synchronized(routings) {
-            for (iface in routings.keys - TetheringManager.getTetheredIfaces(intent.extras))
+            for (iface in routings.keys - TetheringManager.getTetheredIfaces(intent.extras!!))
                 routings.remove(iface)?.stop()
             updateRoutingsLocked()
         }
@@ -60,7 +61,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                         routings.remove(downstream)
                         failed = true
                     }
-                if (failed) app.toast(R.string.noisy_su_failure)
+                if (failed) SmartSnackbar.make(R.string.noisy_su_failure).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 app.cleanRoutings[this] = {

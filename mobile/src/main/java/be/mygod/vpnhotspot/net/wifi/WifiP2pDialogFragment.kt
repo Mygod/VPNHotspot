@@ -12,9 +12,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.manage.TetheringFragment
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.textfield.TextInputLayout
 import java.nio.charset.Charset
 
@@ -90,8 +90,8 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
                     app.handler.postDelayed((targetFragment as TetheringFragment).adapter.repeaterManager
                             .binder!!::requestGroupUpdate, 1000)
                 }
-                false -> (activity as MainActivity).snackbar().setText(R.string.noisy_su_failure).show()
-                null -> (activity as MainActivity).snackbar().setText(R.string.root_unavailable).show()
+                false -> SmartSnackbar.make(R.string.noisy_su_failure).show()
+                null -> SmartSnackbar.make(R.string.root_unavailable).show()
             }
             DialogInterface.BUTTON_NEUTRAL ->
                 (targetFragment as TetheringFragment).adapter.repeaterManager.binder!!.resetCredentials()

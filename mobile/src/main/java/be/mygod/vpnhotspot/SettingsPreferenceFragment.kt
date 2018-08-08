@@ -15,6 +15,7 @@ import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.loggerSuStream
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import com.takisoft.preferencex.PreferenceFragmentCompat
 import java.io.File
@@ -27,7 +28,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
-        val mainActivity = activity as MainActivity
         val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
         boot.setOnPreferenceChangeListener { _, value ->
             BootReceiver.enabled = value as Boolean
@@ -35,7 +35,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         }
         boot.isChecked = BootReceiver.enabled
         findPreference("service.clean").setOnPreferenceClickListener {
-            if (Routing.clean() == null) mainActivity.snackbar().setText(R.string.root_unavailable).show()
+            if (Routing.clean() == null) SmartSnackbar.make(R.string.root_unavailable).show()
             else app.cleanRoutings()
             true
         }
@@ -96,7 +96,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            mainActivity.launchUrl("https://github.com/Mygod/VPNHotspot".toUri())
+            (activity as MainActivity).launchUrl("https://github.com/Mygod/VPNHotspot".toUri())
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {

@@ -10,6 +10,7 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -57,7 +58,7 @@ fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = fals
            contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
     val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
     thread.setUncaughtExceptionHandler { _, e ->
-        app.toast(R.string.noisy_su_failure)
+        SmartSnackbar.make(R.string.noisy_su_failure).show()
         Crashlytics.logException(e)
     }
     if (start) thread.start()

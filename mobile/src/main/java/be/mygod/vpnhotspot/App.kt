@@ -9,8 +9,6 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
-import android.widget.Toast
-import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
@@ -55,6 +53,4 @@ class App : Application() {
     val masquerade: Boolean get() = pref.getBoolean(KEY_MASQUERADE, true)
 
     val cleanRoutings = Event0()
-
-    fun toast(@StringRes resId: Int) = handler.post { Toast.makeText(this, resId, Toast.LENGTH_SHORT).show() }
 }

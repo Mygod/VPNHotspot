@@ -11,7 +11,6 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
 import android.util.Log
-import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
@@ -22,6 +21,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupI
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
@@ -50,11 +50,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     WpsInfo.KEYPAD
                 }
             }, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = Toast.makeText(this@RepeaterService,
-                        if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad,
-                        Toast.LENGTH_SHORT).show()
-                override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
-                        formatReason(R.string.repeater_wps_failure, reason), Toast.LENGTH_SHORT).show()
+                override fun onSuccess() = SmartSnackbar.make(
+                        if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad)
+                        .shortToast().show()
+                override fun onFailure(reason: Int) = SmartSnackbar.make(
+                        formatReason(R.string.repeater_wps_failure, reason)).show()
             })
         }
 
@@ -64,10 +64,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
         fun resetCredentials() = (groups + group).filterNotNull().forEach {
             p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = Toast.makeText(this@RepeaterService,
-                        R.string.repeater_reset_credentials_success, Toast.LENGTH_SHORT).show()
-                override fun onFailure(reason: Int) = Toast.makeText(this@RepeaterService,
-                        formatReason(R.string.repeater_reset_credentials_failure, reason), Toast.LENGTH_SHORT).show()
+                override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
+                        .shortToast().show()
+                override fun onFailure(reason: Int) = SmartSnackbar.make(
+                        formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
             })
         }
 
@@ -81,7 +81,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
-                Toast.makeText(this@RepeaterService, e.message, Toast.LENGTH_LONG).show()
+                SmartSnackbar.make(e.localizedMessage).show()
             }
         }
     }
@@ -115,7 +115,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             binder.statusChanged()
         }
 
-    private fun formatReason(@StringRes resId: Int, reason: Int): String? {
+    private fun formatReason(@StringRes resId: Int, reason: Int): String {
         val result = getString(resId, when (reason) {
             WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
             WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
@@ -147,14 +147,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
             override fun onSuccess() { }
             override fun onFailure(reason: Int) {
-                Toast.makeText(this@RepeaterService, formatReason(R.string.repeater_set_oc_failure, reason),
-                        Toast.LENGTH_SHORT).show()
+                SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
             }
         })
     } catch (e: InvocationTargetException) {
         if (oc != 0) {
             val message = getString(R.string.repeater_set_oc_failure, e.message)
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            SmartSnackbar.make(message).show()
             Crashlytics.logException(Failure(message))
         }
         e.printStackTrace()
@@ -195,9 +194,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                                 override fun onSuccess() = doStart()
                                 override fun onFailure(reason: Int) {
-                                    Toast.makeText(this@RepeaterService,
-                                            formatReason(R.string.repeater_remove_old_group_failure, reason),
-                                            Toast.LENGTH_SHORT).show()
+                                    SmartSnackbar.make(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                                            .show()
                                 }
                             })
                         }
@@ -237,8 +235,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         status = Status.ACTIVE
         showNotification(group)
     }
-    private fun startFailure(msg: CharSequence?, group: WifiP2pGroup? = null) {
-        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+    private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null) {
+        SmartSnackbar.make(msg).show()
         showNotification()
         if (group != null) removeGroup() else clean()
     }
@@ -251,8 +249,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             override fun onSuccess() = clean()
             override fun onFailure(reason: Int) {
                 if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
-                    Toast.makeText(this@RepeaterService,
-                            formatReason(R.string.repeater_remove_group_failure, reason), Toast.LENGTH_SHORT).show()
+                    SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                     status = Status.ACTIVE
                 }
             }

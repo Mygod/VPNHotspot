@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.lang.reflect.InvocationTargetException
 
@@ -92,7 +93,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed() =
-            (parent.activity as MainActivity).snackbar().setText(R.string.tethering_manage_failed).show()
+            SmartSnackbar.make(R.string.tethering_manage_failed).show()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).manager = this

@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -100,14 +101,13 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val binder = binder
             val group = binder?.service?.group
             val ssid = group?.networkName
-            val mainActivity = parent.activity as MainActivity
             if (ssid != null) {
                 val wifi = WifiConfiguration()
                 val conf = P2pSupplicantConfiguration()
                 wifi.SSID = ssid
                 wifi.preSharedKey = group.passphrase
                 if (wifi.preSharedKey == null) {
-                    wifi.preSharedKey = conf.readPsk { mainActivity.snackbar(it.message.toString()).show() }
+                    wifi.preSharedKey = conf.readPsk { SmartSnackbar.make(it.message.toString()).show() }
                 }
                 if (wifi.preSharedKey != null) {
                     WifiP2pDialogFragment().apply {
@@ -118,7 +118,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     return
                 }
             }
-            mainActivity.snackbar().setText(R.string.repeater_configure_failure).show()
+            SmartSnackbar.make(R.string.repeater_configure_failure).show()
         }
     }
 

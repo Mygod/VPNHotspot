@@ -4,6 +4,7 @@ import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.thread
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -67,7 +68,7 @@ abstract class IpMonitor : Runnable {
             if (err.isNotBlank()) {
                 Crashlytics.log(Log.ERROR, javaClass.simpleName, err)
                 Crashlytics.logException(FlushFailure())
-                app.toast(R.string.noisy_su_failure)
+                SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
         }
         process.inputStream.bufferedReader().useLines(this::processLines)
