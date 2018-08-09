@@ -57,6 +57,57 @@ Without root, you can only:
   * [PdaNet+](https://play.google.com/store/apps/details?id=com.pdanet)
   * [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
 
-### Misc
+## Private APIs used / Assumptions for Android customizations
 
-This app doesn't require Busybox, but if you have installed it, please make sure it's v1.28.1 or higher.
+_a.k.a. things that can go wrong if this app doesn't work._
+
+This is a list of stuff that might impact this app's functionality if unavailable.
+This is only meant to be an index. You can read more in the source code.
+
+API light grey list:
+
+* (since API 24) [`Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#1498)
+* (since API 24) [`Landroid/net/IConnectivityManager;->getLastTetherError(Ljava/lang/String;)I`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#3844)
+* (deprecated since API 26) [`Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-dark-greylist.txt#4378)
+* [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4399)
+* [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4405)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4411)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4412)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4416)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-light-greylist.txt#4417)
+
+API dark grey list: (deprecated since API 28)
+
+* (since API 24) [`Landroid/net/IConnectivityManager;->startTethering(ILandroid/os/ResultReceiver;ZLjava/lang/String;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-dark-greylist.txt#41940)
+* (since API 24) [`Landroid/net/IConnectivityManager;->stopTethering(ILjava/lang/String;)V`](https://android.googlesource.com/platform/prebuilts/runtime/+/94fec32/appcompat/hiddenapi-dark-greylist.txt#41942)
+
+Private system configurations:
+
+* `@android:array/config_tether_usb_regexs`
+* `@android:array/config_tether_wifi_regexs`
+* `@android:array/config_tether_wimax_regexs`
+* `@android:array/config_tether_bluetooth_regexs`
+
+Other:
+
+* Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported;
+* Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
+* `android.net.conn.TETHER_STATE_CHANGED` is assumed to be a sticky broadcast.
+
+For `ip rule` priorities, `RULE_PRIORITY_TETHERING` is assumed to be 18000.
+
+Undocumented system binaries are all bundled and executable:
+
+* Since API 24: `iptables-save`;
+* `echo`;
+* `ip` (`link monitor neigh rule` with proper output format);
+* `iptables` (with correct version corresponding to API level);
+* `su` (needs to support `-c` argument).
+
+If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
+
+Wi-Fi driver `wpa_supplicant`:
+
+* It should be [fairly recent](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/); (see also [#31](https://github.com/Mygod/VPNHotspot/issues/31))
+* `/data/misc/wifi/p2p_supplicant.conf` is assumed to be saved to and have reasonable format;
+* Android system is expected to restart `wpa_supplicant` after it crashes.
