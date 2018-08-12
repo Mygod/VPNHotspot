@@ -1,18 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+    <Preference
+        android:key="service.clean"
+        android:icon="@drawable/ic_action_settings_backup_restore"
+        android:title="@string/settings_service_clean"
+        android:summary="@string/settings_service_clean_summary"/>
     <PreferenceCategory
-        android:title="@string/settings_service">
-        <Preference
-            android:key="service.clean"
-            android:icon="@drawable/ic_action_settings_backup_restore"
-            android:title="@string/settings_service_clean"
-            android:summary="@string/settings_service_clean_summary"/>
+        android:title="@string/settings_upstream">
+        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+            android:key="service.upstream"
+            android:icon="@drawable/ic_action_settings_ethernet"
+            android:title="@string/settings_service_upstream"
+            android:summary="@string/settings_service_upstream_auto"
+            android:hint="@string/settings_service_upstream_auto"
+            android:singleLine="true"/>
         <SwitchPreference
             android:key="service.masquerade"
             android:icon="@drawable/ic_social_people"
             android:title="@string/settings_service_masquerade"
             android:summary="@string/settings_service_masquerade_summary"
             android:defaultValue="true"/>
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:title="@string/settings_downstream">
         <SwitchPreference
             android:key="service.repeater.strict"
             android:icon="@drawable/ic_action_pan_tool"
@@ -30,17 +40,6 @@
             android:singleLine="true"
             android:defaultValue="8.8.8.8"/>
         <SwitchPreference
-            android:key="service.repeater.startOnBoot"
-            android:icon="@drawable/ic_action_autorenew"
-            android:title="@string/settings_service_repeater_start_on_boot"/>
-        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
-            android:key="service.upstream"
-            android:icon="@drawable/ic_action_settings_ethernet"
-            android:title="@string/settings_service_upstream"
-            android:summary="@string/settings_service_upstream_auto"
-            android:hint="@string/settings_service_upstream_auto"
-            android:singleLine="true"/>
-        <SwitchPreference
             android:key="service.dhcpWorkaround"
             android:icon="@drawable/ic_action_build"
             android:title="@string/settings_service_dhcp_workaround"
@@ -48,6 +47,10 @@
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_misc">
+        <SwitchPreference
+            android:key="service.repeater.startOnBoot"
+            android:icon="@drawable/ic_action_autorenew"
+            android:title="@string/settings_service_repeater_start_on_boot"/>
         <Preference
             android:key="misc.logcat"
             android:icon="@drawable/ic_action_bug_report"

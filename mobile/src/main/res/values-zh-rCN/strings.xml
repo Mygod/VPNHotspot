@@ -56,7 +56,8 @@
     <string name="connected_state_valid">%s (已连上)</string>
     <string name="connected_state_failed">%s (已断开)</string>
 
-    <string name="settings_service">服务</string>
+    <string name="settings_upstream">上游</string>
+    <string name="settings_downstream">下游</string>
     <string name="settings_service_masquerade">IP 掩蔽</string>
     <string name="settings_service_masquerade_summary">建议使用广告拦截器与 socksfier 等虚拟 VPN 应用时禁用此选项。</string>
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>

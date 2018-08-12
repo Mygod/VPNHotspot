@@ -59,7 +59,8 @@
     <string name="connected_state_valid">%s (reachable)</string>
     <string name="connected_state_failed">%s (lost)</string>
 
-    <string name="settings_service">Service</string>
+    <string name="settings_upstream">Upstream</string>
+    <string name="settings_downstream">Downstream</string>
     <string name="settings_service_masquerade">IP Masquerade</string>
     <string name="settings_service_masquerade_summary">Recommended to disable this option for dummy VPNs like
         ad-blockers and socksifiers.</string>
