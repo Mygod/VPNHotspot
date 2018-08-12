@@ -75,6 +75,8 @@
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
+    <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
+        race conditions.</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>

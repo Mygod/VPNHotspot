@@ -5,7 +5,8 @@
         <Preference
             android:key="service.clean"
             android:icon="@drawable/ic_action_settings_backup_restore"
-            android:title="@string/settings_service_clean"/>
+            android:title="@string/settings_service_clean"
+            android:summary="@string/settings_service_clean_summary"/>
         <SwitchPreference
             android:key="service.masquerade"
             android:icon="@drawable/ic_social_people"
