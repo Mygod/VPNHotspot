@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
+import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
@@ -57,6 +58,11 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             val started = manager.isStarted
             try {
                 if (started) manager.stop() else manager.start()
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Crashlytics.logException(e)
+                Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
+                ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
@@ -64,7 +70,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 while (cause != null) {
                     cause = cause.cause
                     if (cause != null && cause !is InvocationTargetException) {
-                        Toast.makeText(mainActivity, cause.message.toString(), Toast.LENGTH_LONG).show()
+                        Toast.makeText(mainActivity, cause.localizedMessage, Toast.LENGTH_LONG).show()
                         ManageBar.start(itemView.context)
                         break
                     }
