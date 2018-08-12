@@ -94,7 +94,8 @@ Other:
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
 * `android.net.conn.TETHER_STATE_CHANGED` is assumed to be a sticky broadcast.
 
-For `ip rule` priorities, `RULE_PRIORITY_TETHERING` is assumed to be 18000.
+For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000
+respectively. DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:
 
