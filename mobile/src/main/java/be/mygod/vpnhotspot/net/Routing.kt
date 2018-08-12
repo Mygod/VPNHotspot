@@ -27,6 +27,7 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
                 "$IPTABLES -t nat -F vpnhotspot_masquerade",
                 "$IPTABLES -t nat -X vpnhotspot_masquerade",
                 "quiet while ip rule del priority 17900; do done",
+                "quiet while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done",
                 report = false)
     }
 
@@ -40,15 +41,13 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     private val stopScript = LinkedList<String>()
     var started = false
 
-    fun ipForward(): Routing {
+    fun ipForward() {
         startScript.add("echo 1 >/proc/sys/net/ipv4/ip_forward")
-        return this
     }
 
-    fun disableIpv6(): Routing {
+    fun disableIpv6() {
         startScript.add("echo 1 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
         stopScript.add("echo 0 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
-        return this
     }
 
     /**
@@ -57,16 +56,15 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
      *
      * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
      */
-    fun rule(): Routing {
+    fun rule() {
         if (upstream != null) {
             startScript.add("ip rule add from all iif $downstream lookup $upstream priority 17900")
             // by the time stopScript is called, table entry for upstream may already get removed
             stopScript.addFirst("ip rule del from all iif $downstream priority 17900")
         }
-        return this
     }
 
-    fun forward(strict: Boolean = true): Routing {
+    fun forward(strict: Boolean = true) {
         startScript.add("quiet $IPTABLES -N vpnhotspot_fwd 2>/dev/null")
         if (strict) {
             check(upstream != null)
@@ -84,10 +82,9 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         }
         startScript.add("$IPTABLES -I FORWARD -j vpnhotspot_fwd")
         stopScript.addFirst("$IPTABLES -D FORWARD -j vpnhotspot_fwd")
-        return this
     }
 
-    fun masquerade(strict: Boolean = true): Routing {
+    fun masquerade(strict: Boolean = true) {
         val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
         startScript.add("quiet $IPTABLES -t nat -N vpnhotspot_masquerade 2>/dev/null")
         // note: specifying -i wouldn't work for POSTROUTING
@@ -101,10 +98,9 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         }
         startScript.add("$IPTABLES -t nat -I POSTROUTING -j vpnhotspot_masquerade")
         stopScript.addFirst("$IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade")
-        return this
     }
 
-    fun dnsRedirect(dnses: List<InetAddress>): Routing {
+    fun dnsRedirect(dnses: List<InetAddress>) {
         val hostAddress = hostAddress.address.hostAddress
         val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress ?: app.pref.getString("service.dns", "8.8.8.8")
         debugLog("Routing", "Using $dns from ($dnses)")
@@ -112,7 +108,19 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         startScript.add("$IPTABLES -t nat -A PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         stopScript.addFirst("$IPTABLES -t nat -D PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
         stopScript.addFirst("$IPTABLES -t nat -D PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns")
-        return this
+    }
+
+    /**
+     * Similarly, assuming RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000.
+     * Normally this is used to forward packets from remote to local, but it works anyways. It just needs to be before
+     * RULE_PRIORITY_SECURE_VPN = 12000. It would be great if we can gain better understanding into why this is only
+     * needed on some of the devices but not others.
+     *
+     * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#57
+     */
+    fun dhcpWorkaround() {
+        startScript.add("ip rule add iif lo uidrange 0-0 lookup local_network priority 11000")
+        stopScript.addFirst("ip rule del iif lo uidrange 0-0 lookup local_network priority 11000")
     }
 
     fun start(): Boolean {

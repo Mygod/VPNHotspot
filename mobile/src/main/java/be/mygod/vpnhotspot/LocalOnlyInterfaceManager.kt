@@ -40,15 +40,18 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
     private fun initRouting(upstream: String? = null, owner: InterfaceAddress? = null,
                             dns: List<InetAddress> = this.dns) {
         try {
-            val routing = Routing(upstream, downstream, owner)
-            this.routing = routing
             this.dns = dns
-            val strict = app.pref.getBoolean("service.repeater.strict", false)
-            if (strict && upstream == null) return  // in this case, nothing to be done
-            routing.ipForward()                     // local only interfaces need not enable ip_forward
-                    .rule().forward(strict)
-            if (app.masquerade) routing.masquerade(strict)
-            if (!routing.dnsRedirect(dns).start()) SmartSnackbar.make(R.string.noisy_su_failure).show()
+            this.routing = Routing(upstream, downstream, owner).apply {
+                val strict = app.pref.getBoolean("service.repeater.strict", false)
+                if (strict && upstream == null) return@apply    // in this case, nothing to be done
+                if (app.dhcpWorkaround) dhcpWorkaround()
+                ipForward()                                     // local only interfaces need to enable ip_forward
+                rule()
+                forward(strict)
+                if (app.masquerade) masquerade(strict)
+                dnsRedirect(dns)
+                if (!start()) SmartSnackbar.make(R.string.noisy_su_failure).show()
+            }
         } catch (e: SocketException) {
             SmartSnackbar.make(e.localizedMessage).show()
             Crashlytics.logException(e)

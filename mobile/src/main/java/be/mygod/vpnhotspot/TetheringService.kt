@@ -47,14 +47,17 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                 var failed = false
                 for ((downstream, value) in routings) if (value == null || value.upstream != upstream)
                     try {
-                        // system tethering already has working forwarding rules
-                        // so it doesn't make sense to add additional forwarding rules
-                        val routing = Routing(upstream, downstream).rule().forward()
-                        if (app.masquerade) routing.masquerade()
-                        routing.dnsRedirect(dns)
-                        if (app.pref.getBoolean("service.disableIpv6", false)) routing.disableIpv6()
-                        routings[downstream] = routing
-                        if (!routing.start()) failed = true
+                        routings[downstream] = Routing(upstream, downstream).apply {
+                            if (app.dhcpWorkaround) dhcpWorkaround()
+                            // system tethering already has working forwarding rules
+                            // so it doesn't make sense to add additional forwarding rules
+                            rule()
+                            forward()
+                            if (app.masquerade) masquerade()
+                            dnsRedirect(dns)
+                            if (app.pref.getBoolean("service.disableIpv6", false)) disableIpv6()
+                            if (!start()) failed = true
+                        }
                     } catch (e: SocketException) {
                         e.printStackTrace()
                         Crashlytics.logException(e)

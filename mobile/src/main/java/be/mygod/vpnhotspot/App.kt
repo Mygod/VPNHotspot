@@ -18,7 +18,6 @@ import io.fabric.sdk.android.Fabric
 class App : Application() {
     companion object {
         const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
-        private const val KEY_MASQUERADE = "service.masquerade"
 
         @SuppressLint("StaticFieldLeak")
         lateinit var app: App
@@ -50,7 +49,8 @@ class App : Application() {
         val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
         return if (result in 1..165) result else 0
     }
-    val masquerade: Boolean get() = pref.getBoolean(KEY_MASQUERADE, true)
+    val masquerade: Boolean get() = pref.getBoolean("service.masquerade", true)
+    val dhcpWorkaround: Boolean get() = pref.getBoolean("service.dhcpWorkaround", false)
 
     val cleanRoutings = Event0()
 }
