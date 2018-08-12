@@ -43,7 +43,7 @@ dependencies {
     kapt "androidx.databinding:databinding-compiler:$androidPluginVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "androidx.browser:browser:$androidxVersion"
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha1'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
     implementation "androidx.core:core-ktx:$androidxVersion"
     implementation "androidx.preference:preference:$androidxVersion"
     implementation 'com.android.billingclient:billing:1.1'
