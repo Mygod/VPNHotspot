@@ -70,7 +70,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onBillingServiceDisconnected() {
         skus = null
-        billingClient = BillingClient.newBuilder(view!!.context).setListener(this).build()
+        billingClient = BillingClient.newBuilder(context ?: return).setListener(this).build()
                 .also { it.startConnection(this) }
     }
     override fun onBillingSetupFinished(responseCode: Int) {
