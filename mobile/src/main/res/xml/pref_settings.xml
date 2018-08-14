@@ -43,7 +43,7 @@
             android:key="service.dhcpWorkaround"
             android:icon="@drawable/ic_action_build"
             android:title="@string/settings_service_dhcp_workaround"
-            android:summary="@string/settings_service_disable_ipv6_summary"/>
+            android:summary="@string/settings_service_dhcp_workaround_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_misc">
