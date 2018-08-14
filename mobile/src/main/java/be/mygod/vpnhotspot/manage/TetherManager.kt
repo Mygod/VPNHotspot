@@ -124,7 +124,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     TetheringManager.TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
-            } catch (e: SecurityException) {
+            } catch (e: InvocationTargetException) {
                 Crashlytics.logException(e)
                 e.localizedMessage
             }
