@@ -98,7 +98,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             openDialog(R.string.donations__thanks_dialog_title, R.string.donations__thanks_dialog)
-            dismiss()
+            dismissAllowingStateLoss()
         } else Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
     }
 }
