@@ -45,7 +45,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
-        binding.swipeRefresher.setColorSchemeResources(R.color.colorAccent)
+        binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }

@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical"
         android:src="@drawable/ic_content_add"
-        android:tint="@color/colorAccent"/>
+        android:tint="@color/colorSecondary"/>
 
     <Space
         android:layout_width="16dp"

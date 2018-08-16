@@ -45,7 +45,7 @@
             android:id="@+id/line"
             android:layout_width="0dp"
             android:layout_height="0.1px"
-            android:background="@color/navigationBarColor"
+            android:background="?android:attr/navigationBarColor"
             android:elevation="9dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintLeft_toLeftOf="parent"

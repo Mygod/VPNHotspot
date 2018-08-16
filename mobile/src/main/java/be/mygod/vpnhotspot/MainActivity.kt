@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         badge = QBadgeView(this)
         badge.bindTarget((binding.navigation.getChildAt(0) as BottomNavigationMenuView).getChildAt(1))
-        badge.badgeBackgroundColor = ContextCompat.getColor(this, R.color.colorAccent)
+        badge.badgeBackgroundColor = ContextCompat.getColor(this, R.color.colorSecondary)
         badge.badgeTextColor = ContextCompat.getColor(this, R.color.primary_text_default_material_light)
         badge.badgeGravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         badge.setGravityOffset(16f, 0f, true)
