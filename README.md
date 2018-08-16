@@ -47,6 +47,8 @@ You can also use WPS to connect your 2.4GHz-only device to force the repeater to
 
 ### No root?
 
+This app requires root to make changes to iptables and ip rule. This restriction is imposed by Linux kernel.
+
 Without root, you can only:
 
 * View connected devices for system tethering and monitor them;
