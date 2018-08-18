@@ -5,7 +5,7 @@ apply plugin: 'com.github.ben-manes.versions'
 buildscript {
     ext {
         androidPluginVersion = '3.2.0-beta05'
-        kotlinVersion = '1.2.60'
+        kotlinVersion = '1.2.61'
         androidxVersion = '1.0.0-rc01'
     }
     repositories {
@@ -18,7 +18,7 @@ buildscript {
     dependencies {
         classpath "com.android.tools.build:gradle:$androidPluginVersion"
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.20.0'
-        classpath 'com.google.gms:google-services:4.0.2'
+        classpath 'com.google.gms:google-services:4.1.0'
         classpath 'io.fabric.tools:gradle:1.25.4'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
     }
