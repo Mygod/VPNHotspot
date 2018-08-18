@@ -17,10 +17,10 @@ sealed class SmartSnackbar {
         private var holder: View? = null
 
         fun make(@StringRes text: Int): SmartSnackbar = make(app.getText(text))
-        fun make(text: CharSequence = ""): SmartSnackbar {
+        fun make(text: CharSequence? = ""): SmartSnackbar {
             val holder = holder
             return if (holder == null) ToastWrapper(Toast.makeText(app, text, Toast.LENGTH_LONG)) else
-                SnackbarWrapper(Snackbar.make(holder, text, Snackbar.LENGTH_LONG))
+                SnackbarWrapper(Snackbar.make(holder, text ?: null.toString(), Snackbar.LENGTH_LONG))
         }
     }
 
