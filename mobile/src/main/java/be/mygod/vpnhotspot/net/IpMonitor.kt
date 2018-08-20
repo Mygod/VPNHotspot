@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net
 
 import android.util.Log
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.thread
 import be.mygod.vpnhotspot.widget.SmartSnackbar

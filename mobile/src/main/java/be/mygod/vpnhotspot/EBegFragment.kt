@@ -60,7 +60,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     }
 
     private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
-        AlertDialog.Builder(context ?: return).apply {
+        AlertDialog.Builder(activity ?: return).apply {
             setTitle(title)
             setMessage(message)
             isCancelable = true
