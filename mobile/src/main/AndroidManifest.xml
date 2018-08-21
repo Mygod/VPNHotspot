@@ -41,7 +41,7 @@
         android:name=".App"
         android:allowBackup="false"
         android:label="@string/app_name"
-        android:banner="@mipmap/ic_launcher"
+        android:banner="@mipmap/banner"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
