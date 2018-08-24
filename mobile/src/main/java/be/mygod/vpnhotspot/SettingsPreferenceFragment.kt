@@ -66,6 +66,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                         |dumpsys ${Context.WIFI_P2P_SERVICE}
                         |echo
+                        |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
+                        |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
+                        |echo
                         |echo iptables -t filter
                         |$iptablesSave -t filter
                         |echo
