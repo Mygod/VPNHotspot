@@ -47,7 +47,7 @@ dependencies {
     implementation "androidx.core:core-ktx:$androidxVersion"
     implementation "androidx.preference:preference:$androidxVersion"
     implementation 'com.android.billingclient:billing:1.1'
-    implementation 'com.crashlytics.sdk.android:crashlytics:2.9.4'
+    implementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation "com.google.android.material:material:$androidxVersion"
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
