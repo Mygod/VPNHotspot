@@ -25,7 +25,7 @@ abstract class IpMonitor : Runnable {
         thread("${javaClass.simpleName}-input") {
             // monitor may get rejected by SELinux
             val monitor = ProcessBuilder("sh", "-c",
-                    "ip monitor $monitoredObject || su -c 'ip monitor $monitoredObject'")
+                    "ip monitor $monitoredObject || exec su -c 'exec ip monitor $monitoredObject'")
                     .redirectErrorStream(true)
                     .start()
             this.monitor = monitor

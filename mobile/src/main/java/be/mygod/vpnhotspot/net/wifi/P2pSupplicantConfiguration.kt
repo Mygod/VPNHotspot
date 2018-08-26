@@ -37,7 +37,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
     }
     override fun describeContents() = 0
 
-    private val contentDelegate = lazy { initContent ?: loggerSu("cat /data/misc/wifi/p2p_supplicant.conf") }
+    private val contentDelegate = lazy { initContent ?: loggerSu("exec cat /data/misc/wifi/p2p_supplicant.conf") }
     private val content by contentDelegate
 
     fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {

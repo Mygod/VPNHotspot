@@ -177,7 +177,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
         val matcher = WifiP2pManagerHelper.patternNetworkInfo.matcher(
-                loggerSu("dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
+                loggerSu("exec dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
         when {
             !matcher.find() -> startFailure(getString(R.string.root_unavailable))
             matcher.group(2) == "true" -> {
