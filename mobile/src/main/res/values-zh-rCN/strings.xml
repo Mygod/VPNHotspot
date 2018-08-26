@@ -38,6 +38,7 @@
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">共享被禁用</string>
 
     <string name="tethering_manage">管理系统共享…</string>
+    <string name="tethering_manage_offload_enabled">若 VPN 共享无法使用，请尝试禁用“开发者选项”中的“网络共享硬件加速”。</string>
     <!--
      Values copied from:
         * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml

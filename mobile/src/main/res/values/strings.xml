@@ -49,6 +49,8 @@
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering disallowed</string>
 
     <string name="tethering_manage">Manage system tethering…</string>
+    <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
+        if VPN tethering does not work.</string>
     <string name="tethering_manage_usb">USB tethering</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>

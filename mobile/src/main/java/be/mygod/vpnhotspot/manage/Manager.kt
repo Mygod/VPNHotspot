@@ -5,8 +5,8 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
+import be.mygod.vpnhotspot.databinding.ListitemManageBinding
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
 
 abstract class Manager {
@@ -26,7 +26,7 @@ abstract class Manager {
         fun createViewHolder(inflater: LayoutInflater, parent: ViewGroup, type: Int) = when (type) {
             VIEW_TYPE_INTERFACE ->
                 InterfaceManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
-            VIEW_TYPE_MANAGE -> ManageBar.ViewHolder(inflater.inflate(R.layout.listitem_manage, parent, false))
+            VIEW_TYPE_MANAGE -> ManageBar.ViewHolder(ListitemManageBinding.inflate(inflater, parent, false))
             VIEW_TYPE_WIFI, VIEW_TYPE_USB, VIEW_TYPE_BLUETOOTH, VIEW_TYPE_WIFI_LEGACY ->
                 TetherManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             VIEW_TYPE_LOCAL_ONLY_HOTSPOT -> @TargetApi(26) {

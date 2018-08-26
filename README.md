@@ -92,6 +92,10 @@ Private system configurations:
 
 Other:
 
+* (since API 27) `android.provider.Settings.Global.TETHER_OFFLOAD_DISABLED` is assumed to be
+  `"tether_offload_disabled"`.
+* (since API 27) `com.android.server.connectivity.tethering.OffloadHardwareInterface.DEFAULT_TETHER_OFFLOAD_DISABLED`
+  is assumed to be 0.
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported;
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
 * `android.net.conn.TETHER_STATE_CHANGED` is assumed to be a sticky broadcast.

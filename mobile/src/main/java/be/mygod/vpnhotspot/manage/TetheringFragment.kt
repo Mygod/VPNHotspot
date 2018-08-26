@@ -104,6 +104,11 @@ class TetheringFragment : Fragment(), ServiceConnection {
         return binding.root
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         if (requestCode == START_LOCAL_ONLY_HOTSPOT) @TargetApi(26) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {

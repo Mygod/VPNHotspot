@@ -1,29 +1,50 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:focusable="true"
-    android:background="?android:attr/selectableItemBackground"
-    android:padding="16dp">
-
-    <ImageView
-        android:layout_width="wrap_content"
+<layout
+    xmlns:android="http://schemas.android.com/apk/res/android">
+    <data>
+        <import type="android.view.View"/>
+        <variable
+            name="data"
+            type="be.mygod.vpnhotspot.manage.ManageBar.Data"/>
+    </data>
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center_vertical"
-        android:src="@drawable/ic_content_add"
-        android:tint="@color/colorSecondary"/>
+        android:focusable="true"
+        android:background="?android:attr/selectableItemBackground"
+        android:padding="16dp">
 
-    <Space
-        android:layout_width="16dp"
-        android:layout_height="0dp"/>
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:src="@drawable/ic_content_add"
+            android:tint="@color/colorSecondary"/>
 
-    <TextView
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:layout_gravity="center_vertical"
-        android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
-        android:text="@string/tethering_manage"/>
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="0dp"/>
 
-</LinearLayout>
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:text="@string/tethering_manage"/>
+
+            <TextView
+                android:id="@+id/offloadEnabled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:visibility="@{data.offloadEnabled ? View.VISIBLE : View.GONE}"
+                android:text="@string/tethering_manage_offload_enabled"/>
+        </LinearLayout>
+
+    </LinearLayout>
+</layout>
