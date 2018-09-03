@@ -45,7 +45,10 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
             val upstream = upstream
             if (upstream != null) {
                 var failed = false
-                for ((downstream, value) in routings) if (value == null || value.upstream != upstream)
+                val iterator = routings.iterator()
+                while (iterator.hasNext()) {
+                    val (downstream, value) = iterator.next()
+                    if (value != null && value.upstream == upstream) continue
                     try {
                         routings[downstream] = Routing(upstream, downstream).apply {
                             if (app.dhcpWorkaround) dhcpWorkaround()
@@ -61,9 +64,10 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                     } catch (e: SocketException) {
                         e.printStackTrace()
                         Crashlytics.logException(e)
-                        routings.remove(downstream)
+                        iterator.remove()
                         failed = true
                     }
+                }
                 if (failed) SmartSnackbar.make(R.string.noisy_su_failure).show()
             } else if (!receiverRegistered) {
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
