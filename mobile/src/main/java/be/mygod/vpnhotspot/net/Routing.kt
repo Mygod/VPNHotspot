@@ -84,6 +84,11 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         stopScript.addFirst("$IPTABLES -D FORWARD -j vpnhotspot_fwd")
     }
 
+    fun overrideSystemRules() {
+        startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -j DROP")
+        stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -j DROP")
+    }
+
     fun masquerade(strict: Boolean = true) {
         val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
         startScript.add("quiet $IPTABLES -t nat -N vpnhotspot_masquerade 2>/dev/null")

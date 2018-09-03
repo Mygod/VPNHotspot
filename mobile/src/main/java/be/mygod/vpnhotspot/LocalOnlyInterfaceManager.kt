@@ -42,7 +42,7 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
         try {
             this.dns = dns
             this.routing = Routing(upstream, downstream, owner).apply {
-                val strict = app.pref.getBoolean("service.repeater.strict", false)
+                val strict = app.strict
                 if (strict && upstream == null) return@apply    // in this case, nothing to be done
                 if (app.dhcpWorkaround) dhcpWorkaround()
                 ipForward()                                     // local only interfaces need to enable ip_forward

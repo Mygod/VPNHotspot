@@ -55,7 +55,9 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                             // system tethering already has working forwarding rules
                             // so it doesn't make sense to add additional forwarding rules
                             rule()
+                            // here we always enforce strict mode as fallback is handled by system which we disable
                             forward()
+                            if (app.strict) overrideSystemRules()
                             if (app.masquerade) masquerade()
                             dnsRedirect(dns)
                             if (app.pref.getBoolean("service.disableIpv6", false)) disableIpv6()
