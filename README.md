@@ -115,6 +115,6 @@ If some of these are unavailable, you can alternatively install a recent version
 
 Wi-Fi driver `wpa_supplicant`:
 
-* It should be [fairly recent](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/216983bceec7c450951e2fbcd076b5c75d432e57%5E%21/); (see also [#31](https://github.com/Mygod/VPNHotspot/issues/31))
-* `/data/misc/wifi/p2p_supplicant.conf` is assumed to be saved to and have reasonable format;
+* P2P configuration file is assumed to be saved to `/data/misc/wifi/p2p_supplicant.conf` or
+  `/data/vendor/wifi/wpa/p2p_supplicant.conf` for API 28+ and have reasonable format;
 * Android system is expected to restart `wpa_supplicant` after it crashes.
