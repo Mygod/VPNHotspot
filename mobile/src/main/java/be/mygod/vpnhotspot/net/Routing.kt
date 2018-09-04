@@ -67,11 +67,12 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     fun forward(strict: Boolean = true) {
         startScript.add("quiet $IPTABLES -N vpnhotspot_fwd 2>/dev/null")
         if (strict) {
-            check(upstream != null)
-            startScript.add("$IPTABLES -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-            startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
-            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-            stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+            if (upstream != null) {
+                startScript.add("$IPTABLES -A vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                startScript.add("$IPTABLES -A vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+                stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                stopScript.addFirst("$IPTABLES -D vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
+            }   // else nothing needs to be done
         } else {
             // for not strict mode, allow downstream packets to be redirected to anywhere
             // because we don't wanna keep track of default network changes
@@ -94,9 +95,10 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         startScript.add("quiet $IPTABLES -t nat -N vpnhotspot_masquerade 2>/dev/null")
         // note: specifying -i wouldn't work for POSTROUTING
         if (strict) {
-            check(upstream != null)
-            startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
-            stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
+            if (upstream != null) {
+                startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
+                stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE")
+            }   // else nothing needs to be done
         } else {
             startScript.add("$IPTABLES -t nat -A vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE")
             stopScript.addFirst("$IPTABLES -t nat -D vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE")

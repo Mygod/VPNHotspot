@@ -41,14 +41,31 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     override val activeIfaces get() = synchronized(routings) { routings.keys.toList() }
 
     private fun updateRoutingsLocked() {
-        if (routings.isNotEmpty()) {
+        if (routings.isEmpty()) {
+            unregisterReceiver()
+            ServiceNotification.stopForeground(this)
+            stopSelf()
+        } else {
+            if (!receiverRegistered) {
+                receiverRegistered = true
+                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                app.cleanRoutings[this] = {
+                    synchronized(routings) {
+                        for (iface in routings.keys) routings[iface] = null
+                        updateRoutingsLocked()
+                    }
+                }
+                IpNeighbourMonitor.registerCallback(this)
+                UpstreamMonitor.registerCallback(this)
+            }
             val upstream = upstream
-            if (upstream != null) {
+            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", false)
+            if (upstream != null || app.strict || disableIpv6) {
                 var failed = false
                 val iterator = routings.iterator()
                 while (iterator.hasNext()) {
                     val (downstream, value) = iterator.next()
-                    if (value != null && value.upstream == upstream) continue
+                    if (value != null) if (value.upstream == upstream) continue else value.stop()
                     try {
                         routings[downstream] = Routing(upstream, downstream).apply {
                             if (app.dhcpWorkaround) dhcpWorkaround()
@@ -59,8 +76,8 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                             forward()
                             if (app.strict) overrideSystemRules()
                             if (app.masquerade) masquerade()
-                            dnsRedirect(dns)
-                            if (app.pref.getBoolean("service.disableIpv6", false)) disableIpv6()
+                            if (upstream != null) dnsRedirect(dns)
+                            if (disableIpv6) disableIpv6()
                             if (!start()) failed = true
                         }
                     } catch (e: SocketException) {
@@ -71,24 +88,8 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                     }
                 }
                 if (failed) SmartSnackbar.make(R.string.noisy_su_failure).show()
-            } else if (!receiverRegistered) {
-                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                app.cleanRoutings[this] = {
-                    synchronized(routings) {
-                        for (iface in routings.keys) routings[iface] = null
-                        updateRoutingsLocked()
-                    }
-                }
-                IpNeighbourMonitor.registerCallback(this)
-                UpstreamMonitor.registerCallback(this)
-                receiverRegistered = true
             }
             updateNotification()
-        }
-        if (routings.isEmpty()) {
-            unregisterReceiver()
-            ServiceNotification.stopForeground(this)
-            stopSelf()
         }
         app.handler.post { binder.fragment?.adapter?.notifyDataSetChanged() }
     }
