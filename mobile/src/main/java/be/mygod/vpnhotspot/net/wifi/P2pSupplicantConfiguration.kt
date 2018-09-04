@@ -29,6 +29,9 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
          * PSK parser can be found here: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
          */
         private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
+
+        private val confPath = if (Build.VERSION.SDK_INT >= 28)
+            "/data/vendor/wifi/wpa/p2p_supplicant.conf" else "/data/misc/wifi/p2p_supplicant.conf"
     }
     private class InvalidConfigurationError : IOException()
 
@@ -37,7 +40,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
     }
     override fun describeContents() = 0
 
-    private val contentDelegate = lazy { initContent ?: loggerSu("exec cat /data/misc/wifi/p2p_supplicant.conf") }
+    private val contentDelegate = lazy { initContent ?: loggerSu("exec cat $confPath") }
     private val content by contentDelegate
 
     fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {
@@ -87,7 +90,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
             }
             if (ssidFound == 0 || pskFound == 0) return false
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
-            return noisySu("cat ${tempFile.absolutePath} > /data/misc/wifi/p2p_supplicant.conf",
+            return noisySu("cat ${tempFile.absolutePath} > $confPath",
                     if (Build.VERSION.SDK_INT >= 23) "pkill wpa_supplicant"
                     else "set `ps | grep wpa_supplicant`; kill \$2")
         } finally {
