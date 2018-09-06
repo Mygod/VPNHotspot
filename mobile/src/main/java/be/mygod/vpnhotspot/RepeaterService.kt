@@ -176,10 +176,17 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
-        val matcher = WifiP2pManagerHelper.patternNetworkInfo.matcher(
-                loggerSu("exec dumpsys ${Context.WIFI_P2P_SERVICE}") ?: "")
+        val out = try {
+            RootSession.use { it.execOut("dumpsys ${Context.WIFI_P2P_SERVICE}") }
+        } catch (e: RuntimeException) {
+            e.printStackTrace()
+            Crashlytics.logException(e)
+            startFailure(e.localizedMessage)
+            return START_NOT_STICKY
+        }
+        val matcher = WifiP2pManagerHelper.patternNetworkInfo.matcher(out)
         when {
-            !matcher.find() -> startFailure(getString(R.string.root_unavailable))
+            !matcher.find() -> startFailure(out)
             matcher.group(2) == "true" -> {
                 unregisterReceiver()
                 registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,

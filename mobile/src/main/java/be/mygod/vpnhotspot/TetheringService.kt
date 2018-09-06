@@ -12,7 +12,6 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
-import java.net.SocketException
 
 class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callback {
     companion object {
@@ -34,7 +33,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     private val receiver = broadcastReceiver { _, intent ->
         synchronized(routings) {
             for (iface in routings.keys - TetheringManager.getTetheredIfaces(intent.extras!!))
-                routings.remove(iface)?.stop()
+                routings.remove(iface)?.revert()
             updateRoutingsLocked()
         }
     }
@@ -61,33 +60,37 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
             val upstream = upstream
             val disableIpv6 = app.pref.getBoolean("service.disableIpv6", false)
             if (upstream != null || app.strict || disableIpv6) {
-                var failed = false
                 val iterator = routings.iterator()
                 while (iterator.hasNext()) {
                     val (downstream, value) = iterator.next()
-                    if (value != null) if (value.upstream == upstream) continue else value.stop()
+                    if (value != null) if (value.upstream == upstream) continue else value.revert()
                     try {
                         routings[downstream] = Routing(upstream, downstream).apply {
-                            if (app.dhcpWorkaround) dhcpWorkaround()
-                            // system tethering already has working forwarding rules
-                            // so it doesn't make sense to add additional forwarding rules
-                            rule()
-                            // here we always enforce strict mode as fallback is handled by system which we disable
-                            forward()
-                            if (app.strict) overrideSystemRules()
-                            if (app.masquerade) masquerade()
-                            if (upstream != null) dnsRedirect(dns)
-                            if (disableIpv6) disableIpv6()
-                            if (!start()) failed = true
+                            try {
+                                if (app.dhcpWorkaround) dhcpWorkaround()
+                                // system tethering already has working forwarding rules
+                                // so it doesn't make sense to add additional forwarding rules
+                                rule()
+                                // here we always enforce strict mode as fallback is handled by system which we disable
+                                forward()
+                                if (app.strict) overrideSystemRules()
+                                if (app.masquerade) masquerade()
+                                if (upstream != null) dnsRedirect(dns)
+                                if (disableIpv6) disableIpv6()
+                            } catch (e: Exception) {
+                                revert()
+                                throw e
+                            } finally {
+                                commit()
+                            }
                         }
-                    } catch (e: SocketException) {
+                    } catch (e: Exception) {
                         e.printStackTrace()
                         Crashlytics.logException(e)
+                        SmartSnackbar.make(e.localizedMessage).show()
                         iterator.remove()
-                        failed = true
                     }
                 }
-                if (failed) SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
             updateNotification()
         }
@@ -101,7 +104,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
             val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
             synchronized(routings) {
                 if (iface != null) routings[iface] = null
-                routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
+                routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.revert()
                 updateRoutingsLocked()
             }
         } else if (routings.isEmpty()) stopSelf(startId)
@@ -120,7 +123,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
         this.dns = emptyList()
         synchronized(routings) {
             for ((iface, routing) in routings) {
-                routing?.stop()
+                routing?.revert()
                 routings[iface] = null
             }
         }

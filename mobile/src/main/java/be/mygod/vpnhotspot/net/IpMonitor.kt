@@ -21,37 +21,39 @@ abstract class IpMonitor : Runnable {
     private var monitor: Process? = null
     private var pool: ScheduledExecutorService? = null
 
-    init {
-        thread("${javaClass.simpleName}-input") {
-            // monitor may get rejected by SELinux
-            val monitor = ProcessBuilder("sh", "-c",
-                    "ip monitor $monitoredObject || exec su -c 'exec ip monitor $monitoredObject'")
-                    .redirectErrorStream(true)
-                    .start()
-            this.monitor = monitor
-            thread("${javaClass.simpleName}-error") {
-                try {
-                    monitor.errorStream.bufferedReader().forEachLine {
-                        Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
-                    }
-                } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                    e.printStackTrace()
-                    Crashlytics.logException(e)
-                }
-            }
+    private fun handleProcess(process: Process): Int {
+        val err = thread("${javaClass.simpleName}-error") {
             try {
-                monitor.inputStream.bufferedReader().forEachLine(this::processLine)
-                monitor.waitFor()
-                if (monitor.exitValue() == 0) return@thread
-                Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
-                Crashlytics.logException(MonitorFailure())
-                val pool = Executors.newScheduledThreadPool(1)
-                pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
-                this.pool = pool
+                process.errorStream.bufferedReader().forEachLine {
+                    Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
+                }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)
             }
+        }
+        try {
+            process.inputStream.bufferedReader().forEachLine(this::processLine)
+        } catch (_: InterruptedIOException) { } catch (e: IOException) {
+            e.printStackTrace()
+            Crashlytics.logException(e)
+        }
+        err.join()
+        process.waitFor()
+        return process.exitValue()
+    }
+
+    init {
+        thread("${javaClass.simpleName}-input") {
+            // monitor may get rejected by SELinux
+            if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject).start()) == 0) return@thread
+            if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject").start()) == 0)
+                return@thread
+            Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
+            Crashlytics.logException(MonitorFailure())
+            val pool = Executors.newScheduledThreadPool(1)
+            pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
+            this.pool = pool
         }
     }
 

@@ -7,7 +7,6 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.InetAddress
 import java.net.InterfaceAddress
-import java.net.SocketException
 
 class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callback {
     private var routing: Routing? = null
@@ -21,13 +20,13 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
     override fun onAvailable(ifname: String, dns: List<InetAddress>) {
         val routing = routing
         initRouting(ifname, if (routing == null) null else {
-            routing.stop()
+            routing.revert()
             routing.hostAddress
         }, dns)
     }
     override fun onLost() {
         val routing = routing ?: return
-        routing.stop()
+        routing.revert()
         initRouting(null, routing.hostAddress, emptyList())
     }
 
@@ -39,20 +38,26 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
 
     private fun initRouting(upstream: String? = null, owner: InterfaceAddress? = null,
                             dns: List<InetAddress> = this.dns) {
+        this.dns = dns
         try {
-            this.dns = dns
             this.routing = Routing(upstream, downstream, owner).apply {
-                val strict = app.strict
-                if (strict && upstream == null) return@apply    // in this case, nothing to be done
-                if (app.dhcpWorkaround) dhcpWorkaround()
-                ipForward()                                     // local only interfaces need to enable ip_forward
-                rule()
-                forward(strict)
-                if (app.masquerade) masquerade(strict)
-                dnsRedirect(dns)
-                if (!start()) SmartSnackbar.make(R.string.noisy_su_failure).show()
+                try {
+                    val strict = app.strict
+                    if (strict && upstream == null) return@apply    // in this case, nothing to be done
+                    if (app.dhcpWorkaround) dhcpWorkaround()
+                    ipForward()                                     // local only interfaces need to enable ip_forward
+                    rule()
+                    forward(strict)
+                    if (app.masquerade) masquerade(strict)
+                    dnsRedirect(dns)
+                } catch (e: Exception) {
+                    revert()
+                    throw e
+                } finally {
+                    commit()
+                }
             }
-        } catch (e: SocketException) {
+        } catch (e: Exception) {
             SmartSnackbar.make(e.localizedMessage).show()
             Crashlytics.logException(e)
             routing = null
@@ -62,6 +67,6 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
     fun stop() {
         UpstreamMonitor.unregisterCallback(this)
         app.cleanRoutings -= this
-        routing?.stop()
+        routing?.revert()
     }
 }

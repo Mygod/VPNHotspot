@@ -109,7 +109,7 @@ Undocumented system binaries are all bundled and executable:
 * `echo`;
 * `ip` (`link monitor neigh rule` with proper output format);
 * `iptables` (with correct version corresponding to API level);
-* `su` (needs to support `-c` argument).
+* `su`.
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
 

@@ -6,8 +6,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.loggerSu
-import be.mygod.vpnhotspot.util.noisySu
+import be.mygod.vpnhotspot.util.RootSession
 import com.crashlytics.android.Crashlytics
 import java.io.File
 import java.io.IOException
@@ -29,6 +28,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
          * PSK parser can be found here: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
          */
         private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
+        private val whitespaceMatcher = "\\s+".toRegex()
 
         private val confPath = if (Build.VERSION.SDK_INT >= 28)
             "/data/vendor/wifi/wpa/p2p_supplicant.conf" else "/data/misc/wifi/p2p_supplicant.conf"
@@ -40,12 +40,12 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
     }
     override fun describeContents() = 0
 
-    private val contentDelegate = lazy { initContent ?: loggerSu("exec cat $confPath") }
+    private val contentDelegate = lazy { initContent ?: RootSession.use { it.execOut("cat $confPath") } }
     private val content by contentDelegate
 
     fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {
         return try {
-            val match = pskParser.findAll(content ?: return null).single()
+            val match = pskParser.findAll(content).single()
             if (match.groups[2] == null && match.groups[3] == null) "" else {
                 // only one will match and hold non-empty value
                 val result = match.groupValues[2] + match.groupValues[3]
@@ -64,8 +64,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         }
     }
 
-    fun update(config: WifiConfiguration): Boolean? {
-        val content = content ?: return null
+    fun update(config: WifiConfiguration) {
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.cacheDir)
         try {
             var ssidFound = 0
@@ -86,13 +85,18 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
             }
             if (ssidFound != 1 || pskFound != 1) {
                 Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
-                Crashlytics.logException(InvalidConfigurationError())
+                if (ssidFound == 0 || pskFound == 0) throw InvalidConfigurationError()
+                else Crashlytics.logException(InvalidConfigurationError())
             }
-            if (ssidFound == 0 || pskFound == 0) return false
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
-            return noisySu("cat ${tempFile.absolutePath} > $confPath",
-                    if (Build.VERSION.SDK_INT >= 23) "pkill wpa_supplicant"
-                    else "set `ps | grep wpa_supplicant`; kill \$2")
+            RootSession.use {
+                it.exec("cat ${tempFile.absolutePath} > $confPath")
+                if (Build.VERSION.SDK_INT >= 23) it.exec("pkill wpa_supplicant") else {
+                    val result = it.execOut("ps | grep wpa_supplicant").split(whitespaceMatcher)
+                    check(result.size >= 2) { "wpa_supplicant not found, please toggle Airplane mode manually" }
+                    it.exec("kill ${result[1]}")
+                }
+            }
         } finally {
             if (!tempFile.delete()) tempFile.deleteOnExit()
         }

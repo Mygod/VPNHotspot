@@ -14,7 +14,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
-import be.mygod.vpnhotspot.util.loggerSuStream
+import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import com.takisoft.preferencex.PreferenceFragmentCompat
@@ -35,8 +35,15 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         }
         boot.isChecked = BootReceiver.enabled
         findPreference("service.clean").setOnPreferenceClickListener {
-            if (Routing.clean() == null) SmartSnackbar.make(R.string.root_unavailable).show()
-            else app.cleanRoutings()
+            val cleaned = try {
+                Routing.clean()
+                true
+            } catch (e: RuntimeException) {
+                e.printStackTrace()
+                SmartSnackbar.make(e.localizedMessage).show()
+                false
+            }
+            if (cleaned) app.cleanRoutings()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
@@ -82,8 +89,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |logcat -d
                     """.trimMargin())
                     try {
-                        loggerSuStream(commands.toString())?.use { it.copyTo(out) }
-                    } catch (e: IOException) {
+                        out.write(RootSession.use { it.execQuiet(commands.toString(), true).out }
+                                .joinToString("\n").toByteArray())
+                    } catch (e: Exception) {
                         e.printStackTrace(writer)
                         Crashlytics.logException(e)
                         writer.flush()

@@ -15,6 +15,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.crashlytics.android.Crashlytics
 import com.google.android.material.textfield.TextInputLayout
 import java.nio.charset.Charset
 
@@ -85,13 +86,14 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
         when (which) {
-            DialogInterface.BUTTON_POSITIVE -> when (configurer.update(config!!)) {
-                true -> {
-                    app.handler.postDelayed((targetFragment as TetheringFragment).adapter.repeaterManager
-                            .binder!!::requestGroupUpdate, 1000)
-                }
-                false -> SmartSnackbar.make(R.string.noisy_su_failure).show()
-                null -> SmartSnackbar.make(R.string.root_unavailable).show()
+            DialogInterface.BUTTON_POSITIVE -> try {
+                configurer.update(config!!)
+                app.handler.postDelayed((targetFragment as TetheringFragment).adapter.repeaterManager
+                        .binder!!::requestGroupUpdate, 1000)
+            } catch (e: RuntimeException) {
+                e.printStackTrace()
+                Crashlytics.logException(e)
+                SmartSnackbar.make(e.localizedMessage).show()
             }
             DialogInterface.BUTTON_NEUTRAL ->
                 (targetFragment as TetheringFragment).adapter.repeaterManager.binder!!.resetCredentials()
