@@ -92,6 +92,10 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                     }
                 }
             }
+            if (routings.isEmpty()) {
+                updateRoutingsLocked()
+                return
+            }
             updateNotification()
         }
         app.handler.post { binder.fragment?.adapter?.notifyDataSetChanged() }
