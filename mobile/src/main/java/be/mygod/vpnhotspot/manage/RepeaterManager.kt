@@ -106,9 +106,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 val conf = P2pSupplicantConfiguration()
                 wifi.SSID = ssid
                 wifi.preSharedKey = group.passphrase
-                if (wifi.preSharedKey == null) {
-                    wifi.preSharedKey = conf.readPsk { SmartSnackbar.make(it.message.toString()).show() }
-                }
+                if (wifi.preSharedKey == null) wifi.preSharedKey = conf.readPsk()
                 if (wifi.preSharedKey != null) {
                     WifiP2pDialogFragment().apply {
                         arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, wifi),

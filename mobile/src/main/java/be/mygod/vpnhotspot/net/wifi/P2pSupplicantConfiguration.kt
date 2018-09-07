@@ -43,7 +43,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
     private val contentDelegate = lazy { initContent ?: RootSession.use { it.execOut("cat $confPath") } }
     private val content by contentDelegate
 
-    fun readPsk(handler: ((RuntimeException) -> Unit)? = null): String? {
+    fun readPsk(): String? {
         return try {
             val match = pskParser.findAll(content).single()
             if (match.groups[2] == null && match.groups[3] == null) "" else {
@@ -53,13 +53,11 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
                 result
             }
         } catch (e: NoSuchElementException) {
-            handler?.invoke(e)
             null
         } catch (e: RuntimeException) {
-            Crashlytics.log(Log.WARN, TAG, content)
+            if (contentDelegate.isInitialized()) Crashlytics.log(Log.WARN, TAG, content)
             e.printStackTrace()
             Crashlytics.logException(e)
-            handler?.invoke(e)
             null
         }
     }
