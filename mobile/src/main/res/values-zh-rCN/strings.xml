@@ -95,7 +95,6 @@
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
-    <string name="root_unavailable">似乎没有 root</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
 
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
