@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.util
 
 import android.util.Log
+import androidx.core.os.postDelayed
+import be.mygod.vpnhotspot.App.Companion.app
 import com.crashlytics.android.Crashlytics
 import com.topjohnwu.superuser.Shell
 import java.util.*
@@ -8,27 +10,41 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.collections.ArrayList
 import kotlin.concurrent.withLock
 
-class RootSession {
+class RootSession : AutoCloseable {
     companion object {
-        const val TAG = "RootSession"
-        const val INIT_CHECKPOINT = "$TAG initialized successfully"
+        private const val TAG = "RootSession"
+        private const val INIT_CHECKPOINT = "$TAG initialized successfully"
 
         private val monitor = ReentrantLock()
+        private fun onUnlock() {
+            if (monitor.holdCount == 1) instance?.startTimeout()
+        }
+        private fun unlock() {
+            onUnlock()
+            monitor.unlock()
+        }
+
         private var instance: RootSession? = null
         private fun ensureInstance(): RootSession {
             var instance = instance
-            if (instance == null) instance = RootSession().also { RootSession.instance = it }
+            if (instance == null || !instance.isAlive) instance = RootSession().also { RootSession.instance = it }
             return instance
         }
-        fun <T> use(operation: (RootSession) -> T) = monitor.withLock { operation(ensureInstance()) }
+        fun <T> use(operation: (RootSession) -> T) = monitor.withLock {
+            val instance = ensureInstance()
+            instance.haltTimeout()
+            operation(instance).also { onUnlock() }
+        }
         fun beginTransaction(): Transaction {
             monitor.lock()
-            return try {
+            val instance = try {
                 ensureInstance()
             } catch (e: RuntimeException) {
-                monitor.unlock()
+                unlock()
                 throw e
-            }.Transaction()
+            }
+            instance.haltTimeout()
+            return instance.Transaction()
         }
     }
 
@@ -52,6 +68,14 @@ class RootSession {
         val result = execQuiet("echo $INIT_CHECKPOINT")
         checkOutput("echo", result, result.out.joinToString("\n").trim() != INIT_CHECKPOINT)
     }
+
+    private val isAlive get() = shell.isAlive
+    override fun close() {
+        shell.close()
+        if (instance == this) instance = null
+    }
+    private fun startTimeout() = app.handler.postDelayed(60 * 1000, this) { monitor.withLock { close() } }
+    private fun haltTimeout() = app.handler.removeCallbacksAndMessages(this)
 
     /**
      * Don't care about the results, but still sync.
@@ -91,7 +115,7 @@ class RootSession {
         }
         fun execQuiet(command: String) = this@RootSession.execQuiet(command)
 
-        fun commit() = monitor.unlock()
+        fun commit() = unlock()
 
         fun revert() {
             if (revertCommands.isEmpty()) return
@@ -99,9 +123,10 @@ class RootSession {
                 monitor.lock()
                 ensureInstance()
             }
+            shell.haltTimeout()
             revertCommands.forEach { shell.submit(it) }
             revertCommands.clear()
-            monitor.unlock()    // commit
+            unlock()    // commit
         }
     }
 }
