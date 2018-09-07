@@ -46,6 +46,12 @@ class RootSession : AutoCloseable {
             instance.haltTimeout()
             return instance.Transaction()
         }
+
+        fun trimMemory() = monitor.withLock {
+            val instance = instance ?: return
+            instance.haltTimeout()
+            instance.close()
+        }
     }
 
     class UnexpectedOutputException(msg: String) : RuntimeException(msg)

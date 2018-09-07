@@ -12,6 +12,7 @@ import android.preference.PreferenceManager
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.RootSession
 import com.crashlytics.android.Crashlytics
 import io.fabric.sdk.android.Fabric
 
@@ -37,6 +38,11 @@ class App : Application() {
     override fun onConfigurationChanged(newConfig: Configuration?) {
         super.onConfigurationChanged(newConfig)
         ServiceNotification.updateNotificationChannels()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) RootSession.trimMemory()
     }
 
     lateinit var deviceStorage: Application
