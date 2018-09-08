@@ -20,7 +20,10 @@ import com.google.android.material.textfield.TextInputLayout
 import java.nio.charset.Charset
 
 /**
- * https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
+ * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
+ *
+ * This dialog has been deprecated in API 28, but we are still using it since it works better for our purposes.
+ * Related: https://android.googlesource.com/platform/packages/apps/Settings/+/defb1183ecb00d6231bac7d934d07f58f90261ea
  */
 class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnClickListener {
     companion object {

@@ -7,10 +7,14 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
@@ -75,7 +79,12 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         }
         override val title: CharSequence get() {
             val configuration = binder?.configuration ?: return parent.getString(R.string.tethering_temp_hotspot)
-            return "${configuration.SSID} - ${configuration.preSharedKey}"
+            return SpannableStringBuilder("${configuration.SSID} - ").apply {
+                val start = length
+                append(configuration.preSharedKey)
+                setSpan(if (Build.VERSION.SDK_INT >= 28) TypefaceSpan(Typeface.MONOSPACE) else
+                    TypefaceSpan("monospace"), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
         }
         override val text: CharSequence get() {
             return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""

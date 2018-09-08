@@ -51,6 +51,7 @@
                 android:singleLine="true"
                 android:hint="@string/wifi_password"
                 android:inputType="textPassword"
+                android:typeface="monospace"
                 android:maxLength="63"
                 android:imeOptions="flagForceAscii" />
         </com.google.android.material.textfield.TextInputLayout>
