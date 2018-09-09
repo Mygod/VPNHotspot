@@ -6,7 +6,7 @@ buildscript {
     ext {
         androidPluginVersion = '3.2.0-rc02'
         kotlinVersion = '1.2.61'
-        androidxVersion = '1.0.0-rc01'
+        androidxVersion = '1.0.0-rc02'
     }
     repositories {
         google()
