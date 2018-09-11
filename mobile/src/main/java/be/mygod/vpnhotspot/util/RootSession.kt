@@ -56,12 +56,11 @@ class RootSession : AutoCloseable {
 
     class UnexpectedOutputException(msg: String) : RuntimeException(msg)
     private fun checkOutput(command: String, result: Shell.Result, out: Boolean = result.out.isNotEmpty(),
-                            err: Boolean = stderr.isNotEmpty()) {
+                            err: Boolean = result.err.isNotEmpty()) {
         if (result.isSuccess && !out && !err) return
         val msg = StringBuilder("$command exited with ${result.code}")
         if (out) result.out.forEach { msg.append("\n$it") }
-        // TODO bug: https://github.com/topjohnwu/libsu/pull/23
-        if (err) stderr.forEach { msg.append("\nE $it") }
+        if (err) result.err.forEach { msg.append("\nE $it") }
         throw UnexpectedOutputException(msg.toString())
     }
 
@@ -89,7 +88,7 @@ class RootSession : AutoCloseable {
     fun submit(command: String) {
         val result = execQuiet(command)
         if (result.code != 0) Crashlytics.log(Log.VERBOSE, TAG, "$command exited with ${result.code}")
-        var msg = stderr.joinToString("\n").trim()
+        var msg = result.err.joinToString("\n").trim()
         if (msg.isNotEmpty()) Crashlytics.log(Log.VERBOSE, TAG, msg)
         msg = result.out.joinToString("\n").trim()
         if (msg.isNotEmpty()) Crashlytics.log(Log.VERBOSE, TAG, msg)
