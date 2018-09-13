@@ -13,7 +13,6 @@ import kotlin.concurrent.withLock
 class RootSession : AutoCloseable {
     companion object {
         private const val TAG = "RootSession"
-        private const val INIT_CHECKPOINT = "$TAG initialized successfully"
 
         private val monitor = ReentrantLock()
         private fun onUnlock() {
@@ -67,12 +66,6 @@ class RootSession : AutoCloseable {
     private val shell = Shell.newInstance("su")
     private val stdout = ArrayList<String>()
     private val stderr = ArrayList<String>()
-
-    init {
-        // check basic shell functionality very basically
-        val result = execQuiet("echo $INIT_CHECKPOINT")
-        checkOutput("echo", result, result.out.joinToString("\n").trim() != INIT_CHECKPOINT)
-    }
 
     private val isAlive get() = shell.isAlive
     override fun close() {
