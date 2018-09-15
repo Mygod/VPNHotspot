@@ -28,6 +28,7 @@ abstract class IpMonitor : Runnable {
             e.printStackTrace()
             return -1
         }
+        monitor = process
         val err = thread("${javaClass.simpleName}-error") {
             try {
                 process.errorStream.bufferedReader().forEachLine {
