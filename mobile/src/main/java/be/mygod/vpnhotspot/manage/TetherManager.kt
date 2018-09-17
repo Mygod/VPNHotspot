@@ -168,7 +168,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         init {
             parent.lifecycle.addObserver(this)
-            BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
+            try {
+                BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
+            } catch (e: SecurityException) {
+                e.printStackTrace()
+                Crashlytics.logException(e)
+                SmartSnackbar.make(e.localizedMessage).show()
+            }
         }
 
         override fun onServiceDisconnected(profile: Int) {
