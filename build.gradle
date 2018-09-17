@@ -5,7 +5,7 @@ apply plugin: 'com.github.ben-manes.versions'
 buildscript {
     ext {
         androidPluginVersion = '3.2.0-rc03'
-        kotlinVersion = '1.2.61'
+        kotlinVersion = '1.2.70'
         androidxVersion = '1.0.0-rc02'
     }
     repositories {
