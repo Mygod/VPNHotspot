@@ -33,6 +33,7 @@ import java.net.SocketException
 class TetheringFragment : Fragment(), ServiceConnection {
     companion object {
         const val START_LOCAL_ONLY_HOTSPOT = 1
+        const val REPEATER_EDIT_CONFIGURATION = 2
     }
 
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
@@ -107,6 +108,13 @@ class TetheringFragment : Fragment(), ServiceConnection {
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        when (requestCode) {
+            REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data!!)
+            else -> super.onActivityResult(requestCode, resultCode, data)
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.content.DialogInterface
+import android.content.Intent
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
 import android.os.Bundle
@@ -11,11 +12,7 @@ import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.manage.TetheringFragment
-import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
 import com.google.android.material.textfield.TextInputLayout
 import java.nio.charset.Charset
 
@@ -56,7 +53,7 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
                 mSsid = mView.findViewById(R.id.ssid)
                 mPassword = mView.findViewById(R.id.password)
                 setPositiveButton(context.getString(R.string.wifi_save), this@WifiP2pDialogFragment)
-                setNegativeButton(context.getString(R.string.wifi_cancel), this@WifiP2pDialogFragment)
+                setNegativeButton(context.getString(R.string.wifi_cancel), null)
                 setNeutralButton(context.getString(R.string.repeater_reset_credentials), this@WifiP2pDialogFragment)
                 val arguments = arguments!!
                 configurer = arguments.getParcelable(KEY_CONFIGURER)!!
@@ -88,18 +85,9 @@ class WifiP2pDialogFragment : DialogFragment(), TextWatcher, DialogInterface.OnC
     override fun afterTextChanged(editable: Editable) = validate()
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
-        when (which) {
-            DialogInterface.BUTTON_POSITIVE -> try {
-                configurer.update(config!!)
-                app.handler.postDelayed((targetFragment as TetheringFragment).adapter.repeaterManager
-                        .binder!!::requestGroupUpdate, 1000)
-            } catch (e: RuntimeException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
-                SmartSnackbar.make(e.localizedMessage).show()
-            }
-            DialogInterface.BUTTON_NEUTRAL ->
-                (targetFragment as TetheringFragment).adapter.repeaterManager.binder!!.resetCredentials()
-        }
+        targetFragment!!.onActivityResult(targetRequestCode, which, Intent().apply {
+            putExtra(KEY_CONFIGURATION, config)
+            putExtra(KEY_CONFIGURER, configurer)
+        })
     }
 }

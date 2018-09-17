@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.ComponentName
+import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.wifi.WifiConfiguration
@@ -111,7 +112,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     WifiP2pDialogFragment().apply {
                         arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, wifi),
                                 Pair(WifiP2pDialogFragment.KEY_CONFIGURER, conf))
-                        setTargetFragment(parent, 0)
+                        setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
                     }.show(parent.fragmentManager, WifiP2pDialogFragment.TAG)
                     return
                 }
@@ -146,5 +147,20 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         binder.statusChanged -= this
         binder.groupChanged -= this
         data.onStatusChanged()
+    }
+
+    fun onEditResult(which: Int, data: Intent) {
+        when (which) {
+            DialogInterface.BUTTON_POSITIVE -> try {
+                data.getParcelableExtra<P2pSupplicantConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURER)
+                        .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
+                app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
+            } catch (e: RuntimeException) {
+                e.printStackTrace()
+                Crashlytics.logException(e)
+                SmartSnackbar.make(e.localizedMessage).show()
+            }
+            DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()
+        }
     }
 }
