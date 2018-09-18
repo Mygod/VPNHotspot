@@ -40,7 +40,6 @@ android {
 }
 
 dependencies {
-    kapt "androidx.databinding:databinding-compiler:$androidPluginVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "androidx.browser:browser:$androidxVersion"
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
