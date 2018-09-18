@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot
 
-import android.app.AlertDialog
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -11,7 +10,9 @@ import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
 import androidx.annotation.StringRes
+import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
+import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import com.android.billingclient.api.*
 import com.crashlytics.android.Crashlytics
@@ -23,6 +24,17 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         SkuDetailsResponseListener, ConsumeResponseListener {
     companion object {
         private const val TAG = "EBegFragment"
+        private const val KEY_TITLE = "title"
+        private const val KEY_MESSAGE = "message"
+    }
+
+    class MessageDialogFragment : DialogFragment() {
+        override fun onCreateDialog(savedInstanceState: Bundle?) = AlertDialog.Builder(requireContext()).apply {
+            val arguments = arguments!!
+            setTitle(arguments.getInt(KEY_TITLE, 0))
+            setMessage(arguments.getInt(KEY_MESSAGE, 0))
+            setNeutralButton(R.string.donations__button_close, null)
+        }.create()
     }
 
     private lateinit var billingClient: BillingClient
@@ -59,14 +71,9 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                 }
     }
 
-    private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
-        AlertDialog.Builder(activity ?: return).apply {
-            setTitle(title)
-            setMessage(message)
-            isCancelable = true
-            setNeutralButton(R.string.donations__button_close) { dialog, _ -> dialog.dismiss() }
-        }.show()
-    }
+    private fun openDialog(@StringRes title: Int, @StringRes message: Int) = MessageDialogFragment().apply {
+        arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
+    }.show(fragmentManager, "MessageDialogFragment")
 
     override fun onBillingServiceDisconnected() {
         skus = null

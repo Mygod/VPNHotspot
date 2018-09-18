@@ -34,6 +34,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     companion object {
         const val START_LOCAL_ONLY_HOTSPOT = 1
         const val REPEATER_EDIT_CONFIGURATION = 2
+        const val REPEATER_WPS = 3
     }
 
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
@@ -112,6 +113,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         when (requestCode) {
+            REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data!!)
             REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data!!)
             else -> super.onActivityResult(requestCode, resultCode, data)
         }

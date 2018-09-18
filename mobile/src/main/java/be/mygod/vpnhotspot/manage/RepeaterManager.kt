@@ -6,11 +6,11 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
+import android.os.Bundle
 import android.os.IBinder
 import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatDialog
 import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
@@ -83,19 +83,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
 
         fun wps() {
-            if (binder?.active != true) return
-            val dialog = AlertDialog.Builder(parent.requireContext())
-                    .setTitle(R.string.repeater_wps_dialog_title)
-                    .setView(R.layout.dialog_wps)
-                    .setPositiveButton(android.R.string.ok) { dialog, _ ->
-                        binder?.startWps((dialog as AppCompatDialog)
-                            .findViewById<EditText>(android.R.id.edit)!!.text.toString())
-                    }
-                    .setNegativeButton(android.R.string.cancel, null)
-                    .setNeutralButton(R.string.repeater_wps_dialog_pbc) { _, _ -> binder?.startWps(null) }
-                    .create()
-            dialog.window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-            dialog.show()
+            if (binder?.active == true) WpsDialogFragment().run {
+                setTargetFragment(parent, TetheringFragment.REPEATER_WPS)
+                show(parent.fragmentManager, "WpsDialogFragment")
+            }
         }
 
         fun editConfigurations() {
@@ -118,6 +109,26 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 }
             }
             SmartSnackbar.make(R.string.repeater_configure_failure).show()
+        }
+    }
+
+    class WpsDialogFragment : AlertDialogFragment() {
+        companion object {
+            const val KEY_PIN = "pin"
+        }
+
+        override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
+            setTitle(R.string.repeater_wps_dialog_title)
+            setView(R.layout.dialog_wps)
+            setPositiveButton(android.R.string.ok, listener)
+            setNegativeButton(android.R.string.cancel, null)
+            setNeutralButton(R.string.repeater_wps_dialog_pbc, listener)
+        }
+        override val data: Intent get() = Intent()
+                .putExtra(KEY_PIN, dialog.findViewById<EditText>(android.R.id.edit)!!.text.toString())
+
+        override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
+            window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
         }
     }
 
@@ -147,6 +158,13 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         binder.statusChanged -= this
         binder.groupChanged -= this
         data.onStatusChanged()
+    }
+
+    fun onWpsResult(which: Int, data: Intent) {
+        when (which) {
+            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(data.getStringExtra(WpsDialogFragment.KEY_PIN))
+            DialogInterface.BUTTON_NEUTRAL -> binder?.startWps(null)
+        }
     }
 
     fun onEditResult(which: Int, data: Intent) {
