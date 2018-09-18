@@ -21,12 +21,12 @@ abstract class IpMonitor : Runnable {
     private var monitor: Process? = null
     private var pool: ScheduledExecutorService? = null
 
-    private fun handleProcess(builder: ProcessBuilder): Int {
+    private fun handleProcess(builder: ProcessBuilder): Boolean {
         val process = try {
             builder.start()
         } catch (e: IOException) {
             e.printStackTrace()
-            return -1
+            return false
         }
         monitor = process
         val err = thread("${javaClass.simpleName}-error") {
@@ -47,14 +47,15 @@ abstract class IpMonitor : Runnable {
         }
         err.join()
         process.waitFor()
-        return process.exitValue()
+        val result = process.exitValue()
+        return result == 0 || result == 143 // SIGTERM
     }
 
     init {
         thread("${javaClass.simpleName}-input") {
             // monitor may get rejected by SELinux
-            if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject)) == 0) return@thread
-            if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject")) == 0) return@thread
+            if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
+            if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
             Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
             Crashlytics.logException(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
