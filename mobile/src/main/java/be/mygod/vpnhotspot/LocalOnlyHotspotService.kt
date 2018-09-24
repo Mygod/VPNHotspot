@@ -33,7 +33,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     private var routingManager: LocalOnlyInterfaceManager? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(intent.extras)
+        val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(intent.extras!!)
         debugLog(TAG, "onTetherStateChangedLocked: $ifaces")
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()

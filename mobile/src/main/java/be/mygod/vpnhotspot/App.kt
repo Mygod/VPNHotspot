@@ -10,6 +10,7 @@ import android.os.Build
 import android.os.Handler
 import android.preference.PreferenceManager
 import androidx.core.content.getSystemService
+import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.RootSession
@@ -30,6 +31,7 @@ class App : Application() {
         if (Build.VERSION.SDK_INT >= 24) {
             deviceStorage = DeviceStorageApp(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
+            deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
         Fabric.with(deviceStorage, Crashlytics())
         ServiceNotification.updateNotificationChannels()

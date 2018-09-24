@@ -1,26 +1,93 @@
 package be.mygod.vpnhotspot.client
 
 import android.content.ComponentName
+import android.content.DialogInterface
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
 import android.view.LayoutInflater
+import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.PopupMenu
+import androidx.core.os.bundleOf
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.databinding.FragmentRepeaterBinding
+import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
+import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.lookup
+import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 
 class ClientsFragment : Fragment(), ServiceConnection {
-    private class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root)
+    class NicknameDialogFragment : AlertDialogFragment() {
+        companion object {
+            const val KEY_MAC = "mac"
+            const val KEY_NICKNAME = "nickname"
+        }
+
+        private val mac by lazy { arguments!!.getString(KEY_MAC)!! }
+
+        override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
+            setView(R.layout.dialog_nickname)
+            setTitle("Nickname for $mac")
+            setPositiveButton(android.R.string.ok, listener)
+            setNegativeButton(android.R.string.cancel, null)
+        }
+
+        override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
+            create()
+            findViewById<EditText>(android.R.id.edit)!!.setText(arguments!!.getCharSequence(KEY_NICKNAME))
+        }
+
+        override fun onClick(di: DialogInterface?, which: Int) {
+            AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()).apply {
+                nickname = dialog.findViewById<EditText>(android.R.id.edit).text
+                check(AppDatabase.instance.clientRecordDao.update(this) == mac)
+            }
+            IpNeighbourMonitor.instance?.flush()
+        }
+    }
+
+    private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
+            View.OnClickListener, PopupMenu.OnMenuItemClickListener {
+        init {
+            binding.root.setOnClickListener(this)
+        }
+
+        override fun onClick(v: View) {
+            PopupMenu(binding.root.context, binding.root).apply {
+                menuInflater.inflate(R.menu.popup_client, menu)
+                setOnMenuItemClickListener(this@ClientViewHolder)
+                show()
+            }
+        }
+
+        override fun onMenuItemClick(item: MenuItem?): Boolean {
+            return when (item?.itemId) {
+                R.id.nickname -> {
+                    val client = binding.client ?: return false
+                    NicknameDialogFragment().apply {
+                        arguments = bundleOf(Pair(NicknameDialogFragment.KEY_MAC, client.mac),
+                                Pair(NicknameDialogFragment.KEY_NICKNAME, client.record.nickname))
+                    }.show(fragmentManager, "NicknameDialogFragment")
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
         override fun submitList(list: MutableList<Client>?) {
             super.submitList(list)
@@ -28,7 +95,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-                ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context)))
+                ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             holder.binding.client = getItem(position)
@@ -36,12 +103,12 @@ class ClientsFragment : Fragment(), ServiceConnection {
         }
     }
 
-    private lateinit var binding: FragmentRepeaterBinding
+    private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
     private var clients: ClientMonitorService.Binder? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_repeater, container, false)
+        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_clients, container, false)
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter

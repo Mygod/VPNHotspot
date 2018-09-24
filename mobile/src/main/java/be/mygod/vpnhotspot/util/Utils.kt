@@ -7,13 +7,14 @@ import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
 import java.net.NetworkInterface
 import java.net.SocketException
+
+fun CharSequence?.onEmpty(otherwise: CharSequence): CharSequence = if (isNullOrEmpty()) otherwise else this!!
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
