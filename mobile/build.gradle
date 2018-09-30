@@ -4,7 +4,7 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
 android {
-    buildToolsVersion "28.0.2"
+    buildToolsVersion "28.0.3"
     compileSdkVersion 28
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
@@ -58,7 +58,7 @@ dependencies {
     implementation 'com.github.topjohnwu:libsu:2.0.2'
     implementation "com.google.android.material:material:$androidxVersion"
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
-    implementation 'com.takisoft.preferencex:preferencex:1.0.0-alpha2'
+    implementation 'com.takisoft.preferencex:preferencex:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
