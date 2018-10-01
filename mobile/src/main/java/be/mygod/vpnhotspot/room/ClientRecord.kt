@@ -13,8 +13,9 @@ data class ClientRecord(@PrimaryKey
         fun lookupOrNull(mac: Long): ClientRecord?
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
-        fun update(value: ClientRecord): Long
+        fun updateInternal(value: ClientRecord): Long
     }
 }
 
 fun ClientRecord.Dao.lookup(mac: Long) = lookupOrNull(mac) ?: ClientRecord(mac)
+fun ClientRecord.Dao.update(value: ClientRecord) = check(updateInternal(value) == value.mac)

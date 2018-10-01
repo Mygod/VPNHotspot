@@ -24,9 +24,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
-import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.lookup
-import be.mygod.vpnhotspot.room.macToLong
+import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 
 class ClientsFragment : Fragment(), ServiceConnection {
@@ -53,7 +51,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
         override fun onClick(di: DialogInterface?, which: Int) {
             AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()).apply {
                 nickname = dialog.findViewById<EditText>(android.R.id.edit).text
-                check(AppDatabase.instance.clientRecordDao.update(this) == mac)
+                AppDatabase.instance.clientRecordDao.update(this)
             }
             IpNeighbourMonitor.instance?.flush()
         }
@@ -68,6 +66,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
         override fun onClick(v: View) {
             PopupMenu(binding.root.context, binding.root).apply {
                 menuInflater.inflate(R.menu.popup_client, menu)
+                menu.removeItem(if (binding.client!!.record.blocked) R.id.block else R.id.unblock)
                 setOnMenuItemClickListener(this@ClientViewHolder)
                 show()
             }
@@ -81,6 +80,14 @@ class ClientsFragment : Fragment(), ServiceConnection {
                         arguments = bundleOf(Pair(NicknameDialogFragment.KEY_MAC, client.mac),
                                 Pair(NicknameDialogFragment.KEY_NICKNAME, client.record.nickname))
                     }.show(fragmentManager, "NicknameDialogFragment")
+                    true
+                }
+                R.id.block, R.id.unblock -> {
+                    val client = binding.client ?: return false
+                    client.record.apply {
+                        AppDatabase.instance.clientRecordDao.update(ClientRecord(mac, nickname, !blocked))
+                    }
+                    IpNeighbourMonitor.instance?.flush()
                     true
                 }
                 else -> false

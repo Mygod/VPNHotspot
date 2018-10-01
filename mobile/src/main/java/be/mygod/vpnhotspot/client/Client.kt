@@ -1,5 +1,8 @@
 package be.mygod.vpnhotspot.client
 
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.StrikethroughSpan
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -27,7 +30,11 @@ abstract class Client {
     val record by lazy { AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()) }
 
     open val icon get() = TetherType.ofInterface(iface).icon
-    val title get() = record.nickname.onEmpty(macIface)
+    val title: CharSequence get() {
+        val result = SpannableStringBuilder(record.nickname.onEmpty(macIface))
+        if (record.blocked) result.setSpan(StrikethroughSpan(), 0, result.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+        return result
+    }
     val description: String get() {
         val result = StringBuilder(if (record.nickname.isEmpty()) "" else "$macIface\n")
         ip.entries.forEach { (ip, state) ->

@@ -49,11 +49,10 @@ class LocalOnlyInterfaceManager(private val owner: Context, val downstream: Stri
                     forward()
                     if (app.masquerade) masquerade()
                     dnsRedirect(dns)
+                    commit()
                 } catch (e: Exception) {
                     revert()
                     throw e
-                } finally {
-                    commit()
                 }   // otw nothing needs to be done
             }
         } catch (e: Exception) {

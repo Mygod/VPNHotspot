@@ -2,4 +2,8 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/nickname"
           android:title="Nickname..."/>
+    <item android:id="@+id/block"
+          android:title="Block"/>
+    <item android:id="@+id/unblock"
+          android:title="Unblock"/>
 </menu>

@@ -76,11 +76,10 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                                 if (app.masquerade) masquerade()
                                 if (upstream != null) dnsRedirect(dns)
                                 if (disableIpv6) disableIpv6()
+                                commit()
                             } catch (e: Exception) {
                                 revert()
                                 throw e
-                            } finally {
-                                commit()
                             }
                         }
                     } catch (e: Exception) {

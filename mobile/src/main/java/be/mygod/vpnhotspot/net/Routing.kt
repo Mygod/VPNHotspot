@@ -14,6 +14,8 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.debugLog
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.crashlytics.android.Crashlytics
 import java.net.*
 
 /**
@@ -156,16 +158,23 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
             toRemove?.remove(ip)
             subtransactions.computeIfAbsentCompat(ip) {
                 RootSession.beginTransaction().apply {
-                    if (!strict) {
-                        // otw allow downstream packets to be redirected to anywhere
-                        // because we don't wanna keep track of default network changes
-                        transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
-                        transaction.iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                    } else if (upstream != null) {
-                        transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
-                        transaction.iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                    }   // else nothing needs to be done
-                    commit()
+                    try {
+                        if (!strict) {
+                            // otw allow downstream packets to be redirected to anywhere
+                            // because we don't wanna keep track of default network changes
+                            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
+                            iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                        } else if (upstream != null) {
+                            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
+                            iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                        }   // else nothing needs to be done
+                        commit()
+                    } catch (e: Exception) {
+                        revert()
+                        Crashlytics.logException(e)
+                        e.printStackTrace()
+                        SmartSnackbar.make(e.localizedMessage).show()
+                    }
                 }
             }
         }
