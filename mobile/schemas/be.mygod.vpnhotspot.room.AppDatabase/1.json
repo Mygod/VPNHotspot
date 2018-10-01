@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "02159a9475d10d576e020076e4464517",
+    "identityHash": "00fa14bb142f83da73fa916cf05154bb",
     "entities": [
       {
         "tableName": "ClientRecord",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mac` INTEGER NOT NULL, `nickname` BLOB NOT NULL, `access` INTEGER NOT NULL, PRIMARY KEY(`mac`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mac` INTEGER NOT NULL, `nickname` BLOB NOT NULL, `blocked` INTEGER NOT NULL, PRIMARY KEY(`mac`))",
         "fields": [
           {
             "fieldPath": "mac",
@@ -21,8 +21,8 @@
             "notNull": true
           },
           {
-            "fieldPath": "access",
-            "columnName": "access",
+            "fieldPath": "blocked",
+            "columnName": "blocked",
             "affinity": "INTEGER",
             "notNull": true
           }
@@ -39,7 +39,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \"02159a9475d10d576e020076e4464517\")"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \"00fa14bb142f83da73fa916cf05154bb\")"
     ]
   }
 }

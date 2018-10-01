@@ -65,7 +65,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                     val (downstream, value) = iterator.next()
                     if (value != null) if (value.upstream == upstream) continue else value.revert()
                     try {
-                        routings[downstream] = Routing(upstream, downstream).apply {
+                        routings[downstream] = Routing(this, upstream, downstream).apply {
                             try {
                                 if (app.dhcpWorkaround) dhcpWorkaround()
                                 // system tethering already has working forwarding rules
@@ -73,7 +73,6 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                                 rule()
                                 // here we always enforce strict mode as fallback is handled by system which we disable
                                 forward()
-                                if (app.strict) overrideSystemRules()
                                 if (app.masquerade) masquerade()
                                 if (upstream != null) dnsRedirect(dns)
                                 if (disableIpv6) disableIpv6()

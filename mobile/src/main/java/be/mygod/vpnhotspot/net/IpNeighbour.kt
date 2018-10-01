@@ -4,14 +4,27 @@ import android.util.Log
 import com.crashlytics.android.Crashlytics
 import java.io.File
 import java.io.IOException
+import java.net.InetAddress
 
-data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val state: State) {
+data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
     enum class State {
         INCOMPLETE, VALID, FAILED, DELETING
     }
 
     companion object {
         private const val TAG = "IpNeighbour"
+
+        private val parseNumericAddress by lazy {
+            // parseNumericAddressNoThrow is in dark grey list unfortunately
+            InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
+                isAccessible = true
+            }
+        }
+        private fun parseNumericAddressNoThrow(address: String): InetAddress? = try {
+            parseNumericAddress.invoke(null, address) as InetAddress?
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 
         /**
          * Parser based on:
@@ -29,12 +42,13 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
                 if (line.isNotEmpty()) Crashlytics.log(Log.WARN, TAG, line)
                 return null
             }
-            val ip = match.groupValues[2]
+            val ip = parseNumericAddressNoThrow(match.groupValues[2]) ?: return null
             val dev = match.groupValues[4]
             var lladdr = checkLladdrNotLoopback(match.groupValues[6])
             // use ARP as fallback
             if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
-                    .filter { it[ARP_IP_ADDRESS] == ip && it[ARP_DEVICE] == dev }
+                    .asSequence()
+                    .filter { parseNumericAddressNoThrow(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                     .map { it[ARP_HW_ADDRESS] }
                     .singleOrNull() ?: "")
             val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
@@ -64,9 +78,11 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
         private fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
                 arpCache = File("/proc/net/arp").bufferedReader().readLines()
+                        .asSequence()
                         .map { it.split(spaces) }
                         .drop(1)
                         .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
+                        .toList()
             } catch (e: IOException) {
                 e.printStackTrace()
                 Crashlytics.logException(e)

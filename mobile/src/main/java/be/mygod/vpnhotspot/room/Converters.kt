@@ -6,12 +6,6 @@ import androidx.room.TypeConverter
 
 class Converters {
     @TypeConverter
-    fun persistAccessRule(rule: ClientRecord.AccessRule): Int = rule.ordinal
-
-    @TypeConverter
-    fun unpersistAccessRule(rule: Int): ClientRecord.AccessRule = ClientRecord.AccessRule.values()[rule]
-
-    @TypeConverter
     fun persistCharSequence(cs: CharSequence): ByteArray {
         val p = Parcel.obtain()
         try {

@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.*
+import android.os.Build
 import android.util.Log
 import android.view.View
 import android.widget.ImageView
@@ -70,3 +71,6 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)
     unbindService(connection)
 }
+
+fun <K, V> HashMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 26)
+    computeIfAbsent(key) { value() } else this[key] ?: value().also { put(key, it) }

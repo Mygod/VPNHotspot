@@ -3,12 +3,14 @@ package be.mygod.vpnhotspot.client
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.lookup
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.onEmpty
+import java.net.InetAddress
 import java.util.*
 
 abstract class Client {
@@ -21,7 +23,7 @@ abstract class Client {
     abstract val iface: String
     abstract val mac: String
     private val macIface get() = "$mac%$iface"
-    val ip = TreeMap<String, IpNeighbour.State>()
+    val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
     val record by lazy { AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()) }
 
     open val icon get() = TetherType.ofInterface(iface).icon
@@ -34,7 +36,7 @@ abstract class Client {
                 IpNeighbour.State.VALID -> R.string.connected_state_valid
                 IpNeighbour.State.FAILED -> R.string.connected_state_failed
                 else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
-            }, ip))
+            }, ip.hostAddress))
         }
         return result.toString().trimEnd()
     }
