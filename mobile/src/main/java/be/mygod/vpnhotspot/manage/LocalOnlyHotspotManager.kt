@@ -60,9 +60,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                     Toast.makeText(view.context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     try {
                         view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                    } catch (exc: ActivityNotFoundException) {
-                        exc.printStackTrace()
-                        Timber.e(exc)
+                    } catch (e: ActivityNotFoundException) {
+                        Timber.w(e)
                     }
                     return
                 }

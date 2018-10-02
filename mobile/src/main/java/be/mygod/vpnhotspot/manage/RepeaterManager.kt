@@ -47,8 +47,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
             } catch (e: SocketException) {
-                e.printStackTrace()
-                Timber.e(e)
+                Timber.w(e)
                 ""
             }
         }
@@ -174,8 +173,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
                 app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
             } catch (e: RuntimeException) {
-                e.printStackTrace()
-                Timber.e(e)
+                Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
             DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()

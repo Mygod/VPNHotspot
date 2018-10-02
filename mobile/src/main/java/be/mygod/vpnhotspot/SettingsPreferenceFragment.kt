@@ -58,8 +58,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     try {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
-                        e.printStackTrace(writer)
-                        Timber.e(e)
+                        Timber.w(e)
                     }
                     writer.write("\n")
                     writer.flush()
@@ -93,8 +92,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 .joinToString("\n").toByteArray())
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
-                        Timber.e(e)
                         writer.flush()
+                        Timber.i(e)
                     }
                 }
             }
@@ -111,7 +110,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {
-            EBegFragment().show(fragmentManager, "ebeg_fragment")
+            EBegFragment().show(fragmentManager, "EBegFragment")
             true
         }
     }
@@ -125,8 +124,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                     .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
                                     .map { it.name }.sorted().toList().toTypedArray()
                         } catch (e: SocketException) {
-                            e.printStackTrace()
-                            Timber.e(e)
+                            Timber.w(e)
                             emptyArray<String>()
                         })))
         else -> super.onDisplayPreferenceDialog(preference)

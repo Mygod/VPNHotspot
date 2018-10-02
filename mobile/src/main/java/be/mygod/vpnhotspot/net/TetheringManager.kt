@@ -31,8 +31,6 @@ object TetheringManager {
         fun onTetheringFailed() { }
     }
 
-    private const val TAG = "TetheringManager"
-
     /**
      * This is a sticky broadcast since almost forever.
      *

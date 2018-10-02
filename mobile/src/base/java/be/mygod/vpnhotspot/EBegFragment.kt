@@ -50,7 +50,6 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
             inflater.inflate(R.layout.fragment_ebeg, container, false)
-
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
@@ -63,7 +62,6 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
                     .setSku(sku.sku).setType(BillingClient.SkuType.INAPP).build())
         }
-
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
                 .setOnClickListener {

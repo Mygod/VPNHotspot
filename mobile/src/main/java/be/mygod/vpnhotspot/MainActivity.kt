@@ -42,12 +42,10 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     fun launchUrl(url: Uri) = try {
         customTabsIntent.launchUrl(this, url)
     } catch (e: ActivityNotFoundException) {
-        e.printStackTrace()
-        Timber.e(e)
+        Timber.w(e)
         SmartSnackbar.make(url.toString()).show()
     } catch (e: SecurityException) {
-        e.printStackTrace()
-        Timber.e(e)
+        Timber.w(e)
         SmartSnackbar.make(url.toString()).show()
     }
 

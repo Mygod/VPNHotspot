@@ -31,19 +31,15 @@ abstract class IpMonitor : Runnable {
         monitor = process
         val err = thread("${javaClass.simpleName}-error") {
             try {
-                process.errorStream.bufferedReader().forEachLine {
-                    Timber.e(it)
-                }
+                process.errorStream.bufferedReader().forEachLine { Timber.e(it) }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                e.printStackTrace()
-                Timber.e(e)
+                Timber.w(e)
             }
         }
         try {
             process.inputStream.bufferedReader().forEachLine(this::processLine)
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
-            e.printStackTrace()
-            Timber.e(e)
+            Timber.w(e)
         }
         err.join()
         process.waitFor()
@@ -57,7 +53,7 @@ abstract class IpMonitor : Runnable {
             if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
             if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
             Timber.w("Failed to set up monitor, switching to polling")
-            Timber.e(MonitorFailure())
+            Timber.i(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
             this.pool = pool
@@ -75,7 +71,7 @@ abstract class IpMonitor : Runnable {
             val err = process.errorStream.bufferedReader().readText()
             if (err.isNotBlank()) {
                 Timber.e(err)
-                Timber.e(FlushFailure())
+                Timber.i(FlushFailure())
                 SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
         }

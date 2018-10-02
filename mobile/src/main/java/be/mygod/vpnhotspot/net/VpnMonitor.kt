@@ -5,7 +5,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.debugLog
+import be.mygod.vpnhotspot.debugLog
 
 object VpnMonitor : UpstreamMonitor() {
     private const val TAG = "VpnMonitor"

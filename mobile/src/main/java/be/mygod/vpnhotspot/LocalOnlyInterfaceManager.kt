@@ -57,7 +57,7 @@ class LocalOnlyInterfaceManager(private val owner: Context, val downstream: Stri
             }
         } catch (e: Exception) {
             SmartSnackbar.make(e.localizedMessage).show()
-            Timber.e(e)
+            Timber.w(e)
             routing = null
         }
     }

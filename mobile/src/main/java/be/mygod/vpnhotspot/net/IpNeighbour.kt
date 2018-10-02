@@ -12,8 +12,6 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
     }
 
     companion object {
-        private const val TAG = "IpNeighbour"
-
         /**
          * Parser based on:
          *   https://android.googlesource.com/platform/external/iproute2/+/ad0a6a2/ip/ipneigh.c#194
@@ -72,8 +70,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
                         .toList()
             } catch (e: IOException) {
-                e.printStackTrace()
-                Timber.e(e)
+                Timber.w(e)
             }
             return arpCache
         }

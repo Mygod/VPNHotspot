@@ -85,12 +85,9 @@ class RootSession : AutoCloseable {
      */
     fun submit(command: String) {
         val result = execQuiet(command)
-
         if (result.code != 0) Timber.v("$command exited with ${result.code}")
-
         var msg = result.err.joinToString("\n").trim()
         if (msg.isNotEmpty()) Timber.v(msg)
-
         msg = result.out.joinToString("\n").trim()
         if (msg.isNotEmpty()) Timber.v(msg)
     }

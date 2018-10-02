@@ -9,7 +9,6 @@ import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.debugLog
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -90,23 +89,23 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                 else -> getString(R.string.failure_reason_unknown, reason)
                             })
                     SmartSnackbar.make(message).show()
-                    startFailure(if (reason == WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE) null else
-                        StartFailure(message))
+                    if (reason != WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE) {
+                        Timber.i(StartFailure(message))
+                    }
+                    startFailure()
                 }
             }, app.handler)
-        } catch (e: IllegalStateException) {
-            e.printStackTrace()
-            startFailure(e)
-        } catch (e: SecurityException) {
+            // assuming IllegalStateException will be thrown only if
+            // "Caller already has an active LocalOnlyHotspot request"
+        } catch (_: IllegalStateException) { } catch (e: SecurityException) {
             SmartSnackbar.make(e.localizedMessage).show()
-            e.printStackTrace()
-            startFailure(e)
+            Timber.w(e)
+            startFailure()
         }
         return START_STICKY
     }
 
-    private fun startFailure(e: Exception?) {
-        if (e?.message != "Caller already has an active LocalOnlyHotspot request") Timber.e(e)
+    private fun startFailure() {
         updateNotification()
         ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
         stopSelf()

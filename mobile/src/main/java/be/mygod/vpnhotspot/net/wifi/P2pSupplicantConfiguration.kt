@@ -15,7 +15,6 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         override fun createFromParcel(parcel: Parcel) = P2pSupplicantConfiguration(parcel.readString())
         override fun newArray(size: Int): Array<P2pSupplicantConfiguration?> = arrayOfNulls(size)
 
-        //private const val TAG = "P2pSupplicationConf"
         /**
          * Format for ssid is much more complicated, therefore we are only trying to find the line and rely on
          * Android's results instead.
@@ -55,8 +54,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
             null
         } catch (e: RuntimeException) {
             if (contentDelegate.isInitialized()) Timber.w(content)
-            e.printStackTrace()
-            Timber.e(e)
+            Timber.w(e)
             null
         }
     }
@@ -83,7 +81,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
             if (ssidFound != 1 || pskFound != 1) {
                 Timber.w("Invalid conf ($ssidFound, $pskFound): $content")
                 if (ssidFound == 0 || pskFound == 0) throw InvalidConfigurationError()
-                else Timber.e(InvalidConfigurationError())
+                else Timber.i(InvalidConfigurationError())
             }
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             RootSession.use {

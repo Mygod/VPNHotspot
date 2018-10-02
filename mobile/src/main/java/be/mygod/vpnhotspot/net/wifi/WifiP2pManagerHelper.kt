@@ -10,7 +10,6 @@ import java.lang.reflect.Proxy
 import java.util.regex.Pattern
 
 object WifiP2pManagerHelper {
-    //private const val TAG = "WifiP2pManagerHelper"
     const val UNSUPPORTED = -2
 
     /**
@@ -40,8 +39,7 @@ object WifiP2pManagerHelper {
         try {
             setWifiP2pChannels.invoke(this, c, lc, oc, listener)
         } catch (e: NoSuchMethodException) {
-            e.printStackTrace()
-            Timber.e(e)
+            Timber.w(e)
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -59,8 +57,7 @@ object WifiP2pManagerHelper {
         try {
             startWps.invoke(this, c, wps, listener)
         } catch (e: NoSuchMethodException) {
-            e.printStackTrace()
-            Timber.e(e)
+            Timber.w(e)
             listener.onFailure(UNSUPPORTED)
         }
     }
