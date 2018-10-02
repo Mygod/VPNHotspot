@@ -81,9 +81,9 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
                 })
             }
             if (ssidFound != 1 || pskFound != 1) {
-                Timber.w("Invalid conf ($ssidFound, $pskFound): $content") //Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
+                Timber.w("Invalid conf ($ssidFound, $pskFound): $content")
                 if (ssidFound == 0 || pskFound == 0) throw InvalidConfigurationError()
-                else Timber.e(InvalidConfigurationError()) //Crashlytics.logException(InvalidConfigurationError())
+                else Timber.e(InvalidConfigurationError())
             }
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             RootSession.use {

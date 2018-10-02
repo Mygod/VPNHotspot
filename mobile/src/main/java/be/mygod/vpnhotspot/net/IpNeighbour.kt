@@ -1,8 +1,8 @@
 package be.mygod.vpnhotspot.net
 
-import timber.log.Timber
 import java.io.File
 import java.io.IOException
+import timber.log.Timber
 
 data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val state: State) {
     enum class State {
