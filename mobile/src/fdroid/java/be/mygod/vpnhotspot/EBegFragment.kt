@@ -18,10 +18,8 @@ class EBegFragment : DialogFragment() {
         super.onViewCreated(view, savedInstanceState)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         view.findViewById<LinearLayout>(R.id.donations__google).visibility = View.GONE
-        @Suppress("ConstantConditionIf")
-        if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
-                .setOnClickListener {
-                    (activity as MainActivity).launchUrl("https://mygod.be/donate/".toUri())
-                }
+        (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button).setOnClickListener {
+            (activity as MainActivity).launchUrl("https://mygod.be/donate/".toUri())
+        }
     }
 }
