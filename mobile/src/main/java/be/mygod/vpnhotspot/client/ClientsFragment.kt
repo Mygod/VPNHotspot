@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.IBinder
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import android.util.LongSparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -26,6 +27,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import java.text.NumberFormat
@@ -126,8 +128,12 @@ class ClientsFragment : Fragment(), ServiceConnection {
     }
 
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
+        private var clientsLookup: LongSparseArray<Client>? = null
         override fun submitList(list: MutableList<Client>?) {
             super.submitList(list)
+            clientsLookup = if (list == null) null else LongSparseArray<Client>(list.size).apply {
+                list.forEach { put(it.mac.macToLong(), it) }
+            }
             binding.swipeRefresher.isRefreshing = false
         }
 
@@ -137,6 +143,25 @@ class ClientsFragment : Fragment(), ServiceConnection {
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             holder.binding.client = getItem(position)
             holder.binding.executePendingBindings()
+        }
+
+        fun updateTraffic(newRecords: Collection<TrafficRecord>, oldRecords: LongSparseArray<TrafficRecord>) {
+            val clientsLookup = clientsLookup ?: return
+            for (newRecord in newRecords) {
+                val oldRecord = oldRecords[newRecord.previousId ?: continue] ?: continue
+                val client = clientsLookup[newRecord.mac]
+                val elapsed = newRecord.timestamp - oldRecord.timestamp
+                if (elapsed == 0L) {
+                    check(newRecord.sentPackets == oldRecord.sentPackets)
+                    check(newRecord.sentBytes == oldRecord.sentBytes)
+                    check(newRecord.receivedPackets == oldRecord.receivedPackets)
+                    check(newRecord.receivedBytes == oldRecord.receivedBytes)
+                    continue
+                }
+                client.sendRate = (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
+                client.receiveRate = (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
+                client.notifyChange()
+            }
         }
     }
 
@@ -166,5 +191,17 @@ class ClientsFragment : Fragment(), ServiceConnection {
         val clients = clients ?: return
         clients.clientsChanged -= this
         this.clients = null
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // we just put these two thing together as this is the only place we need to use this event for now
+        TrafficRecorder.foregroundListeners[this] = adapter::updateTraffic
+        TrafficRecorder.rescheduleUpdate()  // next schedule time might be 1 min, force reschedule to <= 1s
+    }
+
+    override fun onStop() {
+        TrafficRecorder.foregroundListeners -= this
+        super.onStop()
     }
 }

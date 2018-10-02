@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.os.SystemClock
 import android.util.Log
+import android.util.LongSparseArray
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.insert
@@ -19,7 +20,7 @@ object TrafficRecorder {
 
     private var scheduled = false
     private val records = HashMap<Pair<InetAddress, String>, TrafficRecord>()
-    val foregroundListeners = Event2<Collection<TrafficRecord>, HashMap<Long, TrafficRecord>>()
+    val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
     fun register(ip: InetAddress, upstream: String?, downstream: String, mac: String) {
         val record = TrafficRecord(
@@ -38,6 +39,10 @@ object TrafficRecorder {
         check(records.remove(Pair(ip, downstream)) != null)
     }
 
+    private fun unscheduleUpdateLocked() {
+        RootSession.handler.removeCallbacksAndMessages(this)
+        scheduled = false
+    }
     private fun scheduleUpdateLocked() {
         if (scheduled) return
         val now = System.currentTimeMillis()
@@ -48,12 +53,17 @@ object TrafficRecorder {
         scheduled = true
     }
 
+    fun rescheduleUpdate() = synchronized(this) {
+        unscheduleUpdateLocked()
+        scheduleUpdateLocked()
+    }
+
     fun update() {
         synchronized(this) {
             scheduled = false
             if (records.isEmpty()) return
             val timestamp = System.currentTimeMillis()
-            val oldRecords = HashMap<Long, TrafficRecord>()
+            val oldRecords = LongSparseArray<TrafficRecord>()
             for (line in RootSession.use { it.execOutUnjoined("iptables -nvx -L vpnhotspot_fwd") }
                     .asSequence().drop(2)) {
                 val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
@@ -88,7 +98,7 @@ object TrafficRecorder {
                             }
                             if (oldRecord.id != null) {
                                 check(records.put(key, record) == oldRecord)
-                                check(oldRecords.put(oldRecord.id!!, oldRecord) == null)
+                                oldRecords.put(oldRecord.id!!, oldRecord)
                             }
                         }
                         else -> check(false)
@@ -107,6 +117,7 @@ object TrafficRecorder {
 
     fun clean() = synchronized(this) {
         update()
+        unscheduleUpdateLocked()
         records.clear()
     }
 }
