@@ -12,11 +12,8 @@ open class Event0 : ConcurrentHashMap<Any, () -> Unit>() {
 }
 
 class StickyEvent0 : Event0() {
-    override fun put(key: Any, value: () -> Unit): (() -> Unit)? {
-        val result = super.put(key, value)
-        if (result == null) value()
-        return result
-    }
+    override fun put(key: Any, value: () -> Unit): (() -> Unit)? =
+            super.put(key, value).also { if (it == null) value() }
 }
 
 open class Event1<T> : ConcurrentHashMap<Any, (T) -> Unit>() {
@@ -26,9 +23,12 @@ open class Event1<T> : ConcurrentHashMap<Any, (T) -> Unit>() {
 }
 
 class StickyEvent1<T>(private val fire: () -> T) : Event1<T>() {
-    override fun put(key: Any, value: (T) -> Unit): ((T) -> Unit)? {
-        val result = super.put(key, value)
-        if (result == null) value(fire())
-        return result
+    override fun put(key: Any, value: (T) -> Unit): ((T) -> Unit)? =
+            super.put(key, value).also { if (it == null) value(fire()) }
+}
+
+open class Event2<T1, T2> : ConcurrentHashMap<Any, (T1, T2) -> Unit>() {
+    operator fun invoke(arg1: T1, arg2: T2) {
+        for ((_, handler) in this) handler(arg1, arg2)
     }
 }

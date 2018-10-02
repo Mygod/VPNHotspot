@@ -90,7 +90,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
     var tetheringBinder: TetheringService.Binder? = null
     val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        val extras = intent.extras!!
+        val extras = intent.extras ?: return@broadcastReceiver
         adapter.update(TetheringManager.getTetheredIfaces(extras),
                 TetheringManager.getLocalOnlyTetheredIfaces(extras),
                 extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER)!!)

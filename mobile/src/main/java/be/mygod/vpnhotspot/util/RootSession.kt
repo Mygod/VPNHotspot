@@ -1,17 +1,21 @@
 package be.mygod.vpnhotspot.util
 
+import android.os.Handler
+import android.os.HandlerThread
 import androidx.core.os.postDelayed
-import be.mygod.vpnhotspot.App.Companion.app
 import com.topjohnwu.superuser.Shell
 import timber.log.Timber
 import java.util.*
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.collections.ArrayList
 import kotlin.concurrent.withLock
 
 class RootSession : AutoCloseable {
     companion object {
-        //private const val TAG = "RootSession"
+        private const val TAG = "RootSession"
+
+        val handler = Handler(HandlerThread("$TAG-HandlerThread").apply { start() }.looper)
 
         private val monitor = ReentrantLock()
         private fun onUnlock() {
@@ -71,8 +75,10 @@ class RootSession : AutoCloseable {
         shell.close()
         if (instance == this) instance = null
     }
-    private fun startTimeout() = app.handler.postDelayed(60 * 1000, this) { monitor.withLock { close() } }
-    private fun haltTimeout() = app.handler.removeCallbacksAndMessages(this)
+    private fun startTimeout() = handler.postDelayed(TimeUnit.MINUTES.toMillis(5), this) {
+        monitor.withLock { close() }
+    }
+    private fun haltTimeout() = handler.removeCallbacksAndMessages(this)
 
     /**
      * Don't care about the results, but still sync.
@@ -97,11 +103,12 @@ class RootSession : AutoCloseable {
         }).exec()
     }
     fun exec(command: String) = checkOutput(command, execQuiet(command))
-    fun execOut(command: String): String {
+    fun execOutUnjoined(command: String): List<String> {
         val result = execQuiet(command)
         checkOutput(command, result, false)
-        return result.out.joinToString("\n")
+        return result.out
     }
+    fun execOut(command: String): String = execOutUnjoined(command).joinToString("\n")
 
     /**
      * This transaction is different from what you may have in mind since you can revert it after committing it.

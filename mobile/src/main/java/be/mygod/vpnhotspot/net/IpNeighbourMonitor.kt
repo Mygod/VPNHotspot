@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.debugLog
+import java.net.InetAddress
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
@@ -31,7 +32,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
     }
 
     private var updatePosted = false
-    val neighbours = HashMap<String, IpNeighbour>()
+    private val neighbours = HashMap<InetAddress, IpNeighbour>()
 
     override val monitoredObject: String get() = "neigh"
 

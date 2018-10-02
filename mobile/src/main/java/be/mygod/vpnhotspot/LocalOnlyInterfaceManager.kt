@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.content.Context
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
@@ -8,7 +9,7 @@ import timber.log.Timber
 import java.net.InetAddress
 import java.net.InterfaceAddress
 
-class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callback {
+class LocalOnlyInterfaceManager(private val owner: Context, val downstream: String) : UpstreamMonitor.Callback {
     private var routing: Routing? = null
     private var dns = emptyList<InetAddress>()
 
@@ -32,7 +33,7 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
 
     private fun clean() {
         val routing = routing ?: return
-        routing.started = false
+        routing.stop()
         initRouting(routing.upstream, routing.hostAddress, dns)
     }
 
@@ -40,22 +41,19 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
                             dns: List<InetAddress> = this.dns) {
         this.dns = dns
         try {
-            this.routing = Routing(upstream, downstream, owner).apply {
+            routing = Routing(this.owner, upstream, downstream, owner, app.strict).apply {
                 try {
-                    val strict = app.strict
-                    if (strict && upstream == null) return@apply    // in this case, nothing to be done
                     if (app.dhcpWorkaround) dhcpWorkaround()
                     ipForward()                                     // local only interfaces need to enable ip_forward
                     rule()
-                    forward(strict)
-                    if (app.masquerade) masquerade(strict)
+                    forward()
+                    if (app.masquerade) masquerade()
                     dnsRedirect(dns)
+                    commit()
                 } catch (e: Exception) {
                     revert()
                     throw e
-                } finally {
-                    commit()
-                }
+                }   // otw nothing needs to be done
             }
         } catch (e: Exception) {
             SmartSnackbar.make(e.localizedMessage).show()

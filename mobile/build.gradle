@@ -16,6 +16,11 @@ android {
         versionCode 36
         versionName "1.4.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
     }
     buildTypes {
         debug {
@@ -36,6 +41,7 @@ android {
         fdroid {
             dimension "type"
         }
+
         google {
             dimension "gms"
             buildConfigField "boolean", "DONATIONS", "false"
@@ -48,20 +54,23 @@ android {
 }
 
 dependencies {
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    kapt "androidx.room:room-compiler:$roomVersion"
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "androidx.browser:browser:$androidxVersion"
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
     implementation "androidx.core:core-ktx:$androidxVersion"
     implementation "androidx.preference:preference:$androidxVersion"
+    implementation "androidx.room:room-runtime:$roomVersion"
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.github.topjohnwu:libsu:2.0.2'
     implementation "com.google.android.material:material:$androidxVersion"
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
-    implementation 'com.takisoft.preferencex:preferencex:1.0.0-alpha2'
+    implementation 'com.takisoft.preferencex:preferencex:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
-    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
     baseImplementation 'com.android.billingclient:billing:1.1'
+    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
+    testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.1.0-alpha4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-alpha4'

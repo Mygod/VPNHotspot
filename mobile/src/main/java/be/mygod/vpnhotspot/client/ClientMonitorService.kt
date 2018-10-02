@@ -21,7 +21,7 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
 
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        val extras = intent.extras!!
+        val extras = intent.extras ?: return@broadcastReceiver
         tetheredInterfaces = TetheringManager.getTetheredIfaces(extras).toSet() +
                 TetheringManager.getLocalOnlyTetheredIfaces(extras)
         populateClients()

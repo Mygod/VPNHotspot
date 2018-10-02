@@ -57,6 +57,22 @@
     <string name="connected_state_valid">%s (已连上)</string>
     <string name="connected_state_failed">%s (已断开)</string>
 
+    <string name="clients_popup_nickname">昵称…</string>
+    <string name="clients_popup_block">拉黑</string>
+    <string name="clients_popup_unblock">洗白</string>
+    <string name="clients_popup_stats">流量…</string>
+    <string name="clients_nickname_title">%s 的昵称</string>
+    <string name="clients_stats_title">%s 的流量</string>
+    <plurals name="clients_stats_message_1">
+        <item quantity="other">自 %2$s 以来连了 %1$s 次</item>
+    </plurals>
+    <plurals name="clients_stats_message_2">
+        <item quantity="other">上传 %1$s 个包，%2$s</item>
+    </plurals>
+    <plurals name="clients_stats_message_3">
+        <item quantity="other">下载 %1$s 个包，%2$s</item>
+    </plurals>
+
     <string name="settings_upstream">上游</string>
     <string name="settings_downstream">下游</string>
     <string name="settings_service_masquerade">IP 掩蔽</string>

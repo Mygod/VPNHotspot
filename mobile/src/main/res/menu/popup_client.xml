@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nickname"
+          android:title="@string/clients_popup_nickname"/>
+    <item android:id="@+id/block"
+          android:title="@string/clients_popup_block"/>
+    <item android:id="@+id/unblock"
+          android:title="@string/clients_popup_unblock"/>
+    <item android:id="@+id/stats"
+          android:title="@string/clients_popup_stats"/>
+</menu>
