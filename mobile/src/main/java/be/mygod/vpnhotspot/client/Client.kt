@@ -5,6 +5,7 @@ import android.text.Spanned
 import android.text.format.Formatter
 import android.text.style.StrikethroughSpan
 import androidx.databinding.BaseObservable
+import androidx.databinding.Bindable
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -35,12 +36,12 @@ abstract class Client : BaseObservable() {
     var receiveRate = -1L
 
     open val icon get() = TetherType.ofInterface(iface).icon
-    val title by lazy {
+    val title: CharSequence get() {
         val result = SpannableStringBuilder(record.nickname.onEmpty(macIface))
         if (record.blocked) result.setSpan(StrikethroughSpan(), 0, result.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-        result
+        return result
     }
-    val description: String get() {
+    val description: String @Bindable get() {
         val result = StringBuilder(if (record.nickname.isEmpty()) "" else "$macIface\n")
         ip.entries.forEach { (ip, state) ->
             result.appendln(app.getString(when (state) {
@@ -51,7 +52,7 @@ abstract class Client : BaseObservable() {
             }, ip.hostAddress))
         }
         if (sendRate >= 0 && receiveRate >= 0) result.appendln(
-                "▲ ${Formatter.formatFileSize(app, sendRate)}\t\t▼ ${Formatter.formatFileSize(app, receiveRate)}")
+                "▲ ${Formatter.formatFileSize(app, sendRate)}/s\t\t▼ ${Formatter.formatFileSize(app, receiveRate)}/s")
         return result.toString().trimEnd()
     }
 

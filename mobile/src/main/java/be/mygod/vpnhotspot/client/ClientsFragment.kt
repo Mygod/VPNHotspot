@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
+import be.mygod.vpnhotspot.BR
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
@@ -160,7 +161,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
                 }
                 client.sendRate = (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
                 client.receiveRate = (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
-                client.notifyChange()
+                client.notifyPropertyChanged(BR.description)
             }
         }
     }
