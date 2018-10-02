@@ -42,13 +42,13 @@ android {
             dimension "type"
         }
 
-        google {
-            dimension "gms"
-            buildConfigField "boolean", "DONATIONS", "false"
-        }
         freedom {
             dimension "gms"
             buildConfigField "boolean", "DONATIONS", "true"
+        }
+        google {
+            dimension "gms"
+            buildConfigField "boolean", "DONATIONS", "false"
         }
     }
 }
