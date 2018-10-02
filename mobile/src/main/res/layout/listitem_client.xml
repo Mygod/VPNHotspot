@@ -11,6 +11,8 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:focusable="true"
+        android:background="?android:attr/selectableItemBackground"
         android:padding="16dp">
 
         <ImageView
@@ -32,15 +34,15 @@
             android:orientation="vertical">
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{client.title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
-                android:textIsSelectable="true"
+                android:textIsSelectable="@{client.record.nickname.length() == 0}"
                 tools:text="01:23:45:ab:cd:ef%p2p-p2p0-0"/>
 
             <TextView
-                android:layout_width="match_parent"
+                android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
                 android:textIsSelectable="true"

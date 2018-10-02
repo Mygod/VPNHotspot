@@ -238,7 +238,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private fun doStart(group: WifiP2pGroup) {
         this.group = group
         check(routingManager == null)
-        routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
+        routingManager = LocalOnlyInterfaceManager(this, group.`interface`!!)
         status = Status.ACTIVE
         showNotification(group)
     }

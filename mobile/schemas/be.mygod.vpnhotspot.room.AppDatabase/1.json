@@ -1,0 +1,146 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "4687ed591fd62dcfddd2b6eb990ba1a0",
+    "entities": [
+      {
+        "tableName": "ClientRecord",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mac` INTEGER NOT NULL, `nickname` BLOB NOT NULL, `blocked` INTEGER NOT NULL, PRIMARY KEY(`mac`))",
+        "fields": [
+          {
+            "fieldPath": "mac",
+            "columnName": "mac",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nickname",
+            "columnName": "nickname",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blocked",
+            "columnName": "blocked",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "mac"
+          ],
+          "autoGenerate": false
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "TrafficRecord",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `timestamp` INTEGER NOT NULL, `mac` INTEGER NOT NULL, `ip` BLOB NOT NULL, `upstream` TEXT, `downstream` TEXT NOT NULL, `sentPackets` INTEGER NOT NULL, `sentBytes` INTEGER NOT NULL, `receivedPackets` INTEGER NOT NULL, `receivedBytes` INTEGER NOT NULL, `previousId` INTEGER, FOREIGN KEY(`previousId`) REFERENCES `TrafficRecord`(`id`) ON UPDATE RESTRICT ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mac",
+            "columnName": "mac",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ip",
+            "columnName": "ip",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "upstream",
+            "columnName": "upstream",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "downstream",
+            "columnName": "downstream",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentPackets",
+            "columnName": "sentPackets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sentBytes",
+            "columnName": "sentBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedPackets",
+            "columnName": "receivedPackets",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedBytes",
+            "columnName": "receivedBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "previousId",
+            "columnName": "previousId",
+            "affinity": "INTEGER",
+            "notNull": false
+          }
+        ],
+        "primaryKey": {
+          "columnNames": [
+            "id"
+          ],
+          "autoGenerate": true
+        },
+        "indices": [
+          {
+            "name": "index_TrafficRecord_previousId",
+            "unique": true,
+            "columnNames": [
+              "previousId"
+            ],
+            "createSql": "CREATE UNIQUE INDEX `index_TrafficRecord_previousId` ON `${TABLE_NAME}` (`previousId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "TrafficRecord",
+            "onDelete": "CASCADE",
+            "onUpdate": "RESTRICT",
+            "columns": [
+              "previousId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \"4687ed591fd62dcfddd2b6eb990ba1a0\")"
+    ]
+  }
+}

@@ -14,7 +14,7 @@ abstract class UpstreamMonitor {
 
         private fun generateMonitor(): UpstreamMonitor {
             val upstream = app.pref.getString(KEY, null)
-            return if (upstream.isNullOrEmpty()) VpnMonitor else InterfaceMonitor(upstream)
+            return if (upstream.isNullOrEmpty()) VpnMonitor else InterfaceMonitor(upstream!!)
         }
         private var monitor = generateMonitor()
 

@@ -4,8 +4,9 @@ apply plugin: 'com.github.ben-manes.versions'
 
 buildscript {
     ext {
-        kotlinVersion = '1.2.70'
-        androidxVersion = '1.0.0-rc02'
+        kotlinVersion = '1.2.71'
+        androidxVersion = '1.0.0'
+        roomVersion = '2.0.0'
     }
     repositories {
         google()
@@ -15,10 +16,10 @@ buildscript {
         }
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:3.2.0-rc03"
+        classpath "com.android.tools.build:gradle:3.2.0"
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.20.0'
         classpath 'com.google.gms:google-services:4.1.0'
-        classpath 'io.fabric.tools:gradle:1.25.4'
+        classpath 'io.fabric.tools:gradle:1.26.1'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
     }
 }

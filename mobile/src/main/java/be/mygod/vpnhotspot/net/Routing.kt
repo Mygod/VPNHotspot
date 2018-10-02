@@ -1,10 +1,21 @@
 package be.mygod.vpnhotspot.net
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Build
+import android.os.IBinder
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.client.Client
+import be.mygod.vpnhotspot.client.ClientMonitorService
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.debugLog
+import be.mygod.vpnhotspot.util.stopAndUnbind
+import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.crashlytics.android.Crashlytics
 import java.net.*
 
 /**
@@ -12,7 +23,8 @@ import java.net.*
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(val upstream: String?, private val downstream: String, ownerAddress: InterfaceAddress? = null) {
+class Routing(private val owner: Context, val upstream: String?, private val downstream: String,
+              ownerAddress: InterfaceAddress? = null, private val strict: Boolean = true) : ServiceConnection {
     companion object {
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -22,16 +34,19 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
          */
         private val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
 
-        fun clean() = RootSession.use {
-            it.submit("$IPTABLES -t nat -F PREROUTING")
-            it.submit("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
-            it.submit("$IPTABLES -F vpnhotspot_fwd")
-            it.submit("$IPTABLES -X vpnhotspot_fwd")
-            it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-            it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
-            it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
-            it.submit("while ip rule del priority 17900; do done")
-            it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
+        fun clean() {
+            TrafficRecorder.clean()
+            RootSession.use {
+                it.submit("$IPTABLES -t nat -F PREROUTING")
+                it.submit("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
+                it.submit("$IPTABLES -F vpnhotspot_fwd")
+                it.submit("$IPTABLES -X vpnhotspot_fwd")
+                it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
+                it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
+                it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
+                it.submit("while ip rule del priority 17900; do done")
+                it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
+            }
         }
 
         fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
@@ -47,7 +62,8 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.interfaceAddresses?.asSequence()
             ?.singleOrNull { it.address is Inet4Address } ?: throw InterfaceNotFoundException()
     private val transaction = RootSession.beginTransaction()
-    var started = false
+    private val subroutes = HashMap<InetAddress, Subroute>()
+    private var clients: ClientMonitorService.Binder? = null
 
     fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
 
@@ -68,25 +84,14 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
         }
     }
 
-    fun forward(strict: Boolean = true) {
+    fun forward() {
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
-        if (strict) {
-            if (upstream != null) {
-                transaction.iptablesAdd("vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                transaction.iptablesAdd("vpnhotspot_fwd -i $downstream -o $upstream -j ACCEPT")
-            }   // else nothing needs to be done
-        } else {
-            // for not strict mode, allow downstream packets to be redirected to anywhere
-            // because we don't wanna keep track of default network changes
-            transaction.iptablesAdd("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j ACCEPT")
-            transaction.iptablesAdd("vpnhotspot_fwd -i $downstream -j ACCEPT")
-        }
+        transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j DROP")   // ensure blocking works
+        // the real forwarding filters will be added in Subroute when clients are connected
     }
 
-    fun overrideSystemRules() = transaction.iptablesAdd("vpnhotspot_fwd -i $downstream -j DROP")
-
-    fun masquerade(strict: Boolean = true) {
+    fun masquerade() {
         val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
         transaction.execQuiet("$IPTABLES -t nat -N vpnhotspot_masquerade")
         transaction.iptablesInsert("POSTROUTING -j vpnhotspot_masquerade", "nat")
@@ -119,6 +124,77 @@ class Routing(val upstream: String?, private val downstream: String, ownerAddres
     fun dhcpWorkaround() = transaction.exec("ip rule add iif lo uidrange 0-0 lookup local_network priority 11000",
             "ip rule del iif lo uidrange 0-0 lookup local_network priority 11000")
 
-    fun commit() = transaction.commit()
-    fun revert() = transaction.revert()
+    fun commit() {
+        transaction.commit()
+        owner.bindService(Intent(owner, ClientMonitorService::class.java), this, Context.BIND_AUTO_CREATE)
+    }
+    fun revert() {
+        stop()
+        synchronized(subroutes) { subroutes.forEach { (_, subroute) -> subroute.close() } }
+        transaction.revert()
+    }
+
+    /**
+     * Only unregister client listener. This should only be used when a clean has just performed.
+     */
+    fun stop() = owner.stopAndUnbind(this)
+
+    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+        clients = service as ClientMonitorService.Binder
+        service.clientsChanged[this] = {
+            synchronized(subroutes) {
+                val toRemove = HashSet(subroutes.keys)
+                for (client in it) if (!client.record.blocked) updateForClient(client, toRemove)
+                for (address in toRemove) subroutes.remove(address)!!.close()
+            }
+        }
+    }
+    override fun onServiceDisconnected(name: ComponentName?) {
+        val clients = clients ?: return
+        clients.clientsChanged -= this
+        this.clients = null
+    }
+
+    private fun updateForClient(client: Client, toRemove: HashSet<InetAddress>? = null) {
+        for ((ip, _) in client.ip) if (ip is Inet4Address) {
+            toRemove?.remove(ip)
+            try {
+                subroutes.computeIfAbsentCompat(ip) { Subroute(ip, client) }
+            } catch (e: Exception) {
+                Crashlytics.logException(e)
+                e.printStackTrace()
+                SmartSnackbar.make(e.localizedMessage).show()
+            }
+        }
+    }
+
+    private inner class Subroute(private val ip: Inet4Address, client: Client) : AutoCloseable {
+        private val transaction = RootSession.beginTransaction().apply {
+            try {
+                val address by lazy { ip.hostAddress }
+                if (!strict) {
+                    // otw allow downstream packets to be redirected to anywhere
+                    // because we don't wanna keep track of default network changes
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
+                    iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                } else if (upstream != null) {
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
+                    iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                }   // else nothing needs to be done
+                commit()
+            } catch (e: Exception) {
+                revert()
+                throw e
+            }
+        }
+
+        init {
+            TrafficRecorder.register(ip, if (strict) upstream else null, downstream, client.mac)
+        }
+
+        override fun close() {
+            TrafficRecorder.unregister(ip, downstream)
+            transaction.revert()
+        }
+    }
 }

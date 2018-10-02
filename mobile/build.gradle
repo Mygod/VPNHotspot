@@ -4,7 +4,7 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
 android {
-    buildToolsVersion "28.0.2"
+    buildToolsVersion "28.0.3"
     compileSdkVersion 28
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
@@ -14,6 +14,11 @@ android {
         versionCode 36
         versionName "1.4.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        javaCompileOptions {
+            annotationProcessorOptions {
+                arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
+            }
+        }
     }
     buildTypes {
         debug {
@@ -40,19 +45,22 @@ android {
 }
 
 dependencies {
+    kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "androidx.browser:browser:$androidxVersion"
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
     implementation "androidx.core:core-ktx:$androidxVersion"
     implementation "androidx.preference:preference:$androidxVersion"
+    implementation "androidx.room:room-runtime:$roomVersion"
     implementation 'com.android.billingclient:billing:1.1'
     implementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.github.topjohnwu:libsu:2.0.2'
     implementation "com.google.android.material:material:$androidxVersion"
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
-    implementation 'com.takisoft.preferencex:preferencex:1.0.0-alpha2'
+    implementation 'com.takisoft.preferencex:preferencex:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
+    testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.1.0-alpha4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-alpha4'
