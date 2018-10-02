@@ -157,11 +157,11 @@ class ClientsFragment : Fragment(), ServiceConnection {
                     check(newRecord.sentBytes == oldRecord.sentBytes)
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
-                    continue
+                } else {
+                    client.sendRate = (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
+                    client.receiveRate = (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
+                    client.notifyPropertyChanged(BR.description)
                 }
-                client.sendRate = (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
-                client.receiveRate = (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
-                client.notifyPropertyChanged(BR.description)
             }
         }
     }

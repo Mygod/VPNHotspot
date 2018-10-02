@@ -89,12 +89,8 @@ data class ClientStats(
     override fun describeContents() = 0
 
     companion object CREATOR : Parcelable.Creator<ClientStats> {
-        override fun createFromParcel(parcel: Parcel): ClientStats {
-            return ClientStats(parcel)
-        }
+        override fun createFromParcel(parcel: Parcel) = ClientStats(parcel)
 
-        override fun newArray(size: Int): Array<ClientStats?> {
-            return arrayOfNulls(size)
-        }
+        override fun newArray(size: Int) = arrayOfNulls<ClientStats>(size)
     }
 }

@@ -54,7 +54,6 @@ fun NetworkInterface.formatAddresses() =
                 }))
                 .joinToString("\n")
 
-
 private val parseNumericAddress by lazy {
     // parseNumericAddressNoThrow is in dark grey list unfortunately
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
