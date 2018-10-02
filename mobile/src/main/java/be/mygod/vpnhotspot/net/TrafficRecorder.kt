@@ -88,13 +88,21 @@ object TrafficRecorder {
                                     ip = ip,
                                     upstream = upstream,
                                     downstream = downstream,
+                                    sentPackets = -1,
+                                    sentBytes = -1,
+                                    receivedPackets = -1,
+                                    receivedBytes = -1,
                                     previousId = oldRecord.id)
                             if (isReceive) {
-                                record.receivedPackets = columns[0].toLong()
-                                record.receivedBytes = columns[1].toLong()
+                                if (record.receivedPackets == -1L && record.receivedBytes == -1L) {
+                                    record.receivedPackets = columns[0].toLong()
+                                    record.receivedBytes = columns[1].toLong()
+                                }
                             } else {
-                                record.sentPackets = columns[0].toLong()
-                                record.sentBytes = columns[1].toLong()
+                                if (record.sentPackets == -1L && record.sentBytes == -1L) {
+                                    record.sentPackets = columns[0].toLong()
+                                    record.sentBytes = columns[1].toLong()
+                                }
                             }
                             if (oldRecord.id != null) {
                                 check(records.put(key, record) == oldRecord)
@@ -109,7 +117,13 @@ object TrafficRecorder {
                     Crashlytics.logException(e)
                 }
             }
-            for ((_, record) in records) if (record.id == null) AppDatabase.instance.trafficRecordDao.insert(record)
+            for ((_, record) in records) if (record.id == null) {
+                check(record.sentPackets >= 0)
+                check(record.sentBytes >= 0)
+                check(record.receivedPackets >= 0)
+                check(record.receivedBytes >= 0)
+                AppDatabase.instance.trafficRecordDao.insert(record)
+            }
             foregroundListeners(records.values, oldRecords)
             scheduleUpdateLocked()
         }
