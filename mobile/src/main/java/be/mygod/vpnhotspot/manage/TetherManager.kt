@@ -24,7 +24,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
@@ -51,21 +51,18 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                         "package:${mainActivity.packageName}".toUri()))
                 return
-            } catch (exc: ActivityNotFoundException) {
-                exc.printStackTrace()
-                Crashlytics.logException(exc)
+            } catch (e: ActivityNotFoundException) {
+                Timber.w(e)
             }
             val started = manager.isStarted
             try {
                 if (started) manager.stop() else manager.start()
             } catch (e: IOException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
                 ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 var cause: Throwable? = e
                 while (cause != null) {
                     cause = cause.cause
@@ -125,7 +122,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: InvocationTargetException) {
-                Crashlytics.logException(e)
+                Timber.w(e)
                 e.localizedMessage
             }
         }
@@ -171,8 +168,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             try {
                 BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
             } catch (e: SecurityException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }

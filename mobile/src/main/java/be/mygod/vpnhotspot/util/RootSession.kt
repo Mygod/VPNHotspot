@@ -2,10 +2,9 @@ package be.mygod.vpnhotspot.util
 
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Log
 import androidx.core.os.postDelayed
-import com.crashlytics.android.Crashlytics
 import com.topjohnwu.superuser.Shell
+import timber.log.Timber
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
@@ -86,11 +85,11 @@ class RootSession : AutoCloseable {
      */
     fun submit(command: String) {
         val result = execQuiet(command)
-        if (result.code != 0) Crashlytics.log(Log.VERBOSE, TAG, "$command exited with ${result.code}")
+        if (result.code != 0) Timber.v("$command exited with ${result.code}")
         var msg = result.err.joinToString("\n").trim()
-        if (msg.isNotEmpty()) Crashlytics.log(Log.VERBOSE, TAG, msg)
+        if (msg.isNotEmpty()) Timber.v(msg)
         msg = result.out.joinToString("\n").trim()
-        if (msg.isNotEmpty()) Crashlytics.log(Log.VERBOSE, TAG, msg)
+        if (msg.isNotEmpty()) Timber.v(msg)
     }
 
     fun execQuiet(command: String, redirect: Boolean = false): Shell.Result {

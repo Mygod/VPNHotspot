@@ -25,7 +25,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.NetworkInterface
 
 @TargetApi(26)
@@ -60,9 +60,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                     Toast.makeText(view.context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     try {
                         view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                    } catch (exc: ActivityNotFoundException) {
-                        exc.printStackTrace()
-                        Crashlytics.logException(exc)
+                    } catch (e: ActivityNotFoundException) {
+                        Timber.w(e)
                     }
                     return
                 }

@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot
 
 import android.os.Bundle
-import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,7 +14,7 @@ import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import com.android.billingclient.api.*
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 
 /**
  * Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/java/org/sufficientlysecure/donations/DonationsFragment.java
@@ -23,7 +22,6 @@ import com.crashlytics.android.Crashlytics
 class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
         SkuDetailsResponseListener, ConsumeResponseListener {
     companion object {
-        private const val TAG = "EBegFragment"
         private const val KEY_TITLE = "title"
         private const val KEY_MESSAGE = "message"
     }
@@ -80,6 +78,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         billingClient = BillingClient.newBuilder(context ?: return).setListener(this).build()
                 .also { it.startConnection(this) }
     }
+
     override fun onBillingSetupFinished(responseCode: Int) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             billingClient.querySkuDetailsAsync(
@@ -88,24 +87,25 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                                 "donate100", "donate200", "donatemax"))
                         setType(BillingClient.SkuType.INAPP)
                     }.build(), this)
-        } else Crashlytics.log(Log.ERROR, TAG, "onBillingSetupFinished: $responseCode")
+        } else Timber.e("onBillingSetupFinished: $responseCode")
     }
 
     override fun onSkuDetailsResponse(responseCode: Int, skuDetailsList: MutableList<SkuDetails>?) {
         if (responseCode == BillingClient.BillingResponse.OK) skus = skuDetailsList
-        else Crashlytics.log(Log.ERROR, TAG, "onSkuDetailsResponse: $responseCode")
+        else Timber.e("onSkuDetailsResponse: $responseCode")
     }
 
     override fun onPurchasesUpdated(responseCode: Int, purchases: MutableList<Purchase>?) {
         if (responseCode == BillingClient.BillingResponse.OK && purchases != null) {
             // directly consume in-app purchase, so that people can donate multiple times
             purchases.forEach { billingClient.consumeAsync(it.purchaseToken, this) }
-        } else Crashlytics.log(Log.ERROR, TAG, "onPurchasesUpdated: $responseCode")
+        } else Timber.e("onPurchasesUpdated: $responseCode")
     }
+
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             openDialog(R.string.donations__thanks_dialog_title, R.string.donations__thanks_dialog)
             dismissAllowingStateLoss()
-        } else Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
+        } else Timber.e("onConsumeResponse: $responseCode")
     }
 }

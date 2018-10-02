@@ -22,7 +22,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
@@ -33,7 +33,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     enum class Status {
         IDLE, STARTING, ACTIVE
     }
-    private class Failure(message: String) : RuntimeException(message)
+    private class Failure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
     inner class Binder : android.os.Binder() {
         val service get() = this@RepeaterService
@@ -79,8 +79,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     if (it.size == 1) group = it.single()
                 }
             } catch (e: ReflectiveOperationException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }
@@ -124,7 +123,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
             else -> getString(R.string.failure_reason_unknown, reason)
         })
-        Crashlytics.logException(Failure(result))
+        Timber.i(Failure(result))
         return result
     }
 
@@ -134,9 +133,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             p2pManager = getSystemService()!!
             onChannelDisconnected()
             app.pref.registerOnSharedPreferenceChangeListener(this)
-        } catch (exc: RuntimeException) {
-            exc.printStackTrace()
-            Crashlytics.logException(exc)
+        } catch (e: RuntimeException) {
+            Timber.w(e)
         }
     }
 
@@ -154,10 +152,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (oc != 0) {
             val message = getString(R.string.repeater_set_oc_failure, e.message)
             SmartSnackbar.make(message).show()
-            Crashlytics.logException(Failure(message))
-        }
-        e.printStackTrace()
-        Crashlytics.logException(e)
+            Timber.w(Failure(message, e))
+        } else Timber.w(e)
     }
 
     override fun onChannelDisconnected() {
@@ -179,8 +175,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val out = try {
             RootSession.use { it.execOut("dumpsys ${Context.WIFI_P2P_SERVICE}") }
         } catch (e: RuntimeException) {
-            e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.w(e)
             startFailure(e.localizedMessage)
             return START_NOT_STICKY
         }
@@ -197,7 +192,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                         it == null -> doStart()
                         it.isGroupOwner -> if (routingManager == null) doStart(it)
                         else -> {
-                            Crashlytics.log(Log.INFO, TAG, "Removing old group ($it)")
+                            Timber.i("Removing old group ($it)")
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                                 override fun onSuccess() = doStart()
                                 override fun onFailure(reason: Int) {

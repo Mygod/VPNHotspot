@@ -1,8 +1,7 @@
 package be.mygod.vpnhotspot.net
 
-import android.util.Log
 import be.mygod.vpnhotspot.util.parseNumericAddressNoThrow
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
@@ -13,8 +12,6 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
     }
 
     companion object {
-        private const val TAG = "IpNeighbour"
-
         /**
          * Parser based on:
          *   https://android.googlesource.com/platform/external/iproute2/+/ad0a6a2/ip/ipneigh.c#194
@@ -28,7 +25,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
         fun parse(line: String): IpNeighbour? {
             val match = parser.matchEntire(line)
             if (match == null) {
-                if (line.isNotEmpty()) Crashlytics.log(Log.WARN, TAG, line)
+                if (line.isNotEmpty()) Timber.w(line)
                 return null
             }
             val ip = parseNumericAddressNoThrow(match.groupValues[2]) ?: return null
@@ -47,7 +44,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                     "FAILED" -> State.FAILED
                     "NOARP" -> return null  // skip
                     else -> {
-                        Crashlytics.log(Log.WARN, TAG, "Unknown state encountered: ${match.groupValues[10]}")
+                        Timber.w("Unknown state encountered: ${match.groupValues[10]}")
                         return null
                     }
                 }
@@ -73,8 +70,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
                         .toList()
             } catch (e: IOException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
             }
             return arpCache
         }

@@ -20,10 +20,10 @@ import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import q.rorbin.badgeview.QBadgeView
+import timber.log.Timber
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener, ServiceConnection {
     companion object {
@@ -38,15 +38,14 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
                 .build()
     }
+
     fun launchUrl(url: Uri) = try {
         customTabsIntent.launchUrl(this, url)
     } catch (e: ActivityNotFoundException) {
-        e.printStackTrace()
-        Crashlytics.logException(e)
+        Timber.w(e)
         SmartSnackbar.make(url.toString()).show()
     } catch (e: SecurityException) {
-        e.printStackTrace()
-        Crashlytics.logException(e)
+        Timber.w(e)
         SmartSnackbar.make(url.toString()).show()
     }
 

@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
+import androidx.fragment.app.DialogFragment
 import androidx.preference.Preference
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
@@ -16,8 +17,8 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
 import com.takisoft.preferencex.PreferenceFragmentCompat
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
@@ -39,7 +40,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 Routing.clean()
                 true
             } catch (e: RuntimeException) {
-                e.printStackTrace()
+                Timber.d(e)
                 SmartSnackbar.make(e.localizedMessage).show()
                 false
             }
@@ -58,8 +59,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     try {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
-                        e.printStackTrace(writer)
-                        Crashlytics.logException(e)
+                        Timber.w(e)
                     }
                     writer.write("\n")
                     writer.flush()
@@ -93,8 +93,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 .joinToString("\n").toByteArray())
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
-                        Crashlytics.logException(e)
                         writer.flush()
+                        Timber.i(e)
                     }
                 }
             }
@@ -111,7 +111,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {
-            EBegFragment().show(fragmentManager, "ebeg_fragment")
+            EBegFragment().apply { setStyle(DialogFragment.STYLE_NO_TITLE, 0) }.show(fragmentManager, "EBegFragment")
             true
         }
     }
@@ -125,8 +125,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                     .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
                                     .map { it.name }.sorted().toList().toTypedArray()
                         } catch (e: SocketException) {
-                            e.printStackTrace()
-                            Crashlytics.logException(e)
+                            Timber.w(e)
                             emptyArray<String>()
                         })))
         else -> super.onDisplayPreferenceDialog(preference)

@@ -14,8 +14,6 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.RootSession
-import com.crashlytics.android.Crashlytics
-import io.fabric.sdk.android.Fabric
 
 class App : Application() {
     companion object {
@@ -33,7 +31,7 @@ class App : Application() {
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
-        Fabric.with(deviceStorage, Crashlytics())
+        initTimber()
         ServiceNotification.updateNotificationChannels()
     }
 

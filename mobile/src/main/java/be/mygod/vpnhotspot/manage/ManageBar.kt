@@ -10,7 +10,7 @@ import androidx.databinding.BaseObservable
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemManageBinding
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 
 object ManageBar : Manager() {
     object Data : BaseObservable() {
@@ -51,14 +51,11 @@ object ManageBar : Manager() {
         try {
             context.startActivity(Intent()
                     .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
-            e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.w(e)
         } catch (e: ActivityNotFoundException) {
-            e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.w(e)
         } catch (e: SecurityException) {
-            e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.w(e)
         }
     }
 }

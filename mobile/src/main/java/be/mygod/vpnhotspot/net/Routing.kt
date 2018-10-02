@@ -10,12 +10,12 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientMonitorService
+import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
-import be.mygod.vpnhotspot.util.debugLog
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.*
 
 /**
@@ -165,8 +165,7 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
             try {
                 subroutes.computeIfAbsentCompat(ip) { Subroute(ip, client) }
             } catch (e: Exception) {
-                Crashlytics.logException(e)
-                e.printStackTrace()
+                Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }

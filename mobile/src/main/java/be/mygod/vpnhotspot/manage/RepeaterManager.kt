@@ -24,7 +24,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -47,8 +47,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
             } catch (e: SocketException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 ""
             }
         }
@@ -174,8 +173,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
                 app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
             } catch (e: RuntimeException) {
-                e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
             DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()

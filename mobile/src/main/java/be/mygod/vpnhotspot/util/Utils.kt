@@ -11,7 +11,7 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -27,11 +27,6 @@ fun Long.toPluralInt(): Int {
 }
 
 fun CharSequence?.onEmpty(otherwise: CharSequence): CharSequence = if (isNullOrEmpty()) otherwise else this!!
-
-fun debugLog(tag: String?, message: String?) {
-    if (BuildConfig.DEBUG) Log.d(tag, message)
-    Crashlytics.log("$tag: $message")
-}
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
@@ -58,8 +53,7 @@ fun NetworkInterface.formatAddresses() =
                 listOfNotNull(try {
                     hardwareAddress?.joinToString(":") { "%02x".format(it) }
                 } catch (e: SocketException) {
-                    e.printStackTrace()
-                    Crashlytics.logException(e)
+                    Timber.w(e)
                     null
                 }))
                 .joinToString("\n")
@@ -85,7 +79,7 @@ fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = fals
     val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
     thread.setUncaughtExceptionHandler { _, e ->
         SmartSnackbar.make(R.string.noisy_su_failure).show()
-        Crashlytics.logException(e)
+        Timber.w(e)
     }
     if (start) thread.start()
     return thread
