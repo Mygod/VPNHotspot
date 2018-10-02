@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.room
 import android.os.Parcel
 import android.text.TextUtils
 import androidx.room.TypeConverter
+import java.net.InetAddress
 
 class Converters {
     @TypeConverter
@@ -27,4 +28,10 @@ class Converters {
             p.recycle()
         }
     }
+
+    @TypeConverter
+    fun persistInetAddress(address: InetAddress): ByteArray = address.address
+
+    @TypeConverter
+    fun unpersistInetAddress(data: ByteArray): InetAddress = InetAddress.getByAddress(data)
 }

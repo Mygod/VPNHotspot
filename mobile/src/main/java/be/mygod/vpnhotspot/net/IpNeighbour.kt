@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net
 
 import android.util.Log
+import be.mygod.vpnhotspot.util.parseNumericAddressNoThrow
 import com.crashlytics.android.Crashlytics
 import java.io.File
 import java.io.IOException
@@ -13,18 +14,6 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
 
     companion object {
         private const val TAG = "IpNeighbour"
-
-        private val parseNumericAddress by lazy {
-            // parseNumericAddressNoThrow is in dark grey list unfortunately
-            InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
-                isAccessible = true
-            }
-        }
-        private fun parseNumericAddressNoThrow(address: String): InetAddress? = try {
-            parseNumericAddress.invoke(null, address) as InetAddress?
-        } catch (_: IllegalArgumentException) {
-            null
-        }
 
         /**
          * Parser based on:

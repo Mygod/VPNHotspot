@@ -6,7 +6,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import be.mygod.vpnhotspot.App.Companion.app
 
-@Database(entities = [ClientRecord::class], version = 1)
+@Database(entities = [ClientRecord::class, TrafficRecord::class], version = 1)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     companion object {
@@ -20,4 +20,5 @@ abstract class AppDatabase : RoomDatabase() {
     }
 
     abstract val clientRecordDao: ClientRecord.Dao
+    abstract val trafficRecordDao: TrafficRecord.Dao
 }

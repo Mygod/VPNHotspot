@@ -34,16 +34,19 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
          */
         private val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
 
-        fun clean() = RootSession.use {
-            it.submit("$IPTABLES -t nat -F PREROUTING")
-            it.submit("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
-            it.submit("$IPTABLES -F vpnhotspot_fwd")
-            it.submit("$IPTABLES -X vpnhotspot_fwd")
-            it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-            it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
-            it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
-            it.submit("while ip rule del priority 17900; do done")
-            it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
+        fun clean() {
+            TrafficRecorder.clean()
+            RootSession.use {
+                it.submit("$IPTABLES -t nat -F PREROUTING")
+                it.submit("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
+                it.submit("$IPTABLES -F vpnhotspot_fwd")
+                it.submit("$IPTABLES -X vpnhotspot_fwd")
+                it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
+                it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
+                it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
+                it.submit("while ip rule del priority 17900; do done")
+                it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
+            }
         }
 
         fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
@@ -59,7 +62,7 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
     val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.interfaceAddresses?.asSequence()
             ?.singleOrNull { it.address is Inet4Address } ?: throw InterfaceNotFoundException()
     private val transaction = RootSession.beginTransaction()
-    private val subtransactions = HashMap<Inet4Address, RootSession.Transaction>()
+    private val subroutes = HashMap<InetAddress, Subroute>()
     private var clients: ClientMonitorService.Binder? = null
 
     fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
@@ -85,7 +88,7 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
         transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j DROP")   // ensure blocking works
-        // the real forwarding filters will be added when clients are connected
+        // the real forwarding filters will be added in Subroute when clients are connected
     }
 
     fun masquerade() {
@@ -127,7 +130,7 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
     }
     fun revert() {
         stop()
-        synchronized(subtransactions) { subtransactions.forEach { (_, transaction) -> transaction.revert() } }
+        synchronized(subroutes) { subroutes.forEach { (_, subroute) -> subroute.close() } }
         transaction.revert()
     }
 
@@ -139,10 +142,10 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         clients = service as ClientMonitorService.Binder
         service.clientsChanged[this] = {
-            synchronized(subtransactions) {
-                val toRemove = HashSet(subtransactions.keys)
+            synchronized(subroutes) {
+                val toRemove = HashSet(subroutes.keys)
                 for (client in it) if (!client.record.blocked) updateForClient(client, toRemove)
-                for (address in toRemove) subtransactions.remove(address)!!.revert()
+                for (address in toRemove) subroutes.remove(address)!!.close()
             }
         }
     }
@@ -152,31 +155,46 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
         this.clients = null
     }
 
-    private fun updateForClient(client: Client, toRemove: HashSet<Inet4Address>? = null) {
+    private fun updateForClient(client: Client, toRemove: HashSet<InetAddress>? = null) {
         for ((ip, _) in client.ip) if (ip is Inet4Address) {
-            val address by lazy { ip.hostAddress }
             toRemove?.remove(ip)
-            subtransactions.computeIfAbsentCompat(ip) {
-                RootSession.beginTransaction().apply {
-                    try {
-                        if (!strict) {
-                            // otw allow downstream packets to be redirected to anywhere
-                            // because we don't wanna keep track of default network changes
-                            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
-                            iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                        } else if (upstream != null) {
-                            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
-                            iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                        }   // else nothing needs to be done
-                        commit()
-                    } catch (e: Exception) {
-                        revert()
-                        Crashlytics.logException(e)
-                        e.printStackTrace()
-                        SmartSnackbar.make(e.localizedMessage).show()
-                    }
-                }
+            try {
+                subroutes.computeIfAbsentCompat(ip) { Subroute(ip, client) }
+            } catch (e: Exception) {
+                Crashlytics.logException(e)
+                e.printStackTrace()
+                SmartSnackbar.make(e.localizedMessage).show()
             }
+        }
+    }
+
+    private inner class Subroute(private val ip: Inet4Address, client: Client) : AutoCloseable {
+        private val transaction = RootSession.beginTransaction().apply {
+            try {
+                val address by lazy { ip.hostAddress }
+                if (!strict) {
+                    // otw allow downstream packets to be redirected to anywhere
+                    // because we don't wanna keep track of default network changes
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
+                    iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                } else if (upstream != null) {
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
+                    iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+                }   // else nothing needs to be done
+                commit()
+            } catch (e: Exception) {
+                revert()
+                throw e
+            }
+        }
+
+        init {
+            TrafficRecorder.register(ip, if (strict) upstream else null, downstream, client.mac)
+        }
+
+        override fun close() {
+            TrafficRecorder.unregister(ip, downstream)
+            transaction.revert()
         }
     }
 }

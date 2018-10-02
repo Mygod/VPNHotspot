@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.crashlytics.android.Crashlytics
+import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -52,6 +53,20 @@ fun NetworkInterface.formatAddresses() =
                     null
                 }))
                 .joinToString("\n")
+
+
+private val parseNumericAddress by lazy {
+    // parseNumericAddressNoThrow is in dark grey list unfortunately
+    InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
+        isAccessible = true
+    }
+}
+fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
+fun parseNumericAddressNoThrow(address: String): InetAddress? = try {
+    parseNumericAddress(address)
+} catch (_: IllegalArgumentException) {
+    null
+}
 
 /**
  * Wrapper for kotlin.concurrent.thread that silences uncaught exceptions.
