@@ -59,7 +59,7 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
             }
         } catch (e: Exception) {
             SmartSnackbar.make(e.localizedMessage).show()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
             routing = null
         }
     }

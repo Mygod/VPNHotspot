@@ -124,7 +124,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
             else -> getString(R.string.failure_reason_unknown, reason)
         })
-        Timber.e(Failure(result)) //Crashlytics.logException(Failure(result))
+        Timber.e(Failure(result))
         return result
     }
 
@@ -136,7 +136,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (exc: RuntimeException) {
             exc.printStackTrace()
-            Timber.e(exc) //Crashlytics.logException(exc)
+            Timber.e(exc)
         }
     }
 
@@ -154,10 +154,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (oc != 0) {
             val message = getString(R.string.repeater_set_oc_failure, e.message)
             SmartSnackbar.make(message).show()
-            Timber.e(Failure(message)) //Crashlytics.logException(Failure(message))
+            Timber.e(Failure(message))
         }
         e.printStackTrace()
-        Timber.e(e) //Crashlytics.logException(e)
+        Timber.e(e)
     }
 
     override fun onChannelDisconnected() {
@@ -180,7 +180,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             RootSession.use { it.execOut("dumpsys ${Context.WIFI_P2P_SERVICE}") }
         } catch (e: RuntimeException) {
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
             startFailure(e.localizedMessage)
             return START_NOT_STICKY
         }

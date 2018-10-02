@@ -86,7 +86,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        Timber.e(e) //Crashlytics.logException(e)
+                        Timber.e(e)
                         SmartSnackbar.make(e.localizedMessage).show()
                         iterator.remove()
                     }

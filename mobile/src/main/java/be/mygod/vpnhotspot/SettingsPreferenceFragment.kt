@@ -59,7 +59,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         e.printStackTrace(writer)
-                        Timber.e(e)//Crashlytics.logException(e)
+                        Timber.e(e)
                     }
                     writer.write("\n")
                     writer.flush()
@@ -93,7 +93,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 .joinToString("\n").toByteArray())
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
-                        Timber.e(e) //Crashlytics.logException(e)
+                        Timber.e(e)
                         writer.flush()
                     }
                 }
@@ -126,7 +126,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                     .map { it.name }.sorted().toList().toTypedArray()
                         } catch (e: SocketException) {
                             e.printStackTrace()
-                            Timber.e(e) //Crashlytics.logException(e)
+                            Timber.e(e)
                             emptyArray<String>()
                         })))
         else -> super.onDisplayPreferenceDialog(preference)

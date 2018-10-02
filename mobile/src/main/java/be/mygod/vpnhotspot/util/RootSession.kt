@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.util
 
-import android.util.Log
 import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
 import com.topjohnwu.superuser.Shell
@@ -12,7 +11,7 @@ import kotlin.concurrent.withLock
 
 class RootSession : AutoCloseable {
     companion object {
-        private const val TAG = "RootSession"
+        //private const val TAG = "RootSession"
 
         private val monitor = ReentrantLock()
         private fun onUnlock() {
@@ -82,15 +81,12 @@ class RootSession : AutoCloseable {
         val result = execQuiet(command)
 
         if (result.code != 0) Timber.v("$command exited with ${result.code}")
-            //Crashlytics.log(Log.VERBOSE, TAG, "$command exited with ${result.code}")
 
         var msg = result.err.joinToString("\n").trim()
         if (msg.isNotEmpty()) Timber.v(msg)
-            //Crashlytics.log(Log.VERBOSE, TAG, msg)
 
         msg = result.out.joinToString("\n").trim()
         if (msg.isNotEmpty()) Timber.v(msg)
-            //Crashlytics.log(Log.VERBOSE, TAG, msg)
     }
 
     fun execQuiet(command: String, redirect: Boolean = false): Shell.Result {

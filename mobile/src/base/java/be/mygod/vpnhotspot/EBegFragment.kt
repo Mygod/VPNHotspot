@@ -51,13 +51,9 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
-
         onBillingServiceDisconnected()
-
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
             val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
             if (sku == null) {
@@ -92,25 +88,25 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                                 "donate100", "donate200", "donatemax"))
                         setType(BillingClient.SkuType.INAPP)
                     }.build(), this)
-        } else Timber.e("onBillingSetupFinished: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onBillingSetupFinished: $responseCode")
+        } else Timber.e("onBillingSetupFinished: $responseCode")
     }
 
     override fun onSkuDetailsResponse(responseCode: Int, skuDetailsList: MutableList<SkuDetails>?) {
         if (responseCode == BillingClient.BillingResponse.OK) skus = skuDetailsList
-        else Timber.e("onSkuDetailsResponse: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onSkuDetailsResponse: $responseCode")
+        else Timber.e("onSkuDetailsResponse: $responseCode")
     }
 
     override fun onPurchasesUpdated(responseCode: Int, purchases: MutableList<Purchase>?) {
         if (responseCode == BillingClient.BillingResponse.OK && purchases != null) {
             // directly consume in-app purchase, so that people can donate multiple times
             purchases.forEach { billingClient.consumeAsync(it.purchaseToken, this) }
-        } else Timber.e("onPurchasesUpdated: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onPurchasesUpdated: $responseCode")
+        } else Timber.e("onPurchasesUpdated: $responseCode")
     }
 
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             openDialog(R.string.donations__thanks_dialog_title, R.string.donations__thanks_dialog)
             dismissAllowingStateLoss()
-        } else Timber.e("onConsumeResponse: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
+        } else Timber.e("onConsumeResponse: $responseCode")
     }
 }

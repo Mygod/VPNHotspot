@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.net
 
-import android.util.Log
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -44,7 +43,7 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
                     "FAILED" -> State.FAILED
                     "NOARP" -> return null  // skip
                     else -> {
-                        Timber.w("Unknown state encountered: ${match.groupValues[10]}") // Crashlytics.log(Log.WARN, TAG, "Unknown state encountered: ${match.groupValues[10]}")
+                        Timber.w("Unknown state encountered: ${match.groupValues[10]}")
                         return null
                     }
                 }
@@ -69,7 +68,7 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
                         .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
             } catch (e: IOException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
             }
             return arpCache
         }

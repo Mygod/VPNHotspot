@@ -106,7 +106,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     private fun startFailure(e: Exception?) {
-        if (e?.message != "Caller already has an active LocalOnlyHotspot request") Timber.e(e) //Crashlytics.logException(e)
+        if (e?.message != "Caller already has an active LocalOnlyHotspot request") Timber.e(e)
         updateNotification()
         ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
         stopSelf()

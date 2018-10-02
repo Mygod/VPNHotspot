@@ -27,15 +27,12 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
-
         if (Build.VERSION.SDK_INT >= 24) {
             deviceStorage = DeviceStorageApp(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
         } else deviceStorage = this
-
         FabricUtil.init(this)
         if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
-
         ServiceNotification.updateNotificationChannels()
     }
 

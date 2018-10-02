@@ -4,7 +4,6 @@ import android.net.wifi.WifiConfiguration
 import android.os.Build
 import android.os.Parcel
 import android.os.Parcelable
-import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.RootSession
 import timber.log.Timber
@@ -16,7 +15,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         override fun createFromParcel(parcel: Parcel) = P2pSupplicantConfiguration(parcel.readString())
         override fun newArray(size: Int): Array<P2pSupplicantConfiguration?> = arrayOfNulls(size)
 
-        private const val TAG = "P2pSupplicationConf"
+        //private const val TAG = "P2pSupplicationConf"
         /**
          * Format for ssid is much more complicated, therefore we are only trying to find the line and rely on
          * Android's results instead.
@@ -55,9 +54,9 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         } catch (e: NoSuchElementException) {
             null
         } catch (e: RuntimeException) {
-            if (contentDelegate.isInitialized()) Timber.w(content) //Crashlytics.log(Log.WARN, TAG, content)
+            if (contentDelegate.isInitialized()) Timber.w(content)
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
             null
         }
     }

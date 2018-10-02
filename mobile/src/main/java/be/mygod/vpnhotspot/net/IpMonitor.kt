@@ -56,7 +56,7 @@ abstract class IpMonitor : Runnable {
             // monitor may get rejected by SELinux
             if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
             if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
-            Timber.w("Failed to set up monitor, switching to polling") //Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
+            Timber.w("Failed to set up monitor, switching to polling")
             Timber.e(MonitorFailure()) //Crashlytics.logException(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
