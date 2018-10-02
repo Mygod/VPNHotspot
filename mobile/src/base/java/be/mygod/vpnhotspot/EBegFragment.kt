@@ -1,7 +1,10 @@
 package be.mygod.vpnhotspot
 
 import android.os.Bundle
-import android.view.*
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewStub
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -19,7 +22,6 @@ import timber.log.Timber
 class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
         SkuDetailsResponseListener, ConsumeResponseListener {
     companion object {
-        private const val TAG = "EBegFragment"
         private const val KEY_TITLE = "title"
         private const val KEY_MESSAGE = "message"
     }
@@ -51,7 +53,6 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
         onBillingServiceDisconnected()
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {

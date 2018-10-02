@@ -1,7 +1,10 @@
 package be.mygod.vpnhotspot
 
 import android.os.Bundle
-import android.view.*
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.view.ViewStub
 import android.widget.Button
 import android.widget.LinearLayout
 import androidx.core.net.toUri
@@ -16,7 +19,6 @@ class EBegFragment : DialogFragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         view.findViewById<LinearLayout>(R.id.donations__google).visibility = View.GONE
         (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button).setOnClickListener {
             (activity as MainActivity).launchUrl("https://mygod.be/donate/".toUri())
