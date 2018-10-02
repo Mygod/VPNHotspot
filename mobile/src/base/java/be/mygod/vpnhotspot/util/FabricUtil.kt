@@ -8,9 +8,7 @@ import timber.log.Timber
 
 object FabricUtil {
     fun init(context: Context) {
-        if (!BuildConfig.DEBUG) {
-            Fabric.with(context, Crashlytics())
-            Timber.plant(CrashlyticsTree())
-        }
+        Fabric.with(context, Crashlytics())
+        Timber.plant(CrashlyticsTree())
     }
 }

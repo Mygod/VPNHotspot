@@ -52,13 +52,13 @@ object ManageBar : Manager() {
             context.startActivity(Intent()
                     .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
         } catch (e: ActivityNotFoundException) {
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
         } catch (e: SecurityException) {
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
         }
     }
 }

@@ -62,7 +62,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                         view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     } catch (exc: ActivityNotFoundException) {
                         exc.printStackTrace()
-                        Timber.e(exc)//Crashlytics.logException(exc)
+                        Timber.e(exc)
                     }
                     return
                 }

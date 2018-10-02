@@ -7,7 +7,6 @@ import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -17,7 +16,7 @@ import java.net.SocketException
 
 fun debugLog(tag: String?, message: String?) {
     if (BuildConfig.DEBUG) Log.d(tag, message)
-    Timber.v(message) //Crashlytics.log("$tag: $message")
+    Timber.v(message)
 }
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
@@ -46,7 +45,7 @@ fun NetworkInterface.formatAddresses() =
                     hardwareAddress?.joinToString(":") { "%02x".format(it) }
                 } catch (e: SocketException) {
                     e.printStackTrace()
-                    Timber.e(e) //Crashlytics.logException(e)
+                    Timber.e(e)
                     null
                 }))
                 .joinToString("\n")
@@ -59,7 +58,7 @@ fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = fals
     val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
     thread.setUncaughtExceptionHandler { _, e ->
         SmartSnackbar.make(R.string.noisy_su_failure).show()
-        Timber.e(e) //Crashlytics.logException(e)
+        Timber.e(e)
     }
     if (start) thread.start()
     return thread

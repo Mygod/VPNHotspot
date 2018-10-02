@@ -31,8 +31,8 @@ class App : Application() {
             deviceStorage = DeviceStorageApp(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
         } else deviceStorage = this
-        FabricUtil.init(this)
         if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
+        else FabricUtil.init(this)
         ServiceNotification.updateNotificationChannels()
     }
 

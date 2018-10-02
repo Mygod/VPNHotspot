@@ -25,7 +25,7 @@ data class IpNeighbour(val ip: String, val dev: String, val lladdr: String, val 
         fun parse(line: String): IpNeighbour? {
             val match = parser.matchEntire(line)
             if (match == null) {
-                if (line.isNotEmpty()) Timber.w(line) //Crashlytics.log(Log.WARN, TAG, line)
+                if (line.isNotEmpty()) Timber.w(line)
                 return null
             }
             val ip = match.groupValues[2]

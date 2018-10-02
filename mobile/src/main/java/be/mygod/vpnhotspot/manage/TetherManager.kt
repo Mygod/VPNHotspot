@@ -53,19 +53,19 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 return
             } catch (exc: ActivityNotFoundException) {
                 exc.printStackTrace()
-                Timber.e(exc) //Crashlytics.logException(exc)
+                Timber.e(exc)
             }
             val started = manager.isStarted
             try {
                 if (started) manager.stop() else manager.start()
             } catch (e: IOException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
                 ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 var cause: Throwable? = e
                 while (cause != null) {
                     cause = cause.cause
@@ -125,7 +125,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: InvocationTargetException) {
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 e.localizedMessage
             }
         }
@@ -172,7 +172,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
             } catch (e: SecurityException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }

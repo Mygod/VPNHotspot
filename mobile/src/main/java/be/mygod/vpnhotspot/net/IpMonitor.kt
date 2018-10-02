@@ -32,18 +32,18 @@ abstract class IpMonitor : Runnable {
         val err = thread("${javaClass.simpleName}-error") {
             try {
                 process.errorStream.bufferedReader().forEachLine {
-                    Timber.e(it)//Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
+                    Timber.e(it)
                 }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
             }
         }
         try {
             process.inputStream.bufferedReader().forEachLine(this::processLine)
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
             e.printStackTrace()
-            Timber.e(e) //Crashlytics.logException(e)
+            Timber.e(e)
         }
         err.join()
         process.waitFor()
@@ -57,7 +57,7 @@ abstract class IpMonitor : Runnable {
             if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
             if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
             Timber.w("Failed to set up monitor, switching to polling")
-            Timber.e(MonitorFailure()) //Crashlytics.logException(MonitorFailure())
+            Timber.e(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
             this.pool = pool
@@ -74,8 +74,8 @@ abstract class IpMonitor : Runnable {
         thread("${javaClass.simpleName}-flush-error") {
             val err = process.errorStream.bufferedReader().readText()
             if (err.isNotBlank()) {
-                Timber.e(err) //Crashlytics.log(Log.ERROR, javaClass.simpleName, err)
-                Timber.e(FlushFailure()) //Crashlytics.logException(FlushFailure())
+                Timber.e(err)
+                Timber.e(FlushFailure())
                 SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
         }

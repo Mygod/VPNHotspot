@@ -80,7 +80,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 }
             } catch (e: ReflectiveOperationException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }
@@ -197,7 +197,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                         it == null -> doStart()
                         it.isGroupOwner -> if (routingManager == null) doStart(it)
                         else -> {
-                            Timber.i("Removing old group ($it)") //Crashlytics.log(Log.INFO, TAG, "Removing old group ($it)")
+                            Timber.i("Removing old group ($it)")
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
                                 override fun onSuccess() = doStart()
                                 override fun onFailure(reason: Int) {

@@ -54,7 +54,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
                 e.printStackTrace()
-                Timber.e(e) //Crashlytics.logException(e)
+                Timber.e(e)
                 emptyMap()
             }
             this@TetheringFragment.enabledTypes =
