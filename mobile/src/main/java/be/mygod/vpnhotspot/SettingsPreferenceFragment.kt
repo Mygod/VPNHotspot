@@ -85,6 +85,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |echo ip rule
                         |ip rule
                         |echo
+                        |echo iptables -nvx -L vpnhotspot_fwd
+                        |iptables -nvx -L vpnhotspot_fwd
+                        |echo
                         |echo logcat-su
                         |logcat -d
                     """.trimMargin())
