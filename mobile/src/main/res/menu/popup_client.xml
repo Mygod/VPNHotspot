@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/nickname"
-          android:title="Nickname..."/>
+          android:title="@string/clients_popup_nickname"/>
     <item android:id="@+id/block"
-          android:title="Block"/>
+          android:title="@string/clients_popup_block"/>
     <item android:id="@+id/unblock"
-          android:title="Unblock"/>
+          android:title="@string/clients_popup_unblock"/>
     <item android:id="@+id/stats"
-          android:title="Stats..."/>
+          android:title="@string/clients_popup_stats"/>
 </menu>

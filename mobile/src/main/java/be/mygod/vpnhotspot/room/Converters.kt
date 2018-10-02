@@ -4,6 +4,8 @@ import android.os.Parcel
 import android.text.TextUtils
 import androidx.room.TypeConverter
 import java.net.InetAddress
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class Converters {
     @TypeConverter
@@ -34,4 +36,18 @@ class Converters {
 
     @TypeConverter
     fun unpersistInetAddress(data: ByteArray): InetAddress = InetAddress.getByAddress(data)
+}
+
+fun String.macToLong(): Long = ByteBuffer.allocate(8).run {
+    order(ByteOrder.LITTLE_ENDIAN)
+    mark()
+    put(split(':').map { Integer.parseInt(it, 16).toByte() }.toByteArray())
+    reset()
+    long
+}
+
+fun Long.macToString(): String = ByteBuffer.allocate(8).run {
+    order(ByteOrder.LITTLE_ENDIAN)
+    putLong(this@macToString)
+    array().take(6).joinToString(":") { "%02x".format(it) }
 }

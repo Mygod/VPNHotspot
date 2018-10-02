@@ -31,6 +31,7 @@ import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
+import be.mygod.vpnhotspot.util.toPluralInt
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment(), ServiceConnection {
@@ -44,7 +45,7 @@ class ClientsFragment : Fragment(), ServiceConnection {
 
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle("Nickname for $mac")
+            setTitle(getString(R.string.clients_nickname_title, mac))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
         }
@@ -73,10 +74,19 @@ class ClientsFragment : Fragment(), ServiceConnection {
         private val stats by lazy { arguments!!.getParcelable<ClientStats>(KEY_STATS)!! }
 
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle("Stats for $title")
+            setTitle(getString(R.string.clients_stats_title, title))
             val context = context
-            val format = NumberFormat.getIntegerInstance(context.resources.configuration.locale)
-            setMessage("Connected ${format.format(stats.count)} times since ${DateUtils.formatDateTime(context, stats.timestamp, DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE)}\nSent ${format.format(stats.sentPackets)} packets, ${Formatter.formatFileSize(context, stats.sentBytes)}\nReceived ${format.format(stats.receivedPackets)} packets, ${Formatter.formatFileSize(context, stats.receivedBytes)}")
+            val resources = resources
+            val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
+            setMessage("%s\n%s\n%s".format(
+                    resources.getQuantityString(R.plurals.clients_stats_message_1, stats.count.toPluralInt(),
+                            format.format(stats.count), DateUtils.formatDateTime(context, stats.timestamp,
+                            DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE)),
+                    resources.getQuantityString(R.plurals.clients_stats_message_2, stats.sentPackets.toPluralInt(),
+                            format.format(stats.sentPackets), Formatter.formatFileSize(context, stats.sentBytes)),
+                    resources.getQuantityString(R.plurals.clients_stats_message_3, stats.sentPackets.toPluralInt(),
+                            format.format(stats.receivedPackets),
+                            Formatter.formatFileSize(context, stats.receivedBytes))))
             setPositiveButton(android.R.string.ok, null)
         }
     }

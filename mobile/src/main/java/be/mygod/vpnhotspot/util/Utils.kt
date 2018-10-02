@@ -16,6 +16,16 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
+/**
+ * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
+ * marvelously for everybody.
+ */
+fun Long.toPluralInt(): Int {
+    check(this >= 0)    // please don't mess with me
+    if (this <= Int.MAX_VALUE) return toInt()
+    return (this % 1000000000).toInt() + 1000000000
+}
+
 fun CharSequence?.onEmpty(otherwise: CharSequence): CharSequence = if (isNullOrEmpty()) otherwise else this!!
 
 fun debugLog(tag: String?, message: String?) {
