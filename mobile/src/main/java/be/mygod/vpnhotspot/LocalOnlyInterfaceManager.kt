@@ -4,7 +4,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.InetAddress
 import java.net.InterfaceAddress
 
@@ -59,7 +59,7 @@ class LocalOnlyInterfaceManager(val downstream: String) : UpstreamMonitor.Callba
             }
         } catch (e: Exception) {
             SmartSnackbar.make(e.localizedMessage).show()
-            Crashlytics.logException(e)
+            Timber.e(e) //Crashlytics.logException(e)
             routing = null
         }
     }

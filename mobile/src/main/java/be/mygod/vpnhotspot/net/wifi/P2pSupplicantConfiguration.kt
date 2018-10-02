@@ -7,7 +7,7 @@ import android.os.Parcelable
 import android.util.Log
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.RootSession
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 
@@ -55,9 +55,9 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         } catch (e: NoSuchElementException) {
             null
         } catch (e: RuntimeException) {
-            if (contentDelegate.isInitialized()) Crashlytics.log(Log.WARN, TAG, content)
+            if (contentDelegate.isInitialized()) Timber.w(content) //Crashlytics.log(Log.WARN, TAG, content)
             e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.e(e) //Crashlytics.logException(e)
             null
         }
     }
@@ -82,9 +82,9 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
                 })
             }
             if (ssidFound != 1 || pskFound != 1) {
-                Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
+                Timber.w("Invalid conf ($ssidFound, $pskFound): $content") //Crashlytics.log(Log.WARN, TAG, "Invalid conf ($ssidFound, $pskFound): $content")
                 if (ssidFound == 0 || pskFound == 0) throw InvalidConfigurationError()
-                else Crashlytics.logException(InvalidConfigurationError())
+                else Timber.e(InvalidConfigurationError()) //Crashlytics.logException(InvalidConfigurationError())
             }
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             RootSession.use {

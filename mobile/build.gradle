@@ -1,11 +1,14 @@
 apply plugin: 'com.android.application'
-apply plugin: 'io.fabric'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
+if (getGradle().getStartParameter().getTaskRequests().toString().contains("base"))
+    apply plugin: 'io.fabric'
+
 android {
-    buildToolsVersion "28.0.2"
+    buildToolsVersion "28.0.3"
     compileSdkVersion 28
+
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
@@ -15,47 +18,69 @@ android {
         versionName "1.4.2"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
     buildTypes {
         debug {
             pseudoLocalesEnabled true
         }
+
         release {
             shrinkResources true
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+
     dataBinding.enabled = true
-    flavorDimensions("freedom")
+
+    flavorDimensions("type", "gms")
+
     productFlavors {
-        freedom {
-            dimension "freedom"
-            buildConfigField "boolean", "DONATIONS", "true"
+        base {
+            dimension "type"
         }
+
+        fdroid {
+            dimension "type"
+        }
+
         google {
-            dimension "freedom"
+            dimension "gms"
             buildConfigField "boolean", "DONATIONS", "false"
+        }
+
+        freedom {
+            dimension "gms"
+            buildConfigField "boolean", "DONATIONS", "true"
         }
     }
 }
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation "androidx.browser:browser:$androidxVersion"
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
-    implementation "androidx.core:core-ktx:$androidxVersion"
-    implementation "androidx.preference:preference:$androidxVersion"
-    implementation 'com.android.billingclient:billing:1.1'
-    implementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
-    implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu:libsu:2.0.2'
+
     implementation "com.google.android.material:material:$androidxVersion"
-    implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
+    implementation "androidx.preference:preference:$androidxVersion"
     implementation 'com.takisoft.preferencex:preferencex:1.0.0-alpha2'
+    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
+    implementation 'com.github.luongvo:BadgeView:1.1.5'
+
+    implementation "androidx.browser:browser:$androidxVersion"
+
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
+    implementation "androidx.core:core-ktx:$androidxVersion"
+    implementation 'com.github.topjohnwu:libsu:2.0.2'
+    implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
+    implementation 'com.jakewharton.timber:timber:4.7.1'
+
+    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
+    baseImplementation 'com.android.billingclient:billing:1.1'
+
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.1.0-alpha4'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-alpha4'
 }
 
-apply plugin: 'com.google.gms.google-services'
+
+if (getGradle().getStartParameter().getTaskRequests().toString().contains("base"))
+    apply plugin: 'com.google.gms.google-services'

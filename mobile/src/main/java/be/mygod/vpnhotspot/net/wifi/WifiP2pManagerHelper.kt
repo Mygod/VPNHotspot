@@ -6,7 +6,7 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pManager
 import android.util.Log
 import com.android.dx.stock.ProxyBuilder
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.lang.reflect.Proxy
 import java.util.regex.Pattern
 
@@ -42,7 +42,7 @@ object WifiP2pManagerHelper {
             setWifiP2pChannels.invoke(this, c, lc, oc, listener)
         } catch (e: NoSuchMethodException) {
             e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.e(e)//Crashlytics.logException(e)
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -61,7 +61,7 @@ object WifiP2pManagerHelper {
             startWps.invoke(this, c, wps, listener)
         } catch (e: NoSuchMethodException) {
             e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.e(e)//Crashlytics.logException(e)
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -81,7 +81,7 @@ object WifiP2pManagerHelper {
             deletePersistentGroup.invoke(this, c, netId, listener)
         } catch (e: NoSuchMethodException) {
             e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.e(e)//Crashlytics.logException(e)
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -107,11 +107,11 @@ object WifiP2pManagerHelper {
         val proxy = Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener)) { proxy, method, args ->
                     if (method.name == "onPersistentGroupInfoAvailable") {
-                        if (args.size != 1) Crashlytics.log(Log.WARN, TAG, "Unexpected args: $args")
+                        if (args.size != 1) Timber.w("Unexpected args: $args") //Crashlytics.log(Log.WARN, TAG, "Unexpected args: $args")
                         listener(getGroupList.invoke(args[0]) as Collection<WifiP2pGroup>)
                         null
                     } else {
-                        Crashlytics.log(Log.WARN, TAG, "Unexpected method, calling super: $method")
+                        Timber.w("Unexpected method, calling super: $method") //Crashlytics.log(Log.WARN, TAG, "Unexpected method, calling super: $method")
                         ProxyBuilder.callSuper(proxy, method, args)
                     }
                 }

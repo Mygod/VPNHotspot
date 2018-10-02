@@ -16,8 +16,8 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
 import com.takisoft.preferencex.PreferenceFragmentCompat
+import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
@@ -59,7 +59,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         e.printStackTrace(writer)
-                        Crashlytics.logException(e)
+                        Timber.e(e)//Crashlytics.logException(e)
                     }
                     writer.write("\n")
                     writer.flush()
@@ -93,7 +93,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 .joinToString("\n").toByteArray())
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
-                        Crashlytics.logException(e)
+                        Timber.e(e) //Crashlytics.logException(e)
                         writer.flush()
                     }
                 }
@@ -126,7 +126,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                     .map { it.name }.sorted().toList().toTypedArray()
                         } catch (e: SocketException) {
                             e.printStackTrace()
-                            Crashlytics.logException(e)
+                            Timber.e(e) //Crashlytics.logException(e)
                             emptyArray<String>()
                         })))
         else -> super.onDisplayPreferenceDialog(preference)

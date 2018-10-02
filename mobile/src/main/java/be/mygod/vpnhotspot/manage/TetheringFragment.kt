@@ -26,7 +26,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -54,7 +54,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
                 e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
                 emptyMap()
             }
             this@TetheringFragment.enabledTypes =

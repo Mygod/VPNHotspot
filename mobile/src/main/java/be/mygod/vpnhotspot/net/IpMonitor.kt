@@ -4,7 +4,7 @@ import android.util.Log
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.thread
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.util.concurrent.Executors
@@ -32,18 +32,18 @@ abstract class IpMonitor : Runnable {
         val err = thread("${javaClass.simpleName}-error") {
             try {
                 process.errorStream.bufferedReader().forEachLine {
-                    Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
+                    Timber.e(it)//Crashlytics.log(Log.ERROR, javaClass.simpleName, it)
                 }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
             }
         }
         try {
             process.inputStream.bufferedReader().forEachLine(this::processLine)
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
             e.printStackTrace()
-            Crashlytics.logException(e)
+            Timber.e(e) //Crashlytics.logException(e)
         }
         err.join()
         process.waitFor()
@@ -56,8 +56,8 @@ abstract class IpMonitor : Runnable {
             // monitor may get rejected by SELinux
             if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
             if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
-            Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
-            Crashlytics.logException(MonitorFailure())
+            Timber.w("Failed to set up monitor, switching to polling") //Crashlytics.log(Log.WARN, javaClass.simpleName, "Failed to set up monitor, switching to polling")
+            Timber.e(MonitorFailure()) //Crashlytics.logException(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
             this.pool = pool
@@ -74,8 +74,8 @@ abstract class IpMonitor : Runnable {
         thread("${javaClass.simpleName}-flush-error") {
             val err = process.errorStream.bufferedReader().readText()
             if (err.isNotBlank()) {
-                Crashlytics.log(Log.ERROR, javaClass.simpleName, err)
-                Crashlytics.logException(FlushFailure())
+                Timber.e(err) //Crashlytics.log(Log.ERROR, javaClass.simpleName, err)
+                Timber.e(FlushFailure()) //Crashlytics.logException(FlushFailure())
                 SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
         }

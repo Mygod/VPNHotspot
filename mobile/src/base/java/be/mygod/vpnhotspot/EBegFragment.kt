@@ -1,11 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.os.Bundle
-import android.util.Log
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewStub
+import android.view.*
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -15,7 +11,7 @@ import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import com.android.billingclient.api.*
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 
 /**
  * Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/java/org/sufficientlysecure/donations/DonationsFragment.java
@@ -52,10 +48,16 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
             inflater.inflate(R.layout.fragment_ebeg, container, false)
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
+
         onBillingServiceDisconnected()
+
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
             val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
             if (sku == null) {
@@ -64,6 +66,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
                     .setSku(sku.sku).setType(BillingClient.SkuType.INAPP).build())
         }
+
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
                 .setOnClickListener {
@@ -80,6 +83,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         billingClient = BillingClient.newBuilder(context ?: return).setListener(this).build()
                 .also { it.startConnection(this) }
     }
+
     override fun onBillingSetupFinished(responseCode: Int) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             billingClient.querySkuDetailsAsync(
@@ -88,24 +92,25 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                                 "donate100", "donate200", "donatemax"))
                         setType(BillingClient.SkuType.INAPP)
                     }.build(), this)
-        } else Crashlytics.log(Log.ERROR, TAG, "onBillingSetupFinished: $responseCode")
+        } else Timber.e("onBillingSetupFinished: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onBillingSetupFinished: $responseCode")
     }
 
     override fun onSkuDetailsResponse(responseCode: Int, skuDetailsList: MutableList<SkuDetails>?) {
         if (responseCode == BillingClient.BillingResponse.OK) skus = skuDetailsList
-        else Crashlytics.log(Log.ERROR, TAG, "onSkuDetailsResponse: $responseCode")
+        else Timber.e("onSkuDetailsResponse: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onSkuDetailsResponse: $responseCode")
     }
 
     override fun onPurchasesUpdated(responseCode: Int, purchases: MutableList<Purchase>?) {
         if (responseCode == BillingClient.BillingResponse.OK && purchases != null) {
             // directly consume in-app purchase, so that people can donate multiple times
             purchases.forEach { billingClient.consumeAsync(it.purchaseToken, this) }
-        } else Crashlytics.log(Log.ERROR, TAG, "onPurchasesUpdated: $responseCode")
+        } else Timber.e("onPurchasesUpdated: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onPurchasesUpdated: $responseCode")
     }
+
     override fun onConsumeResponse(responseCode: Int, purchaseToken: String?) {
         if (responseCode == BillingClient.BillingResponse.OK) {
             openDialog(R.string.donations__thanks_dialog_title, R.string.donations__thanks_dialog)
             dismissAllowingStateLoss()
-        } else Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
+        } else Timber.e("onConsumeResponse: $responseCode") //Crashlytics.log(Log.ERROR, TAG, "onConsumeResponse: $responseCode")
     }
 }

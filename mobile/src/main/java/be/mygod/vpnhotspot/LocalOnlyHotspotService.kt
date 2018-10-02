@@ -11,7 +11,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.debugLog
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
@@ -106,7 +106,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     private fun startFailure(e: Exception?) {
-        if (e?.message != "Caller already has an active LocalOnlyHotspot request") Crashlytics.logException(e)
+        if (e?.message != "Caller already has an active LocalOnlyHotspot request") Timber.e(e) //Crashlytics.logException(e)
         updateNotification()
         ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
         stopSelf()

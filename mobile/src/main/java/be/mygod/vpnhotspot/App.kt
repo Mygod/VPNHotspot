@@ -12,9 +12,9 @@ import android.preference.PreferenceManager
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.FabricUtil
 import be.mygod.vpnhotspot.util.RootSession
-import com.crashlytics.android.Crashlytics
-import io.fabric.sdk.android.Fabric
+import timber.log.Timber
 
 class App : Application() {
     companion object {
@@ -27,11 +27,15 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
+
         if (Build.VERSION.SDK_INT >= 24) {
             deviceStorage = DeviceStorageApp(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
         } else deviceStorage = this
-        Fabric.with(deviceStorage, Crashlytics())
+
+        FabricUtil.init(this)
+        if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
+
         ServiceNotification.updateNotificationChannels()
     }
 

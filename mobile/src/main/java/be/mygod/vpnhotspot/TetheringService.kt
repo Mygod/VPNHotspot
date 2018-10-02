@@ -10,7 +10,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.UpstreamMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.InetAddress
 
 class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callback {
@@ -86,7 +86,7 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
-                        Crashlytics.logException(e)
+                        Timber.e(e) //Crashlytics.logException(e)
                         SmartSnackbar.make(e.localizedMessage).show()
                         iterator.remove()
                     }

@@ -24,7 +24,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
@@ -53,19 +53,19 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 return
             } catch (exc: ActivityNotFoundException) {
                 exc.printStackTrace()
-                Crashlytics.logException(exc)
+                Timber.e(exc) //Crashlytics.logException(exc)
             }
             val started = manager.isStarted
             try {
                 if (started) manager.stop() else manager.start()
             } catch (e: IOException) {
                 e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
                 Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
                 ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
                 e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
                 var cause: Throwable? = e
                 while (cause != null) {
                     cause = cause.cause
@@ -125,7 +125,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: InvocationTargetException) {
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
                 e.localizedMessage
             }
         }
@@ -172,7 +172,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
             } catch (e: SecurityException) {
                 e.printStackTrace()
-                Crashlytics.logException(e)
+                Timber.e(e) //Crashlytics.logException(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
         }
