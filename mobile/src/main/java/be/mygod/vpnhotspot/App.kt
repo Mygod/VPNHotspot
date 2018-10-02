@@ -13,9 +13,7 @@ import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
-import be.mygod.vpnhotspot.util.FabricUtil
 import be.mygod.vpnhotspot.util.RootSession
-import timber.log.Timber
 
 class App : Application() {
     companion object {
@@ -33,8 +31,7 @@ class App : Application() {
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
-        if (BuildConfig.DEBUG) Timber.plant(Timber.DebugTree())
-        else FabricUtil.init(this)
+        initTimber()
         ServiceNotification.updateNotificationChannels()
     }
 
