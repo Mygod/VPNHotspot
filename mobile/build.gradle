@@ -33,21 +33,21 @@ android {
         }
     }
     dataBinding.enabled = true
-    flavorDimensions("type", "gms")
+    flavorDimensions("fdroid", "freedom")
     productFlavors {
         base {
-            dimension "type"
+            dimension "fdroid"
         }
         fdroid {
-            dimension "type"
+            dimension "fdroid"
         }
 
         freedom {
-            dimension "gms"
+            dimension "freedom"
             buildConfigField "boolean", "DONATIONS", "true"
         }
         google {
-            dimension "gms"
+            dimension "freedom"
             buildConfigField "boolean", "DONATIONS", "false"
         }
     }
