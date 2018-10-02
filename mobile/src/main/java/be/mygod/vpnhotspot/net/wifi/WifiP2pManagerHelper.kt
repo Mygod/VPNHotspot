@@ -76,8 +76,7 @@ object WifiP2pManagerHelper {
         try {
             deletePersistentGroup.invoke(this, c, netId, listener)
         } catch (e: NoSuchMethodException) {
-            e.printStackTrace()
-            Timber.e(e)
+            Timber.w(e)
             listener.onFailure(UNSUPPORTED)
         }
     }

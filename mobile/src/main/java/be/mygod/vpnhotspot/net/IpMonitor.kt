@@ -25,7 +25,7 @@ abstract class IpMonitor : Runnable {
         val process = try {
             builder.start()
         } catch (e: IOException) {
-            e.printStackTrace()
+            Timber.d(e)
             return false
         }
         monitor = process

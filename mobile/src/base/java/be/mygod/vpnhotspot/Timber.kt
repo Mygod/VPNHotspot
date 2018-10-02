@@ -12,8 +12,8 @@ fun initTimber() {
         override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
             if (t == null) Crashlytics.log(priority, tag, message) else {
                 // Crashlytics.logException doesn't print to logcat
-                if (priority >= Log.WARN) Log.println(priority, tag, message)
-                Crashlytics.logException(t)
+                if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
+                if (priority >= Log.INFO) Crashlytics.logException(t)
             }
         }
     })

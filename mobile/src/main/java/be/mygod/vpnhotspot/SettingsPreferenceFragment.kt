@@ -39,7 +39,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 Routing.clean()
                 true
             } catch (e: RuntimeException) {
-                e.printStackTrace()
+                Timber.d(e)
                 SmartSnackbar.make(e.localizedMessage).show()
                 false
             }
