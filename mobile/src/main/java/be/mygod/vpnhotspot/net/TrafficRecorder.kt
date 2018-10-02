@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net
 
 import android.os.SystemClock
-import android.util.Log
 import android.util.LongSparseArray
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -10,7 +9,7 @@ import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
-import com.crashlytics.android.Crashlytics
+import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
@@ -104,9 +103,8 @@ object TrafficRecorder {
                         else -> check(false)
                     }
                 } catch (e: RuntimeException) {
-                    Crashlytics.log(Log.WARN, TAG, line)
-                    e.printStackTrace()
-                    Crashlytics.logException(e)
+                    Timber.w(line)
+                    Timber.w(e)
                 }
             }
             for ((_, record) in records) if (record.id == null) AppDatabase.instance.trafficRecordDao.insert(record)
