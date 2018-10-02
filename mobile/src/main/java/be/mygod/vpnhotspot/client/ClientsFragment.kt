@@ -5,6 +5,8 @@ import android.content.DialogInterface
 import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.IBinder
+import android.text.format.DateUtils
+import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -26,6 +28,7 @@ import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.IpNeighbourMonitor
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
+import java.text.NumberFormat
 
 class ClientsFragment : Fragment(), ServiceConnection {
     class NicknameDialogFragment : AlertDialogFragment() {
@@ -54,6 +57,24 @@ class ClientsFragment : Fragment(), ServiceConnection {
                 AppDatabase.instance.clientRecordDao.update(this)
             }
             IpNeighbourMonitor.instance?.flush()
+        }
+    }
+
+    class StatsDialogFragment : AlertDialogFragment() {
+        companion object {
+            const val KEY_TITLE = "title"
+            const val KEY_STATS = "stats"
+        }
+
+        private val title by lazy { arguments!!.getCharSequence(KEY_TITLE)!! }
+        private val stats by lazy { arguments!!.getParcelable<ClientStats>(KEY_STATS)!! }
+
+        override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
+            setTitle("Stats for $title")
+            val context = context
+            val format = NumberFormat.getIntegerInstance(context.resources.configuration.locale)
+            setMessage("Connected ${format.format(stats.count)} times since ${DateUtils.formatDateTime(context, stats.timestamp, DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE)}\nSent ${format.format(stats.sentPackets)} packets, ${Formatter.formatFileSize(context, stats.sentBytes)}\nReceived ${format.format(stats.receivedPackets)} packets, ${Formatter.formatFileSize(context, stats.receivedBytes)}")
+            setPositiveButton(android.R.string.ok, null)
         }
     }
 
@@ -88,6 +109,15 @@ class ClientsFragment : Fragment(), ServiceConnection {
                         AppDatabase.instance.clientRecordDao.update(ClientRecord(mac, nickname, !blocked))
                     }
                     IpNeighbourMonitor.instance?.flush()
+                    true
+                }
+                R.id.stats -> {
+                    val client = binding.client ?: return false
+                    StatsDialogFragment().apply {
+                        arguments = bundleOf(Pair(StatsDialogFragment.KEY_TITLE, client.title),
+                                Pair(StatsDialogFragment.KEY_STATS,
+                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
+                    }.show(fragmentManager, "StatsDialogFragment")
                     true
                 }
                 else -> false

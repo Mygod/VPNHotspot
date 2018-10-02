@@ -6,4 +6,6 @@
           android:title="Block"/>
     <item android:id="@+id/unblock"
           android:title="Unblock"/>
+    <item android:id="@+id/stats"
+          android:title="Stats..."/>
 </menu>
