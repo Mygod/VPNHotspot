@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.debugLog

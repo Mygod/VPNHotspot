@@ -6,7 +6,7 @@ import android.net.wifi.WifiManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager
-import be.mygod.vpnhotspot.net.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar

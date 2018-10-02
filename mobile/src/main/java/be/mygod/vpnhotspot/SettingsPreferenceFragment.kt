@@ -12,7 +12,7 @@ import androidx.preference.Preference
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession

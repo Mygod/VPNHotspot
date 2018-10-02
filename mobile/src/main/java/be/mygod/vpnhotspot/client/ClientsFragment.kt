@@ -27,8 +27,8 @@ import be.mygod.vpnhotspot.BR
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
-import be.mygod.vpnhotspot.net.IpNeighbourMonitor
-import be.mygod.vpnhotspot.net.TrafficRecorder
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.toPluralInt

@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot
 import android.content.Context
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.net.InetAddress

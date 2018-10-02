@@ -4,10 +4,10 @@ import android.content.Intent
 import android.content.IntentFilter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.TetheringFragment
-import be.mygod.vpnhotspot.net.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber

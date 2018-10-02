@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.monitor
 
 import android.os.SystemClock
 import android.util.LongSparseArray

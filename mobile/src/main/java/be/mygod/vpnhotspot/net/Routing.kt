@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientMonitorService
 import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.stopAndUnbind

@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.monitor
 
 import android.content.SharedPreferences
 import be.mygod.vpnhotspot.App.Companion.app

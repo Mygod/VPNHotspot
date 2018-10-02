@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.util.parseNumericAddressNoThrow
 import timber.log.Timber
