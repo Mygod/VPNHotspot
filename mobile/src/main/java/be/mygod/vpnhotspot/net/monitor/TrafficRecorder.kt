@@ -14,7 +14,6 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 object TrafficRecorder {
-    private const val TAG = "TrafficRecorder"
     private const val ANYWHERE = "0.0.0.0/0"
 
     private var scheduled = false

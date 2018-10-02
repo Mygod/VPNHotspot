@@ -2,13 +2,11 @@ package be.mygod.vpnhotspot.util
 
 import android.content.*
 import android.os.Build
-import android.util.Log
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
-import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
