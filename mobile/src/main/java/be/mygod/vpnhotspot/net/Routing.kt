@@ -130,6 +130,7 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
     }
     fun revert() {
         stop()
+        TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(subroutes) { subroutes.forEach { (_, subroute) -> subroute.close() } }
         transaction.revert()
     }
@@ -145,7 +146,10 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
             synchronized(subroutes) {
                 val toRemove = HashSet(subroutes.keys)
                 for (client in it) if (!client.record.blocked) updateForClient(client, toRemove)
-                for (address in toRemove) subroutes.remove(address)!!.close()
+                if (toRemove.isNotEmpty()) {
+                    TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
+                    for (address in toRemove) subroutes.remove(address)!!.close()
+                }
             }
         }
     }
