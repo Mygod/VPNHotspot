@@ -31,8 +31,9 @@ class TetheringService : IpNeighbourMonitoringService(), UpstreamMonitor.Callbac
     private var dns: List<InetAddress> = emptyList()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
+        val extras = intent.extras ?: return@broadcastReceiver
         synchronized(routings) {
-            for (iface in routings.keys - TetheringManager.getTetheredIfaces(intent.extras!!))
+            for (iface in routings.keys - TetheringManager.getTetheredIfaces(extras))
                 routings.remove(iface)?.revert()
             updateRoutingsLocked()
         }
