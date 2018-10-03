@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.net.IpNeighbour
 import java.net.InetAddress
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {

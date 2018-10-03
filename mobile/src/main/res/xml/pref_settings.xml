@@ -14,6 +14,13 @@
             android:summary="@string/settings_service_upstream_auto"
             android:hint="@string/settings_service_upstream_auto"
             android:singleLine="true"/>
+        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+            android:key="service.upstream.fallback"
+            android:icon="@drawable/ic_action_settings_input_component"
+            android:title="@string/settings_upstream_fallback"
+            android:summary="@string/settings_upstream_fallback_auto"
+            android:hint="@string/settings_upstream_fallback_auto"
+            android:singleLine="true"/>
         <SwitchPreference
             android:key="service.masquerade"
             android:icon="@drawable/ic_social_people"
@@ -23,11 +30,6 @@
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_downstream">
-        <SwitchPreference
-            android:key="service.repeater.strict"
-            android:icon="@drawable/ic_action_pan_tool"
-            android:title="@string/settings_service_repeater_strict"
-            android:summary="@string/settings_service_repeater_strict_summary"/>
         <SwitchPreference
             android:key="service.disableIpv6"
             android:icon="@drawable/ic_image_looks_6"

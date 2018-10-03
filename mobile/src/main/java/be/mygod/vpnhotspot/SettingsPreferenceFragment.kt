@@ -12,6 +12,7 @@ import androidx.preference.Preference
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
@@ -120,8 +121,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     }
 
     override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
-        UpstreamMonitor.KEY -> displayPreferenceDialog(
-                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), UpstreamMonitor.KEY,
+        UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY -> displayPreferenceDialog(
+                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), preference.key,
                 bundleOf(Pair(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
                         try {
                             NetworkInterface.getNetworkInterfaces().asSequence()

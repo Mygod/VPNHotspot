@@ -56,7 +56,6 @@ class App : Application() {
         return if (result in 1..165) result else 0
     }
     val masquerade get() = pref.getBoolean("service.masquerade", true)
-    val strict get() = app.pref.getBoolean("service.repeater.strict", false)
     val dhcpWorkaround get() = pref.getBoolean("service.dhcpWorkaround", false)
 
     val cleanRoutings = Event0()

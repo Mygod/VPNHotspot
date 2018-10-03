@@ -44,7 +44,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         } else {
             val routingManager = routingManager
             if (routingManager == null) {
-                this.routingManager = LocalOnlyInterfaceManager(this, iface)
+                this.routingManager = LocalOnlyInterfaceManager(iface)
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }

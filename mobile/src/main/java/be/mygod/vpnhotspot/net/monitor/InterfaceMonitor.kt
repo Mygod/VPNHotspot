@@ -23,42 +23,30 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
                 setPresent(lines.any { parser.find(it)?.groupValues?.get(2) == iface })
     }
 
-    private fun setPresent(present: Boolean) = if (initializing) {
-        initializedPresent = present
-        currentIface = if (present) iface else null
-    } else synchronized(this) {
+    private fun setPresent(present: Boolean) = synchronized(this) {
         val old = currentIface != null
         if (present == old) return
         currentIface = if (present) iface else null
         if (present) {
-            val dns = dns
+            val dns = currentDns
             callbacks.forEach { it.onAvailable(iface, dns) }
         } else callbacks.forEach { it.onLost() }
     }
 
     private var monitor: IpLinkMonitor? = null
-    private var initializing = false
-    private var initializedPresent: Boolean? = null
     override var currentIface: String? = null
         private set
-    private val dns get() = app.connectivity.allNetworks
+    override val currentLinkProperties get() = app.connectivity.allNetworks
             .map { app.connectivity.getLinkProperties(it) }
             .singleOrNull { it?.interfaceName == iface }
-            ?.dnsServers ?: emptyList()
 
-    override fun registerCallbackLocked(callback: Callback): Boolean {
+    override fun registerCallbackLocked(callback: Callback) {
         var monitor = monitor
-        val present = if (monitor == null) {
-            initializing = true
-            initializedPresent = null
+        if (monitor == null) {
             monitor = IpLinkMonitor()
             this.monitor = monitor
             monitor.run()
-            initializing = false
-            initializedPresent!!
-        } else currentIface != null
-        if (present) callback.onAvailable(iface, dns)
-        return !present
+        } else if (currentIface != null) callback.onAvailable(iface, currentDns)
     }
 
     override fun destroyLocked() {

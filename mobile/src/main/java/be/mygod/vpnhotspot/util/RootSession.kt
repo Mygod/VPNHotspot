@@ -123,14 +123,30 @@ class RootSession : AutoCloseable {
 
         fun revert() {
             if (revertCommands.isEmpty()) return
-            val shell = if (monitor.isHeldByCurrentThread) this@RootSession else {
-                monitor.lock()
-                ensureInstance()
+            var locked = monitor.isHeldByCurrentThread
+            try {
+                val shell = if (locked) this@RootSession else {
+                    monitor.lock()
+                    locked = true
+                    ensureInstance()
+                }
+                shell.haltTimeout()
+                revertCommands.forEach { shell.submit(it) }
+            } catch (e: RuntimeException) { // if revert fails, it should fail silently
+                Timber.d(e)
+            } finally {
+                revertCommands.clear()
+                if (locked) unlock()        // commit
             }
-            shell.haltTimeout()
-            revertCommands.forEach { shell.submit(it) }
-            revertCommands.clear()
-            unlock()    // commit
+        }
+
+        fun safeguard(work: Transaction.() -> Unit) = try {
+            work()
+            commit()
+            this
+        } catch (e: Exception) {
+            revert()
+            throw e
         }
     }
 }

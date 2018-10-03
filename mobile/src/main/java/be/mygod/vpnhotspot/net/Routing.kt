@@ -1,22 +1,15 @@
 package be.mygod.vpnhotspot.net
 
-import android.content.ComponentName
-import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Build
-import android.os.IBinder
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.client.Client
-import be.mygod.vpnhotspot.client.ClientMonitorService
-import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
+import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.RootSession
-import be.mygod.vpnhotspot.util.computeIfAbsentCompat
-import be.mygod.vpnhotspot.util.stopAndUnbind
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.lang.RuntimeException
 import java.net.*
 
 /**
@@ -24,9 +17,17 @@ import java.net.*
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(private val owner: Context, val upstream: String?, private val downstream: String,
-              ownerAddress: InterfaceAddress? = null, private val strict: Boolean = true) : ServiceConnection {
+class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
     companion object {
+        /**
+         * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
+         * This also works for Wi-Fi direct where there's no rule at 18000.
+         *
+         * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
+         */
+        private const val RULE_PRIORITY_UPSTREAM = 17800
+        private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
+
         /**
          * -w <seconds> is not supported on 7.1-.
          * Fortunately there also isn't a time limit for starting a foreground service back in 7.1-.
@@ -45,7 +46,8 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
                 it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
                 it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
                 it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
-                it.submit("while ip rule del priority 17900; do done")
+                it.submit("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
+                it.submit("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
                 it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
             }
         }
@@ -62,56 +64,107 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
 
     val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.interfaceAddresses?.asSequence()
             ?.singleOrNull { it.address is Inet4Address } ?: throw InterfaceNotFoundException()
+    val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     private val transaction = RootSession.beginTransaction()
-    private val subroutes = HashMap<InetAddress, Subroute>()
-    private var clients: ClientMonitorService.Binder? = null
+
+    var hasMasquerade = false
+
+    private abstract inner class Upstream : UpstreamMonitor.Callback {
+        var subrouting: Subrouting? = null
+        var dns: List<InetAddress> = emptyList()
+
+        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
+            this.dns = dns
+            updateDnsRoute()
+        }
+
+        override fun onLost() {
+            val subrouting = subrouting ?: return
+            subrouting.close()
+            TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
+            subrouting.revert()
+            this.subrouting = null
+        }
+    }
+    private val fallbackUpstream = object : Upstream() {
+        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
+            val subrouting = subrouting
+            if (subrouting == null) this.subrouting = try {
+                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM_FALLBACK, ifname)
+            } catch (e: Exception) {
+                SmartSnackbar.make(e.localizedMessage).show()
+                Timber.w(e)
+                null
+            } else check(subrouting.upstream == ifname)
+            super.onAvailable(ifname, dns)
+        }
+
+        override fun onFallback() {
+            check(subrouting == null)
+            subrouting = try {
+                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM_FALLBACK)
+            } catch (e: Exception) {
+                SmartSnackbar.make(e.localizedMessage).show()
+                Timber.w(e)
+                null
+            }
+            updateDnsRoute()
+        }
+    }
+    private val upstream = object : Upstream() {
+        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
+            val subrouting = subrouting
+            if (subrouting == null) this.subrouting = try {
+                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM, ifname)
+            } catch (e: Exception) {
+                SmartSnackbar.make(e.localizedMessage).show()
+                Timber.w(e)
+                null
+            } else check(subrouting.upstream == ifname)
+            super.onAvailable(ifname, dns)
+        }
+    }
 
     fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
 
     fun disableIpv6() = transaction.exec("echo 1 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6",
             "echo 0 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
 
-    /**
-     * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
-     * This also works for Wi-Fi direct where there's no rule at 18000.
-     *
-     * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
-     */
-    fun rule() {
-        if (upstream != null) {
-            transaction.exec("ip rule add from all iif $downstream lookup $upstream priority 17900",
-                    // by the time stopScript is called, table entry for upstream may already get removed
-                    "ip rule del from all iif $downstream priority 17900")
-        }
-    }
-
     fun forward() {
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
         transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j DROP")   // ensure blocking works
-        // the real forwarding filters will be added in Subroute when clients are connected
+        // the real forwarding filters will be added in Subrouting when clients are connected
     }
 
     fun masquerade() {
-        val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
         transaction.execQuiet("$IPTABLES -t nat -N vpnhotspot_masquerade")
         transaction.iptablesInsert("POSTROUTING -j vpnhotspot_masquerade", "nat")
-        // note: specifying -i wouldn't work for POSTROUTING
-        if (strict) {
-            if (upstream != null) {
-                transaction.iptablesAdd("vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
-            }   // else nothing needs to be done
-        } else {
-            transaction.iptablesAdd("vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE", "nat")
-        }
+        hasMasquerade = true
+        // further rules are added when upstreams are found
     }
 
-    fun dnsRedirect(dnses: List<InetAddress>) {
-        val hostAddress = hostAddress.address.hostAddress
-        val dns = dnses.firstOrNull { it is Inet4Address }?.hostAddress ?: app.pref.getString("service.dns", "8.8.8.8")
-        debugLog("Routing", "Using $dns from ($dnses)")
-        transaction.iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
-        transaction.iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
+    private inner class DnsRoute(val dns: String) {
+        val transaction = RootSession.beginTransaction().safeguard {
+            val hostAddress = hostAddress.address.hostAddress
+            iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
+            iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
+        }
+    }
+    private var currentDns: DnsRoute? = null
+    private fun updateDnsRoute() {
+        val dns = (upstream.dns + fallbackUpstream.dns).firstOrNull { it is Inet4Address }?.hostAddress
+                ?: app.pref.getString("service.dns", "8.8.8.8")
+        if (dns != currentDns?.dns) {
+            currentDns?.transaction?.revert()
+            currentDns = try {
+                DnsRoute(dns)
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+                SmartSnackbar.make(e.localizedMessage).show()
+                null
+            }
+        }
     }
 
     /**
@@ -125,80 +178,23 @@ class Routing(private val owner: Context, val upstream: String?, private val dow
     fun dhcpWorkaround() = transaction.exec("ip rule add iif lo uidrange 0-0 lookup local_network priority 11000",
             "ip rule del iif lo uidrange 0-0 lookup local_network priority 11000")
 
+    fun stop() {
+        FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
+        fallbackUpstream.subrouting?.close()
+        UpstreamMonitor.unregisterCallback(upstream)
+        upstream.subrouting?.close()
+    }
+
     fun commit() {
         transaction.commit()
-        owner.bindService(Intent(owner, ClientMonitorService::class.java), this, Context.BIND_AUTO_CREATE)
+        FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+        UpstreamMonitor.registerCallback(upstream)
     }
     fun revert() {
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        synchronized(subroutes) { subroutes.forEach { (_, subroute) -> subroute.close() } }
+        fallbackUpstream.subrouting?.revert()
+        upstream.subrouting?.revert()
         transaction.revert()
-    }
-
-    /**
-     * Only unregister client listener. This should only be used when a clean has just performed.
-     */
-    fun stop() = owner.stopAndUnbind(this)
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        clients = service as ClientMonitorService.Binder
-        service.clientsChanged[this] = {
-            synchronized(subroutes) {
-                val toRemove = HashSet(subroutes.keys)
-                for (client in it) if (!client.record.blocked) updateForClient(client, toRemove)
-                if (toRemove.isNotEmpty()) {
-                    TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
-                    for (address in toRemove) subroutes.remove(address)!!.close()
-                }
-            }
-        }
-    }
-    override fun onServiceDisconnected(name: ComponentName?) {
-        val clients = clients ?: return
-        clients.clientsChanged -= this
-        this.clients = null
-    }
-
-    private fun updateForClient(client: Client, toRemove: HashSet<InetAddress>? = null) {
-        for ((ip, _) in client.ip) if (ip is Inet4Address) {
-            toRemove?.remove(ip)
-            try {
-                subroutes.computeIfAbsentCompat(ip) { Subroute(ip, client) }
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage).show()
-            }
-        }
-    }
-
-    private inner class Subroute(private val ip: Inet4Address, client: Client) : AutoCloseable {
-        private val transaction = RootSession.beginTransaction().apply {
-            try {
-                val address by lazy { ip.hostAddress }
-                if (!strict) {
-                    // otw allow downstream packets to be redirected to anywhere
-                    // because we don't wanna keep track of default network changes
-                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
-                    iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                } else if (upstream != null) {
-                    iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -o $upstream -j ACCEPT")
-                    iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
-                }   // else nothing needs to be done
-                commit()
-            } catch (e: Exception) {
-                revert()
-                throw e
-            }
-        }
-
-        init {
-            TrafficRecorder.register(ip, if (strict) upstream else null, downstream, client.mac)
-        }
-
-        override fun close() {
-            TrafficRecorder.unregister(ip, downstream)
-            transaction.revert()
-        }
     }
 }

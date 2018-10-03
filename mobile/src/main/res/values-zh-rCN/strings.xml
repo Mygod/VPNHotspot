@@ -64,7 +64,7 @@
     <string name="clients_nickname_title">%s 的昵称</string>
     <string name="clients_stats_title">%s 的流量</string>
     <plurals name="clients_stats_message_1">
-        <item quantity="other">自 %2$s 以来连了 %1$s 次</item>
+        <item quantity="other">自 %2$s 以来重新路由了 %1$s 次</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="other">上传 %1$s 个包，%2$s</item>
@@ -79,14 +79,14 @@
     <string name="settings_service_masquerade_summary">建议使用广告拦截器与 socksfier 等虚拟 VPN 应用时禁用此选项。</string>
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
-    <string name="settings_service_repeater_strict">严格模式</string>
-    <string name="settings_service_repeater_strict_summary">只允许通过 VPN 隧道的包通过</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 IPv6 VPN 泄漏。</string>
     <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
+    <string name="settings_upstream_fallback">备用上游接口</string>
+    <string name="settings_upstream_fallback_auto">自动检测系统默认网络</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_service_clean_summary">将修改的设置应用到当前启用的服务上。也可用于修复偶尔会发生的竞态条件。</string>
     <string name="settings_service_dhcp_workaround">尝试修复 DHCP</string>

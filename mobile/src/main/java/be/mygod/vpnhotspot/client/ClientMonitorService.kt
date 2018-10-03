@@ -5,7 +5,7 @@ import android.content.*
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.IBinder
 import be.mygod.vpnhotspot.RepeaterService
-import be.mygod.vpnhotspot.net.monitor.IpNeighbour
+import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.StickyEvent1

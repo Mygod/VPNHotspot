@@ -1,7 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.app.Service
-import be.mygod.vpnhotspot.net.monitor.IpNeighbour
+import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 
 abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Callback {

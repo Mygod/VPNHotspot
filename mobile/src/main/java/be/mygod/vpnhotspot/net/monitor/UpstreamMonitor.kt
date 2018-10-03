@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.content.SharedPreferences
+import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
 import java.net.InetAddress
 
@@ -18,9 +19,7 @@ abstract class UpstreamMonitor {
         }
         private var monitor = generateMonitor()
 
-        fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) = synchronized(this) {
-            monitor.registerCallback(callback, failfast)
-        }
+        fun registerCallback(callback: Callback) = synchronized(this) { monitor.registerCallback(callback) }
         fun unregisterCallback(callback: Callback) = synchronized(this) { monitor.unregisterCallback(callback) }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -35,7 +34,10 @@ abstract class UpstreamMonitor {
                 }
                 val new = generateMonitor()
                 monitor = new
-                callbacks.forEach { new.registerCallback(it) { if (active) it.onLost() } }
+                for (callback in callbacks) {
+                    if (active) callback.onLost()
+                    new.registerCallback(callback)
+                }
             }
         }
     }
@@ -43,24 +45,39 @@ abstract class UpstreamMonitor {
     interface Callback {
         /**
          * Called if some interface is available. This might be called on different ifname without having called onLost.
+         * This might also be called on the same ifname but with updated DNS list.
          */
         fun onAvailable(ifname: String, dns: List<InetAddress>)
         /**
          * Called if no interface is available.
          */
         fun onLost()
+        /**
+         * Called on API 23- from DefaultNetworkMonitor. This indicates that there isn't a good way of telling the
+         * default network (see DefaultNetworkMonitor) and we are using rules at priority 22000
+         * (RULE_PRIORITY_DEFAULT_NETWORK) as our fallback rules, which would work fine until Android 9.0 broke it in
+         * commit: https://android.googlesource.com/platform/system/netd/+/758627c4d93392190b08e9aaea3bbbfb92a5f364
+         */
+        fun onFallback() {
+            throw NotImplementedError()
+        }
     }
 
-    protected val callbacks = HashSet<Callback>()
-    abstract val currentIface: String?
-    protected abstract fun registerCallbackLocked(callback: Callback): Boolean
-    protected abstract fun destroyLocked()
+    val callbacks = HashSet<Callback>()
+    protected abstract val currentLinkProperties: LinkProperties?
+    open val currentIface: String? get() = currentLinkProperties?.interfaceName
+    /**
+     * There's no need for overriding currentDns for now.
+     */
+    val currentDns: List<InetAddress> get() = currentLinkProperties?.dnsServers ?: emptyList()
+    protected abstract fun registerCallbackLocked(callback: Callback)
+    abstract fun destroyLocked()
 
-    fun registerCallback(callback: Callback, failfast: (() -> Unit)? = null) {
-        if (synchronized(this) {
+    fun registerCallback(callback: Callback) {
+        synchronized(this) {
             if (!callbacks.add(callback)) return
             registerCallbackLocked(callback)
-        }) failfast?.invoke()
+        }
     }
     fun unregisterCallback(callback: Callback) = synchronized(this) {
         if (callbacks.remove(callback) && callbacks.isEmpty()) destroyLocked()

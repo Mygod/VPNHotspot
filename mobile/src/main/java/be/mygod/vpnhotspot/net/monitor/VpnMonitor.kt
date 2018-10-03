@@ -1,9 +1,6 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
+import android.net.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.debugLog
 
@@ -16,12 +13,9 @@ object VpnMonitor : UpstreamMonitor() {
             .build()
     private var registered = false
 
-    /**
-     * Obtaining ifname in onLost doesn't work so we need to cache it in onAvailable.
-     */
-    private val available = HashMap<Network, String>()
+    private val available = HashMap<Network, LinkProperties>()
     private var currentNetwork: Network? = null
-    override val currentIface: String? get() {
+    override val currentLinkProperties: LinkProperties? get() {
         val currentNetwork = currentNetwork
         return if (currentNetwork == null) null else available[currentNetwork]
     }
@@ -30,49 +24,56 @@ object VpnMonitor : UpstreamMonitor() {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
             synchronized(this@VpnMonitor) {
-                if (available.put(network, ifname) != null) return
-                debugLog(TAG, "onAvailable: $ifname, ${properties.dnsServers.joinToString()}")
                 val old = currentNetwork
-                if (old != null) debugLog(TAG, "Assuming old VPN interface ${available[old]} is dying")
-                currentNetwork = network
+                val oldProperties = available.put(network, properties)
+                if (old != network) {
+                    if (old != null) {
+                        debugLog(TAG, "Assuming old VPN interface ${available[old]} is dying")
+                        callbacks.forEach { it.onLost() }
+                    }
+                    currentNetwork = network
+                } else {
+                    check(ifname == oldProperties!!.interfaceName)
+                    if (properties.dnsServers == oldProperties.dnsServers) return
+                }
                 callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
             }
         }
 
+        override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+            synchronized(this@VpnMonitor) {
+                if (currentNetwork != network) return
+                val oldProperties = available.put(network, properties)!!
+                val ifname = properties.interfaceName!!
+                check(ifname == oldProperties.interfaceName)
+                if (properties.dnsServers != oldProperties.dnsServers)
+                    callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+            }
+        }
+
         override fun onLost(network: Network) = synchronized(this@VpnMonitor) {
-            val ifname = available.remove(network) ?: return
-            debugLog(TAG, "onLost: $ifname")
-            if (currentNetwork != network) return
-            while (available.isNotEmpty()) {
+            if (available.remove(network) == null || currentNetwork != network) return
+            if (available.isNotEmpty()) {
                 val next = available.entries.first()
                 currentNetwork = next.key
-                val properties = app.connectivity.getLinkProperties(next.key)
-                if (properties != null) {
-                    debugLog(TAG, "Switching to ${next.value} as VPN interface")
-                    callbacks.forEach { it.onAvailable(next.value, properties.dnsServers) }
-                    return
-                }
-                available.remove(next.key)
+                debugLog(TAG, "Switching to ${next.value.interfaceName} as VPN interface")
+                callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value.dnsServers) }
+            } else {
+                callbacks.forEach { it.onLost() }
+                currentNetwork = null
             }
-            callbacks.forEach { it.onLost() }
-            currentNetwork = null
         }
     }
 
-    override fun registerCallbackLocked(callback: Callback) = if (registered) {
-        val currentNetwork = currentNetwork
-        if (currentNetwork == null) true else {
-            callback.onAvailable(available[currentNetwork]!!,
-                    app.connectivity.getLinkProperties(currentNetwork)?.dnsServers ?: emptyList())
-            false
-        }
-    } else {
-        app.connectivity.registerNetworkCallback(request, networkCallback)
-        registered = true
-        app.connectivity.allNetworks.all {
-            val cap = app.connectivity.getNetworkCapabilities(it)
-            cap == null || !cap.hasTransport(NetworkCapabilities.TRANSPORT_VPN) ||
-                    cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    override fun registerCallbackLocked(callback: Callback) {
+        if (registered) {
+            val currentLinkProperties = currentLinkProperties
+            if (currentLinkProperties != null) {
+                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties.dnsServers)
+            }
+        } else {
+            app.connectivity.registerNetworkCallback(request, networkCallback)
+            registered = true
         }
     }
 

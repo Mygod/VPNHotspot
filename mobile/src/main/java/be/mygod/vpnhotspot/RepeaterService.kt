@@ -232,7 +232,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private fun doStart(group: WifiP2pGroup) {
         this.group = group
         check(routingManager == null)
-        routingManager = LocalOnlyInterfaceManager(this, group.`interface`!!)
+        routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
         status = Status.ACTIVE
         showNotification(group)
     }
