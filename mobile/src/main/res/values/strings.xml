@@ -63,6 +63,7 @@
 
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Block</string>
+    <string name="clients_popup_block_service_inactive">Turn on service for this interface to block the client.</string>
     <string name="clients_popup_unblock">Unblock</string>
     <string name="clients_popup_stats">Stats…</string>
     <string name="clients_nickname_title">Nickname for %s</string>

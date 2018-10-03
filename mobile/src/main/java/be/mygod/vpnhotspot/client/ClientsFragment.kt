@@ -32,6 +32,7 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.toPluralInt
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment(), ServiceConnection {
@@ -118,10 +119,14 @@ class ClientsFragment : Fragment(), ServiceConnection {
                 }
                 R.id.block, R.id.unblock -> {
                     val client = binding.client ?: return false
+                    val wasWorking = TrafficRecorder.isWorking(client.mac.macToLong())
                     client.record.apply {
                         AppDatabase.instance.clientRecordDao.update(ClientRecord(mac, nickname, !blocked))
                     }
                     IpNeighbourMonitor.instance?.flush()
+                    if (!wasWorking && item.itemId == R.id.block) {
+                        SmartSnackbar.make(R.string.clients_popup_block_service_inactive).show()
+                    }
                     true
                 }
                 R.id.stats -> {

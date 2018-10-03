@@ -146,4 +146,9 @@ object TrafficRecorder {
         unscheduleUpdateLocked()
         records.clear()
     }
+
+    /**
+     * Possibly inefficient. Don't call this too often.
+     */
+    fun isWorking(mac: Long) = records.values.any { it.mac == mac }
 }
