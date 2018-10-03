@@ -6,6 +6,9 @@
         <variable
             name="client"
             type="be.mygod.vpnhotspot.client.Client"/>
+        <variable
+            name="rate"
+            type="be.mygod.vpnhotspot.client.ClientsFragment.TrafficRate"/>
     </data>
 
     <LinearLayout
@@ -41,12 +44,18 @@
                 android:textIsSelectable="@{client.record.nickname.length() == 0}"
                 tools:text="01:23:45:ab:cd:ef%p2p-p2p0-0"/>
 
-            <TextView
+            <be.mygod.vpnhotspot.widget.AutoCollapseTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
                 android:textIsSelectable="true"
                 tools:text="192.168.49.123 (reachable)\nfe80::abcd:efff:1234:5678%p2p-p2p0-0 (reachable)"/>
+
+            <be.mygod.vpnhotspot.widget.AutoCollapseTextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@{rate.toString()}"
+                tools:text="▲ 3.23KB/s\t\t▼ 5.12GB/s"/>
         </LinearLayout>
     </LinearLayout>
 </layout>

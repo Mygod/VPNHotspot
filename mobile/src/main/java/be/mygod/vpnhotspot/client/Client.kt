@@ -2,10 +2,7 @@ package be.mygod.vpnhotspot.client
 
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.format.Formatter
 import android.text.style.StrikethroughSpan
-import androidx.databinding.BaseObservable
-import androidx.databinding.Bindable
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -17,10 +14,9 @@ import be.mygod.vpnhotspot.room.lookup
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
-import java.util.Objects
-import java.util.TreeMap
+import java.util.*
 
-abstract class Client : BaseObservable() {
+abstract class Client {
     companion object DiffCallback : DiffUtil.ItemCallback<Client>() {
         override fun areItemsTheSame(oldItem: Client, newItem: Client) =
                 oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
@@ -32,8 +28,6 @@ abstract class Client : BaseObservable() {
     private val macIface get() = "$mac%$iface"
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
     val record by lazy { AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()) }
-    var sendRate = -1L
-    var receiveRate = -1L
 
     open val icon get() = TetherType.ofInterface(iface).icon
     val title: CharSequence get() {
@@ -41,7 +35,7 @@ abstract class Client : BaseObservable() {
         if (record.blocked) result.setSpan(StrikethroughSpan(), 0, result.length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         return result
     }
-    val description: String @Bindable get() {
+    val description: String get() {
         val result = StringBuilder(if (record.nickname.isEmpty()) "" else "$macIface\n")
         ip.entries.forEach { (ip, state) ->
             result.appendln(app.getString(when (state) {
@@ -51,8 +45,6 @@ abstract class Client : BaseObservable() {
                 else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
             }, ip.hostAddress))
         }
-        if (sendRate >= 0 && receiveRate >= 0) result.appendln(
-                "▲ ${Formatter.formatFileSize(app, sendRate)}/s\t\t▼ ${Formatter.formatFileSize(app, receiveRate)}/s")
         return result.toString().trimEnd()
     }
 

@@ -16,6 +16,7 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.core.os.bundleOf
+import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -23,7 +24,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
-import be.mygod.vpnhotspot.BR
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
@@ -31,6 +32,7 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
+import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.text.NumberFormat
@@ -92,6 +94,16 @@ class ClientsFragment : Fragment(), ServiceConnection {
         }
     }
 
+    data class TrafficRate(var send: Long = -1, var receive: Long = -1) : BaseObservable() {
+        fun clear() {
+            send = -1
+            receive = -1
+        }
+
+        override fun toString() = if (send < 0 || receive < 0) "" else
+                "▲ ${Formatter.formatFileSize(app, send)}/s\t\t▼ ${Formatter.formatFileSize(app, receive)}/s"
+    }
+
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
@@ -144,12 +156,8 @@ class ClientsFragment : Fragment(), ServiceConnection {
     }
 
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
-        private var clientsLookup: LongSparseArray<Client>? = null
         override fun submitList(list: MutableList<Client>?) {
             super.submitList(list)
-            clientsLookup = if (list == null) null else LongSparseArray<Client>(list.size).apply {
-                list.forEach { put(it.mac.macToLong(), it) }
-            }
             binding.swipeRefresher.isRefreshing = false
         }
 
@@ -157,20 +165,17 @@ class ClientsFragment : Fragment(), ServiceConnection {
                 ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
-            holder.binding.client = getItem(position)
+            val client = getItem(position)
+            holder.binding.client = client
+            holder.binding.rate =
+                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac.macToLong())) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 
         fun updateTraffic(newRecords: Collection<TrafficRecord>, oldRecords: LongSparseArray<TrafficRecord>) {
-            val clientsLookup = clientsLookup ?: return
-            val seenClients = HashSet<Client>()
+            for (rate in rates.values) rate.clear()
             for (newRecord in newRecords) {
                 val oldRecord = oldRecords[newRecord.previousId ?: continue] ?: continue
-                val client = clientsLookup[newRecord.mac]
-                if (seenClients.add(client)) {
-                    client.sendRate = 0
-                    client.receiveRate = 0
-                }
                 val elapsed = newRecord.timestamp - oldRecord.timestamp
                 if (elapsed == 0L) {
                     check(newRecord.sentPackets == oldRecord.sentPackets)
@@ -178,17 +183,23 @@ class ClientsFragment : Fragment(), ServiceConnection {
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
                 } else {
-                    client.sendRate += (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
-                    client.receiveRate += (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
-                    client.notifyPropertyChanged(BR.description)
+                    val rate = rates.computeIfAbsentCompat(Pair(newRecord.downstream, newRecord.mac)) { TrafficRate() }
+                    if (rate.send < 0 || rate.receive < 0) {
+                        rate.send = 0
+                        rate.receive = 0
+                    }
+                    rate.send += (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
+                    rate.receive += (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
                 }
             }
+            for (rate in rates.values) rate.notifyChange()
         }
     }
 
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
     private var clients: ClientMonitorService.Binder? = null
+    private var rates = HashMap<Pair<String, Long>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_clients, container, false)
