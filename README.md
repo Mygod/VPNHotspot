@@ -15,6 +15,7 @@ This app is useful for:
 * Connecting things that don't support VPN like Chromecasts behind corporate firewalls;
 * Setting up [gapps](https://support.google.com/pixelphone/answer/7158475) behind corporate firewalls;
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
+* Identifying, monitoring and blocking (unwanted) clients;
 * Bypassing tethering limits by:
   * (recommended) Use this app with a real VPN/socksifier; (ad-blocker may not work)
   * (might or might not work based on your carrier) Use this app with TTL editor like [TTL Master](https://github.com/TTLMaster/TTLMaster);
@@ -29,7 +30,8 @@ now that they introduced this
 [Mobile hotspot](https://support.microsoft.com/en-us/help/4027762/windows-use-your-pc-as-a-mobile-hotspot).
 
 This app is designed to do only minimal changes to your system, so there's almost no chance you will brick your device
-and/or break your Internet using this app *under normal conditions*. However there's also absolutely no guarantee it won't.
+and/or break your Internet using this app *under normal conditions*. However there's also absolutely no guarantee it
+won't.
 
 ## Q & A
 
@@ -102,14 +104,15 @@ Other:
 * `android.net.conn.TETHER_STATE_CHANGED` is assumed to be a sticky broadcast.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000
-respectively. DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
+respectively; `RULE_PRIORITY_DEFAULT_NETWORK` is assumed to be 22000 (or at least > 18000) for API 27-.
+DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:
 
 * Since API 24: `iptables-save`;
 * `echo`;
 * `ip` (`link monitor neigh rule` with proper output format);
-* `iptables` (with correct version corresponding to API level);
+* `iptables` (with correct version corresponding to API level, `-nvx -L <chain>` with proper output format);
 * `su`.
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
