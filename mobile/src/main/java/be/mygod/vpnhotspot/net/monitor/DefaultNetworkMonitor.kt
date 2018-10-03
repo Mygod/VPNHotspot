@@ -24,14 +24,15 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
             when (currentNetwork) {
-                null -> currentNetwork = network
+                null -> { }
                 network -> {
                     val oldProperties = currentLinkProperties!!
                     check(ifname == oldProperties.interfaceName)
                     if (properties.dnsServers == oldProperties.dnsServers) return
                 }
-                else -> check(false)
+                else -> callbacks.forEach { it.onLost() }   // we are using the other default network now
             }
+            currentNetwork = network
             currentLinkProperties = properties
             callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
         }
