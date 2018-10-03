@@ -3,26 +3,6 @@ package be.mygod.vpnhotspot.net.monitor
 import be.mygod.vpnhotspot.App.Companion.app
 
 class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
-    companion object {
-        /**
-         * Based on: https://android.googlesource.com/platform/external/iproute2/+/70556c1/ip/ipaddress.c#1053
-         */
-        private val parser = "^(Deleted )?-?\\d+: ([^:@]+)".toRegex()
-    }
-
-    private inner class IpLinkMonitor : IpMonitor() {
-        override val monitoredObject: String get() = "link"
-
-        override fun processLine(line: String) {
-            val match = parser.find(line) ?: return
-            if (match.groupValues[2] != iface) return
-            setPresent(match.groupValues[1].isEmpty())
-        }
-
-        override fun processLines(lines: Sequence<String>) =
-                setPresent(lines.any { parser.find(it)?.groupValues?.get(2) == iface })
-    }
-
     private fun setPresent(present: Boolean) = synchronized(this) {
         val old = currentIface != null
         if (present == old) return
@@ -33,7 +13,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         } else callbacks.forEach { it.onLost() }
     }
 
-    private var monitor: IpLinkMonitor? = null
+    private var registered = false
     override var currentIface: String? = null
         private set
     override val currentLinkProperties get() = app.connectivity.allNetworks
@@ -41,18 +21,14 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
             .singleOrNull { it?.interfaceName == iface }
 
     override fun registerCallbackLocked(callback: Callback) {
-        var monitor = monitor
-        if (monitor == null) {
-            monitor = IpLinkMonitor()
-            this.monitor = monitor
-            monitor.run()
+        if (!registered) {
+            IpLinkMonitor.registerCallback(this, iface, this::setPresent)
+            registered = true
         } else if (currentIface != null) callback.onAvailable(iface, currentDns)
     }
 
     override fun destroyLocked() {
-        val monitor = monitor ?: return
-        this.monitor = null
-        currentIface = null
-        monitor.destroy()
+        IpLinkMonitor.unregisterCallback(this)
+        registered = false
     }
 }
