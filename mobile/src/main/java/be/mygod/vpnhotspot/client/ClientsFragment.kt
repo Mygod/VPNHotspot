@@ -163,9 +163,14 @@ class ClientsFragment : Fragment(), ServiceConnection {
 
         fun updateTraffic(newRecords: Collection<TrafficRecord>, oldRecords: LongSparseArray<TrafficRecord>) {
             val clientsLookup = clientsLookup ?: return
+            val seenClients = HashSet<Client>()
             for (newRecord in newRecords) {
                 val oldRecord = oldRecords[newRecord.previousId ?: continue] ?: continue
                 val client = clientsLookup[newRecord.mac]
+                if (seenClients.add(client)) {
+                    client.sendRate = 0
+                    client.receiveRate = 0
+                }
                 val elapsed = newRecord.timestamp - oldRecord.timestamp
                 if (elapsed == 0L) {
                     check(newRecord.sentPackets == oldRecord.sentPackets)
@@ -173,8 +178,8 @@ class ClientsFragment : Fragment(), ServiceConnection {
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
                 } else {
-                    client.sendRate = (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
-                    client.receiveRate = (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
+                    client.sendRate += (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
+                    client.receiveRate += (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
                     client.notifyPropertyChanged(BR.description)
                 }
             }
