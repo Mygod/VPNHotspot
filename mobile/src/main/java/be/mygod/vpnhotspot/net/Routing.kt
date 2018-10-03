@@ -95,6 +95,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
             subrouting.revert()
             this.subrouting = null
+            dns = emptyList()
+            updateDnsRoute()
         }
     }
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
