@@ -12,6 +12,7 @@ import androidx.preference.Preference
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
@@ -87,7 +88,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |ip rule
                         |echo
                         |echo iptables -nvx -L vpnhotspot_fwd
-                        |iptables -nvx -L vpnhotspot_fwd
+                        |$IPTABLES -nvx -L vpnhotspot_fwd
                         |echo
                         |echo logcat-su
                         |logcat -d

@@ -1,7 +1,8 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.os.SystemClock
 import android.util.LongSparseArray
+import androidx.core.os.postDelayed
+import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.insert
@@ -49,7 +50,7 @@ object TrafficRecorder {
         val minute = TimeUnit.MINUTES.toMillis(1)
         var timeout = minute - now % minute
         if (foregroundListeners.isNotEmpty() && timeout > 1000) timeout = 1000
-        RootSession.handler.postAtTime(this::update, this, SystemClock.uptimeMillis() + timeout)
+        RootSession.handler.postDelayed(timeout, this) { update(true) }
         scheduled = true
     }
 
@@ -60,7 +61,7 @@ object TrafficRecorder {
 
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
-        for (line in RootSession.use { it.execOutUnjoined("iptables -nvx -L vpnhotspot_fwd") }.asSequence().drop(2)) {
+        for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd") }.asSequence().drop(2)) {
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
@@ -119,24 +120,19 @@ object TrafficRecorder {
         }
         foregroundListeners(records.values, oldRecords)
     }
-    fun update() {
+    fun update(timeout: Boolean = false) {
         synchronized(this) {
-            val wasScheduled = scheduled
-            scheduled = false
+            if (timeout) scheduled = false
             if (records.isEmpty()) return
             val timestamp = System.currentTimeMillis()
-            if (timestamp - lastUpdate > 100) {
-                try {
-                    doUpdate(timestamp)
-                } catch (e: RuntimeException) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e.localizedMessage)
-                }
-                lastUpdate = timestamp
-            } else if (wasScheduled) {
-                scheduled = true
-                return
+            if (!timeout && timestamp - lastUpdate <= 100) return
+            try {
+                doUpdate(timestamp)
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+                SmartSnackbar.make(e.localizedMessage)
             }
+            lastUpdate = timestamp
             scheduleUpdateLocked()
         }
     }

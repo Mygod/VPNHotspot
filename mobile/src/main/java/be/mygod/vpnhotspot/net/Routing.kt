@@ -34,21 +34,21 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
          *
          * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
          */
-        private val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
+        val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
 
         fun clean() {
             TrafficRecorder.clean()
             RootSession.use {
-                it.submit("$IPTABLES -t nat -F PREROUTING")
-                it.submit("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
-                it.submit("$IPTABLES -F vpnhotspot_fwd")
-                it.submit("$IPTABLES -X vpnhotspot_fwd")
-                it.submit("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-                it.submit("$IPTABLES -t nat -F vpnhotspot_masquerade")
-                it.submit("$IPTABLES -t nat -X vpnhotspot_masquerade")
-                it.submit("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
-                it.submit("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
-                it.submit("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
+                it.execQuiet("$IPTABLES -t nat -F PREROUTING")
+                it.execQuiet("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
+                it.execQuiet("$IPTABLES -F vpnhotspot_fwd")
+                it.execQuiet("$IPTABLES -X vpnhotspot_fwd")
+                it.execQuiet("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
+                it.execQuiet("$IPTABLES -t nat -F vpnhotspot_masquerade")
+                it.execQuiet("$IPTABLES -t nat -X vpnhotspot_masquerade")
+                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
+                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
+                it.execQuiet("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
             }
         }
 
