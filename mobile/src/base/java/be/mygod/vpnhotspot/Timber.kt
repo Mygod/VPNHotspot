@@ -8,7 +8,7 @@ import timber.log.Timber
 
 fun initTimber() {
     Fabric.with(app, Crashlytics())
-    Timber.plant(object : Timber.Tree() {
+    Timber.plant(object : Timber.DebugTree() {
         override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
             if (t == null) Crashlytics.log(priority, tag, message) else {
                 // Crashlytics.logException doesn't print to logcat
@@ -20,6 +20,6 @@ fun initTimber() {
 }
 
 fun debugLog(tag: String?, message: String?) {
-    if (BuildConfig.DEBUG) Timber.d(tag, message)
+    if (BuildConfig.DEBUG) Timber.tag(tag).d(message)
     Crashlytics.log("$tag: $message")
 }

@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-kapt'
 
-if (getGradle().getStartParameter().getTaskRequests().toString().contains("base"))
+if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
     apply plugin: 'io.fabric'
 
 android {
@@ -76,5 +76,5 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-alpha4'
 }
 
-if (getGradle().getStartParameter().getTaskRequests().toString().contains("base"))
+if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
     apply plugin: 'com.google.gms.google-services'
