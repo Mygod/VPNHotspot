@@ -69,40 +69,39 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
 
     var hasMasquerade = false
 
-    private abstract inner class Upstream : UpstreamMonitor.Callback {
+    private val upstreams = HashSet<String>()
+    private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
         var subrouting: Subrouting? = null
         var dns: List<InetAddress> = emptyList()
 
         override fun onAvailable(ifname: String, dns: List<InetAddress>) {
+            if (!upstreams.add(ifname)) return
+            val subrouting = subrouting
+            if (subrouting == null) this.subrouting = try {
+                Subrouting(this@Routing, priority, ifname)
+            } catch (e: Exception) {
+                SmartSnackbar.make(e.localizedMessage).show()
+                Timber.w(e)
+                null
+            } else check(subrouting.upstream == ifname)
             this.dns = dns
             updateDnsRoute()
         }
 
         override fun onLost() {
             val subrouting = subrouting ?: return
+            check(upstreams.remove(subrouting.upstream))
             subrouting.close()
             TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
             subrouting.revert()
             this.subrouting = null
         }
     }
-    private val fallbackUpstream = object : Upstream() {
-        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
-            val subrouting = subrouting
-            if (subrouting == null) this.subrouting = try {
-                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM_FALLBACK, ifname)
-            } catch (e: Exception) {
-                SmartSnackbar.make(e.localizedMessage).show()
-                Timber.w(e)
-                null
-            } else check(subrouting.upstream == ifname)
-            super.onAvailable(ifname, dns)
-        }
-
+    private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
         override fun onFallback() {
             check(subrouting == null)
             subrouting = try {
-                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM_FALLBACK)
+                Subrouting(this@Routing, priority)
             } catch (e: Exception) {
                 SmartSnackbar.make(e.localizedMessage).show()
                 Timber.w(e)
@@ -111,19 +110,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             updateDnsRoute()
         }
     }
-    private val upstream = object : Upstream() {
-        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
-            val subrouting = subrouting
-            if (subrouting == null) this.subrouting = try {
-                Subrouting(this@Routing, RULE_PRIORITY_UPSTREAM, ifname)
-            } catch (e: Exception) {
-                SmartSnackbar.make(e.localizedMessage).show()
-                Timber.w(e)
-                null
-            } else check(subrouting.upstream == ifname)
-            super.onAvailable(ifname, dns)
-        }
-    }
+    private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
 
     fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
 
