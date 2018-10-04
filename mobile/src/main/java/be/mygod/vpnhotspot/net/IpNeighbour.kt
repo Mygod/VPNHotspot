@@ -23,31 +23,30 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
         fun parse(line: String): IpNeighbour? {
-            val match = parser.matchEntire(line)!!
-            val ip = parseNumericAddress(match.groupValues[2])
-            val dev = match.groupValues[4]
-            var lladdr = checkLladdrNotLoopback(match.groupValues[6])
-            // use ARP as fallback
-            if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
-                    .asSequence()
-                    .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
-                    .map { it[ARP_HW_ADDRESS] }
-                    .singleOrNull() ?: "")
-            val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
-                when (match.groupValues[10]) {
-                    "", "INCOMPLETE" -> State.INCOMPLETE
-                    "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
-                    "FAILED" -> State.FAILED
-                    "NOARP" -> return null  // skip
-                    else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[10]}")
-                }
-            return IpNeighbour(ip, dev, lladdr, state)
-        }
-        fun parseNoThrow(line: String): IpNeighbour? = try {
-            parse(line)
-        } catch (e: Exception) {
-            Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
-            null
+            return try {
+                val match = parser.matchEntire(line)!!
+                val ip = parseNumericAddress(match.groupValues[2])
+                val dev = match.groupValues[4]
+                var lladdr = checkLladdrNotLoopback(match.groupValues[6])
+                // use ARP as fallback
+                if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
+                        .asSequence()
+                        .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
+                        .map { it[ARP_HW_ADDRESS] }
+                        .singleOrNull() ?: "")
+                val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
+                    when (match.groupValues[10]) {
+                        "", "INCOMPLETE" -> State.INCOMPLETE
+                        "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
+                        "FAILED" -> State.FAILED
+                        "NOARP" -> return null  // skip
+                        else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[10]}")
+                    }
+                IpNeighbour(ip, dev, lladdr, state)
+            } catch (e: Exception) {
+                Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
+                null
+            }
         }
 
         private val spaces = " +".toPattern()

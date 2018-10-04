@@ -38,7 +38,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
     override fun processLine(line: String) {
         synchronized(neighbours) {
-            val neighbour = IpNeighbour.parseNoThrow(line) ?: return
+            val neighbour = IpNeighbour.parse(line) ?: return
             val changed = if (neighbour.state == IpNeighbour.State.DELETING)
                 neighbours.remove(neighbour.ip) != null
             else neighbours.put(neighbour.ip, neighbour) != neighbour
@@ -50,7 +50,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         synchronized(neighbours) {
             neighbours.clear()
             neighbours.putAll(lines
-                    .map(IpNeighbour.Companion::parseNoThrow)
+                    .map(IpNeighbour.Companion::parse)
                     .filterNotNull()
                     .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
                     .associateBy { it.ip })
