@@ -37,7 +37,8 @@ object TrafficRecorder {
     }
     fun unregister(ip: InetAddress, upstream: String?, downstream: String) = synchronized(this) {
         update()    // flush stats before removing
-        check(records.remove(Triple(ip, upstream, downstream)) != null)
+        if (records.remove(Triple(ip, upstream, downstream)) == null) Timber.w(
+                "Failed to find traffic record for ($ip, $downstream, $upstream).")
     }
 
     private fun unscheduleUpdateLocked() {
