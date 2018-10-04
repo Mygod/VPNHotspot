@@ -31,7 +31,7 @@ class P2pSupplicantConfiguration(private val initContent: String? = null) : Parc
         private val confPath = if (Build.VERSION.SDK_INT >= 28)
             "/data/vendor/wifi/wpa/p2p_supplicant.conf" else "/data/misc/wifi/p2p_supplicant.conf"
     }
-    private class InvalidConfigurationError : IOException()
+    private class InvalidConfigurationError : IOException("Invalid configuration")
 
     override fun writeToParcel(out: Parcel, flags: Int) {
         out.writeString(if (contentDelegate.isInitialized()) content else null)

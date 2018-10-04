@@ -172,7 +172,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 data.getParcelableExtra<P2pSupplicantConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURER)
                         .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
                 app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
-            } catch (e: RuntimeException) {
+            } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e.localizedMessage).show()
             }
