@@ -61,8 +61,7 @@ object TrafficRecorder {
 
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
-        loop@ for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd") }
-                .asSequence().drop(2)) {
+        loop@ for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd").drop(2) }) {
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
