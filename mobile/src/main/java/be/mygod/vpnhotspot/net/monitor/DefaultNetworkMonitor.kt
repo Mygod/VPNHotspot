@@ -48,7 +48,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         }
 
         override fun onLost(network: Network) {
-            check(currentNetwork == network)
+            if (currentNetwork != network) return
             callbacks.forEach { it.onLost() }
             currentNetwork = null
             currentLinkProperties = null
