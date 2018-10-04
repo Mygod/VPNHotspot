@@ -71,7 +71,7 @@ object TrafficRecorder {
                     "ACCEPT" -> {
                         val isReceive = columns[7] == ANYWHERE
                         val isSend = columns[8] == ANYWHERE
-                        check(isReceive != isSend)
+                        check(isReceive != isSend)  // this check might fail when the user performed an upgrade from 1.x
                         val ip = parseNumericAddress(columns[if (isReceive) 8 else 7])
                         val downstream = columns[if (isReceive) 6 else 5]
                         var upstream: String? = columns[if (isReceive) 5 else 6]
