@@ -57,17 +57,11 @@ fun NetworkInterface.formatAddresses() =
                 .joinToString("\n")
 
 private val parseNumericAddress by lazy {
-    // parseNumericAddressNoThrow is in dark grey list unfortunately
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
         isAccessible = true
     }
 }
 fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
-fun parseNumericAddressNoThrow(address: String): InetAddress? = try {
-    parseNumericAddress(address)
-} catch (_: IllegalArgumentException) {
-    null
-}
 
 /**
  * Wrapper for kotlin.concurrent.thread that silences uncaught exceptions.

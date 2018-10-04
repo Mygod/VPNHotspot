@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.net.IpNeighbour
 import java.net.InetAddress
 
@@ -39,8 +38,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
     override fun processLine(line: String) {
         synchronized(neighbours) {
-            val neighbour = IpNeighbour.parse(line) ?: return
-            debugLog(javaClass.simpleName, line)
+            val neighbour = IpNeighbour.parseNoThrow(line) ?: return
             val changed = if (neighbour.state == IpNeighbour.State.DELETING)
                 neighbours.remove(neighbour.ip) != null
             else neighbours.put(neighbour.ip, neighbour) != neighbour
@@ -52,7 +50,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         synchronized(neighbours) {
             neighbours.clear()
             neighbours.putAll(lines
-                    .map(IpNeighbour.Companion::parse)
+                    .map(IpNeighbour.Companion::parseNoThrow)
                     .filterNotNull()
                     .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
                     .associateBy { it.ip })
