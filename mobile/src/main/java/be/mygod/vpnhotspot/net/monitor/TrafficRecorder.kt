@@ -61,7 +61,8 @@ object TrafficRecorder {
 
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
-        for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd") }.asSequence().drop(2)) {
+        loop@ for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd") }
+                .asSequence().drop(2)) {
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
@@ -76,7 +77,7 @@ object TrafficRecorder {
                         var upstream: String? = columns[if (isReceive) 5 else 6]
                         if (upstream == "*") upstream = null
                         val key = Triple(ip, upstream, downstream)
-                        val oldRecord = records[key]!!
+                        val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules
                         val record = if (oldRecord.id == null) oldRecord else TrafficRecord(
                                 timestamp = timestamp,
                                 mac = oldRecord.mac,
