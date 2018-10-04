@@ -10,8 +10,8 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         private val callbacks = HashSet<Callback>()
         var instance: IpNeighbourMonitor? = null
 
-        fun registerCallback(callback: Callback) {
-            if (!callbacks.add(callback)) return
+        fun registerCallback(callback: Callback) = synchronized(this) {
+            if (!callbacks.add(callback)) return@synchronized
             var monitor = instance
             if (monitor == null) {
                 monitor = IpNeighbourMonitor()
@@ -21,8 +21,8 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 callback.onIpNeighbourAvailable(synchronized(monitor.neighbours) { monitor.neighbours.values.toList() })
             }
         }
-        fun unregisterCallback(callback: Callback) {
-            if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return
+        fun unregisterCallback(callback: Callback) = synchronized(this) {
+            if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return@synchronized
             instance?.destroy()
             instance = null
         }
@@ -67,7 +67,9 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 updatePosted = false
                 neighbours.values.toList()
             }
-            for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
+            synchronized(IpNeighbourMonitor) {
+                for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
+            }
         }
         updatePosted = true
     }
