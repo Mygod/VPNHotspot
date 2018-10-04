@@ -74,7 +74,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         var subrouting: Subrouting? = null
         var dns: List<InetAddress> = emptyList()
 
-        override fun onAvailable(ifname: String, dns: List<InetAddress>) {
+        override fun onAvailable(ifname: String, dns: List<InetAddress>) = synchronized(this@Routing) {
             if (!upstreams.add(ifname)) return
             val subrouting = subrouting
             if (subrouting == null) this.subrouting = try {
@@ -88,7 +88,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             updateDnsRoute()
         }
 
-        override fun onLost() {
+        override fun onLost() = synchronized(this@Routing) {
             val subrouting = subrouting ?: return
             check(upstreams.remove(subrouting.upstream))
             subrouting.close()
@@ -100,7 +100,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         }
     }
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
-        override fun onFallback() {
+        override fun onFallback() = synchronized(this@Routing) {
             check(subrouting == null)
             subrouting = try {
                 Subrouting(this@Routing, priority)
