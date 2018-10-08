@@ -120,6 +120,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
             // we don't ever need to use discovering ever so busy must mean P2pStateMachine is in invalid state
             WifiP2pManager.BUSY -> return getString(R.string.repeater_p2p_unavailable)
+            // this should never be used
             WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
             WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
             else -> getString(R.string.failure_reason_unknown, reason)
@@ -235,10 +236,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
             override fun onSuccess() = clean()
             override fun onFailure(reason: Int) {
-                if (reason == WifiP2pManager.BUSY) clean() else {   // assuming it's already gone
+                if (reason != WifiP2pManager.BUSY) {
                     SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
-                    status = Status.ACTIVE
-                }
+                }   // else assuming it's already gone
+                clean()
             }
         })
     }
