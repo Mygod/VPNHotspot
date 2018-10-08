@@ -7,7 +7,7 @@ import io.fabric.sdk.android.Fabric
 import timber.log.Timber
 
 fun initTimber() {
-    Fabric.with(app, Crashlytics())
+    Fabric.with(app.deviceStorage, Crashlytics())
     Timber.plant(object : Timber.DebugTree() {
         override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
             if (t == null) Crashlytics.log(priority, tag, message) else {
