@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.NetworkInfo
@@ -19,7 +18,10 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.StickyEvent0
+import be.mygod.vpnhotspot.util.StickyEvent1
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.intentFilter
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -32,7 +34,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     enum class Status {
         IDLE, STARTING, ACTIVE
     }
-    private class Failure(message: String, cause: Throwable? = null) : RuntimeException(message, cause)
 
     inner class Binder : android.os.Binder() {
         val service get() = this@RepeaterService
@@ -117,12 +118,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val result = getString(resId, when (reason) {
             WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
             WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
-            WifiP2pManager.BUSY -> getString(R.string.repeater_failure_reason_busy)
+            // we don't ever need to use discovering ever so busy must mean P2pStateMachine is in invalid state
+            WifiP2pManager.BUSY -> return getString(R.string.repeater_p2p_unavailable)
             WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
             WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
             else -> getString(R.string.failure_reason_unknown, reason)
         })
-        Timber.i(Failure(result))
+        Timber.i(RuntimeException("WifiP2pManager returned $reason"))
         return result
     }
 
@@ -151,7 +153,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (oc != 0) {
             val message = getString(R.string.repeater_set_oc_failure, e.message)
             SmartSnackbar.make(message).show()
-            Timber.w(Failure(message, e))
+            Timber.w(RuntimeException("Failed to set operating channel $oc", e))
         } else Timber.w(e)
     }
 
@@ -171,39 +173,23 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
-        val out = try {
-            RootSession.use { it.execOut("dumpsys ${Context.WIFI_P2P_SERVICE}") }
-        } catch (e: RuntimeException) {
-            Timber.w(e)
-            startFailure(e.localizedMessage)
-            return START_NOT_STICKY
-        }
-        val matcher = WifiP2pManagerHelper.patternNetworkInfo.matcher(out)
-        when {
-            !matcher.find() -> startFailure(out)
-            matcher.group(2) == "true" -> {
-                unregisterReceiver()
-                registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                        WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-                receiverRegistered = true
-                p2pManager.requestGroupInfo(channel) {
-                    when {
-                        it == null -> doStart()
-                        it.isGroupOwner -> if (routingManager == null) doStart(it)
-                        else -> {
-                            Timber.i("Removing old group ($it)")
-                            p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                override fun onSuccess() = doStart()
-                                override fun onFailure(reason: Int) {
-                                    SmartSnackbar.make(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                                            .show()
-                                }
-                            })
-                        }
-                    }
+        unregisterReceiver()
+        registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+        receiverRegistered = true
+        p2pManager.requestGroupInfo(channel) {
+            when {
+                it == null -> doStart()
+                it.isGroupOwner -> if (routingManager == null) doStart(it)
+                else -> {
+                    Timber.i("Removing old group ($it)")
+                    p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() = doStart()
+                        override fun onFailure(reason: Int) =
+                                startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                    })
                 }
             }
-            else -> startFailure(getString(R.string.repeater_p2p_unavailable))
         }
         return START_NOT_STICKY
     }

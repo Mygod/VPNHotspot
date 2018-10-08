@@ -36,7 +36,6 @@
 
     <string name="repeater_failure_reason_error">internal error</string>
     <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct unsupported</string>
-    <string name="repeater_failure_reason_busy">framework is busy</string>
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
     <string name="repeater_failure_reason_unsupported_operation">unsupported operation</string>
 

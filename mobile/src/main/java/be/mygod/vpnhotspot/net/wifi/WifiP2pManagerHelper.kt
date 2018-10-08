@@ -7,22 +7,9 @@ import android.net.wifi.p2p.WifiP2pManager
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
 import java.lang.reflect.Proxy
-import java.util.regex.Pattern
 
 object WifiP2pManagerHelper {
     const val UNSUPPORTED = -2
-
-    /**
-     * Matches the output of dumpsys wifip2p. This part is available since Android 4.2.
-     *
-     * Related sources:
-     *   https://android.googlesource.com/platform/frameworks/base/+/f0afe4144d09aa9b980cffd444911ab118fa9cbe%5E%21/wifi/java/android/net/wifi/p2p/WifiP2pService.java
-     *   https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/a8d5e40/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#639
-     *
-     *   https://android.googlesource.com/platform/frameworks/base.git/+/android-5.0.0_r1/core/java/android/net/NetworkInfo.java#433
-     *   https://android.googlesource.com/platform/frameworks/base.git/+/220871a/core/java/android/net/NetworkInfo.java#415
-     */
-    val patternNetworkInfo = "^mNetworkInfo .* (isA|a)vailable: (true|false)".toPattern(Pattern.MULTILINE)
 
     /**
      * Available since Android 4.4.
