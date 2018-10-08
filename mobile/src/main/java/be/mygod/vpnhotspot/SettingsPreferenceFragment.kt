@@ -94,8 +94,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |logcat -d
                     """.trimMargin())
                     try {
-                        out.write(RootSession.use { it.execQuiet(commands.toString(), true).out }
-                                .joinToString("\n").toByteArray())
+                        out.write(RootSession.use { it.execQuiet(commands.toString(), true).out.joinToString("\n") }
+                                .toByteArray())
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
                         writer.flush()
