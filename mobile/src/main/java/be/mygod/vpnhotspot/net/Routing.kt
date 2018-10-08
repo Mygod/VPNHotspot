@@ -80,7 +80,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             if (subrouting == null) this.subrouting = try {
                 Subrouting(this@Routing, priority, ifname)
             } catch (e: Exception) {
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
                 Timber.w(e)
                 null
             } else check(subrouting.upstream == ifname)
@@ -105,7 +105,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             subrouting = try {
                 Subrouting(this@Routing, priority)
             } catch (e: Exception) {
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
                 Timber.w(e)
                 null
             }
@@ -150,7 +150,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
                 DnsRoute(dns)
             } catch (e: RuntimeException) {
                 Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
                 null
             }
         }

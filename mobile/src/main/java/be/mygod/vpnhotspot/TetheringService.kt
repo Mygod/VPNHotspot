@@ -75,7 +75,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                     }
                 } catch (e: Exception) {
                     Timber.w(e)
-                    SmartSnackbar.make(e.localizedMessage).show()
+                    SmartSnackbar.make(e).show()
                     iterator.remove()
                 }
             }

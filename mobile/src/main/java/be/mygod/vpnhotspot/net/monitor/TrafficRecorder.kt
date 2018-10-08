@@ -135,7 +135,7 @@ object TrafficRecorder {
                 doUpdate(timestamp)
             } catch (e: RuntimeException) {
                 Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage)
+                SmartSnackbar.make(e).show()
             }
             lastUpdate = timestamp
             scheduleUpdateLocked()

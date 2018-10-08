@@ -98,7 +98,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
             // assuming IllegalStateException will be thrown only if
             // "Caller already has an active LocalOnlyHotspot request"
         } catch (_: IllegalStateException) { } catch (e: SecurityException) {
-            SmartSnackbar.make(e.localizedMessage).show()
+            SmartSnackbar.make(e).show()
             Timber.w(e)
             startFailure()
         }

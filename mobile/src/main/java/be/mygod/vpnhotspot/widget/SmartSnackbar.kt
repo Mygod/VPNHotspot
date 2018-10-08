@@ -9,7 +9,9 @@ import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.OnLifecycleEvent
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import com.google.android.material.snackbar.Snackbar
+import com.topjohnwu.superuser.NoShellException
 
 sealed class SmartSnackbar {
     companion object {
@@ -22,6 +24,10 @@ sealed class SmartSnackbar {
             return if (holder == null) ToastWrapper(Toast.makeText(app, text, Toast.LENGTH_LONG)) else
                 SnackbarWrapper(Snackbar.make(holder, text ?: null.toString(), Snackbar.LENGTH_LONG))
         }
+        fun make(e: Throwable) = make(when (e) {
+            is NoShellException -> app.getText(R.string.root_unavailable)
+            else -> e.localizedMessage
+        })
     }
 
     class Register(private val view: View) : LifecycleObserver {

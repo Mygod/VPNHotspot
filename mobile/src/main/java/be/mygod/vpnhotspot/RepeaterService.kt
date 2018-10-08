@@ -80,7 +80,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 }
             } catch (e: ReflectiveOperationException) {
                 Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
             }
         }
     }

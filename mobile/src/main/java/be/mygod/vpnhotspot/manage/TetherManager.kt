@@ -169,7 +169,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
             } catch (e: SecurityException) {
                 Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
             }
         }
 

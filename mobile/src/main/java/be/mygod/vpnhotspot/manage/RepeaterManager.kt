@@ -174,7 +174,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
             } catch (e: Exception) {
                 Timber.w(e)
-                SmartSnackbar.make(e.localizedMessage).show()
+                SmartSnackbar.make(e).show()
             }
             DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()
         }

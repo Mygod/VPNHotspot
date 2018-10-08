@@ -80,7 +80,7 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
                     subroutes.computeIfAbsentCompat(neighbour.ip) { Subroute(neighbour.ip, neighbour.lladdr) }
                 } catch (e: Exception) {
                     Timber.w(e)
-                    SmartSnackbar.make(e.localizedMessage).show()
+                    SmartSnackbar.make(e).show()
                 }
             }
             if (toRemove.isNotEmpty()) {

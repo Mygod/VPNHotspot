@@ -35,7 +35,7 @@ class LocalOnlyInterfaceManager(val downstream: String) {
                 }   // otw nothing needs to be done
             }
         } catch (e: Exception) {
-            SmartSnackbar.make(e.localizedMessage).show()
+            SmartSnackbar.make(e).show()
             Timber.w(e)
             null
         }
