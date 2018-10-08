@@ -54,6 +54,7 @@ This app requires root to make changes to iptables and ip rule. This restriction
 Without root, you can only:
 
 * View connected devices for system tethering and monitor them;
+* Create a hotspot that has only LAN connections;
 * Toggle tether switches if you can't do it already;
 * Play around with settings and the user interface in general;
 * Alternatively you can use try these apps (requires manual proxy configuration or client apps) for normal repeater
