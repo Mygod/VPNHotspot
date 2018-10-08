@@ -3,10 +3,12 @@ package be.mygod.vpnhotspot.net.monitor
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
 import java.net.InetAddress
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
-        private val callbacks = HashSet<Callback>()
+        private val callbacks = Collections.newSetFromMap(ConcurrentHashMap<Callback, Boolean>())
         var instance: IpNeighbourMonitor? = null
 
         fun registerCallback(callback: Callback) = synchronized(this) {
@@ -65,9 +67,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 updatePosted = false
                 neighbours.values.toList()
             }
-            synchronized(IpNeighbourMonitor) {
-                for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
-            }
+            for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
         }
         updatePosted = true
     }
