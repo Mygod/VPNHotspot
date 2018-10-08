@@ -206,12 +206,16 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
         debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
-        if (!info.groupFormed || !info.isGroupOwner || !group.isGroupOwner) {
-            if (routingManager != null) clean()    // P2P shutdown
-        } else if (routingManager != null) {
-            this.group = group
-            showNotification(group)
-        } else doStart(group)
+        when {
+            !info.groupFormed || !info.isGroupOwner || !group.isGroupOwner -> {
+                if (routingManager != null) clean() // P2P shutdown, else other groups changing before start, ignore
+            }
+            routingManager != null -> {
+                this.group = group
+                showNotification(group)
+            }
+            else -> doStart(group)
+        }
     }
     /**
      * startService Step 3
