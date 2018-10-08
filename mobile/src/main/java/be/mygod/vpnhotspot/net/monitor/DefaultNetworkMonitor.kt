@@ -38,7 +38,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            check(currentNetwork == network)
+            if (currentNetwork != network) return
             val oldProperties = currentLinkProperties!!
             currentLinkProperties = properties
             val ifname = properties.interfaceName!!
