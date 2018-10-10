@@ -44,7 +44,11 @@ object VpnMonitor : UpstreamMonitor() {
             synchronized(this@VpnMonitor) {
                 if (currentNetwork != network) return
                 val oldProperties = available.put(network, properties)!!
-                val ifname = properties.interfaceName!!
+                val ifname = properties.interfaceName
+                if (ifname == null) {
+                    onLost(network)
+                    return
+                }
                 check(ifname == oldProperties.interfaceName)
                 if (properties.dnsServers != oldProperties.dnsServers)
                     callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
