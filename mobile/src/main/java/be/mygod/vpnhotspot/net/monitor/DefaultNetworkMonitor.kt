@@ -42,13 +42,22 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             val oldProperties = currentLinkProperties!!
             currentLinkProperties = properties
             val ifname = properties.interfaceName
-            if (ifname == null) {
-                onLost(network)
-                return
+            when {
+                ifname == null -> {
+                    Timber.w(RuntimeException("interfaceName became null: $oldProperties -> $properties"))
+                    onLost(network)
+                }
+                ifname != oldProperties.interfaceName -> {
+                    Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
+                    callbacks.forEach {
+                        it.onLost()
+                        it.onAvailable(ifname, properties.dnsServers)
+                    }
+                }
+                properties.dnsServers != oldProperties.dnsServers -> {
+                    callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+                }
             }
-            check(ifname == oldProperties.interfaceName)
-            if (properties.dnsServers != oldProperties.dnsServers)
-                callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
         }
 
         override fun onLost(network: Network) {

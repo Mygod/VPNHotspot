@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.monitor
 import android.net.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.debugLog
+import timber.log.Timber
 
 object VpnMonitor : UpstreamMonitor() {
     private const val TAG = "VpnMonitor"
@@ -45,13 +46,22 @@ object VpnMonitor : UpstreamMonitor() {
                 if (currentNetwork != network) return
                 val oldProperties = available.put(network, properties)!!
                 val ifname = properties.interfaceName
-                if (ifname == null) {
-                    onLost(network)
-                    return
+                when {
+                    ifname == null -> {
+                        Timber.w(RuntimeException("interfaceName became null: $oldProperties -> $properties"))
+                        onLost(network)
+                    }
+                    ifname != oldProperties.interfaceName -> {
+                        Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
+                        callbacks.forEach {
+                            it.onLost()
+                            it.onAvailable(ifname, properties.dnsServers)
+                        }
+                    }
+                    properties.dnsServers != oldProperties.dnsServers -> {
+                        callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+                    }
                 }
-                check(ifname == oldProperties.interfaceName)
-                if (properties.dnsServers != oldProperties.dnsServers)
-                    callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
             }
         }
 
