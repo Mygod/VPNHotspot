@@ -4,6 +4,8 @@ import android.content.SharedPreferences
 import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
 import java.net.InetAddress
+import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 
 abstract class UpstreamMonitor {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -63,7 +65,7 @@ abstract class UpstreamMonitor {
         }
     }
 
-    val callbacks = HashSet<Callback>()
+    val callbacks = Collections.newSetFromMap(ConcurrentHashMap<Callback, Boolean>())
     protected abstract val currentLinkProperties: LinkProperties?
     open val currentIface: String? get() = currentLinkProperties?.interfaceName
     /**
