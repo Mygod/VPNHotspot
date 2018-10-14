@@ -13,6 +13,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
 import timber.log.Timber
 
@@ -69,9 +70,12 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                 }
     }
 
-    private fun openDialog(@StringRes title: Int, @StringRes message: Int) = MessageDialogFragment().apply {
-        arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
-    }.show(fragmentManager, "MessageDialogFragment")
+    private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
+        val fragmentManager = fragmentManager
+        if (fragmentManager == null) SmartSnackbar.make(message).show() else MessageDialogFragment().apply {
+            arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
+        }.show(fragmentManager, "MessageDialogFragment")
+    }
 
     override fun onBillingServiceDisconnected() {
         skus = null
