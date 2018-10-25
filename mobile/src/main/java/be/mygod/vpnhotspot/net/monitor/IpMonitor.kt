@@ -43,7 +43,9 @@ abstract class IpMonitor : Runnable {
         err.join()
         process.waitFor()
         val result = process.exitValue()
-        return result == 0 || result == 143 // SIGTERM
+        val success = result == 0 || result == 143 // SIGTERM
+        if (!success) Timber.e("Monitor process exited with $result")
+        return success
     }
 
     init {
