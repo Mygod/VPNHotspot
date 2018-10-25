@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.util.thread
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -17,15 +18,17 @@ abstract class IpMonitor : Runnable {
     protected abstract fun processLine(line: String)
     protected abstract fun processLines(lines: Sequence<String>)
 
+    @Volatile
+    private var destroyed = false
     private var monitor: Process? = null
     private var pool: ScheduledExecutorService? = null
 
-    private fun handleProcess(builder: ProcessBuilder): Boolean {
+    private fun handleProcess(builder: ProcessBuilder) {
         val process = try {
             builder.start()
         } catch (e: IOException) {
             Timber.d(e)
-            return false
+            return
         }
         monitor = process
         val err = thread("${javaClass.simpleName}-error") {
@@ -42,17 +45,16 @@ abstract class IpMonitor : Runnable {
         }
         err.join()
         process.waitFor()
-        val result = process.exitValue()
-        val success = result == 0 || result == 143 // SIGTERM
-        if (!success) Timber.e("Monitor process exited with $result")
-        return success
+        debugLog("IpMonitor", "Monitor process exited with ${process.exitValue()}")
     }
 
     init {
         thread("${javaClass.simpleName}-input") {
             // monitor may get rejected by SELinux
-            if (handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))) return@thread
-            if (handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))) return@thread
+            handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
+            if (destroyed) return@thread
+            handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
+            if (destroyed) return@thread
             Timber.w("Failed to set up monitor, switching to polling")
             Timber.i(MonitorFailure())
             val pool = Executors.newScheduledThreadPool(1)
@@ -80,6 +82,7 @@ abstract class IpMonitor : Runnable {
     }
 
     fun destroy() {
+        destroyed = true
         val monitor = monitor
         if (monitor != null) thread("${javaClass.simpleName}-killer") { monitor.destroy() }
         pool?.shutdown()
