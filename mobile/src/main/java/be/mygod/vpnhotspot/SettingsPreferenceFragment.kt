@@ -87,6 +87,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |echo ip rule
                         |ip rule
                         |echo
+                        |echo ip neigh
+                        |ip neigh
+                        |echo
                         |echo iptables -nvx -L vpnhotspot_fwd
                         |$IPTABLES -nvx -L vpnhotspot_fwd
                         |echo
