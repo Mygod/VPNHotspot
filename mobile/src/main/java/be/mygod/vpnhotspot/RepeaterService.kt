@@ -11,6 +11,7 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
+import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
@@ -44,7 +45,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         private var groups: Collection<WifiP2pGroup> = emptyList()
 
         fun startWps(pin: String? = null) {
-            if (active) p2pManager.startWps(channel, WpsInfo().apply {
+            val channel = channel
+            if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
+            else if (active) p2pManager.startWps(channel, WpsInfo().apply {
                 setup = if (pin == null) WpsInfo.PBC else {
                     this.pin = pin
                     WpsInfo.KEYPAD
@@ -62,19 +65,23 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             if (active) removeGroup()
         }
 
-        fun resetCredentials() = (groups + group).filterNotNull().forEach {
-            p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
-                        .shortToast().show()
-                override fun onFailure(reason: Int) = SmartSnackbar.make(
-                        formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
-            })
+        fun resetCredentials() {
+            val channel = channel
+            if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
+            else (groups + group).filterNotNull().forEach {
+                p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
+                    override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
+                            .shortToast().show()
+                    override fun onFailure(reason: Int) = SmartSnackbar.make(
+                            formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
+                })
+            }
         }
 
         fun requestGroupUpdate() {
             group = null
             try {
-                p2pManager.requestPersistentGroupInfo(channel) {
+                p2pManager.requestPersistentGroupInfo(channel ?: return) {
                     groups = it
                     if (it.size == 1) group = it.single()
                 }
@@ -86,7 +93,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     private lateinit var p2pManager: WifiP2pManager
-    private lateinit var channel: WifiP2pManager.Channel
+    private var channel: WifiP2pManager.Channel? = null
     var group: WifiP2pGroup? = null
         private set(value) {
             field = value
@@ -134,17 +141,19 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         try {
             p2pManager = getSystemService()!!
             onChannelDisconnected()
-            app.pref.registerOnSharedPreferenceChangeListener(this)
         } catch (e: RuntimeException) {
             Timber.w(e)
         }
+        app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
     override fun onBind(intent: Intent) = binder
 
     private fun setOperatingChannel(oc: Int = app.operatingChannel) = try {
+        val channel = channel
+        if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
         // we don't care about listening channel
-        p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
+        else p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
             override fun onSuccess() { }
             override fun onFailure(reason: Int) {
                 SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
@@ -159,9 +168,15 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     override fun onChannelDisconnected() {
-        channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-        setOperatingChannel()
-        binder.requestGroupUpdate()
+        channel = null
+        try {
+            channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
+            setOperatingChannel()
+            binder.requestGroupUpdate()
+        } catch (e: RuntimeException) {
+            Timber.w(e)
+            app.handler.postDelayed(1000, this, this::onChannelDisconnected)
+        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -263,6 +278,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     override fun onDestroy() {
+        app.handler.removeCallbacksAndMessages(this)
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
