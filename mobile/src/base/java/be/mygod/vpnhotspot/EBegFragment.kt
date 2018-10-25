@@ -61,7 +61,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
                 openDialog(R.string.donations__google_android_market_not_supported_title,
                         R.string.donations__google_android_market_not_supported)
             } else billingClient.launchBillingFlow(requireActivity(), BillingFlowParams.newBuilder()
-                    .setSku(sku.sku).setType(BillingClient.SkuType.INAPP).build())
+                    .setSkuDetails(sku).build())
         }
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
