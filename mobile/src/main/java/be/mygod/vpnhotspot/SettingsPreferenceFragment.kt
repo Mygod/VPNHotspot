@@ -67,10 +67,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     writer.flush()
                     val commands = StringBuilder()
                     // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
-                    val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else {
-                        commands.appendln("ln -sf /system/bin/iptables ./iptables-save")
-                        "./iptables-save"
-                    }
+                    val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else
+                        File(app.deviceStorage.cacheDir, "iptables-save").absolutePath.also {
+                            commands.appendln("ln -sf /system/bin/iptables $it")
+                        }
                     commands.append("""
                         |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                         |dumpsys ${Context.WIFI_P2P_SERVICE}
