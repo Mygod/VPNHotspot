@@ -43,6 +43,10 @@ object VpnMonitor : UpstreamMonitor() {
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             synchronized(this@VpnMonitor) {
+                if (currentNetwork == null) {
+                    onAvailable(network)
+                    return
+                }
                 if (currentNetwork != network) return
                 val oldProperties = available.put(network, properties)!!
                 val ifname = properties.interfaceName
