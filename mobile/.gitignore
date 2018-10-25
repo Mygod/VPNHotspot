@@ -4,4 +4,3 @@ release/
 
 # tests aren't ready yet
 /src/androidTest
-/src/test
