@@ -23,17 +23,16 @@ abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor()
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == KEY) synchronized(this) {
                 val old = monitor
-                val (active, callbacks) = synchronized(old) {
-                    val active = old.currentIface != null
+                val callbacks = synchronized(old) {
                     val callbacks = old.callbacks.toList()
                     old.callbacks.clear()
                     old.destroyLocked()
-                    Pair(active, callbacks)
+                    callbacks
                 }
                 val new = generateMonitor()
                 monitor = new
                 for (callback in callbacks) {
-                    if (active) callback.onLost()
+                    callback.onLost()
                     new.registerCallback(callback)
                 }
             }
