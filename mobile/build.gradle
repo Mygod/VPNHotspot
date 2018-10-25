@@ -68,12 +68,12 @@ dependencies {
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
     implementation 'com.takisoft.preferencex:preferencex:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
-    baseImplementation 'com.android.billingclient:billing:1.1'
+    baseImplementation 'com.android.billingclient:billing:1.2'
     baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
     testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'androidx.test:runner:1.1.0-beta01'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0-beta01'
+    androidTestImplementation 'androidx.test:runner:1.1.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.0'
 }
 
 if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
