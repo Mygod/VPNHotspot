@@ -136,20 +136,16 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             binder.statusChanged()
         }
 
-    private fun formatReason(@StringRes resId: Int, reason: Int): String {
-        val result = getString(resId, when (reason) {
-            WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
-            WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
-            // we don't ever need to use discovering ever so busy must mean P2pStateMachine is in invalid state
-            WifiP2pManager.BUSY -> return getString(R.string.repeater_p2p_unavailable)
-            // this should never be used
-            WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
-            WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
-            else -> getString(R.string.failure_reason_unknown, reason)
-        })
-        Timber.i(RuntimeException("WifiP2pManager returned $reason"))
-        return result
-    }
+    private fun formatReason(@StringRes resId: Int, reason: Int) = getString(resId, when (reason) {
+        WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
+        WifiP2pManager.P2P_UNSUPPORTED -> getString(R.string.repeater_failure_reason_p2p_unsupported)
+        // we don't ever need to use discovering ever so busy must mean P2pStateMachine is in invalid state
+        WifiP2pManager.BUSY -> getString(R.string.repeater_p2p_unavailable)
+        // this should never be used
+        WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
+        WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
+        else -> getString(R.string.failure_reason_unknown, reason)
+    })
 
     override fun onCreate() {
         super.onCreate()
