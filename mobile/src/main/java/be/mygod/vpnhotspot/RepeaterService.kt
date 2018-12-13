@@ -27,13 +27,28 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
+/**
+ * Service for handling Wi-Fi P2P. `supported` must be checked before this service is started otherwise it would crash.
+ */
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         private const val TAG = "RepeaterService"
+        /**
+         * This is only a "ServiceConnection" to system service and its impact on system is minimal.
+         */
+        private val p2pManager: WifiP2pManager? by lazy {
+            try {
+                app.getSystemService<WifiP2pManager>()
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+                null
+            }
+        }
+        val supported get() = p2pManager != null
     }
 
     enum class Status {
-        IDLE, STARTING, ACTIVE
+        IDLE, STARTING, ACTIVE, DESTROYED
     }
 
     inner class Binder : android.os.Binder() {
@@ -92,7 +107,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         }
     }
 
-    private lateinit var p2pManager: WifiP2pManager
+    private val p2pManager get() = RepeaterService.p2pManager!!
     private var channel: WifiP2pManager.Channel? = null
     var group: WifiP2pGroup? = null
         private set(value) {
@@ -138,12 +153,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onCreate() {
         super.onCreate()
-        try {
-            p2pManager = getSystemService()!!
-            onChannelDisconnected()
-        } catch (e: RuntimeException) {
-            Timber.w(e)
-        }
+        onChannelDisconnected()
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -169,7 +179,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onChannelDisconnected() {
         channel = null
-        try {
+        if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
             setOperatingChannel()
             binder.requestGroupUpdate()
@@ -282,6 +292,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
+        status = Status.DESTROYED
+        channel?.close()
         super.onDestroy()
     }
 }

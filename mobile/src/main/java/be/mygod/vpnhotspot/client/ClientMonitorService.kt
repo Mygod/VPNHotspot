@@ -64,7 +64,9 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
 
     override fun onCreate() {
         super.onCreate()
-        bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+        if (RepeaterService.supported) {
+            bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+        }
         IpNeighbourMonitor.registerCallback(this)
         registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
@@ -72,7 +74,7 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
     override fun onDestroy() {
         unregisterReceiver(receiver)
         IpNeighbourMonitor.unregisterCallback(this)
-        stopAndUnbind(this)
+        if (RepeaterService.supported) stopAndUnbind(this)
         super.onDestroy()
     }
 

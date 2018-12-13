@@ -22,12 +22,14 @@ class RepeaterTileService : TileService(), ServiceConnection {
 
     override fun onStartListening() {
         super.onStartListening()
-        bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+        if (RepeaterService.supported) {
+            bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+        }
     }
 
     override fun onStopListening() {
         super.onStopListening()
-        stopAndUnbind(this)
+        if (RepeaterService.supported) stopAndUnbind(this)
     }
 
     override fun onClick() {
@@ -72,7 +74,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
                 qsTile.icon = tileOn
                 qsTile.label = group?.networkName
             }
-            null -> {
+            else -> {   // null or DESTROYED, which should never occur
                 qsTile.state = Tile.STATE_UNAVAILABLE
                 qsTile.icon = tileOff
                 qsTile.label = getString(R.string.title_repeater)

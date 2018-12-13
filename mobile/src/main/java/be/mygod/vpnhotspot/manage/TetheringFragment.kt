@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
@@ -59,7 +60,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
             this@TetheringFragment.enabledTypes =
                     (activeIfaces + localOnlyIfaces).map { TetherType.ofInterface(it) }.toSet()
 
-            val list = arrayListOf<Manager>(repeaterManager)
+            val list = ArrayList<Manager>()
+            if (RepeaterService.supported) list.add(repeaterManager)
             if (Build.VERSION.SDK_INT >= 26) {
                 list.add(localOnlyHotspotManager)
                 localOnlyHotspotManager.update()

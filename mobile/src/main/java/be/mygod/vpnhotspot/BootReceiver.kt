@@ -27,6 +27,8 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_LOCKED_BOOT_COMPLETED -> started = true
             else -> return
         }
-        ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
+        if (RepeaterService.supported) {
+            ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
+        }
     }
 }

@@ -32,11 +32,13 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
         val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
-        boot.setOnPreferenceChangeListener { _, value ->
-            BootReceiver.enabled = value as Boolean
-            true
-        }
-        boot.isChecked = BootReceiver.enabled
+        if (RepeaterService.supported) {
+            boot.setOnPreferenceChangeListener { _, value ->
+                BootReceiver.enabled = value as Boolean
+                true
+            }
+            boot.isChecked = BootReceiver.enabled
+        } else boot.parent!!.removePreference(boot)
         findPreference("service.clean").setOnPreferenceClickListener {
             val cleaned = try {
                 Routing.clean()
