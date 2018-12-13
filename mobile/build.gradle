@@ -8,6 +8,10 @@ if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"
 android {
     buildToolsVersion "28.0.3"
     compileSdkVersion 28
+    compileOptions {
+        sourceCompatibility 1.8
+        targetCompatibility 1.8
+    }
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
@@ -56,20 +60,20 @@ android {
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation "androidx.browser:browser:$androidxVersion"
+    implementation "androidx.browser:browser:1.0.0"
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
-    implementation "androidx.core:core-ktx:$androidxVersion"
-    implementation "androidx.preference:preference:$androidxVersion"
+    implementation "androidx.core:core-ktx:1.0.1"
+    implementation "androidx.preference:preference:1.0.0"
     implementation "androidx.room:room-runtime:$roomVersion"
     implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu:libsu:2.0.2'
-    implementation "com.google.android.material:material:$androidxVersion"
+    implementation 'com.github.topjohnwu:libsu:2.1.2'
+    implementation "com.google.android.material:material:1.0.0"
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
     implementation 'com.takisoft.preferencex:preferencex:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     baseImplementation 'com.android.billingclient:billing:1.2'
-    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.5'
+    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.7'
     testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.1.0'
