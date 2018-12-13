@@ -99,8 +99,12 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |logcat -d
                     """.trimMargin())
                     try {
-                        out.write(RootSession.use { it.execQuiet(commands.toString(), true).out.joinToString("\n") }
-                                .toByteArray())
+                        RootSession.use {
+                            for (line in it.execQuiet(commands.toString(), true).out) {
+                                out.write(line.toByteArray())
+                                out.write(10)   // line break
+                            }
+                        }
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
                         writer.flush()
