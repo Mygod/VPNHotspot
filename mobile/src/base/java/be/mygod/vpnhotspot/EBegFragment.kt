@@ -72,9 +72,13 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
 
     private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
         val fragmentManager = fragmentManager
-        if (fragmentManager == null) SmartSnackbar.make(message).show() else MessageDialogFragment().apply {
-            arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
-        }.show(fragmentManager, "MessageDialogFragment")
+        if (fragmentManager == null) SmartSnackbar.make(message).show() else try {
+            MessageDialogFragment().apply {
+                arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
+            }.show(fragmentManager, "MessageDialogFragment")
+        } catch (e: IllegalStateException) {
+            SmartSnackbar.make(message).show()
+        }
     }
 
     override fun onBillingServiceDisconnected() {
