@@ -48,7 +48,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             val ifname = properties.interfaceName
             when {
                 ifname == null -> {
-                    Timber.w(RuntimeException("interfaceName became null: $oldProperties -> $properties"))
+                    Timber.w("interfaceName became null: $oldProperties -> $properties")
                     onLost(network)
                 }
                 ifname != oldProperties.interfaceName -> {
