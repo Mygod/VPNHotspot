@@ -16,18 +16,18 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
          * Parser based on:
          *   https://android.googlesource.com/platform/external/iproute2/+/ad0a6a2/ip/ipneigh.c#194
          *   https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
-         * Assumptions: IP addr (key) always present, RTM_GETNEIGH is never used and show_stats = 0
+         * Assumptions: IP addr (key) always present and RTM_GETNEIGH is never used
          */
-        private val parser = ("^(Deleted )?([^ ]+?) (dev ([^ ]+?) )?(lladdr (.[^ ]+?))?( router)?( proxy)?" +
-                "( ([INCOMPLET,RAHBSDYF]+))?\$").toRegex()
+        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr (.[^ ]+))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
+                .toRegex()
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
         fun parse(line: String): IpNeighbour? {
             return try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])
-                val dev = match.groupValues[4]
-                var lladdr = checkLladdrNotLoopback(match.groupValues[6])
+                val dev = match.groupValues[3]
+                var lladdr = checkLladdrNotLoopback(match.groupValues[5])
                 // use ARP as fallback
                 if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
                         .asSequence()
@@ -35,12 +35,12 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         .map { it[ARP_HW_ADDRESS] }
                         .singleOrNull() ?: "")
                 val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
-                    when (match.groupValues[10]) {
+                    when (match.groupValues[7]) {
                         "", "INCOMPLETE" -> State.INCOMPLETE
                         "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
                         "FAILED" -> State.FAILED
                         "NOARP" -> return null  // skip
-                        else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[10]}")
+                        else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
                 IpNeighbour(ip, dev, lladdr, state)
             } catch (e: Exception) {

@@ -69,24 +69,22 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
      */
     override fun close() = IpNeighbourMonitor.unregisterCallback(this)
 
-    override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) {
-        synchronized(parent) {
-            val toRemove = HashSet(subroutes.keys)
-            for (neighbour in neighbours) {
-                if (neighbour.dev != parent.downstream || neighbour.ip !is Inet4Address ||
-                        AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()).blocked) continue
-                toRemove.remove(neighbour.ip)
-                try {
-                    subroutes.computeIfAbsentCompat(neighbour.ip) { Subroute(neighbour.ip, neighbour.lladdr) }
-                } catch (e: Exception) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
-                }
+    override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(parent) {
+        val toRemove = HashSet(subroutes.keys)
+        for (neighbour in neighbours) {
+            if (neighbour.dev != parent.downstream || neighbour.ip !is Inet4Address ||
+                    AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()).blocked) continue
+            toRemove.remove(neighbour.ip)
+            try {
+                subroutes.computeIfAbsentCompat(neighbour.ip) { Subroute(neighbour.ip, neighbour.lladdr) }
+            } catch (e: Exception) {
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
             }
-            if (toRemove.isNotEmpty()) {
-                TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
-                for (address in toRemove) subroutes.remove(address)!!.close()
-            }
+        }
+        if (toRemove.isNotEmpty()) {
+            TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
+            for (address in toRemove) subroutes.remove(address)!!.close()
         }
     }
 
