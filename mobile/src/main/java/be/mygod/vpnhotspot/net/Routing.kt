@@ -53,9 +53,9 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         }
 
         fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
-                exec("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
+                exec("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content", true)
         fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
-                exec("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
+                exec("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content", true)
     }
 
     class InterfaceNotFoundException : SocketException() {
