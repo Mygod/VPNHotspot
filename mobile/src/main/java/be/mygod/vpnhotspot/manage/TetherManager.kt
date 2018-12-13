@@ -62,7 +62,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
                 ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
-                Timber.w(e)
+                if (e.targetException !is SecurityException) Timber.w(e)
                 var cause: Throwable? = e
                 while (cause != null) {
                     cause = cause.cause
