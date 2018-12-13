@@ -71,15 +71,13 @@ object VpnMonitor : UpstreamMonitor() {
 
         override fun onLost(network: Network) = synchronized(this@VpnMonitor) {
             if (available.remove(network) == null || currentNetwork != network) return
+            callbacks.forEach { it.onLost() }
             if (available.isNotEmpty()) {
                 val next = available.entries.first()
                 currentNetwork = next.key
                 debugLog(TAG, "Switching to ${next.value.interfaceName} as VPN interface")
                 callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value.dnsServers) }
-            } else {
-                callbacks.forEach { it.onLost() }
-                currentNetwork = null
-            }
+            } else currentNetwork = null
         }
     }
 
