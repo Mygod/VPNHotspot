@@ -90,7 +90,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
 
         override fun onLost() = synchronized(this@Routing) {
             val subrouting = subrouting ?: return
-            check(upstreams.remove(subrouting.upstream))
+            // we could be removing fallback subrouting which no collision could ever happen, check before removing
+            if (subrouting.upstream != null) check(upstreams.remove(subrouting.upstream))
             subrouting.close()
             TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
             subrouting.revert()
