@@ -10,6 +10,7 @@ import androidx.databinding.BaseObservable
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemManageBinding
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
 object ManageBar : Manager() {
@@ -47,15 +48,17 @@ object ManageBar : Manager() {
         }
     }
 
-    private fun startAlternative(context: Context, e: Exception) {
+    private fun startAlternative(context: Context, e: RuntimeException) {
         try {
             context.startActivity(Intent()
                     .setClassName("com.android.settings", "com.android.settings.TetherSettings"))
             Timber.w(e)
         } catch (e: ActivityNotFoundException) {
             Timber.w(e)
+            SmartSnackbar.make(e.localizedMessage).show()
         } catch (e: SecurityException) {
             Timber.w(e)
+            SmartSnackbar.make(e.localizedMessage).show()
         }
     }
 }
