@@ -58,15 +58,14 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
             logFile.outputStream().use { out ->
                 PrintWriter(out.bufferedWriter()).use { writer ->
-                    writer.write("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n\n")
+                    writer.println("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n")
                     writer.flush()
                     try {
                         Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
                     } catch (e: IOException) {
                         Timber.w(e)
                     }
-                    writer.write("\n")
-                    writer.flush()
+                    writer.println()
                     val commands = StringBuilder()
                     // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
                     val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else
@@ -99,15 +98,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         |logcat -d
                     """.trimMargin())
                     try {
-                        RootSession.use {
-                            for (line in it.execQuiet(commands.toString(), true).out) {
-                                out.write(line.toByteArray())
-                                out.write(10)   // line break
-                            }
-                        }
+                        RootSession.use { it.execQuiet(commands.toString(), true).out.forEach(writer::println) }
                     } catch (e: Exception) {
                         e.printStackTrace(writer)
-                        writer.flush()
                         Timber.i(e)
                     }
                 }
