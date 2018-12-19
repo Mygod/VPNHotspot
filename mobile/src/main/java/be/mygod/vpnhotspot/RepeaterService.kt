@@ -8,6 +8,7 @@ import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
+import android.os.Build
 import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
@@ -289,7 +290,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
         status = Status.DESTROYED
-        channel?.close()
+        if (Build.VERSION.SDK_INT >= 27) channel?.close()
         super.onDestroy()
     }
 }
