@@ -52,11 +52,11 @@ object VpnMonitor : UpstreamMonitor() {
                 val ifname = properties.interfaceName
                 when {
                     ifname == null -> {
-                        Timber.w(RuntimeException("interfaceName became null: $oldProperties -> $properties"))
+                        Timber.w("interfaceName became null: $oldProperties -> $properties")
                         onLost(network)
                     }
                     ifname != oldProperties.interfaceName -> {
-                        Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
+                        Timber.w("interfaceName changed: $oldProperties -> $properties")
                         callbacks.forEach {
                             it.onLost()
                             it.onAvailable(ifname, properties.dnsServers)
