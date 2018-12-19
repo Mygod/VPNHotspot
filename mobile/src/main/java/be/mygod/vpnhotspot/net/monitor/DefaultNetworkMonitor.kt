@@ -84,9 +84,8 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             } else try {
                 app.connectivity.requestNetwork(networkRequest, networkCallback)
             } catch (e: SecurityException) {
-                if (Build.VERSION.SDK_INT != 23) throw e
                 // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
-                Timber.w(e)
+                if (Build.VERSION.SDK_INT != 23) throw e
                 callback.onFallback()
                 return
             }
