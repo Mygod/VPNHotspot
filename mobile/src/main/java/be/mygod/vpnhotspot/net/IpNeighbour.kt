@@ -25,11 +25,11 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
         fun parse(line: String): IpNeighbour? {
             return try {
                 val match = parser.matchEntire(line)!!
-                val ip = parseNumericAddress(match.groupValues[2])
-                val dev = match.groupValues[3]
+                val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
+                val dev = match.groupValues[3]                      // by regex, dev is non-empty as well
                 var lladdr = checkLladdrNotLoopback(match.groupValues[5])
                 // use ARP as fallback
-                if (dev.isNotEmpty() && lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
+                if (lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
                         .asSequence()
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                         .map { it[ARP_HW_ADDRESS] }
