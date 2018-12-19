@@ -45,12 +45,10 @@ class TetheringService : IpNeighbourMonitoringService() {
             if (!receiverRegistered) {
                 receiverRegistered = true
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                app.cleanRoutings[this] = {
-                    synchronized(routings) {
-                        for (iface in routings.keys) routings.put(iface, null)?.stop()
-                        updateRoutingsLocked()
-                    }
+                app.onPreCleanRoutings[this] = {
+                    synchronized(routings) { for (iface in routings.keys) routings.put(iface, null)?.stop() }
                 }
+                app.onRoutingsCleaned[this] = { synchronized(routings) { updateRoutingsLocked() } }
                 IpNeighbourMonitor.registerCallback(this)
             }
             val disableIpv6 = app.pref.getBoolean("service.disableIpv6", false)
@@ -110,7 +108,8 @@ class TetheringService : IpNeighbourMonitoringService() {
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
-            app.cleanRoutings -= this
+            app.onPreCleanRoutings -= this
+            app.onRoutingsCleaned -= this
             IpNeighbourMonitor.unregisterCallback(this)
             receiverRegistered = false
         }

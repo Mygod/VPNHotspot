@@ -40,6 +40,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             boot.isChecked = BootReceiver.enabled
         } else boot.parent!!.removePreference(boot)
         findPreference("service.clean").setOnPreferenceClickListener {
+            app.onPreCleanRoutings()
             val cleaned = try {
                 Routing.clean()
                 true
@@ -48,7 +49,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 SmartSnackbar.make(e).show()
                 false
             }
-            if (cleaned) app.cleanRoutings()
+            if (cleaned) app.onRoutingsCleaned()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {

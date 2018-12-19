@@ -61,13 +61,17 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
     private val subroutes = HashMap<InetAddress, Subroute>()
 
     init {
+        Timber.d("Subrouting initialized from %s to %s", parent.downstream, upstream)
         IpNeighbourMonitor.registerCallback(this)
     }
 
     /**
      * Unregister client listener. This should be always called even after clean.
      */
-    override fun close() = IpNeighbourMonitor.unregisterCallback(this)
+    override fun close() {
+        IpNeighbourMonitor.unregisterCallback(this)
+        Timber.d("Subrouting closed from %s to %s", parent.downstream, upstream)
+    }
 
     override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(parent) {
         val toRemove = HashSet(subroutes.keys)

@@ -10,14 +10,13 @@ class LocalOnlyInterfaceManager(val downstream: String) {
     private var routing: Routing? = null
 
     init {
-        app.cleanRoutings[this] = this::clean
+        app.onPreCleanRoutings[this] = { routing?.stop() }
+        app.onRoutingsCleaned[this] = this::clean
         initRouting()
     }
 
     private fun clean() {
-        val routing = routing ?: return
-        routing.stop()
-        initRouting(routing.hostAddress)
+        initRouting((routing ?: return).hostAddress)
     }
 
     private fun initRouting(owner: InterfaceAddress? = null) {
@@ -42,7 +41,8 @@ class LocalOnlyInterfaceManager(val downstream: String) {
     }
 
     fun stop() {
-        app.cleanRoutings -= this
+        app.onPreCleanRoutings -= this
+        app.onRoutingsCleaned -= this
         routing?.revert()
     }
 }

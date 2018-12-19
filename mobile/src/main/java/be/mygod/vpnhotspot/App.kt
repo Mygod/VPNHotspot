@@ -58,5 +58,6 @@ class App : Application() {
     val masquerade get() = pref.getBoolean("service.masquerade", true)
     val dhcpWorkaround get() = pref.getBoolean("service.dhcpWorkaround", false)
 
-    val cleanRoutings = Event0()
+    val onPreCleanRoutings = Event0()
+    val onRoutingsCleaned = Event0()
 }
