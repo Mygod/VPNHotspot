@@ -63,6 +63,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 groupChanged(value)
             }
         val groupChanged = StickyEvent1 { group }
+        var thisDevice: WifiP2pDevice? = null
 
         fun startWps(pin: String? = null) {
             val channel = channel
@@ -113,17 +114,15 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
         }
     }
-    private var routingManager: LocalOnlyInterfaceManager? = null
-
-    private var thisDevice: WifiP2pDevice? = null
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+                binder.thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
             }
             WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> onPersistentGroupsChanged()
         }
     }
+    private var routingManager: LocalOnlyInterfaceManager? = null
 
     var status = Status.IDLE
         private set(value) {
@@ -188,7 +187,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     private fun onPersistentGroupsChanged() {
         val channel = channel ?: return
-        val device = thisDevice ?: return
+        val device = binder.thisDevice ?: return
         try {
             p2pManager.requestPersistentGroupInfo(channel) {
                 val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }

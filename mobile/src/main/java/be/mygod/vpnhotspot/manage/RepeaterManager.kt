@@ -15,6 +15,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.get
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
@@ -25,6 +28,7 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.lang.RuntimeException
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -89,23 +93,20 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
 
         fun editConfigurations() {
-            val binder = binder
             val group = binder?.group
-            val ssid = group?.networkName
-            if (ssid != null) {
-                val wifi = WifiConfiguration()
-                val conf = P2pSupplicantConfiguration()
-                wifi.SSID = ssid
-                wifi.preSharedKey = group.passphrase
-                if (wifi.preSharedKey == null) wifi.preSharedKey = conf.readPsk()
-                if (wifi.preSharedKey != null) {
-                    WifiP2pDialogFragment().apply {
-                        arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, wifi),
-                                Pair(WifiP2pDialogFragment.KEY_CONFIGURER, conf))
-                        setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
-                    }.show(parent.fragmentManager, WifiP2pDialogFragment.TAG)
-                    return
-                }
+            if (group != null) try {
+                val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                holder.config = config
+                WifiP2pDialogFragment().apply {
+                    arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, WifiConfiguration().apply {
+                        SSID = config.ssid
+                        preSharedKey = config.psk
+                    }))
+                    setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
+                }.show(parent.fragmentManager, WifiP2pDialogFragment.TAG)
+                return
+            } catch (e: RuntimeException) {
+                Timber.w(e)
             }
             SmartSnackbar.make(R.string.repeater_configure_failure).show()
         }
@@ -131,6 +132,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
+    class ConfigHolder : ViewModel() {
+        var config: P2pSupplicantConfiguration? = null
+    }
+
     init {
         ServiceForegroundConnector(parent, this, RepeaterService::class)
     }
@@ -139,6 +144,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     private val data = Data()
     internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
+    private val holder = ViewModelProviders.of(parent).get<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).binding.data = data
@@ -169,8 +175,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     fun onEditResult(which: Int, data: Intent) {
         when (which) {
             DialogInterface.BUTTON_POSITIVE -> try {
-                data.getParcelableExtra<P2pSupplicantConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURER)
-                        .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
+                val master = holder.config ?: return
+                val config = data.getParcelableExtra<WifiConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURATION)
+                master.update(config.SSID, config.preSharedKey)
                 binder!!.group = null
             } catch (e: Exception) {
                 Timber.w(e)
@@ -178,5 +185,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()
         }
+        holder.config = null
     }
 }

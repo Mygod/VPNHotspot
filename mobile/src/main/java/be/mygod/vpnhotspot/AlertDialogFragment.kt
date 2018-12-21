@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
@@ -15,5 +16,10 @@ abstract class AlertDialogFragment : DialogFragment(), DialogInterface.OnClickLi
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
         targetFragment!!.onActivityResult(targetRequestCode, which, data)
+    }
+
+    override fun onDismiss(dialog: DialogInterface?) {
+        super.onDismiss(dialog)
+        targetFragment!!.onActivityResult(targetRequestCode, Activity.RESULT_CANCELED, data)
     }
 }

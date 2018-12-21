@@ -1,87 +1,94 @@
 package be.mygod.vpnhotspot.net.wifi
 
-import android.net.wifi.WifiConfiguration
+import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
-import android.os.Parcel
-import android.os.Parcelable
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.RootSession
-import timber.log.Timber
 import java.io.File
-import java.io.IOException
 
-class P2pSupplicantConfiguration(private val initContent: String? = null) : Parcelable {
-    companion object CREATOR : Parcelable.Creator<P2pSupplicantConfiguration> {
-        override fun createFromParcel(parcel: Parcel) = P2pSupplicantConfiguration(parcel.readString())
-        override fun newArray(size: Int): Array<P2pSupplicantConfiguration?> = arrayOfNulls(size)
-
-        /**
-         * Format for ssid is much more complicated, therefore we are only trying to find the line and rely on
-         * Android's results instead.
-         *
-         * Source: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/2933359/src/utils/common.c#631
-         */
-        private val ssidMatcher = "^[\\r\\t ]*ssid=".toRegex()
-        /**
-         * PSK parser can be found here: https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
-         */
-        private val pskParser = "^[\\r\\t ]*psk=(ext:|\"(.*)\"|\"(.*)|[0-9a-fA-F]{64}\$)".toRegex(RegexOption.MULTILINE)
+/**
+ * This parser is based on:
+ *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
+ *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/6fa46df/wpa_supplicant/config_file.c#182
+ */
+class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
+    companion object {
+        private val networkParser =
+                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$))".toRegex()
         private val whitespaceMatcher = "\\s+".toRegex()
-
         private val confPath = if (Build.VERSION.SDK_INT >= 28)
             "/data/vendor/wifi/wpa/p2p_supplicant.conf" else "/data/misc/wifi/p2p_supplicant.conf"
     }
-    private class InvalidConfigurationError : IOException("Invalid configuration")
 
-    override fun writeToParcel(out: Parcel, flags: Int) {
-        out.writeString(if (contentDelegate.isInitialized()) content else null)
+    private class NetworkBlock : ArrayList<String>() {
+        var ssidLine: Int? = null
+        var pskLine: Int? = null
+        var psk: String? = null
+        var groupOwner = false
+        var bssidMatches = false
+
+        override fun toString() = joinToString("\n")
     }
-    override fun describeContents() = 0
 
-    private val contentDelegate = lazy { initContent ?: RootSession.use { it.execOut("cat $confPath") } }
-    private val content by contentDelegate
+    private class Parser(lines: List<String>) {
+        private val iterator = lines.iterator()
+        lateinit var line: String
+        lateinit var trimmed: String
+        fun next() = if (iterator.hasNext()) {
+            line = iterator.next().apply { trimmed = trimStart('\r', '\t', ' ') }
+            true
+        } else false
+    }
 
-    fun readPsk(): String? {
-        return try {
-            val match = pskParser.findAll(content).single()
-            if (match.groups[2] == null && match.groups[3] == null) "" else {
-                // only one will match and hold non-empty value
-                val result = match.groupValues[2] + match.groupValues[3]
-                check(result.length in 8..63)
-                result
+    private val content by lazy {
+        RootSession.use {
+            val result = ArrayList<Any>()
+            var target: NetworkBlock? = null
+            val parser = Parser(it.execOutUnjoined("cat $confPath"))
+            while (parser.next()) {
+                if (parser.trimmed.startsWith("network={")) {
+                    val block = NetworkBlock()
+                    block.add(parser.line)
+                    while (parser.next() && !parser.trimmed.startsWith('}')) {
+                        if (parser.trimmed.startsWith("ssid=")) {
+                            check(block.ssidLine == null)
+                            block.ssidLine = block.size
+                        } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
+                            val match = networkParser.find(parser.trimmed)
+                            if (match != null) if (match.groups[5] != null) {
+                                check(block.pskLine == null && block.psk == null)
+                                block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                block.pskLine = block.size
+                            } else if (match.groups[2] != null &&
+                                    match.groupValues[2].equals(group.owner.deviceAddress ?: ownerAddress, true)) {
+                                block.bssidMatches = true
+                            }
+                        }
+                        block.add(parser.line)
+                    }
+                    block.add(parser.line)
+                    result.add(block)
+                    if (block.bssidMatches && block.groupOwner && target == null) { // keep first only
+                        check(block.ssidLine != null && block.pskLine != null)
+                        target = block
+                    }
+                } else result.add(parser.line)
             }
-        } catch (e: NoSuchElementException) {
-            null
-        } catch (e: RuntimeException) {
-            if (contentDelegate.isInitialized()) Timber.w(content)
-            Timber.w(e)
-            null
+            Pair(result, target!!)
         }
     }
+    val ssid = group.networkName
+    val psk = group.passphrase ?: content.second.psk!!
 
-    fun update(config: WifiConfiguration) {
+    fun update(ssid: String, psk: String) {
+        val (lines, block) = content
+        block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
+                .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
+        block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.cacheDir)
         try {
-            var ssidFound = 0
-            var pskFound = 0
-            tempFile.printWriter().use {
-                for (line in content.lineSequence()) it.println(when {
-                    ssidMatcher.containsMatchIn(line) -> {
-                        ssidFound += 1
-                        "\tssid=" + config.SSID.toByteArray()
-                                .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
-                    }
-                    pskParser.containsMatchIn(line) -> {
-                        pskFound += 1
-                        "\tpsk=\"${config.preSharedKey}\""  // no control chars or weird stuff
-                    }
-                    else -> line                            // do nothing
-                })
-            }
-            if (ssidFound != 1 || pskFound != 1) {
-                Timber.w("Invalid conf ($ssidFound, $pskFound): $content")
-                if (ssidFound == 0 || pskFound == 0) throw InvalidConfigurationError()
-                else Timber.i(InvalidConfigurationError())
+            tempFile.printWriter().use { writer ->
+                lines.forEach { writer.println(it) }
             }
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             RootSession.use {

@@ -25,13 +25,11 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
     companion object {
         const val TAG = "WifiP2pDialogFragment"
         const val KEY_CONFIGURATION = "configuration"
-        const val KEY_CONFIGURER = "configurer"
     }
 
     private lateinit var mView: View
     private lateinit var mSsid: TextView
     private lateinit var mPassword: EditText
-    private lateinit var configurer: P2pSupplicantConfiguration
     private val config: WifiConfiguration?
         get() {
             val config = WifiConfiguration()
@@ -54,7 +52,6 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
         setNegativeButton(context.getString(R.string.wifi_cancel), null)
         setNeutralButton(context.getString(R.string.repeater_reset_credentials), listener)
         val arguments = arguments!!
-        configurer = arguments.getParcelable(KEY_CONFIGURER)!!
         val mWifiConfig = arguments.getParcelable<WifiConfiguration>(KEY_CONFIGURATION)
         if (mWifiConfig != null) {
             mSsid.text = mWifiConfig.SSID
@@ -66,7 +63,6 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
 
     override val data get() = Intent().apply {
         putExtra(KEY_CONFIGURATION, config)
-        putExtra(KEY_CONFIGURER, configurer)
     }
 
     override fun onStart() {
