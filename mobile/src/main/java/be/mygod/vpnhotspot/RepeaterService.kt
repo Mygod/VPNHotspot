@@ -2,9 +2,11 @@ package be.mygod.vpnhotspot
 
 import android.app.Service
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.NetworkInfo
 import android.net.wifi.WpsInfo
+import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
@@ -94,9 +96,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         fun requestGroupUpdate() {
             group = null
             val channel = channel ?: return
+            val device = thisDevice ?: return
             try {
                 p2pManager.requestPersistentGroupInfo(channel) {
-                    val ownedGroups = it.filter { it.isGroupOwner }
+                    val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
                     val main = ownedGroups.minBy { it.netId }
                     group = main
                     if (main != null) ownedGroups.filter { it.netId != main.netId }.forEach {
@@ -136,6 +139,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
     private var routingManager: LocalOnlyInterfaceManager? = null
 
+    private var thisDevice: WifiP2pDevice? = null
+    private val thisDeviceListener = broadcastReceiver { _, intent ->
+        thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+    }
+
     var status = Status.IDLE
         private set(value) {
             if (field == value) return
@@ -156,6 +164,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(thisDeviceListener, IntentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
         onChannelDisconnected()
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
@@ -297,6 +306,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
         status = Status.DESTROYED
         if (Build.VERSION.SDK_INT >= 27) channel?.close()
+        unregisterReceiver(thisDeviceListener)
         super.onDestroy()
     }
 }
