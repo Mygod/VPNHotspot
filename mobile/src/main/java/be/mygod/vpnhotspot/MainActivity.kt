@@ -57,7 +57,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         badge.badgeGravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         badge.setGravityOffset(16f, 0f, true)
         ServiceForegroundConnector(this, this, ClientMonitorService::class)
-        SmartSnackbar.Register(binding.fragmentHolder)
+        SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {

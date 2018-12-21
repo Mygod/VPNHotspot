@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.widget
 
 import android.annotation.SuppressLint
+import android.os.Looper
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
@@ -21,8 +22,10 @@ sealed class SmartSnackbar {
         fun make(@StringRes text: Int): SmartSnackbar = make(app.getText(text))
         fun make(text: CharSequence? = ""): SmartSnackbar {
             val holder = holder
-            return if (holder == null) ToastWrapper(Toast.makeText(app, text, Toast.LENGTH_LONG)) else
-                SnackbarWrapper(Snackbar.make(holder, text ?: null.toString(), Snackbar.LENGTH_LONG))
+            return if (holder == null) {
+                if (Looper.myLooper() == null) Looper.prepare()
+                ToastWrapper(Toast.makeText(app, text, Toast.LENGTH_LONG))
+            } else SnackbarWrapper(Snackbar.make(holder, text ?: null.toString(), Snackbar.LENGTH_LONG))
         }
         fun make(e: Throwable) = make(when (e) {
             is NoShellException -> app.getText(R.string.root_unavailable)
@@ -30,9 +33,9 @@ sealed class SmartSnackbar {
         })
     }
 
-    class Register(private val view: View) : LifecycleObserver {
+    class Register(lifecycle: Lifecycle, private val view: View) : LifecycleObserver {
         init {
-            (view.context as LifecycleOwner).lifecycle.addObserver(this)
+            lifecycle.addObserver(this)
         }
 
         @OnLifecycleEvent(Lifecycle.Event.ON_RESUME)
@@ -54,9 +57,7 @@ private class SnackbarWrapper(private val snackbar: Snackbar) : SmartSnackbar() 
 }
 
 private class ToastWrapper(private val toast: Toast) : SmartSnackbar() {
-    override fun show() {
-        app.handler.post(toast::show)
-    }
+    override fun show() = toast.show()
 
     override fun shortToast() = apply { toast.duration = Toast.LENGTH_SHORT }
 }
