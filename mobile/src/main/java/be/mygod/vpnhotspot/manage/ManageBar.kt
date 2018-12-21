@@ -55,10 +55,8 @@ object ManageBar : Manager() {
             Timber.w(e)
         } catch (e: ActivityNotFoundException) {
             Timber.w(e)
-            SmartSnackbar.make(e.localizedMessage).show()
         } catch (e: SecurityException) {
             Timber.w(e)
-            SmartSnackbar.make(e.localizedMessage).show()
         }
     }
 }
