@@ -10,6 +10,7 @@ import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
     const val UNSUPPORTED = -2
+    const val WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION = "android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED"
 
     /**
      * Available since Android 4.4.

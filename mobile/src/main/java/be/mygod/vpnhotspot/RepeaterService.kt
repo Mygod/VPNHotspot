@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.app.Service
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.net.NetworkInfo
 import android.net.wifi.WpsInfo
@@ -58,6 +57,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val service get() = this@RepeaterService
         val active get() = status == Status.ACTIVE
         val statusChanged = StickyEvent0()
+        var group: WifiP2pGroup? = null
+            set(value) {
+                field = value
+                groupChanged(value)
+            }
         val groupChanged = StickyEvent1 { group }
 
         fun startWps(pin: String? = null) {
@@ -92,38 +96,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                                 formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
                     })
         }
-
-        fun requestGroupUpdate() {
-            group = null
-            val channel = channel ?: return
-            val device = thisDevice ?: return
-            try {
-                p2pManager.requestPersistentGroupInfo(channel) {
-                    val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
-                    val main = ownedGroups.minBy { it.netId }
-                    group = main
-                    if (main != null) ownedGroups.filter { it.netId != main.netId }.forEach {
-                        p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
-                            override fun onSuccess() = Timber.i("Removed redundant owned group: $it")
-                            override fun onFailure(reason: Int) = SmartSnackbar.make(
-                                    formatReason(R.string.repeater_clean_pog_failure, reason)).show()
-                        })
-                    }
-                }
-            } catch (e: ReflectiveOperationException) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-            }
-        }
     }
 
     private val p2pManager get() = RepeaterService.p2pManager!!
     private var channel: WifiP2pManager.Channel? = null
-    var group: WifiP2pGroup? = null
-        private set(value) {
-            field = value
-            binder.groupChanged(value)
-        }
     private val binder = Binder()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -140,8 +116,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private var routingManager: LocalOnlyInterfaceManager? = null
 
     private var thisDevice: WifiP2pDevice? = null
-    private val thisDeviceListener = broadcastReceiver { _, intent ->
-        thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+    private val deviceListener = broadcastReceiver { _, intent ->
+        when (intent.action) {
+            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
+                thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+            }
+            WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> onPersistentGroupsChanged()
+        }
     }
 
     var status = Status.IDLE
@@ -164,8 +145,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onCreate() {
         super.onCreate()
-        registerReceiver(thisDeviceListener, IntentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
         onChannelDisconnected()
+        registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
+                WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -194,7 +176,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
             setOperatingChannel()
-            binder.requestGroupUpdate()
         } catch (e: RuntimeException) {
             Timber.w(e)
             app.handler.postDelayed(1000, this, this::onChannelDisconnected)
@@ -203,6 +184,29 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == App.KEY_OPERATING_CHANNEL) setOperatingChannel()
+    }
+
+    private fun onPersistentGroupsChanged() {
+        val channel = channel ?: return
+        val device = thisDevice ?: return
+        try {
+            p2pManager.requestPersistentGroupInfo(channel) {
+                val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
+                val main = ownedGroups.minBy { it.netId }
+                // do not replace current group if it's better
+                if (binder.group?.passphrase == null) binder.group = main
+                if (main != null) ownedGroups.filter { it.netId != main.netId }.forEach {
+                    p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() = Timber.i("Removed redundant owned group: $it")
+                        override fun onFailure(reason: Int) = SmartSnackbar.make(
+                                formatReason(R.string.repeater_clean_pog_failure, reason)).show()
+                    })
+                }
+            }
+        } catch (e: ReflectiveOperationException) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+        }
     }
 
     /**
@@ -248,7 +252,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 if (routingManager != null) clean() // P2P shutdown, else other groups changing before start, ignore
             }
             routingManager != null -> {
-                this.group = group
+                binder.group = group
                 showNotification(group)
             }
             else -> doStart(group)
@@ -258,7 +262,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      * startService Step 3
      */
     private fun doStart(group: WifiP2pGroup) {
-        this.group = group
+        binder.group = group
         check(routingManager == null)
         routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
         status = Status.ACTIVE
@@ -304,9 +308,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
+        unregisterReceiver(deviceListener)
         status = Status.DESTROYED
         if (Build.VERSION.SDK_INT >= 27) channel?.close()
-        unregisterReceiver(thisDeviceListener)
         super.onDestroy()
     }
 }

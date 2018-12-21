@@ -56,7 +56,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
         binder.groupChanged -= this
     }
 
-    private fun updateTile(group: WifiP2pGroup? = binder?.service?.group) {
+    private fun updateTile(group: WifiP2pGroup? = binder?.group) {
         val qsTile = qsTile ?: return
         when (binder?.service?.status) {
             RepeaterService.Status.IDLE -> {

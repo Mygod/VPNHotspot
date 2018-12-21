@@ -42,7 +42,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 else -> false
             }
 
-        val ssid @Bindable get() = binder?.service?.group?.networkName ?: ""
+        val ssid @Bindable get() = binder?.group?.networkName ?: ""
         val addresses: CharSequence @Bindable get() {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -90,7 +90,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
         fun editConfigurations() {
             val binder = binder
-            val group = binder?.service?.group
+            val group = binder?.group
             val ssid = group?.networkName
             if (ssid != null) {
                 val wifi = WifiConfiguration()
@@ -171,7 +171,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             DialogInterface.BUTTON_POSITIVE -> try {
                 data.getParcelableExtra<P2pSupplicantConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURER)
                         .update(data.getParcelableExtra(WifiP2pDialogFragment.KEY_CONFIGURATION))
-                app.handler.postDelayed(binder!!::requestGroupUpdate, 1000)
+                binder!!.group = null
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()

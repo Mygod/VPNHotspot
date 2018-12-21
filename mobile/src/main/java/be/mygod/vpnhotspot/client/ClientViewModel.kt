@@ -30,7 +30,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     private fun populateClients() {
         val clients = HashMap<Pair<String, String>, Client>()
-        val group = repeater?.service?.group
+        val group = repeater?.group
         val p2pInterface = group?.`interface`
         if (p2pInterface != null) {
             for (client in p2p) clients[Pair(p2pInterface, client.deviceAddress)] = WifiP2pClient(p2pInterface, client)
@@ -50,7 +50,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     private fun refreshP2p() {
         val repeater = repeater
-        p2p = (if (repeater?.active != true) null else repeater.service.group?.clientList) ?: emptyList()
+        p2p = (if (repeater?.active != true) null else repeater.group?.clientList) ?: emptyList()
         populateClients()
     }
 
