@@ -1,10 +1,7 @@
 package be.mygod.vpnhotspot.client
 
-import android.content.ComponentName
 import android.content.DialogInterface
-import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.IBinder
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.util.LongSparseArray
@@ -19,6 +16,9 @@ import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.get
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -31,13 +31,12 @@ import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
-import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment(), ServiceConnection {
+class ClientsFragment : Fragment() {
     class NicknameDialogFragment : AlertDialogFragment() {
         companion object {
             const val KEY_MAC = "mac"
@@ -198,7 +197,6 @@ class ClientsFragment : Fragment(), ServiceConnection {
 
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
-    private var clients: ClientMonitorService.Binder? = null
     private var rates = HashMap<Pair<String, Long>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -210,19 +208,9 @@ class ClientsFragment : Fragment(), ServiceConnection {
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }
-        ServiceForegroundConnector(this, this, ClientMonitorService::class)
+        ViewModelProviders.of(requireActivity()).get<ClientViewModel>().clients.observe(this,
+                Observer<List<Client>> { adapter.submitList(it.toMutableList()) })
         return binding.root
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        clients = service as ClientMonitorService.Binder
-        service.clientsChanged[this] = { adapter.submitList(it.toMutableList()) }
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        val clients = clients ?: return
-        clients.clientsChanged -= this
-        this.clients = null
     }
 
     override fun onStart() {

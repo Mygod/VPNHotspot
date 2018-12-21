@@ -1,24 +1,20 @@
 package be.mygod.vpnhotspot.client
 
-import android.app.Service
-import android.content.*
+import android.content.ComponentName
+import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.IBinder
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.util.StickyEvent1
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.stopAndUnbind
 
-class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Callback {
-    inner class Binder : android.os.Binder() {
-        val clientsChanged = StickyEvent1 { clients }
-    }
-    private val binder = Binder()
-    override fun onBind(intent: Intent?) = binder
-
+class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
@@ -30,11 +26,7 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
     private var repeater: RepeaterService.Binder? = null
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var neighbours = emptyList<IpNeighbour>()
-    private var clients = emptyList<Client>()
-        private set(value) {
-            field = value
-            binder.clientsChanged(value)
-        }
+    val clients = MutableLiveData<List<Client>>()
 
     private fun populateClients() {
         val clients = HashMap<Pair<String, String>, Client>()
@@ -53,7 +45,7 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
             }
             client.ip += Pair(neighbour.ip, neighbour.state)
         }
-        this.clients = clients.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.mac })
+        this.clients.postValue(clients.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.mac }))
     }
 
     private fun refreshP2p() {
@@ -62,20 +54,14 @@ class ClientMonitorService : Service(), ServiceConnection, IpNeighbourMonitor.Ca
         populateClients()
     }
 
-    override fun onCreate() {
-        super.onCreate()
-        if (RepeaterService.supported) {
-            bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
-        }
+    init {
+        app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         IpNeighbourMonitor.registerCallback(this)
-        registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
 
-    override fun onDestroy() {
-        unregisterReceiver(receiver)
+    override fun onCleared() {
         IpNeighbourMonitor.unregisterCallback(this)
-        if (RepeaterService.supported) stopAndUnbind(this)
-        super.onDestroy()
+        app.unregisterReceiver(receiver)
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

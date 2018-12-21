@@ -58,11 +58,14 @@ android {
 }
 
 dependencies {
+    kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation "androidx.browser:browser:1.0.0"
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha2'
     implementation "androidx.core:core-ktx:1.0.1"
+    implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation "androidx.preference:preference:1.0.0"
     implementation "androidx.room:room-runtime:$roomVersion"
     implementation 'com.github.luongvo:BadgeView:1.1.5'
@@ -74,6 +77,7 @@ dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     baseImplementation 'com.android.billingclient:billing:1.2'
     baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.7'
+    testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation "androidx.room:room-testing:$roomVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation 'androidx.test:runner:1.1.1'

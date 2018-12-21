@@ -1,12 +1,9 @@
 package be.mygod.vpnhotspot
 
 import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
 import android.net.Uri
 import android.os.Bundle
-import android.os.IBinder
 import android.view.Gravity
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
@@ -14,7 +11,11 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import be.mygod.vpnhotspot.client.ClientMonitorService
+import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.get
+import be.mygod.vpnhotspot.client.Client
+import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
@@ -25,10 +26,9 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import q.rorbin.badgeview.QBadgeView
 import timber.log.Timber
 
-class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener, ServiceConnection {
+class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
-    private var clients: ClientMonitorService.Binder? = null
     private val customTabsIntent by lazy {
         CustomTabsIntent.Builder()
                 .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
@@ -56,7 +56,9 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         badge.badgeTextColor = ContextCompat.getColor(this, R.color.primary_text_default_material_light)
         badge.badgeGravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
         badge.setGravityOffset(16f, 0f, true)
-        ServiceForegroundConnector(this, this, ClientMonitorService::class)
+        val model = ViewModelProviders.of(this).get<ClientViewModel>()
+        if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
+        model.clients.observe(this, Observer<List<Client>> { badge.badgeNumber = it.size })
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
     }
 
@@ -83,17 +85,6 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
             true
         }
         else -> false
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        clients = service as ClientMonitorService.Binder
-        service.clientsChanged[this] = { badge.badgeNumber = it.size }
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        val clients = clients ?: return
-        this.clients = null
-        clients.clientsChanged -= this
     }
 
     private fun displayFragment(fragment: Fragment) =
