@@ -58,8 +58,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val statusChanged = StickyEvent0()
         val groupChanged = StickyEvent1 { group }
 
-        private var groups: Collection<WifiP2pGroup> = emptyList()
-
         fun startWps(pin: String? = null) {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
@@ -84,22 +82,30 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         fun resetCredentials() {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else (groups + group).filterNotNull().forEach {
-                p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
-                    override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
-                            .shortToast().show()
-                    override fun onFailure(reason: Int) = SmartSnackbar.make(
-                            formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
-                })
-            }
+            else p2pManager.deletePersistentGroup(channel, (group ?: return).netId,
+                    object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
+                                .shortToast().show()
+                        override fun onFailure(reason: Int) = SmartSnackbar.make(
+                                formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
+                    })
         }
 
         fun requestGroupUpdate() {
             group = null
+            val channel = channel ?: return
             try {
-                p2pManager.requestPersistentGroupInfo(channel ?: return) {
-                    groups = it
-                    if (it.size == 1) group = it.single()
+                p2pManager.requestPersistentGroupInfo(channel) {
+                    val ownedGroups = it.filter { it.isGroupOwner }
+                    val main = ownedGroups.minBy { it.netId }
+                    group = main
+                    if (main != null) ownedGroups.filter { it.netId != main.netId }.forEach {
+                        p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = Timber.i("Removed redundant owned group: $it")
+                            override fun onFailure(reason: Int) = SmartSnackbar.make(
+                                    formatReason(R.string.repeater_clean_pog_failure, reason)).show()
+                        })
+                    }
                 }
             } catch (e: ReflectiveOperationException) {
                 Timber.w(e)
