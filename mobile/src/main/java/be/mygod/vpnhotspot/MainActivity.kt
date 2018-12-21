@@ -26,10 +26,6 @@ import q.rorbin.badgeview.QBadgeView
 import timber.log.Timber
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener, ServiceConnection {
-    companion object {
-        var current: MainActivity? = null
-    }
-
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
     private var clients: ClientMonitorService.Binder? = null
@@ -39,7 +35,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 .build()
     }
 
-    fun launchUrl(url: Uri) = try {
+    fun launchUrl(url: Uri) = if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
         customTabsIntent.launchUrl(this, url)
     } catch (e: ActivityNotFoundException) {
         Timber.w(e)
@@ -47,7 +43,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     } catch (e: SecurityException) {
         Timber.w(e)
         SmartSnackbar.make(url.toString()).show()
-    }
+    } else SmartSnackbar.make(url.toString()).show()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
