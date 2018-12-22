@@ -15,11 +15,11 @@ abstract class AlertDialogFragment : DialogFragment(), DialogInterface.OnClickLi
             AlertDialog.Builder(requireContext()).also { it.prepare(this) }.create()
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
-        targetFragment!!.onActivityResult(targetRequestCode, which, data)
+        targetFragment?.onActivityResult(targetRequestCode, which, data)
     }
 
     override fun onDismiss(dialog: DialogInterface?) {
         super.onDismiss(dialog)
-        targetFragment!!.onActivityResult(targetRequestCode, Activity.RESULT_CANCELED, data)
+        targetFragment?.onActivityResult(targetRequestCode, Activity.RESULT_CANCELED, data)
     }
 }
