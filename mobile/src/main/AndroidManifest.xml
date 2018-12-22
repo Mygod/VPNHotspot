@@ -48,9 +48,6 @@
         android:theme="@style/AppTheme"
         tools:ignore="GoogleAppIndexingWarning">
 
-        <meta-data android:name="firebase_crashlytics_collection_enabled"
-                   android:value="false"/>
-
         <activity
             android:name=".MainActivity"
             android:label="@string/app_name"
@@ -102,6 +99,9 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/log_paths" />
         </provider>
+
+        <provider android:name="com.crashlytics.android.CrashlyticsInitProvider"
+                  tools:remove="node"/>
     </application>
 
 </manifest>
