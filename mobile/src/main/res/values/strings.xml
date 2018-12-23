@@ -92,6 +92,10 @@
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
     <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
+    <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
+    <string name="settings_service_wifi_lock_none">System default</string>
+    <string name="settings_service_wifi_lock_full">On</string>
+    <string name="settings_service_wifi_lock_high_perf">High Performance Mode</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>

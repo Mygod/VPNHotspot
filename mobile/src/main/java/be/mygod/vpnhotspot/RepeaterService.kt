@@ -15,6 +15,7 @@ import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
 import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
@@ -123,6 +124,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         }
     }
     private var routingManager: LocalOnlyInterfaceManager? = null
+    private var locked = false
 
     var status = Status.IDLE
         private set(value) {
@@ -261,6 +263,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      * startService Step 3
      */
     private fun doStart(group: WifiP2pGroup) {
+        check(!locked)
+        WifiDoubleLock.acquire()
+        locked = true
         binder.group = group
         check(routingManager == null)
         routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
@@ -297,6 +302,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         unregisterReceiver()
         routingManager?.stop()
         routingManager = null
+        if (locked) {
+            WifiDoubleLock.release()
+            locked = false
+        }
         status = Status.IDLE
         ServiceNotification.stopForeground(this)
         stopSelf()

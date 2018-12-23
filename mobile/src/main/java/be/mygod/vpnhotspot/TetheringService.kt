@@ -5,8 +5,10 @@ import android.content.IntentFilter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -25,6 +27,7 @@ class TetheringService : IpNeighbourMonitoringService() {
 
     private val binder = Binder()
     private val routings = HashMap<String, Routing?>()
+    private var locked = false
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
@@ -37,6 +40,10 @@ class TetheringService : IpNeighbourMonitoringService() {
     override val activeIfaces get() = synchronized(routings) { routings.keys.toList() }
 
     private fun updateRoutingsLocked() {
+        if (locked && routings.keys.all { !TetherType.ofInterface(it).isWifi }) {
+            WifiDoubleLock.release()
+            locked = false
+        }
         if (routings.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
@@ -92,7 +99,13 @@ class TetheringService : IpNeighbourMonitoringService() {
         if (intent != null) {
             val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
             synchronized(routings) {
-                if (iface != null) routings[iface] = null
+                if (iface != null) {
+                    routings[iface] = null
+                    if (TetherType.ofInterface(iface).isWifi && !locked) {
+                        WifiDoubleLock.acquire()
+                        locked = true
+                    }
+                }
                 routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.revert()
                 updateRoutingsLocked()
             }

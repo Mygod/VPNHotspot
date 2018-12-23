@@ -15,6 +15,10 @@ enum class TetherType {
         BLUETOOTH -> R.drawable.ic_device_bluetooth
         else -> R.drawable.ic_device_wifi_tethering
     }
+    val isWifi get() = when (this) {
+        WIFI_P2P, WIFI, WIMAX -> true
+        else -> false
+    }
 
     companion object {
         private val usbRegexes: List<Pattern>

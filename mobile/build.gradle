@@ -74,6 +74,7 @@ dependencies {
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.1'
     implementation 'com.takisoft.preferencex:preferencex:1.0.0'
+    implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     baseImplementation 'com.android.billingclient:billing:1.2'
     baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.8'
