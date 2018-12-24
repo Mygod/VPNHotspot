@@ -40,7 +40,7 @@
             android:icon="@drawable/ic_device_wifi_lock"
             android:entries="@array/settings_service_wifi_lock"
             android:entryValues="@array/settings_service_wifi_lock_values"
-            android:defaultValue="Full"
+            android:defaultValue="None"
             android:summary="%s"
             android:title="@string/settings_service_wifi_lock"/>
         <AutoSummaryEditTextPreference
