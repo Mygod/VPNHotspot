@@ -54,12 +54,12 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                  * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
                  */
                 if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
-                            Settings.Secure.getInt(view.context.contentResolver, Settings.Secure.LOCATION_MODE,
+                            Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
                                     Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
                         } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) {
-                    Toast.makeText(view.context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     try {
-                        view.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     } catch (e: ActivityNotFoundException) {
                         Timber.w(e)
                     }

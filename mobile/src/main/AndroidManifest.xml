@@ -65,16 +65,74 @@
             </intent-filter>
         </activity>
 
-        <service android:name=".LocalOnlyHotspotService"/>
+        <service
+            android:name=".LocalOnlyHotspotService"
+            android:directBootAware="true"/>
         <service
             android:name=".RepeaterService"
             android:directBootAware="true"/>
-        <service android:name=".TetheringService"/>
         <service
-            android:name=".RepeaterTileService"
+            android:name=".TetheringService"
+            android:directBootAware="true"/>
+
+        <service
+            android:name=".manage.RepeaterTileService"
             android:directBootAware="true"
-            android:icon="@drawable/ic_quick_settings_tile_off"
+            android:icon="@drawable/ic_action_settings_input_antenna"
             android:label="@string/title_repeater"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.LocalOnlyHotspotTileService"
+            android:directBootAware="true"
+            android:enabled="@bool/api_ge_26"
+            android:icon="@drawable/ic_device_wifi_tethering"
+            android:label="@string/tethering_temp_hotspot"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.TetheringTileService$Wifi"
+            android:directBootAware="true"
+            android:icon="@drawable/ic_device_wifi_tethering"
+            android:label="@string/tethering_manage_wifi"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.TetheringTileService$Usb"
+            android:directBootAware="true"
+            android:icon="@drawable/ic_device_usb"
+            android:label="@string/tethering_manage_usb"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.TetheringTileService$Bluetooth"
+            android:directBootAware="true"
+            android:icon="@drawable/ic_device_bluetooth"
+            android:label="@string/tethering_manage_bluetooth"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <!--suppress DeprecatedClassUsageInspection -->
+        <service
+            android:name=".manage.TetheringTileService$WifiLegacy"
+            android:directBootAware="true"
+            android:enabled="@bool/api_lt_26"
+            android:icon="@drawable/ic_device_wifi_tethering"
+            android:label="@string/tethering_manage_wifi_legacy"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />

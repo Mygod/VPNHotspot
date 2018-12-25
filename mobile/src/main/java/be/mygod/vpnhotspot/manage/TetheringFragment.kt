@@ -88,8 +88,8 @@ class TetheringFragment : Fragment(), ServiceConnection {
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()
     var enabledTypes = emptySet<TetherType>()
     private lateinit var binding: FragmentTetheringBinding
-    var tetheringBinder: TetheringService.Binder? = null
-    val adapter = ManagerAdapter()
+    var binder: TetheringService.Binder? = null
+    private val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
         adapter.update(TetheringManager.getTetheredIfaces(extras),
@@ -130,14 +130,14 @@ class TetheringFragment : Fragment(), ServiceConnection {
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        tetheringBinder = service as TetheringService.Binder
-        service.fragment = this
+        binder = service as TetheringService.Binder
+        service.routingsChanged[this] = { adapter.notifyDataSetChanged() }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        (tetheringBinder ?: return).fragment = null
-        tetheringBinder = null
+        (binder ?: return).routingsChanged -= this
+        binder = null
         requireContext().unregisterReceiver(receiver)
     }
 }

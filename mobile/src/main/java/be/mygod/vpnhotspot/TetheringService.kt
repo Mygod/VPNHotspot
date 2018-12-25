@@ -3,26 +3,26 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.content.IntentFilter
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
 class TetheringService : IpNeighbourMonitoringService() {
     companion object {
-        const val EXTRA_ADD_INTERFACE = "interface.add"
+        const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
     }
 
     inner class Binder : android.os.Binder() {
-        var fragment: TetheringFragment? = null
+        val routingsChanged = Event0()
 
-        fun isActive(iface: String): Boolean = synchronized(routings) { routings.keys.contains(iface) }
+        fun isActive(iface: String): Boolean = synchronized(routings) { routings.containsKey(iface) }
     }
 
     private val binder = Binder()
@@ -90,16 +90,16 @@ class TetheringService : IpNeighbourMonitoringService() {
             }
             updateNotification()
         }
-        app.handler.post { binder.fragment?.adapter?.notifyDataSetChanged() }
+        app.handler.post { binder.routingsChanged() }
     }
 
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
-            val iface = intent.getStringExtra(EXTRA_ADD_INTERFACE)
+            val ifaces = intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()
             synchronized(routings) {
-                if (iface != null) {
+                for (iface in ifaces) {
                     routings[iface] = null
                     if (TetherType.ofInterface(iface).isWifi && !locked) {
                         WifiDoubleLock.acquire()

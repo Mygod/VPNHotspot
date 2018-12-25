@@ -1,8 +1,5 @@
 package be.mygod.vpnhotspot.manage
 
-import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothProfile
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
@@ -95,8 +92,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     protected abstract fun stop()
 
     override fun onTetheringStarted() = data.notifyChange()
-    override fun onTetheringFailed() =
-            SmartSnackbar.make(R.string.tethering_manage_failed).show()
+    override fun onTetheringFailed() = SmartSnackbar.make(R.string.tethering_manage_failed).show()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).manager = this
@@ -148,54 +144,20 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_USB)
     }
     @RequiresApi(24)
-    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), LifecycleObserver,
-            BluetoothProfile.ServiceListener {
-        companion object {
-            /**
-             * PAN Profile
-             * From BluetoothProfile.java.
-             */
-            private const val PAN = 5
-            private val isTetheringOn by lazy @SuppressLint("PrivateApi") {
-                Class.forName("android.bluetooth.BluetoothPan").getDeclaredMethod("isTetheringOn")
-            }
-        }
-
-        private var pan: BluetoothProfile? = null
+    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), LifecycleObserver {
+        private val tethering = BluetoothTethering(parent.requireContext())
 
         init {
             parent.lifecycle.addObserver(this)
-            try {
-                BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(parent.requireContext(), this, PAN)
-            } catch (e: SecurityException) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-            }
         }
 
-        override fun onServiceDisconnected(profile: Int) {
-            pan = null
-        }
-        override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-            pan = proxy
-        }
         @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        fun onDestroy() {
-            pan = null
-        }
+        fun onDestroy() = tethering.close()
 
         override val title get() = parent.getString(R.string.tethering_manage_bluetooth)
         override val tetherType get() = TetherType.BLUETOOTH
         override val type get() = VIEW_TYPE_BLUETOOTH
-        /**
-         * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
-         */
-        override val isStarted: Boolean
-            get() {
-                val pan = pan
-                return BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && pan != null &&
-                        isTetheringOn.invoke(pan) as Boolean
-            }
+        override val isStarted get() = tethering.active
 
         override fun start() = TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, this)
         override fun stop() {

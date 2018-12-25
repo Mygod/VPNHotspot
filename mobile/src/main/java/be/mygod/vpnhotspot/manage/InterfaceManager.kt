@@ -25,14 +25,14 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
             if (data.active) context.startService(Intent(context, TetheringService::class.java)
                     .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
             else ContextCompat.startForegroundService(context, Intent(context, TetheringService::class.java)
-                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE, iface))
+                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
         }
     }
     private inner class Data : be.mygod.vpnhotspot.manage.Data() {
         override val icon get() = TetherType.ofInterface(iface).icon
         override val title get() = iface
         override val text get() = addresses
-        override val active get() = parent.tetheringBinder?.isActive(iface) == true
+        override val active get() = parent.binder?.isActive(iface) == true
     }
 
     val addresses = parent.ifaceLookup[iface]?.formatAddresses() ?: ""
