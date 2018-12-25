@@ -94,8 +94,8 @@
     <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
-    <string name="settings_service_wifi_lock_full">On</string>
-    <string name="settings_service_wifi_lock_high_perf">High Performance Mode</string>
+    <string name="settings_service_wifi_lock_full">On (prevents service auto-shutdowns)</string>
+    <string name="settings_service_wifi_lock_high_perf">High Performance Mode (consumes more power)</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
