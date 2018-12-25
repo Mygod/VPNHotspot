@@ -125,7 +125,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             setNeutralButton(R.string.repeater_wps_dialog_pbc, listener)
         }
         override val data: Intent get() = Intent()
-                .putExtra(KEY_PIN, dialog.findViewById<EditText>(android.R.id.edit)!!.text.toString())
+                .putExtra(KEY_PIN, dialog.findViewById<EditText>(android.R.id.edit)?.text.toString())
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
             window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
