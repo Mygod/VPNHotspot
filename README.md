@@ -102,7 +102,8 @@ Other:
   is assumed to be 0.
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported;
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
-* `android.net.conn.TETHER_STATE_CHANGED` is assumed to be a sticky broadcast.
+* `android.net.conn.TETHER_STATE_CHANGED` and `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED` are assumed to be
+  sticky broadcasts.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000
 respectively; `RULE_PRIORITY_DEFAULT_NETWORK` is assumed to be 22000 (or at least > 18000) for API 27-.
