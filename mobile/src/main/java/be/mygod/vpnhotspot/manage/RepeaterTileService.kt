@@ -57,7 +57,7 @@ class RepeaterTileService : KillableTileService() {
 
     private fun updateTile(group: WifiP2pGroup? = binder?.group) {
         qsTile?.run {
-            when (binder?.service?.status) {
+            when ((binder ?: return).service.status) {
                 RepeaterService.Status.IDLE -> {
                     state = Tile.STATE_INACTIVE
                     label = getText(R.string.title_repeater)
@@ -66,7 +66,7 @@ class RepeaterTileService : KillableTileService() {
                     state = Tile.STATE_ACTIVE
                     label = group?.networkName
                 }
-                else -> {   // STARTING, null or DESTROYED, which should never occur
+                else -> {   // STARTING or DESTROYED, which should never occur
                     state = Tile.STATE_UNAVAILABLE
                     label = getText(R.string.title_repeater)
                 }

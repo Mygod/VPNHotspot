@@ -61,8 +61,9 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
                 state = Tile.STATE_INACTIVE
                 icon = tileOff
             } else {
+                val binder = binder ?: return
                 state = Tile.STATE_ACTIVE
-                icon = if (interested.all { binder?.isActive(it) == true }) tileOn else tileOff
+                icon = if (interested.all { binder.isActive(it) }) tileOn else tileOff
             }
             label = getText(labelString)
             updateTile()
@@ -141,29 +142,37 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
 
         override fun updateTile() {
             qsTile?.run {
-                if (tethering?.active == true) {
-                    state = Tile.STATE_ACTIVE
-                    val interested = interested
-                    icon = if (interested.isNotEmpty() && interested.all { binder?.isActive(it) == true })
-                        tileOn else tileOff
-                } else {
-                    state = Tile.STATE_INACTIVE
-                    icon = tileOff
+                when (tethering?.active) {
+                    true -> {
+                        val binder = binder ?: return
+                        state = Tile.STATE_ACTIVE
+                        val interested = interested
+                        icon = if (interested.isNotEmpty() && interested.all { binder.isActive(it) }) tileOn else tileOff
+                    }
+                    false -> {
+                        state = Tile.STATE_INACTIVE
+                        icon = tileOff
+                    }
+                    null -> return
                 }
                 label = getText(labelString)
                 updateTile()
             }
         }
 
-        override fun onClick() = if (tethering?.active == true) {
-            val binder = binder
-            if (binder == null) tapPending = true else {
-                val inactive = interested.filter { !binder.isActive(it) }
-                if (inactive.isEmpty()) safeInvoker { stop() }
-                else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
-                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+        override fun onClick() = when (tethering?.active) {
+            true -> {
+                val binder = binder
+                if (binder == null) tapPending = true else {
+                    val inactive = interested.filter { !binder.isActive(it) }
+                    if (inactive.isEmpty()) safeInvoker { stop() }
+                    else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                            .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+                }
             }
-        } else safeInvoker { start() }
+            false -> safeInvoker { start() }
+            else -> tapPending = true
+        }
     }
 
     @Suppress("DEPRECATION")

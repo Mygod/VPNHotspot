@@ -48,7 +48,7 @@ class LocalOnlyHotspotTileService : TetherListeningTileService() {
 
     override fun updateTile() {
         qsTile?.run {
-            state = if (binder?.iface == null) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
+            state = if ((binder ?: return).iface == null) Tile.STATE_INACTIVE else Tile.STATE_ACTIVE
             icon = tile
             label = getText(R.string.tethering_temp_hotspot)
             updateTile()

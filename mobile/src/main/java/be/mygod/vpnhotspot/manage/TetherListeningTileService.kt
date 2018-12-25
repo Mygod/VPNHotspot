@@ -17,7 +17,8 @@ abstract class TetherListeningTileService : KillableTileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        tethered = TetheringManager.getTetheredIfaces(registerReceiver(
+                receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))?.extras ?: return)
     }
 
     override fun onStopListening() {

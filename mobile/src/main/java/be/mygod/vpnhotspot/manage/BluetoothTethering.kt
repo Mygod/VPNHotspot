@@ -24,9 +24,9 @@ class BluetoothTethering(context: Context) : BluetoothProfile.ServiceListener, A
     /**
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
      */
-    val active: Boolean get() {
-        val pan = pan
-        return adapter?.state == BluetoothAdapter.STATE_ON && pan != null && isTetheringOn.invoke(pan) as Boolean
+    val active: Boolean? get() {
+        val pan = pan ?: return null
+        return adapter?.state == BluetoothAdapter.STATE_ON && isTetheringOn.invoke(pan) as Boolean
     }
 
     init {
