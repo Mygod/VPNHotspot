@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.manage
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.service.quicksettings.Tile
@@ -14,7 +13,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(26)
-class LocalOnlyHotspotTileService : TetherListeningTileService(), ServiceConnection {
+class LocalOnlyHotspotTileService : TetherListeningTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_device_wifi_tethering) }
     private var binder: LocalOnlyHotspotService.Binder? = null
 
@@ -30,13 +29,17 @@ class LocalOnlyHotspotTileService : TetherListeningTileService(), ServiceConnect
 
     override fun onClick() {
         val binder = binder
-        if (binder?.iface != null) binder.stop()
-        else ContextCompat.startForegroundService(this, Intent(this, LocalOnlyHotspotService::class.java))
+        when {
+            binder == null -> tapPending = true
+            binder.iface != null -> binder.stop()
+            else -> ContextCompat.startForegroundService(this, Intent(this, LocalOnlyHotspotService::class.java))
+        }
     }
 
-    override fun onServiceConnected(name: ComponentName?, service: IBinder) {
+    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as LocalOnlyHotspotService.Binder
         updateTile()
+        super.onServiceConnected(name, service)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {

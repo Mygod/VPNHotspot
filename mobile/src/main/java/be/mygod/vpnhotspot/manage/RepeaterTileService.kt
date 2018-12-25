@@ -3,20 +3,19 @@ package be.mygod.vpnhotspot.manage
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.drawable.Icon
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.IBinder
 import android.service.quicksettings.Tile
-import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(24)
-class RepeaterTileService : TileService(), ServiceConnection {
+class RepeaterTileService : KillableTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_settings_input_antenna) }
 
     private var binder: RepeaterService.Binder? = null
@@ -34,7 +33,7 @@ class RepeaterTileService : TileService(), ServiceConnection {
 
     override fun onClick() {
         val binder = binder
-        when (binder?.service?.status) {
+        if (binder == null) tapPending = true else when (binder.service.status) {
             RepeaterService.Status.ACTIVE -> binder.shutdown()
             RepeaterService.Status.IDLE ->
                 ContextCompat.startForegroundService(this, Intent(this, RepeaterService::class.java))
@@ -42,10 +41,11 @@ class RepeaterTileService : TileService(), ServiceConnection {
         }
     }
 
-    override fun onServiceConnected(name: ComponentName?, service: IBinder) {
+    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as RepeaterService.Binder
         service.statusChanged[this] = { updateTile() }
         service.groupChanged[this] = this::updateTile
+        super.onServiceConnected(name, service)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {

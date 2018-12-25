@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.manage
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.service.quicksettings.Tile
@@ -22,8 +21,7 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : TetherListeningTileService(), ServiceConnection,
-        TetheringManager.OnStartTetheringCallback {
+sealed class TetheringTileService : TetherListeningTileService(), TetheringManager.OnStartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -49,6 +47,7 @@ sealed class TetheringTileService : TetherListeningTileService(), ServiceConnect
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
         service.routingsChanged[this] = { updateTile() }
+        super.onServiceConnected(name, service)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
@@ -89,10 +88,13 @@ sealed class TetheringTileService : TetherListeningTileService(), ServiceConnect
     override fun onClick() {
         val interested = interested
         if (interested.isEmpty()) safeInvoker { start() } else {
-            val inactive = interested.filter { binder?.isActive(it) != true }
-            if (inactive.isEmpty()) safeInvoker { stop() }
-            else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
-                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+            val binder = binder
+            if (binder == null) tapPending = true else {
+                val inactive = interested.filter { !binder.isActive(it) }
+                if (inactive.isEmpty()) safeInvoker { stop() }
+                else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+            }
         }
     }
 
@@ -154,10 +156,13 @@ sealed class TetheringTileService : TetherListeningTileService(), ServiceConnect
         }
 
         override fun onClick() = if (tethering?.active == true) {
-            val inactive = interested.filter { binder?.isActive(it) != true }
-            if (inactive.isEmpty()) safeInvoker { stop() }
-            else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
-                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+            val binder = binder
+            if (binder == null) tapPending = true else {
+                val inactive = interested.filter { !binder.isActive(it) }
+                if (inactive.isEmpty()) safeInvoker { stop() }
+                else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+            }
         } else safeInvoker { start() }
     }
 

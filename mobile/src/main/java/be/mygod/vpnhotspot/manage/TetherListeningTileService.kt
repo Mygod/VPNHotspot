@@ -1,13 +1,13 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.IntentFilter
-import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.broadcastReceiver
 
 @RequiresApi(24)
-abstract class TetherListeningTileService : TileService() {
+abstract class TetherListeningTileService : KillableTileService() {
     protected var tethered: List<String> = emptyList()
 
     private val receiver = broadcastReceiver { _, intent ->
