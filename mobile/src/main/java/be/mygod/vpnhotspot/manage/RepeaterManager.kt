@@ -51,7 +51,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
             } catch (e: SocketException) {
-                Timber.w(e)
                 ""
             }
         }
