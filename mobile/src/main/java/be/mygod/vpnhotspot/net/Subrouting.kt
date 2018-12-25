@@ -62,6 +62,7 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
 
     init {
         Timber.d("Subrouting initialized from %s to %s", parent.downstream, upstream)
+        Timber.d(Thread.currentThread().stackTrace.joinToString("\n"))
         IpNeighbourMonitor.registerCallback(this)
     }
 
@@ -71,6 +72,7 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
     override fun close() {
         IpNeighbourMonitor.unregisterCallback(this)
         Timber.d("Subrouting closed from %s to %s", parent.downstream, upstream)
+        Timber.d(Thread.currentThread().stackTrace.joinToString("\n"))
     }
 
     override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(parent) {

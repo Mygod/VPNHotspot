@@ -77,8 +77,7 @@ abstract class UpstreamMonitor {
 
     fun registerCallback(callback: Callback) {
         synchronized(this) {
-            if (!callbacks.add(callback)) return
-            registerCallbackLocked(callback)
+            if (callbacks.add(callback)) registerCallbackLocked(callback)
         }
     }
     fun unregisterCallback(callback: Callback) = synchronized(this) {
