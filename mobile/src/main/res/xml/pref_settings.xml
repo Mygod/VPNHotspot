@@ -35,14 +35,6 @@
             android:icon="@drawable/ic_image_looks_6"
             android:title="@string/settings_service_disable_ipv6"
             android:summary="@string/settings_service_disable_ipv6_summary"/>
-        <SimpleMenuPreference
-            android:key="service.wifiLock"
-            android:icon="@drawable/ic_device_wifi_lock"
-            android:entries="@array/settings_service_wifi_lock"
-            android:entryValues="@array/settings_service_wifi_lock_values"
-            android:defaultValue="None"
-            android:summary="%s"
-            android:title="@string/settings_service_wifi_lock"/>
         <AutoSummaryEditTextPreference
             android:key="service.dns"
             android:icon="@drawable/ic_action_dns"
@@ -57,6 +49,14 @@
     </PreferenceCategory>
     <PreferenceCategory
         android:title="@string/settings_misc">
+        <SimpleMenuPreference
+            android:key="service.wifiLock"
+            android:icon="@drawable/ic_device_wifi_lock"
+            android:entries="@array/settings_service_wifi_lock"
+            android:entryValues="@array/settings_service_wifi_lock_values"
+            android:defaultValue="None"
+            android:summary="%s"
+            android:title="@string/settings_service_wifi_lock"/>
         <SwitchPreference
             android:key="service.repeater.startOnBoot"
             android:icon="@drawable/ic_action_autorenew"
