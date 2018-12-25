@@ -5,6 +5,8 @@ import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
+import java.net.NetworkInterface
+import java.net.SocketException
 
 data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
     enum class State {
@@ -20,9 +22,15 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
          */
         private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr (.[^ ]+))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
                 .toRegex()
+        /**
+         * Fallback format will be used if if_indextoname returns null, which some stupid devices do.
+         *
+         * Source: https://android.googlesource.com/platform/external/iproute2/+/4b9e917/lib/ll_map.c#152
+         */
+        private val devFallback = "^if(\\d+)\$".toRegex()
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
-        fun parse(line: String): IpNeighbour? {
+        fun parse(line: String): List<IpNeighbour> {
             return try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
@@ -39,13 +47,21 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         "", "INCOMPLETE" -> State.INCOMPLETE
                         "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
                         "FAILED" -> State.FAILED
-                        "NOARP" -> return null  // skip
+                        "NOARP" -> return emptyList()   // skip
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
-                IpNeighbour(ip, dev, lladdr, state)
+                val result = IpNeighbour(ip, dev, lladdr, state)
+                val devParser = devFallback.matchEntire(dev)
+                if (devParser != null) try {
+                    return listOf(IpNeighbour(ip, NetworkInterface.getByIndex(devParser.groupValues[1].toInt()).name,
+                            lladdr, state), result)
+                } catch (e: SocketException) {
+                    Timber.w(e)
+                }
+                listOf(result)
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
-                null
+                emptyList()
             }
         }
 
