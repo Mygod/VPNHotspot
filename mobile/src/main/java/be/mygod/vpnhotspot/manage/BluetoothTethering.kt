@@ -19,19 +19,19 @@ class BluetoothTethering(context: Context) : BluetoothProfile.ServiceListener, A
         }
     }
 
-    private val adapter = BluetoothAdapter.getDefaultAdapter()
     private var pan: BluetoothProfile? = null
     /**
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
      */
     val active: Boolean? get() {
         val pan = pan ?: return null
-        return adapter?.state == BluetoothAdapter.STATE_ON && isTetheringOn.invoke(pan) as Boolean
+        return BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON &&
+                isTetheringOn.invoke(pan) as Boolean
     }
 
     init {
         try {
-            adapter?.getProfileProxy(context, this, PAN)
+            BluetoothAdapter.getDefaultAdapter()?.getProfileProxy(context, this, PAN)
         } catch (e: SecurityException) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
@@ -45,7 +45,7 @@ class BluetoothTethering(context: Context) : BluetoothProfile.ServiceListener, A
         pan = proxy
     }
     override fun close() {
-        adapter?.closeProfileProxy(PAN, pan)
+        BluetoothAdapter.getDefaultAdapter()?.closeProfileProxy(PAN, pan)
         pan = null
     }
 }
