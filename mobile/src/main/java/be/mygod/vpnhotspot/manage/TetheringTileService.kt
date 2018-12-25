@@ -63,7 +63,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
             } else {
                 val binder = binder ?: return
                 state = Tile.STATE_ACTIVE
-                icon = if (interested.all { binder.isActive(it) }) tileOn else tileOff
+                icon = if (interested.all(binder::isActive)) tileOn else tileOff
             }
             label = getText(labelString)
             updateTile()
@@ -91,7 +91,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         if (interested.isEmpty()) safeInvoker { start() } else {
             val binder = binder
             if (binder == null) tapPending = true else {
-                val inactive = interested.filter { !binder.isActive(it) }
+                val inactive = interested.filterNot(binder::isActive)
                 if (inactive.isEmpty()) safeInvoker { stop() }
                 else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
@@ -147,7 +147,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
                         val binder = binder ?: return
                         state = Tile.STATE_ACTIVE
                         val interested = interested
-                        icon = if (interested.isNotEmpty() && interested.all { binder.isActive(it) }) tileOn else tileOff
+                        icon = if (interested.isNotEmpty() && interested.all(binder::isActive)) tileOn else tileOff
                     }
                     false -> {
                         state = Tile.STATE_INACTIVE
@@ -164,7 +164,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
             true -> {
                 val binder = binder
                 if (binder == null) tapPending = true else {
-                    val inactive = interested.filter { !binder.isActive(it) }
+                    val inactive = interested.filterNot(binder::isActive)
                     if (inactive.isEmpty()) safeInvoker { stop() }
                     else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
                             .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
