@@ -6,7 +6,6 @@ import java.io.File
 import java.io.IOException
 import java.net.InetAddress
 import java.net.NetworkInterface
-import java.net.SocketException
 
 data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
     enum class State {
@@ -55,7 +54,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                 if (devParser != null) try {
                     return listOf(IpNeighbour(ip, NetworkInterface.getByIndex(devParser.groupValues[1].toInt()).name,
                             lladdr, state), result)
-                } catch (e: SocketException) {
+                } catch (e: RuntimeException) {
                     Timber.w(e)
                 }
                 listOf(result)
