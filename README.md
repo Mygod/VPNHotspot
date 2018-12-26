@@ -17,9 +17,10 @@ This app is useful for:
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
 * Identifying, monitoring and blocking (unwanted) clients;
 * Bypassing tethering limits by:
-  * (recommended) Use this app with a real VPN/socksifier; (ad-blocker may not work)
-  * (might or might not work based on your carrier) Use this app with TTL editor like [TTL Master](https://github.com/TTLMaster/TTLMaster);
-  * Try your luck and simply use this app.
+    - (recommended) Use this app with a real VPN/socksifier; (ad-blocker may not work)
+    - (might or might not work based on your carrier) Use this app with TTL editor like
+      [TTL Master](https://github.com/TTLMaster/TTLMaster);
+    - Try your luck and simply use this app.
 
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
 [Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/),
@@ -56,19 +57,19 @@ Default settings are picked to suit general use cases and maximize compatibility
 ### Misc
 
 * Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
- - Choose "System default" to save battery life;
- - Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
- - Choose "High Performance Mode" to minimize packet loss and latency (will consume more power).
+   - Choose "System default" to save battery life;
+   - Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
+   - Choose "High Performance Mode" to minimize packet loss and latency (will consume more power).
 * Start repeater on boot: Self explanatory.
 * Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
   (when custom upstream is used).
   Requires restarting the app to take effects. (best way is to go to app info and force stop)
- - Netlink monitor: Use Linux netlink mechanism, most battery efficient but may not work with SELinux enforcing mode.
-   Sometimes auto fallbacks to Netlink monitor with root and Poll.
- - Netlink monitor with root: Same as above but runs netlink as root. This option works well with SELinux enforcing mode
-   but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
- - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
-   devices. Recommended to switch to other modes if possible.
+   - Netlink monitor: Use Linux netlink mechanism, most battery efficient but may not work with SELinux enforcing mode.
+     Sometimes auto fallbacks to Netlink monitor with root and Poll.
+   - Netlink monitor with root: Same as above but runs netlink as root. This option works well with SELinux enforcing mode
+     but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
+   - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
+     devices. Recommended to switch to other modes if possible.
 
 
 ## Q & A
