@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net.monitor
 
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.util.thread
@@ -12,6 +13,14 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 abstract class IpMonitor : Runnable {
+    companion object {
+        const val KEY = "service.ipMonitor"
+    }
+
+    enum class Mode {
+        Monitor, MonitorRoot, Poll
+    }
+
     private class MonitorFailure : RuntimeException()
     private class FlushFailure : RuntimeException()
     protected abstract val monitoredObject: String
@@ -50,13 +59,18 @@ abstract class IpMonitor : Runnable {
 
     init {
         thread("${javaClass.simpleName}-input") {
-            // monitor may get rejected by SELinux
-            handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
-            if (destroyed) return@thread
-            handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
-            if (destroyed) return@thread
-            Timber.w("Failed to set up monitor, switching to polling")
-            Timber.i(MonitorFailure())
+            val mode = Mode.valueOf(app.pref.getString(KEY, Mode.Monitor.toString()) ?: "")
+            if (mode != Mode.Poll) {
+                if (mode != Mode.MonitorRoot) {
+                    // monitor may get rejected by SELinux enforcing
+                    handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
+                    if (destroyed) return@thread
+                }
+                handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
+                if (destroyed) return@thread
+                Timber.w("Failed to set up monitor, switching to polling")
+                Timber.i(MonitorFailure())
+            }
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
             this.pool = pool

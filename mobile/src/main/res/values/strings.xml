@@ -96,6 +96,10 @@
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On (prevents service auto-shutdowns)</string>
     <string name="settings_service_wifi_lock_high_perf">High Performance Mode (consumes more power)</string>
+    <string name="settings_service_ip_monitor">Network status monitor mode</string>
+    <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
+    <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
+    <string name="settings_service_ip_monitor_poll">Poll</string>
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
@@ -114,6 +118,7 @@
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
     <string name="settings_misc_donate_more">PayPal, Flattr, more…</string>
+    <string name="settings_restart_required">Restart this app to apply this setting.</string>
 
     <string name="notification_tethering_title">VPN tethering active</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>

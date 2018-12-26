@@ -61,6 +61,14 @@
             android:key="service.repeater.startOnBoot"
             android:icon="@drawable/ic_action_autorenew"
             android:title="@string/settings_service_repeater_start_on_boot"/>
+        <SimpleMenuPreference
+            android:key="service.ipMonitor"
+            android:icon="@drawable/ic_hardware_device_hub"
+            android:entries="@array/settings_service_ip_monitor"
+            android:entryValues="@array/settings_service_ip_monitor_values"
+            android:defaultValue="Poll"
+            android:summary="%s"
+            android:title="@string/settings_service_ip_monitor"/>
         <Preference
             android:key="misc.logcat"
             android:icon="@drawable/ic_action_bug_report"

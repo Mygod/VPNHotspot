@@ -88,6 +88,10 @@
     <string name="settings_service_wifi_lock_none">系统默认</string>
     <string name="settings_service_wifi_lock_full">开（防止服务自动关闭）</string>
     <string name="settings_service_wifi_lock_high_perf">高性能模式（更快消耗电池）</string>
+    <string name="settings_service_ip_monitor">网络状态监听模式</string>
+    <string name="settings_service_ip_monitor_monitor">Netlink 监听</string>
+    <string name="settings_service_ip_monitor_monitor_root">Netlink 监听 (root)</string>
+    <string name="settings_service_ip_monitor_poll">轮询</string>
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
@@ -105,6 +109,7 @@
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
     <string name="settings_misc_donate_more">PayPal, Flattr 等其他方式…</string>
+    <string name="settings_restart_required">重启应用以应用新的设置。</string>
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>

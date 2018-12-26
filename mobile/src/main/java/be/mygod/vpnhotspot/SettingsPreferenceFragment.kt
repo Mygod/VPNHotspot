@@ -14,6 +14,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
@@ -50,6 +51,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 false
             }
             if (cleaned) app.onRoutingsCleaned()
+            true
+        }
+        findPreference(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->
+            SmartSnackbar.make(R.string.settings_restart_required).show()
             true
         }
         findPreference("misc.logcat").setOnPreferenceClickListener {
