@@ -86,8 +86,8 @@
     <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 开启</string>
     <string name="settings_service_wifi_lock_none">系统默认</string>
-    <string name="settings_service_wifi_lock_full">开（防止服务自动关闭）</string>
-    <string name="settings_service_wifi_lock_high_perf">高性能模式（更快消耗电池）</string>
+    <string name="settings_service_wifi_lock_full">开</string>
+    <string name="settings_service_wifi_lock_high_perf">高性能模式</string>
     <string name="settings_service_ip_monitor">网络状态监听模式</string>
     <string name="settings_service_ip_monitor_monitor">Netlink 监听</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink 监听 (root)</string>
