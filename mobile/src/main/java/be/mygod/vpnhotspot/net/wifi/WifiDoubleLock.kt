@@ -14,7 +14,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
         private const val KEY = "service.wifiLock"
         private val lockType get() =
-            WifiDoubleLock.Mode.valueOf(app.pref.getString(KEY, WifiDoubleLock.Mode.None.toString()) ?: "").lockType
+            WifiDoubleLock.Mode.valueOf(app.pref.getString(KEY, WifiDoubleLock.Mode.Full.toString()) ?: "").lockType
         private val service by lazy { app.getSystemService<PowerManager>()!! }
 
         private var referenceCount = 0

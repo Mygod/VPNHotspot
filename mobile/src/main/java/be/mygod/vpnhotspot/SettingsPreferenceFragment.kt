@@ -120,7 +120,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.source").setOnPreferenceClickListener {
-            (activity as MainActivity).launchUrl("https://github.com/Mygod/VPNHotspot".toUri())
+            (activity as MainActivity).launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md".toUri())
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {

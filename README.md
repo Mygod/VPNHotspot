@@ -29,13 +29,53 @@ I don't know about you but I can't get my stupid Windows 10 to work with
 now that they introduced this
 [Mobile hotspot](https://support.microsoft.com/en-us/help/4027762/windows-use-your-pc-as-a-mobile-hotspot).
 
-This app is designed to do only minimal changes to your system, so there's almost no chance you will brick your device
-and/or break your Internet using this app *under normal conditions*. However there's also absolutely no guarantee it
-won't.
+## Settings and How to Use Them
+
+Default settings are picked to suit general use cases and maximize compatibility but it might not be optimal for battery
+ life.
+
+### Upstream
+
+* Upstream network interface: Main upstream used to reroute traffic. Leave blank for auto detect system VPN.
+  Put `none` (or other similarly invalid entries) to suppress tethering VPN.
+  Put your interface name for tethering WireGuard.
+* Fallback upstream: Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
+  Leave blank for auto detect. Put `none` (or other similarly invalid entries) to forbid falling back.
+  Put other interface name if you feel like it.
+* IP Masquerade: Source address/port from downstream packets will be remapped. Leave on if you don't know what it does.
+  I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers (like
+  Shadowsocks). But you should never turn it off for real VPNs like OpenVPN, WireGuard, etc.
+
+### Downstream
+
+* Disable IPv6 tethering: Turning this option on will disable IPv6 for system tethering. Useful for stopping IPv6 leaks
+  as this app currently doesn't handle IPv6 VPN tethering (see [#6](https://github.com/Mygod/VPNHotspot/issues/6)).
+* Fallback DNS server[:port]: Only used when a DNS server isn't found on the upstream interface.
+* Enable DHCP workaround: Only used if your device isn't able to get your clients IP addresses with VPN on.
+
+### Misc
+
+* Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
+ - Choose "System default" to save battery life;
+ - Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
+ - Choose "High Performance Mode" to minimize packet loss and latency (will consume more power).
+* Start repeater on boot: Self explanatory.
+* Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
+  (when custom upstream is used).
+  Requires restarting the app to take effects. (best way is to go to app info and force stop)
+ - Netlink monitor: Use Linux netlink mechanism, most battery efficient but may not work with SELinux enforcing mode.
+   Sometimes auto fallbacks to Netlink monitor with root and Poll.
+ - Netlink monitor with root: Same as above but runs netlink as root. This option works well with SELinux enforcing mode
+   but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
+ - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
+   devices. Recommended to switch to other modes if possible.
+
 
 ## Q & A
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
+
+### [What changes exactly can this app do to my system? (and how to revert them)](https://github.com/Mygod/VPNHotspot/issues/8#issuecomment-448529512)
 
 ### Failed to create group due to internal error/repeater shuts down after a while?
 

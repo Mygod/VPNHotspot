@@ -111,10 +111,11 @@
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions.</string>
     <string name="settings_misc">Misc</string>
+    <string name="settings_help">Help</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
-    <string name="settings_misc_source">View on GitHub</string>
-    <string name="settings_misc_source_summary">Star, submit issues and contribute</string>
+    <string name="settings_misc_source">Project homepage at GitHub</string>
+    <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
     <string name="settings_misc_donate_more">PayPal, Flattr, more…</string>

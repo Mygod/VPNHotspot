@@ -82,7 +82,7 @@
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
-    <string name="settings_service_disable_ipv6_summary">防止 IPv6 VPN 泄漏。</string>
+    <string name="settings_service_disable_ipv6_summary">防止 VPN 通过 IPv6 泄漏。</string>
     <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 开启</string>
     <string name="settings_service_wifi_lock_none">系统默认</string>
@@ -102,10 +102,11 @@
     <string name="settings_service_dhcp_workaround">尝试修复 DHCP</string>
     <string name="settings_service_dhcp_workaround_summary">如果设备无法获取 IP 地址，尝试打开这个选项。</string>
     <string name="settings_misc">杂项</string>
+    <string name="settings_help">帮助</string>
     <string name="settings_misc_logcat">导出调试信息</string>
     <string name="settings_misc_logcat_summary">这种非常有用哇</string>
-    <string name="settings_misc_source">查看 GitHub 上的源码</string>
-    <string name="settings_misc_source_summary">Star, 提交 issues, 合作</string>
+    <string name="settings_misc_source">项目首页 @ GitHub</string>
+    <string name="settings_misc_source_summary">查看使用手册，star, 提交 issues, 合作</string>
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
     <string name="settings_misc_donate_more">PayPal, Flattr 等其他方式…</string>

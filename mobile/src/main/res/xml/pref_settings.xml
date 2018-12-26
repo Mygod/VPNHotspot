@@ -54,7 +54,7 @@
             android:icon="@drawable/ic_device_wifi_lock"
             android:entries="@array/settings_service_wifi_lock"
             android:entryValues="@array/settings_service_wifi_lock_values"
-            android:defaultValue="None"
+            android:defaultValue="Full"
             android:summary="%s"
             android:title="@string/settings_service_wifi_lock"/>
         <SwitchPreference
@@ -69,16 +69,19 @@
             android:defaultValue="Poll"
             android:summary="%s"
             android:title="@string/settings_service_ip_monitor"/>
-        <Preference
-            android:key="misc.logcat"
-            android:icon="@drawable/ic_action_bug_report"
-            android:title="@string/settings_misc_logcat"
-            android:summary="@string/settings_misc_logcat_summary"/>
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:title="@string/settings_help">
         <Preference
             android:key="misc.source"
             android:icon="@drawable/ic_toggle_star"
             android:title="@string/settings_misc_source"
             android:summary="@string/settings_misc_source_summary"/>
+        <Preference
+            android:key="misc.logcat"
+            android:icon="@drawable/ic_action_bug_report"
+            android:title="@string/settings_misc_logcat"
+            android:summary="@string/settings_misc_logcat_summary"/>
         <Preference
             android:key="misc.donate"
             android:icon="@drawable/ic_action_card_giftcard"
