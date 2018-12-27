@@ -4,6 +4,7 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.RootSession
+import timber.log.Timber
 import java.io.File
 
 /**
@@ -30,7 +31,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
         override fun toString() = joinToString("\n")
     }
 
-    private class Parser(lines: List<String>) {
+    private class Parser(val lines: List<String>) {
         private val iterator = lines.iterator()
         lateinit var line: String
         lateinit var trimmed: String
@@ -45,36 +46,42 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             val result = ArrayList<Any>()
             var target: NetworkBlock? = null
             val parser = Parser(it.execOutUnjoined("cat $confPath"))
-            while (parser.next()) {
-                if (parser.trimmed.startsWith("network={")) {
-                    val block = NetworkBlock()
-                    block.add(parser.line)
-                    while (parser.next() && !parser.trimmed.startsWith('}')) {
-                        if (parser.trimmed.startsWith("ssid=")) {
-                            check(block.ssidLine == null)
-                            block.ssidLine = block.size
-                        } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
-                            val match = networkParser.find(parser.trimmed)
-                            if (match != null) if (match.groups[5] != null) {
-                                check(block.pskLine == null && block.psk == null)
-                                block.psk = match.groupValues[5].apply { check(length in 8..63) }
-                                block.pskLine = block.size
-                            } else if (match.groups[2] != null &&
-                                    match.groupValues[2].equals(group.owner.deviceAddress ?: ownerAddress, true)) {
-                                block.bssidMatches = true
+            try {
+                while (parser.next()) {
+                    if (parser.trimmed.startsWith("network={")) {
+                        val block = NetworkBlock()
+                        block.add(parser.line)
+                        while (parser.next() && !parser.trimmed.startsWith('}')) {
+                            if (parser.trimmed.startsWith("ssid=")) {
+                                check(block.ssidLine == null)
+                                block.ssidLine = block.size
+                            } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
+                                val match = networkParser.find(parser.trimmed)
+                                if (match != null) if (match.groups[5] != null) {
+                                    check(block.pskLine == null && block.psk == null)
+                                    block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                    block.pskLine = block.size
+                                } else if (match.groups[2] != null &&
+                                        match.groupValues[2].equals(group.owner.deviceAddress ?: ownerAddress, true)) {
+                                    block.bssidMatches = true
+                                }
                             }
+                            block.add(parser.line)
                         }
                         block.add(parser.line)
-                    }
-                    block.add(parser.line)
-                    result.add(block)
-                    if (block.bssidMatches && block.groupOwner && target == null) { // keep first only
-                        check(block.ssidLine != null && block.pskLine != null)
-                        target = block
-                    }
-                } else result.add(parser.line)
+                        result.add(block)
+                        if (block.bssidMatches && block.groupOwner && target == null) { // keep first only
+                            check(block.ssidLine != null && block.pskLine != null)
+                            target = block
+                        }
+                    } else result.add(parser.line)
+                }
+                Pair(result, target!!)
+            } catch (e: RuntimeException) {
+                Timber.w("Failed to parse p2p_supplicant.conf, ownerAddress: $ownerAddress, P2P group: $group")
+                Timber.w(parser.lines.joinToString("\n"))
+                throw e
             }
-            Pair(result, target!!)
         }
     }
     val ssid = group.networkName
