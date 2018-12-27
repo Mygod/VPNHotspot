@@ -6,6 +6,7 @@ import java.io.File
 import java.io.IOException
 import java.net.InetAddress
 import java.net.NetworkInterface
+import java.net.SocketException
 
 data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
     enum class State {
@@ -52,9 +53,11 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                 val result = IpNeighbour(ip, dev, lladdr, state)
                 val devParser = devFallback.matchEntire(dev)
                 if (devParser != null) try {
-                    return listOf(IpNeighbour(ip, NetworkInterface.getByIndex(devParser.groupValues[1].toInt()).name,
-                            lladdr, state), result)
-                } catch (e: RuntimeException) {
+                    val index = devParser.groupValues[1].toInt()
+                    val iface = NetworkInterface.getByIndex(index)
+                    if (iface == null) Timber.w("Failed to find network interface #$index")
+                    else return listOf(IpNeighbour(ip, iface.name, lladdr, state), result)
+                } catch (e: SocketException) {
                     Timber.w(e)
                 }
                 listOf(result)
