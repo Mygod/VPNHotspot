@@ -84,7 +84,6 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             }
         }
     }
-    val ssid = group.networkName
     val psk = group.passphrase ?: content.second.psk!!
 
     fun update(ssid: String, psk: String) {

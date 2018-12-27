@@ -98,7 +98,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 holder.config = config
                 WifiP2pDialogFragment().apply {
                     arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, WifiConfiguration().apply {
-                        SSID = config.ssid
+                        SSID = group.networkName
                         preSharedKey = config.psk
                     }))
                     setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
