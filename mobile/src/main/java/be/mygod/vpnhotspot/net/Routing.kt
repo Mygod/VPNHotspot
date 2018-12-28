@@ -78,15 +78,18 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         var dns: List<InetAddress> = emptyList()
 
         override fun onAvailable(ifname: String, dns: List<InetAddress>) = synchronized(this@Routing) {
-            if (!upstreams.add(ifname)) return
             val subrouting = subrouting
-            if (subrouting == null) this.subrouting = try {
-                Subrouting(this@Routing, priority, ifname)
-            } catch (e: Exception) {
-                SmartSnackbar.make(e).show()
-                Timber.w(e)
-                null
-            } else check(subrouting.upstream == ifname)
+            when {
+                subrouting != null -> check(subrouting.upstream == ifname)
+                !upstreams.add(ifname) -> return
+                else -> this.subrouting = try {
+                    Subrouting(this@Routing, priority, ifname)
+                } catch (e: Exception) {
+                    SmartSnackbar.make(e).show()
+                    Timber.w(e)
+                    null
+                }
+            }
             this.dns = dns
             updateDnsRoute()
         }
