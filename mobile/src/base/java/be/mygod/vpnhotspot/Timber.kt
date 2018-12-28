@@ -20,6 +20,5 @@ fun initTimber() {
 }
 
 fun debugLog(tag: String?, message: String?) {
-    if (BuildConfig.DEBUG) Timber.tag(tag).d(message)
-    Crashlytics.log("$tag: $message")
+    if (BuildConfig.DEBUG) Timber.tag(tag).d(message) else Crashlytics.log("$tag: $message")
 }
