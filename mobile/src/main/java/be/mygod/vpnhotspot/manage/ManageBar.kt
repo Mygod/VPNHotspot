@@ -10,7 +10,6 @@ import androidx.databinding.BaseObservable
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemManageBinding
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
 object ManageBar : Manager() {

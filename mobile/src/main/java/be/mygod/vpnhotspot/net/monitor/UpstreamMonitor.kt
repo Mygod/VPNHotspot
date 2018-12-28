@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.monitor
 import android.content.SharedPreferences
 import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
+import java.lang.UnsupportedOperationException
 import java.net.InetAddress
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -61,7 +62,7 @@ abstract class UpstreamMonitor {
          * commit: https://android.googlesource.com/platform/system/netd/+/758627c4d93392190b08e9aaea3bbbfb92a5f364
          */
         fun onFallback() {
-            throw NotImplementedError()
+            throw UnsupportedOperationException()
         }
     }
 

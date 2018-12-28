@@ -118,9 +118,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
-            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                binder.thisDevice = intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
-            }
+            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> binder.thisDevice =
+                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
             WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> onPersistentGroupsChanged()
         }
     }

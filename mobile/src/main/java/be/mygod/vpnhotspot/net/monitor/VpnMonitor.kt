@@ -62,8 +62,8 @@ object VpnMonitor : UpstreamMonitor() {
                             it.onAvailable(ifname, properties.dnsServers)
                         }
                     }
-                    properties.dnsServers != oldProperties.dnsServers -> {
-                        callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+                    properties.dnsServers != oldProperties.dnsServers -> callbacks.forEach {
+                        it.onAvailable(ifname, properties.dnsServers)
                     }
                 }
             }

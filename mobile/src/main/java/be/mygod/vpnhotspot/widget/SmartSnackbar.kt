@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.OnLifecycleEvent
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
