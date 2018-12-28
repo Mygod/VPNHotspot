@@ -62,10 +62,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
             val list = ArrayList<Manager>()
             if (RepeaterService.supported) list.add(repeaterManager)
-            if (Build.VERSION.SDK_INT >= 26) {
-                list.add(localOnlyHotspotManager)
-                localOnlyHotspotManager.update()
-            }
+            if (Build.VERSION.SDK_INT >= 26) list.add(localOnlyHotspotManager)
             list.addAll(activeIfaces.map { InterfaceManager(this@TetheringFragment, it) }.sortedBy { it.iface })
             list.add(ManageBar)
             if (Build.VERSION.SDK_INT >= 24) {

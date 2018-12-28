@@ -5,10 +5,10 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.manage.LocalOnlyHotspotManager
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -20,8 +20,16 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     inner class Binder : android.os.Binder() {
-        var manager: LocalOnlyHotspotManager? = null
+        /**
+         * null represents IDLE, "" represents CONNECTING, "something" represents CONNECTED.
+         */
         var iface: String? = null
+            set(value) {
+                field = value
+                ifaceChanged(value)
+            }
+        val ifaceChanged = StickyEvent1 { iface }
+
         val configuration get() = reservation?.wifiConfiguration
 
         fun stop() = reservation?.close()
@@ -39,7 +47,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
         binder.iface = iface
-        if (iface == null) {
+        if (iface.isNullOrEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
@@ -50,13 +58,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }
-        app.handler.post { binder.manager?.update() }
     }
     override val activeIfaces get() = listOfNotNull(binder.iface)
 
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        binder.iface = ""
         // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
         // have an outstanding request.
         // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
@@ -111,6 +119,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     private fun startFailure() {
+        binder.iface = null
         updateNotification()
         ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
         stopSelf()

@@ -89,6 +89,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
         }
         override val active get() = binder?.iface != null
+        override val enabled get() = binder?.iface != ""
         override val selectable get() = active
     }
 
@@ -110,12 +111,11 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as LocalOnlyHotspotService.Binder
-        service.manager = this
-        update()
+        service.ifaceChanged[this] = { data.notifyChange() }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        binder?.manager = null
+        binder?.ifaceChanged?.remove(this)
         binder = null
     }
 }
