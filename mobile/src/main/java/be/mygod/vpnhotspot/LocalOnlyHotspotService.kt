@@ -2,7 +2,9 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.net.wifi.WifiManager
+import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
@@ -65,6 +67,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         binder.iface = ""
+        // show invisible foreground notification on television to avoid being killed
+        if (app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) updateNotification()
         // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
         // have an outstanding request.
         // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192

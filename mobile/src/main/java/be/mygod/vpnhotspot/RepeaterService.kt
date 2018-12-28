@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.net.NetworkInfo
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pDevice
@@ -216,6 +217,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
         status = Status.STARTING
+        // show invisible foreground notification on television to avoid being killed
+        if (Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
+            showNotification()
+        }
         unregisterReceiver()
         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))

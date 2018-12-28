@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.app.UiModeManager
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.ConnectivityManager
@@ -49,6 +50,7 @@ class App : Application() {
     val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
+    val uiMode by lazy { getSystemService<UiModeManager>()!! }
     val wifi by lazy { getSystemService<WifiManager>()!! }
 
     val operatingChannel: Int get() {
