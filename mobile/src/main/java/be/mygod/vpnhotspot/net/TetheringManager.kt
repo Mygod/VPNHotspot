@@ -116,7 +116,7 @@ object TetheringManager {
     @RequiresApi(24)
     fun start(type: Int, showProvisioningUi: Boolean, callback: OnStartTetheringCallback, handler: Handler? = null) {
         val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback)
-                .dexCache(app.cacheDir)
+                .dexCache(app.deviceStorage.cacheDir)
                 .handler { proxy, method, args ->
                     if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
                     when (method.name) {

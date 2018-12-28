@@ -91,7 +91,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
         block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
                 .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
-        val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.cacheDir)
+        val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.deviceStorage.cacheDir)
         try {
             tempFile.printWriter().use { writer ->
                 lines.forEach { writer.println(it) }
