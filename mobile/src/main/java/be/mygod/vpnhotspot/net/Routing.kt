@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.RuntimeException
 import java.net.*
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A transaction wrapper that helps set up routing environment.
@@ -27,6 +28,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
          */
         private const val RULE_PRIORITY_UPSTREAM = 17800
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
+
+        private val dhcpWorkaroundCounter = AtomicLong()
 
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -165,8 +168,13 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
      *
      * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#57
      */
-    fun dhcpWorkaround() = transaction.exec("ip rule add iif lo uidrange 0-0 lookup local_network priority 11000",
-            "ip rule del iif lo uidrange 0-0 lookup local_network priority 11000")
+    fun dhcpWorkaround() {
+        // workaround for adding multiple exact same rules
+        // if somebody decides to do this 1000 times to break this, god bless you
+        val priority = 11000 + dhcpWorkaroundCounter.getAndAdd(1) % 1000
+        transaction.exec("ip rule add iif lo uidrange 0-0 lookup local_network priority $priority",
+                "ip rule del iif lo uidrange 0-0 lookup local_network priority $priority")
+    }
 
     fun stop() {
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
