@@ -12,7 +12,6 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import timber.log.Timber
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
@@ -35,7 +34,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
         fun stop() = reservation?.close()
     }
-    private class StartFailure(message: String) : RuntimeException(message)
 
     private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
@@ -105,9 +103,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                                 else -> getString(R.string.failure_reason_unknown, reason)
                             })
                     SmartSnackbar.make(message).show()
-                    if (reason != WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE) {
-                        Timber.i(StartFailure(message))
-                    }
                     startFailure()
                 }
             }, app.handler)

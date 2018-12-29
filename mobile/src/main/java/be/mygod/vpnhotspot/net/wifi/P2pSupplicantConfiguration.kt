@@ -3,8 +3,8 @@ package be.mygod.vpnhotspot.net.wifi
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.timberSetString
 import be.mygod.vpnhotspot.util.RootSession
-import timber.log.Timber
 import java.io.File
 
 /**
@@ -14,6 +14,7 @@ import java.io.File
  */
 class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
     companion object {
+        private const val TAG = "P2pSupplicantConfiguration"
         private val networkParser =
                 "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$))".toRegex()
         private val whitespaceMatcher = "\\s+".toRegex()
@@ -78,8 +79,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                 }
                 Pair(result, target!!)
             } catch (e: RuntimeException) {
-                Timber.w("Failed to parse p2p_supplicant.conf, ownerAddress: $ownerAddress, P2P group: $group")
-                Timber.w(parser.lines.joinToString("\n"))
+                timberSetString(TAG, parser.lines.joinToString("\n"))
+                timberSetString("$TAG.ownerAddress", ownerAddress)
+                timberSetString("$TAG.p2pGroup", group.toString())
                 throw e
             }
         }
