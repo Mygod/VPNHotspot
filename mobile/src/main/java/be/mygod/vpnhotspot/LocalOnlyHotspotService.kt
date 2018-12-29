@@ -115,7 +115,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
             // "Caller already has an active LocalOnlyHotspot request"
         } catch (_: IllegalStateException) { } catch (e: SecurityException) {
             SmartSnackbar.make(e).show()
-            Timber.w(e)
             startFailure()
         }
         return START_STICKY
