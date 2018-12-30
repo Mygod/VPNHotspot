@@ -35,7 +35,12 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
         }
 
         init {
-            TrafficRecorder.register(ip, upstream, parent.downstream, mac)
+            try {
+                TrafficRecorder.register(ip, upstream, parent.downstream, mac)
+            } catch (e: Exception) {
+                close()
+                throw e
+            }
         }
 
         override fun close() {
