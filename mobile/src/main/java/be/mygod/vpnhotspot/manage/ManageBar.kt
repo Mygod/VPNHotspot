@@ -54,7 +54,7 @@ object ManageBar : Manager() {
 
     private fun startAlternative(context: Context, e: RuntimeException) {
         try {
-            context.startActivity(Intent().setClassName("com.android.settings", SETTINGS_2))
+            context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_2))
             DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e.message)))
         } catch (e: ActivityNotFoundException) {
             DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e.message), Pair(SETTINGS_2, e.message)))

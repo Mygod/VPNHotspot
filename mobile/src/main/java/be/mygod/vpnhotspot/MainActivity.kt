@@ -9,7 +9,6 @@ import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
-import androidx.core.os.bundleOf
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
@@ -35,15 +34,13 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 .build()
     }
 
-    fun launchUrl(url: Uri) = if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
-        customTabsIntent.launchUrl(this, url)
-    } catch (e: ActivityNotFoundException) {
-        DebugHelper.logEvent("launch_url", bundleOf(Pair("message", e.message)))
+    fun launchUrl(url: Uri) {
+        if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
+            customTabsIntent.launchUrl(this, url)
+            return
+        } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
         SmartSnackbar.make(url.toString()).show()
-    } catch (e: SecurityException) {
-        DebugHelper.logEvent("launch_url", bundleOf(Pair("message", e.message)))
-        SmartSnackbar.make(url.toString()).show()
-    } else SmartSnackbar.make(url.toString()).show()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
