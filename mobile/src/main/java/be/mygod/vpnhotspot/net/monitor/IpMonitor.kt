@@ -1,8 +1,10 @@
 package be.mygod.vpnhotspot.net.monitor
 
+import android.system.ErrnoException
+import android.system.OsConstants
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.debugLog
 import be.mygod.vpnhotspot.util.thread
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -21,7 +23,6 @@ abstract class IpMonitor : Runnable {
         Monitor, MonitorRoot, Poll
     }
 
-    private class MonitorFailure : RuntimeException("Failed to set up monitor, switching to polling")
     private class FlushFailure : RuntimeException()
     protected abstract val monitoredObject: String
     protected abstract fun processLine(line: String)
@@ -44,17 +45,17 @@ abstract class IpMonitor : Runnable {
             try {
                 process.errorStream.bufferedReader().forEachLine { Timber.e(it) }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                Timber.w(e)
+                if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
             }
         }
         try {
             process.inputStream.bufferedReader().forEachLine(this::processLine)
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
-            Timber.w(e)
+            if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
         }
         err.join()
         process.waitFor()
-        debugLog("IpMonitor", "Monitor process exited with ${process.exitValue()}")
+        DebugHelper.log("IpMonitor", "Monitor process exited with ${process.exitValue()}")
     }
 
     init {
@@ -68,7 +69,7 @@ abstract class IpMonitor : Runnable {
                 }
                 handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
                 if (destroyed) return@thread
-                Timber.i(MonitorFailure())
+                DebugHelper.logEvent("ip_monitor_failure")
             }
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)

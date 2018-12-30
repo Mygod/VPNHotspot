@@ -58,7 +58,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                     if (iface == null) Timber.w("Failed to find network interface #$index")
                     else return listOf(IpNeighbour(ip, iface.name, lladdr, state), result)
                 } catch (e: SocketException) {
-                    Timber.w(e)
+                    Timber.d(e)
                 }
                 listOf(result)
             } catch (e: Exception) {

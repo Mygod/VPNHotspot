@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pManager
+import be.mygod.vpnhotspot.DebugHelper
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
+import java.lang.IllegalArgumentException
 import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
@@ -27,7 +29,7 @@ object WifiP2pManagerHelper {
         try {
             setWifiP2pChannels.invoke(this, c, lc, oc, listener)
         } catch (e: NoSuchMethodException) {
-            Timber.w(e)
+            DebugHelper.logEvent("NoSuchMethod_setWifiP2pChannels")
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -45,7 +47,7 @@ object WifiP2pManagerHelper {
         try {
             startWps.invoke(this, c, wps, listener)
         } catch (e: NoSuchMethodException) {
-            Timber.w(e)
+            DebugHelper.logEvent("NoSuchMethod_startWps")
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -64,7 +66,7 @@ object WifiP2pManagerHelper {
         try {
             deletePersistentGroup.invoke(this, c, netId, listener)
         } catch (e: NoSuchMethodException) {
-            Timber.w(e)
+            DebugHelper.logEvent("NoSuchMethod_deletePersistentGroup")
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -90,11 +92,11 @@ object WifiP2pManagerHelper {
         val proxy = Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener)) { proxy, method, args ->
                     if (method.name == "onPersistentGroupInfoAvailable") {
-                        if (args.size != 1) Timber.w("Unexpected args: $args")
+                        if (args.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
                         listener(getGroupList.invoke(args[0]) as Collection<WifiP2pGroup>)
                         null
                     } else {
-                        Timber.w("Unexpected method, calling super: $method")
+                        Timber.w(IllegalArgumentException("Unexpected method, calling super: $method"))
                         ProxyBuilder.callSuper(proxy, method, args)
                     }
                 }

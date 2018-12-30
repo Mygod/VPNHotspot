@@ -2,7 +2,7 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.util.LongSparseArray
 import androidx.core.os.postDelayed
-import be.mygod.vpnhotspot.debugLog
+import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -33,14 +33,14 @@ object TrafficRecorder {
                 downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
-            debugLog(TAG, "Registering ($ip, $upstream, $downstream)")
+            DebugHelper.log(TAG, "Registering ($ip, $upstream, $downstream)")
             check(records.put(Triple(ip, upstream, downstream), record) == null)
             scheduleUpdateLocked()
         }
     }
     fun unregister(ip: InetAddress, upstream: String?, downstream: String) = synchronized(this) {
         update()    // flush stats before removing
-        debugLog(TAG, "Unregistering ($ip, $upstream, $downstream)")
+        DebugHelper.log(TAG, "Unregistering ($ip, $upstream, $downstream)")
         if (records.remove(Triple(ip, upstream, downstream)) == null) Timber.w(
                 "Failed to find traffic record for ($ip, $downstream, $upstream).")
     }
@@ -145,7 +145,7 @@ object TrafficRecorder {
     fun clean() = synchronized(this) {
         update()
         unscheduleUpdateLocked()
-        debugLog(TAG, "Cleaning records")
+        DebugHelper.log(TAG, "Cleaning records")
         records.clear()
     }
 

@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.timberSetString
+import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.util.RootSession
 import java.io.File
 
@@ -79,9 +79,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                 }
                 Pair(result, target!!)
             } catch (e: RuntimeException) {
-                timberSetString(TAG, parser.lines.joinToString("\n"))
-                timberSetString("$TAG.ownerAddress", ownerAddress)
-                timberSetString("$TAG.p2pGroup", group.toString())
+                DebugHelper.setString(TAG, parser.lines.joinToString("\n"))
+                DebugHelper.setString("$TAG.ownerAddress", ownerAddress)
+                DebugHelper.setString("$TAG.p2pGroup", group.toString())
                 throw e
             }
         }

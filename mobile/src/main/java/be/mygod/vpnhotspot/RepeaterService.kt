@@ -251,7 +251,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      * Used during step 2, also called when connection changed
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
-        debugLog(TAG, "P2P connection changed: $info\n$net\n$group")
+        DebugHelper.log(TAG, "P2P connection changed: $info\n$net\n$group")
         when {
             !info.groupFormed || !info.isGroupOwner || !group.isGroupOwner -> {
                 if (routingManager != null) clean() // P2P shutdown, else other groups changing before start, ignore

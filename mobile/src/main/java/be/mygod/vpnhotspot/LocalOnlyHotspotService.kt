@@ -42,7 +42,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(intent.extras ?: return@broadcastReceiver)
-        debugLog(TAG, "onTetherStateChangedLocked: $ifaces")
+        DebugHelper.log(TAG, "onTetherStateChangedLocked: $ifaces")
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
         binder.iface = iface
@@ -85,7 +85,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 }
 
                 override fun onStopped() {
-                    debugLog(TAG, "LOHCallback.onStopped")
+                    DebugHelper.log(TAG, "LOHCallback.onStopped")
                     reservation = null
                 }
 

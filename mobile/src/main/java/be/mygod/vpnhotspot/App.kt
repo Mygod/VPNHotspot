@@ -32,7 +32,7 @@ class App : Application() {
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
-        initTimber()
+        DebugHelper.init()
         ServiceNotification.updateNotificationChannels()
     }
 
