@@ -21,7 +21,7 @@ abstract class IpMonitor : Runnable {
         Monitor, MonitorRoot, Poll
     }
 
-    private class MonitorFailure : RuntimeException()
+    private class MonitorFailure : RuntimeException("Failed to set up monitor, switching to polling")
     private class FlushFailure : RuntimeException()
     protected abstract val monitoredObject: String
     protected abstract fun processLine(line: String)
@@ -59,7 +59,7 @@ abstract class IpMonitor : Runnable {
 
     init {
         thread("${javaClass.simpleName}-input") {
-            val mode = Mode.valueOf(app.pref.getString(KEY, Mode.Monitor.toString()) ?: "")
+            val mode = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
             if (mode != Mode.Poll) {
                 if (mode != Mode.MonitorRoot) {
                     // monitor may get rejected by SELinux enforcing
@@ -68,7 +68,6 @@ abstract class IpMonitor : Runnable {
                 }
                 handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
                 if (destroyed) return@thread
-                Timber.w("Failed to set up monitor, switching to polling")
                 Timber.i(MonitorFailure())
             }
             val pool = Executors.newScheduledThreadPool(1)
