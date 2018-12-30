@@ -71,6 +71,7 @@ class Subrouting(private val parent: Routing, priority: Int, val upstream: Strin
             IpNeighbourMonitor.registerCallback(this)
         } catch (e: Exception) {
             close()
+            revert()
             throw e
         }
     }
