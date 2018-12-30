@@ -8,12 +8,14 @@ import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
+import androidx.core.os.bundleOf
 import androidx.core.view.updatePaddingRelative
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleObserver
 import androidx.lifecycle.OnLifecycleEvent
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -49,7 +51,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         "package:${mainActivity.packageName}".toUri()))
                 return
             } catch (e: ActivityNotFoundException) {
-                Timber.w(e)
+                DebugHelper.logEvent("manage_write_settings", bundleOf(Pair("message", e.message)))
             }
             val started = manager.isStarted
             try {

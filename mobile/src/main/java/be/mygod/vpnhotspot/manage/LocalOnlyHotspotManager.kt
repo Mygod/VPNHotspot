@@ -18,14 +18,16 @@ import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
+import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
+import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
-import timber.log.Timber
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.net.NetworkInterface
 
 @TargetApi(26)
@@ -57,11 +59,12 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                             Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
                                     Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
                         } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) {
-                    Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     try {
                         context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                        Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     } catch (e: ActivityNotFoundException) {
-                        Timber.w(e)
+                        DebugHelper.logEvent("location_settings", bundleOf(Pair("message", e.message)))
+                        SmartSnackbar.make(R.string.tethering_temp_hotspot_location).show()
                     }
                     return
                 }
