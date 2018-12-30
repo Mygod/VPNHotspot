@@ -149,8 +149,9 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
     }
     private var currentDns: DnsRoute? = null
     private fun updateDnsRoute() {
-        val dns = (upstream.dns + fallbackUpstream.dns).firstOrNull { it is Inet4Address }?.hostAddress
-                ?: app.pref.getString("service.dns", "8.8.8.8")
+        var dns = (upstream.dns + fallbackUpstream.dns).firstOrNull { it is Inet4Address }?.hostAddress
+                ?: app.pref.getString("service.dns", null)
+        if (dns.isNullOrBlank()) dns = "8.8.8.8"
         if (dns != currentDns?.dns) {
             currentDns?.transaction?.revert()
             currentDns = try {
