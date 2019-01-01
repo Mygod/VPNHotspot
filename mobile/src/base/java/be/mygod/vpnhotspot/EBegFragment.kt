@@ -27,6 +27,10 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         private const val KEY_MESSAGE = "message"
     }
 
+    init {
+        setStyle(DialogFragment.STYLE_NO_TITLE, 0)
+    }
+
     class MessageDialogFragment : DialogFragment() {
         override fun onCreateDialog(savedInstanceState: Bundle?) = AlertDialog.Builder(requireContext()).apply {
             val arguments = arguments!!

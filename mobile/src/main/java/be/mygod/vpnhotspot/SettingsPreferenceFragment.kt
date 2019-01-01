@@ -7,7 +7,6 @@ import android.os.Bundle
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
-import androidx.fragment.app.DialogFragment
 import androidx.preference.Preference
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
@@ -124,8 +123,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {
-            EBegFragment().apply { setStyle(DialogFragment.STYLE_NO_TITLE, 0) }
-                    .show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
+            EBegFragment().show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
             true
         }
     }
