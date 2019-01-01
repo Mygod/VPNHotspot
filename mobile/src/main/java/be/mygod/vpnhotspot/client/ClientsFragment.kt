@@ -125,7 +125,7 @@ class ClientsFragment : Fragment() {
                     NicknameDialogFragment().apply {
                         arguments = bundleOf(Pair(NicknameDialogFragment.KEY_MAC, client.mac),
                                 Pair(NicknameDialogFragment.KEY_NICKNAME, client.record.nickname))
-                    }.show(fragmentManager, "NicknameDialogFragment")
+                    }.show(fragmentManager ?: return false, "NicknameDialogFragment")
                     true
                 }
                 R.id.block, R.id.unblock -> {
@@ -146,7 +146,7 @@ class ClientsFragment : Fragment() {
                         arguments = bundleOf(Pair(StatsDialogFragment.KEY_TITLE, client.title),
                                 Pair(StatsDialogFragment.KEY_STATS,
                                         AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
-                    }.show(fragmentManager, "StatsDialogFragment")
+                    }.show(fragmentManager ?: return false, "StatsDialogFragment")
                     true
                 }
                 else -> false

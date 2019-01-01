@@ -124,7 +124,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference("misc.donate").setOnPreferenceClickListener {
-            EBegFragment().apply { setStyle(DialogFragment.STYLE_NO_TITLE, 0) }.show(fragmentManager, "EBegFragment")
+            EBegFragment().apply { setStyle(DialogFragment.STYLE_NO_TITLE, 0) }
+                    .show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
             true
         }
     }

@@ -87,7 +87,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         fun wps() {
             if (binder?.active == true) WpsDialogFragment().run {
                 setTargetFragment(parent, TetheringFragment.REPEATER_WPS)
-                show(parent.fragmentManager, "WpsDialogFragment")
+                show(parent.fragmentManager ?: return, "WpsDialogFragment")
             }
         }
 
@@ -102,7 +102,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         preSharedKey = config.psk
                     }))
                     setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
-                }.show(parent.fragmentManager, WifiP2pDialogFragment.TAG)
+                }.show(parent.fragmentManager ?: return, WifiP2pDialogFragment.TAG)
                 return
             } catch (e: RuntimeException) {
                 Timber.w(e)
