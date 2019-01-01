@@ -164,18 +164,18 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         data.onStatusChanged()
     }
 
-    fun onWpsResult(which: Int, data: Intent) {
+    fun onWpsResult(which: Int, data: Intent?) {
         when (which) {
-            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(data.getStringExtra(WpsDialogFragment.KEY_PIN))
+            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(data!!.getStringExtra(WpsDialogFragment.KEY_PIN))
             DialogInterface.BUTTON_NEUTRAL -> binder?.startWps(null)
         }
     }
 
-    fun onEditResult(which: Int, data: Intent) {
+    fun onEditResult(which: Int, data: Intent?) {
         when (which) {
             DialogInterface.BUTTON_POSITIVE -> try {
                 val master = holder.config ?: return
-                val config = data.getParcelableExtra<WifiConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURATION)
+                val config = data!!.getParcelableExtra<WifiConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURATION)
                 master.update(config.SSID, config.preSharedKey)
                 binder!!.group = null
             } catch (e: Exception) {
