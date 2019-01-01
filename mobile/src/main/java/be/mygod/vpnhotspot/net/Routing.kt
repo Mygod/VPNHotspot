@@ -257,7 +257,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
     fun revert() {
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        clients.forEach { (_, subroute) -> subroute.close() }
+        clients.values.forEach { it.close() }
         fallbackUpstream.subrouting?.transaction?.revert()
         upstream.subrouting?.transaction?.revert()
         transaction.revert()

@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import timber.log.Timber
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
@@ -63,6 +64,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (binder.iface != null) return START_STICKY
         binder.iface = ""
         // show invisible foreground notification on television to avoid being killed
         if (app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) updateNotification()
@@ -106,9 +108,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                     startFailure()
                 }
             }, app.handler)
-            // assuming IllegalStateException will be thrown only if
-            // "Caller already has an active LocalOnlyHotspot request"
-        } catch (_: IllegalStateException) { } catch (e: SecurityException) {
+        } catch (e: IllegalStateException) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+            startFailure()
+        } catch (e: SecurityException) {
             SmartSnackbar.make(e).show()
             startFailure()
         }
