@@ -27,6 +27,7 @@ data class TrafficRecord(
          * For now only stats for IPv4 will be recorded. But I'm going to put the more general class here just in case.
          */
         val ip: InetAddress,
+        @Deprecated("This field is no longer used.")
         val upstream: String? = null,
         val downstream: String,
         var sentPackets: Long = 0,

@@ -4,9 +4,14 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.lookup
+import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.RuntimeException
@@ -18,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
+class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : IpNeighbourMonitor.Callback {
     companion object {
         /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
@@ -55,9 +60,9 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             }
         }
 
-        fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
+        private fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
                 exec("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content", true)
-        fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
+        private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 exec("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content", true)
     }
 
@@ -74,6 +79,24 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
 
     private val upstreams = HashSet<String>()
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
+        /**
+         * The only case when upstream is null is on API 23- and we are using system default rules.
+         */
+        inner class Subrouting(priority: Int, val upstream: String? = null) {
+            val transaction = RootSession.beginTransaction().safeguard {
+                if (upstream != null) {
+                    exec("ip rule add from all iif $downstream lookup $upstream priority $priority",
+                            // by the time stopScript is called, table entry for upstream may already get removed
+                            "ip rule del from all iif $downstream priority $priority")
+                }
+                // note: specifying -i wouldn't work for POSTROUTING
+                if (hasMasquerade) {
+                    iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
+                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                }
+            }
+        }
+
         var subrouting: Subrouting? = null
         var dns: List<InetAddress> = emptyList()
 
@@ -83,7 +106,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
                 subrouting != null -> check(subrouting.upstream == ifname)
                 !upstreams.add(ifname) -> return
                 else -> this.subrouting = try {
-                    Subrouting(this@Routing, priority, ifname)
+                    Subrouting(priority, ifname)
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
                     Timber.w(e)
@@ -98,9 +121,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
             val subrouting = subrouting ?: return
             // we could be removing fallback subrouting which no collision could ever happen, check before removing
             if (subrouting.upstream != null) check(upstreams.remove(subrouting.upstream))
-            subrouting.close()
-            TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
-            subrouting.revert()
+            subrouting.transaction.revert()
             this.subrouting = null
             dns = emptyList()
             updateDnsRoute()
@@ -110,7 +131,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         override fun onFallback() = synchronized(this@Routing) {
             check(subrouting == null)
             subrouting = try {
-                Subrouting(this@Routing, priority)
+                Subrouting(priority)
             } catch (e: Exception) {
                 SmartSnackbar.make(e).show()
                 Timber.w(e)
@@ -120,6 +141,47 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
         }
     }
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
+
+    private inner class Client(private val ip: Inet4Address, mac: String) : AutoCloseable {
+        private val transaction = RootSession.beginTransaction().safeguard {
+            val address = ip.hostAddress
+            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
+            iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+        }
+
+        init {
+            try {
+                TrafficRecorder.register(ip, downstream, mac)
+            } catch (e: Exception) {
+                close()
+                throw e
+            }
+        }
+
+        override fun close() {
+            TrafficRecorder.unregister(ip, downstream)
+            transaction.revert()
+        }
+    }
+    private val clients = HashMap<InetAddress, Client>()
+    override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(this) {
+        val toRemove = HashSet(clients.keys)
+        for (neighbour in neighbours) {
+            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
+                    AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()).blocked) continue
+            toRemove.remove(neighbour.ip)
+            try {
+                clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }
+            } catch (e: Exception) {
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+            }
+        }
+        if (toRemove.isNotEmpty()) {
+            TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
+            for (address in toRemove) clients.remove(address)!!.close()
+        }
+    }
 
     fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
 
@@ -181,22 +243,23 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) {
     }
 
     fun stop() {
+        IpNeighbourMonitor.unregisterCallback(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
-        fallbackUpstream.subrouting?.close()
         UpstreamMonitor.unregisterCallback(upstream)
-        upstream.subrouting?.close()
     }
 
     fun commit() {
         transaction.commit()
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
+        IpNeighbourMonitor.registerCallback(this)
     }
     fun revert() {
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        fallbackUpstream.subrouting?.revert()
-        upstream.subrouting?.revert()
+        clients.forEach { (_, subroute) -> subroute.close() }
+        fallbackUpstream.subrouting?.transaction?.revert()
+        upstream.subrouting?.transaction?.revert()
         transaction.revert()
     }
 }

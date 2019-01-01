@@ -22,27 +22,25 @@ object TrafficRecorder {
 
     private var scheduled = false
     private var lastUpdate = 0L
-    private val records = HashMap<Triple<InetAddress, String?, String>, TrafficRecord>()
+    private val records = HashMap<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
-    fun register(ip: InetAddress, upstream: String?, downstream: String, mac: String) {
+    fun register(ip: InetAddress, downstream: String, mac: String) {
         val record = TrafficRecord(
                 mac = mac.macToLong(),
                 ip = ip,
-                upstream = upstream,
                 downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
-            DebugHelper.log(TAG, "Registering ($ip, $upstream, $downstream)")
-            check(records.put(Triple(ip, upstream, downstream), record) == null)
+            DebugHelper.log(TAG, "Registering $ip%$downstream")
+            check(records.put(Pair(ip, downstream), record) == null)
             scheduleUpdateLocked()
         }
     }
-    fun unregister(ip: InetAddress, upstream: String?, downstream: String) = synchronized(this) {
+    fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
         update()    // flush stats before removing
-        DebugHelper.log(TAG, "Unregistering ($ip, $upstream, $downstream)")
-        if (records.remove(Triple(ip, upstream, downstream)) == null) Timber.w(
-                "Failed to find traffic record for ($ip, $downstream, $upstream).")
+        DebugHelper.log(TAG, "Unregistering $ip%$downstream")
+        if (records.remove(Pair(ip, downstream)) == null) Timber.w("Failed to find traffic record for $ip%$downstream.")
     }
 
     private fun unscheduleUpdateLocked() {
@@ -78,15 +76,12 @@ object TrafficRecorder {
                         check(isReceive != isSend)  // this check might fail when the user performed an upgrade from 1.x
                         val ip = parseNumericAddress(columns[if (isReceive) 8 else 7])
                         val downstream = columns[if (isReceive) 6 else 5]
-                        var upstream: String? = columns[if (isReceive) 5 else 6]
-                        if (upstream == "*") upstream = null
-                        val key = Triple(ip, upstream, downstream)
+                        val key = Pair(ip, downstream)
                         val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules
                         val record = if (oldRecord.id == null) oldRecord else TrafficRecord(
                                 timestamp = timestamp,
                                 mac = oldRecord.mac,
                                 ip = ip,
-                                upstream = upstream,
                                 downstream = downstream,
                                 sentPackets = -1,
                                 sentBytes = -1,

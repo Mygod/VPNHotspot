@@ -66,7 +66,7 @@
     <string name="clients_nickname_title">%s 的昵称</string>
     <string name="clients_stats_title">%s 的流量</string>
     <plurals name="clients_stats_message_1">
-        <item quantity="other">自 %2$s 以来重新路由了 %1$s 次</item>
+        <item quantity="other">自 %2$s 以来连接了 %1$s 次</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="other">上传 %1$s 个包，%2$s</item>
