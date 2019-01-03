@@ -120,7 +120,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: InvocationTargetException) {
-                Timber.w(e)
+                if (Build.VERSION.SDK_INT != 25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
                 e.localizedMessage
             }
         }
