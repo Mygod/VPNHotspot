@@ -135,10 +135,17 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat().apply {
                     setArguments(preference.key, try {
                         NetworkInterface.getNetworkInterfaces().asSequence()
-                                .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
+                                .filter {
+                                    try {
+                                        it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
+                                    } catch (e: SocketException) {
+                                        Timber.d(e)
+                                        false
+                                    }
+                                }
                                 .map { it.name }.sorted().toList().toTypedArray()
                     } catch (e: SocketException) {
-                        Timber.w(e)
+                        Timber.d(e)
                         emptyArray<String>()
                     })
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
