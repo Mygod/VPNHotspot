@@ -132,7 +132,6 @@
         <item quantity="other">%d interfaces</item>
     </plurals>
 
-    <string name="root_unavailable">Root unavailable</string>
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>

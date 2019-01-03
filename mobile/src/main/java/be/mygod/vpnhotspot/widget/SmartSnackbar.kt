@@ -27,9 +27,9 @@ sealed class SmartSnackbar {
             } else SnackbarWrapper(Snackbar.make(holder, text ?: null.toString(), Snackbar.LENGTH_LONG))
         }
         fun make(e: Throwable) = make(when (e) {
-            is NoShellException -> app.getText(R.string.root_unavailable)
-            else -> e.localizedMessage
-        })
+            is NoShellException -> e.cause ?: e
+            else -> e
+        }.localizedMessage)
     }
 
     class Register(lifecycle: Lifecycle, private val view: View) : LifecycleObserver {
