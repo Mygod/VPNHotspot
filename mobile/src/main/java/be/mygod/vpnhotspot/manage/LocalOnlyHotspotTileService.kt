@@ -55,7 +55,7 @@ class LocalOnlyHotspotTileService : KillableTileService() {
                     }
                     else -> {
                         state = Tile.STATE_ACTIVE
-                        label = service.configuration!!.SSID
+                        label = service.configuration?.SSID ?: getText(R.string.tethering_temp_hotspot)
                     }
                 }
                 updateTile()
