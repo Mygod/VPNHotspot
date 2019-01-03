@@ -59,7 +59,7 @@ class ClientsFragment : Fragment() {
 
         override fun onClick(di: DialogInterface?, which: Int) {
             AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()).apply {
-                nickname = dialog.findViewById<EditText>(android.R.id.edit).text
+                nickname = dialog!!.findViewById<EditText>(android.R.id.edit).text
                 AppDatabase.instance.clientRecordDao.update(this)
             }
             IpNeighbourMonitor.instance?.flush()

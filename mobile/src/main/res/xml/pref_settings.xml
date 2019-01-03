@@ -1,91 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
     <Preference
-        android:key="service.clean"
-        android:icon="@drawable/ic_action_settings_backup_restore"
-        android:title="@string/settings_service_clean"
-        android:summary="@string/settings_service_clean_summary"/>
+        app:key="service.clean"
+        app:icon="@drawable/ic_action_settings_backup_restore"
+        app:title="@string/settings_service_clean"
+        app:summary="@string/settings_service_clean_summary"/>
     <PreferenceCategory
-        android:title="@string/settings_upstream">
+        app:title="@string/settings_upstream">
         <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
-            android:key="service.upstream"
-            android:icon="@drawable/ic_action_settings_ethernet"
-            android:title="@string/settings_service_upstream"
-            android:summary="@string/settings_service_upstream_auto"
-            android:hint="@string/settings_service_upstream_auto"
-            android:singleLine="true"/>
+            app:key="service.upstream"
+            app:icon="@drawable/ic_action_settings_ethernet"
+            app:title="@string/settings_service_upstream"
+            app:summary="@string/settings_service_upstream_auto"/>
         <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
-            android:key="service.upstream.fallback"
-            android:icon="@drawable/ic_action_settings_input_component"
-            android:title="@string/settings_upstream_fallback"
-            android:summary="@string/settings_upstream_fallback_auto"
-            android:hint="@string/settings_upstream_fallback_auto"
-            android:singleLine="true"/>
+            app:key="service.upstream.fallback"
+            app:icon="@drawable/ic_action_settings_input_component"
+            app:title="@string/settings_upstream_fallback"
+            app:summary="@string/settings_upstream_fallback_auto"/>
         <SwitchPreference
-            android:key="service.masquerade"
-            android:icon="@drawable/ic_social_people"
-            android:title="@string/settings_service_masquerade"
-            android:summary="@string/settings_service_masquerade_summary"
-            android:defaultValue="true"/>
+            app:key="service.masquerade"
+            app:icon="@drawable/ic_social_people"
+            app:title="@string/settings_service_masquerade"
+            app:summary="@string/settings_service_masquerade_summary"
+            app:defaultValue="true"/>
     </PreferenceCategory>
     <PreferenceCategory
-        android:title="@string/settings_downstream">
+        app:title="@string/settings_downstream">
         <SwitchPreference
-            android:key="service.disableIpv6"
-            android:icon="@drawable/ic_image_looks_6"
-            android:title="@string/settings_service_disable_ipv6"
-            android:summary="@string/settings_service_disable_ipv6_summary"/>
-        <AutoSummaryEditTextPreference
-            android:key="service.dns"
-            android:icon="@drawable/ic_action_dns"
-            android:title="@string/settings_service_dns"
-            android:singleLine="true"
-            android:defaultValue="8.8.8.8"/>
+            app:key="service.disableIpv6"
+            app:icon="@drawable/ic_image_looks_6"
+            app:title="@string/settings_service_disable_ipv6"
+            app:summary="@string/settings_service_disable_ipv6_summary"/>
+        <EditTextPreference
+            app:key="service.dns"
+            app:icon="@drawable/ic_action_dns"
+            app:title="@string/settings_service_dns"
+            app:summary="8.8.8.8"
+            app:defaultValue="8.8.8.8"/>
         <SwitchPreference
-            android:key="service.dhcpWorkaround"
-            android:icon="@drawable/ic_action_build"
-            android:title="@string/settings_service_dhcp_workaround"
-            android:summary="@string/settings_service_dhcp_workaround_summary"/>
+            app:key="service.dhcpWorkaround"
+            app:icon="@drawable/ic_action_build"
+            app:title="@string/settings_service_dhcp_workaround"
+            app:summary="@string/settings_service_dhcp_workaround_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
-        android:title="@string/settings_misc">
-        <SimpleMenuPreference
-            android:key="service.wifiLock"
-            android:icon="@drawable/ic_device_wifi_lock"
-            android:entries="@array/settings_service_wifi_lock"
-            android:entryValues="@array/settings_service_wifi_lock_values"
-            android:defaultValue="Full"
-            android:summary="%s"
-            android:title="@string/settings_service_wifi_lock"/>
+        app:title="@string/settings_misc">
+        <com.takisoft.preferencex.SimpleMenuPreference
+            app:key="service.wifiLock"
+            app:icon="@drawable/ic_device_wifi_lock"
+            app:entries="@array/settings_service_wifi_lock"
+            app:entryValues="@array/settings_service_wifi_lock_values"
+            app:defaultValue="Full"
+            app:summary="%s"
+            app:title="@string/settings_service_wifi_lock"/>
         <SwitchPreference
-            android:key="service.repeater.startOnBoot"
-            android:icon="@drawable/ic_action_autorenew"
-            android:title="@string/settings_service_repeater_start_on_boot"/>
-        <SimpleMenuPreference
-            android:key="service.ipMonitor"
-            android:icon="@drawable/ic_hardware_device_hub"
-            android:entries="@array/settings_service_ip_monitor"
-            android:entryValues="@array/settings_service_ip_monitor_values"
-            android:defaultValue="Poll"
-            android:summary="%s"
-            android:title="@string/settings_service_ip_monitor"/>
+            app:key="service.repeater.startOnBoot"
+            app:icon="@drawable/ic_action_autorenew"
+            app:title="@string/settings_service_repeater_start_on_boot"/>
+        <com.takisoft.preferencex.SimpleMenuPreference
+            app:key="service.ipMonitor"
+            app:icon="@drawable/ic_hardware_device_hub"
+            app:entries="@array/settings_service_ip_monitor"
+            app:entryValues="@array/settings_service_ip_monitor_values"
+            app:defaultValue="Poll"
+            app:summary="%s"
+            app:title="@string/settings_service_ip_monitor"/>
     </PreferenceCategory>
     <PreferenceCategory
-        android:title="@string/settings_help">
+        app:title="@string/settings_help">
         <Preference
-            android:key="misc.source"
-            android:icon="@drawable/ic_toggle_star"
-            android:title="@string/settings_misc_source"
-            android:summary="@string/settings_misc_source_summary"/>
+            app:key="misc.source"
+            app:icon="@drawable/ic_toggle_star"
+            app:title="@string/settings_misc_source"
+            app:summary="@string/settings_misc_source_summary"/>
         <Preference
-            android:key="misc.logcat"
-            android:icon="@drawable/ic_action_bug_report"
-            android:title="@string/settings_misc_logcat"
-            android:summary="@string/settings_misc_logcat_summary"/>
+            app:key="misc.logcat"
+            app:icon="@drawable/ic_action_bug_report"
+            app:title="@string/settings_misc_logcat"
+            app:summary="@string/settings_misc_logcat_summary"/>
         <Preference
-            android:key="misc.donate"
-            android:icon="@drawable/ic_action_card_giftcard"
-            android:title="@string/settings_misc_donate"
-            android:summary="@string/settings_misc_donate_summary"/>
+            app:key="misc.donate"
+            app:icon="@drawable/ic_action_card_giftcard"
+            app:title="@string/settings_misc_donate"
+            app:summary="@string/settings_misc_donate_summary"/>
     </PreferenceCategory>
 </PreferenceScreen>

@@ -43,6 +43,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
          * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
          */
         val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
+        const val KEY_DNS = "service.dns"
 
         fun clean() {
             TrafficRecorder.clean()
@@ -212,7 +213,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
     private var currentDns: DnsRoute? = null
     private fun updateDnsRoute() {
         var dns = (upstream.dns + fallbackUpstream.dns).firstOrNull { it is Inet4Address }?.hostAddress
-                ?: app.pref.getString("service.dns", null)
+                ?: app.pref.getString(KEY_DNS, null)
         if (dns.isNullOrBlank()) dns = "8.8.8.8"
         if (dns != currentDns?.dns) {
             currentDns?.transaction?.revert()

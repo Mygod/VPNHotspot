@@ -25,7 +25,7 @@ abstract class AlertDialogFragment : DialogFragment(), DialogInterface.OnClickLi
         targetFragment?.onActivityResult(targetRequestCode, which, data)
     }
 
-    override fun onDismiss(dialog: DialogInterface?) {
+    override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
         targetFragment?.onActivityResult(targetRequestCode, Activity.RESULT_CANCELED, null)
     }

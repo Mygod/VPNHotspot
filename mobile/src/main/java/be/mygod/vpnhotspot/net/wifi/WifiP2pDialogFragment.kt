@@ -61,9 +61,7 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
         mPassword.addTextChangedListener(this@WifiP2pDialogFragment)
     }
 
-    override val data get() = Intent().apply {
-        putExtra(KEY_CONFIGURATION, config)
-    }
+    override val data get() = Intent().putExtra(KEY_CONFIGURATION, config)
 
     override fun onStart() {
         super.onStart()
