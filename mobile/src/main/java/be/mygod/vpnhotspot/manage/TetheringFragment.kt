@@ -54,7 +54,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
             ifaceLookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
-                Timber.d(e)
+                Timber.w(e)
                 emptyMap()
             }
             this@TetheringFragment.enabledTypes =

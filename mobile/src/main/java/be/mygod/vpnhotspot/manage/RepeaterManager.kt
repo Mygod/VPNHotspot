@@ -50,7 +50,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         val addresses: CharSequence @Bindable get() {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
-            } catch (e: SocketException) {
+            } catch (_: SocketException) {
                 ""
             }
         }

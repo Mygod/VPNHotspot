@@ -50,8 +50,7 @@ fun NetworkInterface.formatAddresses() =
                 .toList() +
                 listOfNotNull(try {
                     hardwareAddress?.joinToString(":") { "%02x".format(it) }
-                } catch (e: SocketException) {
-                    Timber.w(e)
+                } catch (_: SocketException) {
                     null
                 }))
                 .joinToString("\n")

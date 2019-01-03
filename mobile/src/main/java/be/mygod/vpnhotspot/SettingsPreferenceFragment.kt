@@ -138,14 +138,13 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 .filter {
                                     try {
                                         it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
-                                    } catch (e: SocketException) {
-                                        Timber.d(e)
+                                    } catch (_: SocketException) {
                                         false
                                     }
                                 }
                                 .map { it.name }.sorted().toList().toTypedArray()
                     } catch (e: SocketException) {
-                        Timber.d(e)
+                        Timber.w(e)
                         emptyArray<String>()
                     })
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
