@@ -111,6 +111,12 @@ class RootSession : AutoCloseable {
         checkOutput(command, result, false)
         return result.out
     }
+    fun execOutUnjoinedWithWait(command: String): List<String> {
+        val result = execQuiet(command)
+        val message = checkOutput(command, result, false, false)
+        if (result.err.isNotEmpty()) Timber.i(message)
+        return result.out
+    }
     fun execOut(command: String): String = execOutUnjoined(command).joinToString("\n")
 
     /**
