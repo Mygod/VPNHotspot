@@ -144,7 +144,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                                 }
                                 .map { it.name }.sorted().toList().toTypedArray()
                     } catch (e: SocketException) {
-                        Timber.w(e)
+                        Timber.d(e)
                         emptyArray<String>()
                     })
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
