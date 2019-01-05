@@ -30,7 +30,8 @@
             app:key="service.disableIpv6"
             app:icon="@drawable/ic_image_looks_6"
             app:title="@string/settings_service_disable_ipv6"
-            app:summary="@string/settings_service_disable_ipv6_summary"/>
+            app:summary="@string/settings_service_disable_ipv6_summary"
+            app:defaultValue="true"/>
         <EditTextPreference
             app:key="service.dns"
             app:icon="@drawable/ic_action_dns"

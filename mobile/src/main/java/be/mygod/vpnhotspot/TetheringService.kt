@@ -58,7 +58,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                 app.onRoutingsCleaned[this] = { synchronized(routings) { updateRoutingsLocked() } }
                 IpNeighbourMonitor.registerCallback(this)
             }
-            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", false)
+            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", true)
             val iterator = routings.iterator()
             while (iterator.hasNext()) {
                 val (downstream, value) = iterator.next()
