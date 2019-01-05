@@ -76,8 +76,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         private val lookup: Map<String, NetworkInterface> get() = parent.ifaceLookup
 
         override val icon: Int get() {
-            val iface = binder?.iface ?: return TetherType.WIFI.icon
-            return TetherType.ofInterface(iface).icon
+            val iface = binder?.iface
+            return (if (iface.isNullOrBlank()) TetherType.WIFI else TetherType.ofInterface(iface)).icon
         }
         override val title: CharSequence get() {
             val configuration = binder?.configuration ?: return parent.getString(R.string.tethering_temp_hotspot)

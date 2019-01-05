@@ -107,7 +107,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                     SmartSnackbar.make(message).show()
                     startFailure()
                 }
-            }, app.handler)
+            }, null)
         } catch (e: IllegalStateException) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
