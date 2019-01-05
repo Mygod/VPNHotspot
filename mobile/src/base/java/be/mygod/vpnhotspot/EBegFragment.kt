@@ -27,10 +27,6 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         private const val KEY_MESSAGE = "message"
     }
 
-    init {
-        setStyle(DialogFragment.STYLE_NO_TITLE, 0)
-    }
-
     class MessageDialogFragment : DialogFragment() {
         override fun onCreateDialog(savedInstanceState: Bundle?) = AlertDialog.Builder(requireContext()).apply {
             val arguments = arguments!!
@@ -57,6 +53,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
             inflater.inflate(R.layout.fragment_ebeg, container, false)
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        dialog!!.setTitle(R.string.settings_misc_donate)
         googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
         onBillingServiceDisconnected()
         view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {

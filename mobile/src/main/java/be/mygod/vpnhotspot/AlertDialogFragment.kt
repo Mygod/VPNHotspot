@@ -14,10 +14,6 @@ abstract class AlertDialogFragment : DialogFragment(), DialogInterface.OnClickLi
     protected abstract fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener)
     open val data: Intent? get() = null
 
-    init {
-        setStyle(STYLE_NO_TITLE, 0)
-    }
-
     override fun onCreateDialog(savedInstanceState: Bundle?): AlertDialog =
             AlertDialog.Builder(requireContext()).also { it.prepare(this) }.create()
 
