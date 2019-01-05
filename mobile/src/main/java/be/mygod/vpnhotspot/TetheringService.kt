@@ -114,6 +114,7 @@ class TetheringService : IpNeighbourMonitoringService() {
     }
 
     override fun onDestroy() {
+        routings.values.forEach { it?.revert() }    // force clean to prevent leakage
         unregisterReceiver()
         super.onDestroy()
     }
