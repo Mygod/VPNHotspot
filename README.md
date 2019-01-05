@@ -164,6 +164,6 @@ If some of these are unavailable, you can alternatively install a recent version
 
 Wi-Fi driver `wpa_supplicant`:
 
-* P2P configuration file is assumed to be saved to `/data/misc/wifi/p2p_supplicant.conf` or
-  `/data/vendor/wifi/wpa/p2p_supplicant.conf` for API 28+ and have reasonable format;
+* P2P configuration file is assumed to be saved to `/data/vendor/wifi/wpa/p2p_supplicant.conf` or
+  `/data/misc/wifi/p2p_supplicant.conf` and have reasonable format;
 * Android system is expected to restart `wpa_supplicant` after it crashes.

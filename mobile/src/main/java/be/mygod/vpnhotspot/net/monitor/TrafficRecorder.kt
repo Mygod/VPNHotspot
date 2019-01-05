@@ -64,7 +64,13 @@ object TrafficRecorder {
 
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
-        loop@ for (line in RootSession.use { it.execOutUnjoinedWithWait("$IPTABLES -nvx -L vpnhotspot_fwd").drop(2) }) {
+        loop@ for (line in RootSession.use {
+            val command = "$IPTABLES -nvx -L vpnhotspot_fwd"
+            val result = it.execQuiet(command)
+            val message = it.checkOutput(command, result, false, false)
+            if (result.err.isNotEmpty()) Timber.i(message)
+            result.out.drop(2)
+        }) {
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
