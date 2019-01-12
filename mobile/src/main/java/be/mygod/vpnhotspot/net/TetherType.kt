@@ -34,15 +34,19 @@ enum class TetherType {
             val sysRes = Resources.getSystem()
             usbRegexes = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_usb_regexs", "array", "android"))
+                    .filterNotNull()
                     .map { it.toPattern() }
             wifiRegexes = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_wifi_regexs", "array", "android"))
+                    .filterNotNull()
                     .map { it.toPattern() }
             wimaxRegexes = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_wimax_regexs", "array", "android"))
+                    .filterNotNull()
                     .map { it.toPattern() }
             bluetoothRegexes = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
+                    .filterNotNull()
                     .map { it.toPattern() }
         }
 
