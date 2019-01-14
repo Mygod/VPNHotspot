@@ -192,7 +192,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val device = binder.thisDevice ?: return
         try {
             p2pManager.requestPersistentGroupInfo(channel) {
-                DebugHelper.setString("$TAG.p2pPersistentGroups", it.toString())
+                Timber.d(it.toString())
                 val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
                 val main = ownedGroups.minBy { it.netId }
                 // do not replace current group if it's better
