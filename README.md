@@ -80,6 +80,8 @@ Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
 
 ### [What changes exactly can this app do to my system? (and how to revert them)](https://github.com/Mygod/VPNHotspot/issues/8#issuecomment-448529512)
 
+### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
+
 ### Failed to create group due to internal error/repeater shuts down after a while?
 
 This could caused by the Wi-Fi channel you selected is no longer available, due to:
@@ -89,21 +91,6 @@ This could caused by the Wi-Fi channel you selected is no longer available, due 
 
 For maximum stability, you need to set channel = 0 so that your device will pick a channel automatically.
 You can also use WPS to connect your 2.4GHz-only device to force the repeater to switch from 5GHz to 2.4GHz for this time.
-
-### No root?
-
-This app requires root to make changes to iptables and ip rule. This restriction is imposed by Linux kernel.
-
-Without root, you can only:
-
-* View connected devices for system tethering and monitor them;
-* Create a hotspot that has only LAN connections;
-* Toggle tether switches if you can't do it already;
-* Play around with settings and the user interface in general;
-* Alternatively you can use try these apps (requires manual proxy configuration or client apps) for normal repeater
-  tethering/bypassing tethering limits: (note: these apps are neither free nor open source)
-  * [PdaNet+](https://play.google.com/store/apps/details?id=com.pdanet)
-  * [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
 
 ## Private APIs used / Assumptions for Android customizations
 
