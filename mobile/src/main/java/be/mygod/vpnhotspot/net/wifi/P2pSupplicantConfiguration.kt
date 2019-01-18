@@ -4,6 +4,7 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
+import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.RootSession
 import java.io.File
 
@@ -51,6 +52,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             it.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
+                val bssid = group.owner.deviceAddress ?: ownerAddress
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
@@ -65,8 +67,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                                     check(block.pskLine == null && block.psk == null)
                                     block.psk = match.groupValues[5].apply { check(length in 8..63) }
                                     block.pskLine = block.size
-                                } else if (match.groups[2] != null &&
-                                        match.groupValues[2].equals(group.owner.deviceAddress ?: ownerAddress, true)) {
+                                } else if (match.groups[2] != null && match.groupValues[2].equals(bssid, true)) {
                                     block.bssidMatches = true
                                 }
                             }
@@ -79,6 +80,26 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                             target = block
                         }
                     } else result.add(parser.line)
+                }
+                if (target == null && !RepeaterService.persistentSupported) {
+                    result.add("")
+                    result.add(NetworkBlock().apply {
+                        // generate a basic network block, it is likely that vendor is going to add more stuff here
+                        add("network={")
+                        ssidLine = size
+                        add("")
+                        add("\tbssid=$bssid")
+                        pskLine = size
+                        add("")
+                        add("\tproto=RSN")
+                        add("\tkey_mgmt=WPA-PSK")
+                        add("\tpairwise=CCMP")
+                        add("\tauth_alg=OPEN")
+                        add("\tmode=3")
+                        add("\tdisabled=2")
+                        add("}")
+                        target = this
+                    })
                 }
                 Triple(result, target!!, shell.err.isNotEmpty())
             } catch (e: RuntimeException) {

@@ -49,6 +49,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             }
         }
         val supported get() = p2pManager != null
+        var persistentSupported = false
     }
 
     enum class Status {
@@ -192,7 +193,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val device = binder.thisDevice ?: return
         try {
             p2pManager.requestPersistentGroupInfo(channel) {
-                Timber.d(it.toString())
+                if (it.isNotEmpty()) persistentSupported = true
                 val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
                 val main = ownedGroups.minBy { it.netId }
                 // do not replace current group if it's better
