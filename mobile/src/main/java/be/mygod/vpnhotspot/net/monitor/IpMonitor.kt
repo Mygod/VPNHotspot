@@ -49,7 +49,13 @@ abstract class IpMonitor : Runnable {
             }
         }
         try {
-            process.inputStream.bufferedReader().forEachLine(this::processLine)
+            process.inputStream.bufferedReader().forEachLine {
+                // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
+                if (it.endsWith("Dump was interrupted and may be inconsistent.")) {
+                    Timber.w(it)
+                    process.destroy()   // move on to next mode
+                } else processLine(it)
+            }
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
             if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
         }
