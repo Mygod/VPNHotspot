@@ -127,6 +127,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     override fun onDestroy() {
+        binder.stop()
         unregisterReceiver()
         super.onDestroy()
     }
