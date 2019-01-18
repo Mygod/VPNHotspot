@@ -251,12 +251,14 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
 
     fun commit() {
         transaction.commit()
+        Timber.i("Started routing for $downstream")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }
     fun revert() {
         stop()
+        Timber.i("Stopped routing for $downstream")
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         clients.values.forEach { it.close() }
         fallbackUpstream.subrouting?.transaction?.revert()
