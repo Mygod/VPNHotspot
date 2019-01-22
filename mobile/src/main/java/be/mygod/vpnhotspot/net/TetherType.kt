@@ -21,10 +21,10 @@ enum class TetherType {
     }
 
     companion object {
-        private val usbRegexes: List<Pattern>
-        private val wifiRegexes: List<Pattern>
-        private val wimaxRegexes: List<Pattern>
-        private val bluetoothRegexes: List<Pattern>
+        private val usbRegexs: List<Pattern>
+        private val wifiRegexs: List<Pattern>
+        private val wimaxRegexs: List<Pattern>
+        private val bluetoothRegexs: List<Pattern>
 
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/61fa313/core/res/res/values/config.xml#328
@@ -32,31 +32,34 @@ enum class TetherType {
         init {
             val appRes = app.resources
             val sysRes = Resources.getSystem()
-            usbRegexes = appRes.getStringArray(sysRes
+            usbRegexs = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_usb_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            wifiRegexes = appRes.getStringArray(sysRes
+            wifiRegexs = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_wifi_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            wimaxRegexes = appRes.getStringArray(sysRes
+            wimaxRegexs = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_wimax_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            bluetoothRegexes = appRes.getStringArray(sysRes
+            bluetoothRegexs = appRes.getStringArray(sysRes
                     .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
         }
 
+        /**
+         * Based on: https://android.googlesource.com/platform/frameworks/base/+/0e3d092/services/core/java/com/android/server/connectivity/Tethering.java#311
+         */
         fun ofInterface(iface: String?, p2pDev: String? = null) = when {
             iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
-            usbRegexes.any { it.matcher(iface).matches() } -> USB
-            wifiRegexes.any { it.matcher(iface).matches() } -> WIFI
-            wimaxRegexes.any { it.matcher(iface).matches() } -> WIMAX
-            bluetoothRegexes.any { it.matcher(iface).matches() } -> BLUETOOTH
+            wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
+            usbRegexs.any { it.matcher(iface).matches() } -> USB
+            bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
+            wimaxRegexs.any { it.matcher(iface).matches() } -> WIMAX
             else -> NONE
         }
     }
