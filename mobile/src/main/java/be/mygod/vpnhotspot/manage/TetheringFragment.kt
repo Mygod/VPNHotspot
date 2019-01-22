@@ -69,7 +69,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
                 list.addAll(tetherManagers)
                 tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
             }
-            if (Build.VERSION.SDK_INT < 26) {
+            if (Build.VERSION.SDK_INT < 25) {
                 list.add(wifiManagerLegacy)
                 wifiManagerLegacy.onTetheringStarted()
             }

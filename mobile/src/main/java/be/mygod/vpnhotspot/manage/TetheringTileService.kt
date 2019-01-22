@@ -176,7 +176,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
     }
 
     @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 26")
+    @Deprecated("Not usable since API 25")
     class WifiLegacy : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_wifi_legacy
         override val tetherType get() = TetherType.WIFI

@@ -4,6 +4,11 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import be.mygod.vpnhotspot.App.Companion.app
 
+/**
+ * Although the functionalities were removed in API 26, it is already not functioning correctly on API 25.
+ *
+ * See also: https://android.googlesource.com/platform/frameworks/base/+/5c0b10a4a9eecc5307bb89a271221f2b20448797%5E%21/
+ */
 object WifiApManager {
     private val setWifiApEnabled = WifiManager::class.java.getDeclaredMethod("setWifiApEnabled",
             WifiConfiguration::class.java, Boolean::class.java)
@@ -20,12 +25,12 @@ object WifiApManager {
     private fun WifiManager.setWifiApEnabled(wifiConfig: WifiConfiguration?, enabled: Boolean) =
             setWifiApEnabled.invoke(this, wifiConfig, enabled) as Boolean
 
-    @Deprecated("No longer usable since API 26.")
+    @Deprecated("No longer usable since API 25.")
     fun start(wifiConfig: WifiConfiguration? = null) {
         app.wifi.isWifiEnabled = false
         app.wifi.setWifiApEnabled(wifiConfig, true)
     }
-    @Deprecated("No longer usable since API 26.")
+    @Deprecated("No longer usable since API 25.")
     fun stop() {
         app.wifi.setWifiApEnabled(null, false)
         app.wifi.isWifiEnabled = true
