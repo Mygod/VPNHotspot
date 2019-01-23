@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.content.DialogInterface
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -11,8 +12,8 @@ import android.widget.Spinner
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.core.net.toUri
-import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
+import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
 import timber.log.Timber
@@ -22,18 +23,13 @@ import timber.log.Timber
  */
 class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
         SkuDetailsResponseListener, ConsumeResponseListener {
-    companion object {
-        private const val KEY_TITLE = "title"
-        private const val KEY_MESSAGE = "message"
-    }
-
-    class MessageDialogFragment : DialogFragment() {
-        override fun onCreateDialog(savedInstanceState: Bundle?) = AlertDialog.Builder(requireContext()).apply {
-            val arguments = arguments!!
-            setTitle(arguments.getInt(KEY_TITLE, 0))
-            setMessage(arguments.getInt(KEY_MESSAGE, 0))
+    data class MessageArg(@StringRes val title: Int, @StringRes val message: Int) : VersionedParcelable
+    class MessageDialogFragment : AlertDialogFragment<MessageArg, Empty>() {
+        override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
+            setTitle(arg.title)
+            setMessage(arg.message)
             setNeutralButton(R.string.donations__button_close, null)
-        }.create()
+        }
     }
 
     private lateinit var billingClient: BillingClient
@@ -74,9 +70,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
     private fun openDialog(@StringRes title: Int, @StringRes message: Int) {
         val fragmentManager = fragmentManager
         if (fragmentManager == null) SmartSnackbar.make(message).show() else try {
-            MessageDialogFragment().apply {
-                arguments = bundleOf(KEY_TITLE to title, KEY_MESSAGE to message)
-            }.show(fragmentManager, "MessageDialogFragment")
+            MessageDialogFragment().withArg(MessageArg(title, message)).show(fragmentManager, "MessageDialogFragment")
         } catch (e: IllegalStateException) {
             SmartSnackbar.make(message).show()
         }

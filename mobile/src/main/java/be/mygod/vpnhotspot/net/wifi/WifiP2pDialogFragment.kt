@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.content.DialogInterface
-import android.content.Intent
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
 import android.text.Editable
@@ -10,6 +9,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
+import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.R
 import com.google.android.material.textfield.TextInputLayout
@@ -21,16 +21,14 @@ import java.nio.charset.Charset
  * This dialog has been deprecated in API 28, but we are still using it since it works better for our purposes.
  * Related: https://android.googlesource.com/platform/packages/apps/Settings/+/defb1183ecb00d6231bac7d934d07f58f90261ea
  */
-class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterface.OnClickListener {
-    companion object {
-        const val TAG = "WifiP2pDialogFragment"
-        const val KEY_CONFIGURATION = "configuration"
-    }
+class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, WifiP2pDialogFragment.Arg>(),
+        TextWatcher, DialogInterface.OnClickListener {
+    data class Arg(val configuration: WifiConfiguration) : VersionedParcelable
 
     private lateinit var mView: View
     private lateinit var mSsid: TextView
     private lateinit var mPassword: EditText
-    private val config: WifiConfiguration?
+    override val ret: Arg?
         get() {
             val config = WifiConfiguration()
             config.SSID = mSsid.text.toString()
@@ -39,7 +37,7 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
                 val password = mPassword.text.toString()
                 config.preSharedKey = password
             }
-            return config
+            return Arg(config)
         }
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
@@ -51,17 +49,11 @@ class WifiP2pDialogFragment : AlertDialogFragment(), TextWatcher, DialogInterfac
         setPositiveButton(context.getString(R.string.wifi_save), listener)
         setNegativeButton(context.getString(R.string.wifi_cancel), null)
         setNeutralButton(context.getString(R.string.repeater_reset_credentials), listener)
-        val arguments = arguments!!
-        val mWifiConfig = arguments.getParcelable<WifiConfiguration>(KEY_CONFIGURATION)
-        if (mWifiConfig != null) {
-            mSsid.text = mWifiConfig.SSID
-            mPassword.setText(mWifiConfig.preSharedKey)
-        }
+        mSsid.text = arg.configuration.SSID
         mSsid.addTextChangedListener(this@WifiP2pDialogFragment)
+        mPassword.setText(arg.configuration.preSharedKey)
         mPassword.addTextChangedListener(this@WifiP2pDialogFragment)
     }
-
-    override val data get() = Intent().putExtra(KEY_CONFIGURATION, config)
 
     override fun onStart() {
         super.onStart()

@@ -12,7 +12,6 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
@@ -23,10 +22,11 @@ import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import androidx.versionedparcelable.ParcelUtils
+import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
@@ -38,58 +38,46 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
-    class NicknameDialogFragment : AlertDialogFragment() {
-        companion object {
-            const val KEY_MAC = "mac"
-            const val KEY_NICKNAME = "nickname"
-        }
-
-        private val mac by lazy { arguments!!.getString(KEY_MAC)!! }
-
+    data class NicknameArg(val mac: String, val nickname: CharSequence) : VersionedParcelable
+    class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, mac))
+            setTitle(getString(R.string.clients_nickname_title, arg.mac))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
         }
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
             create()
-            findViewById<EditText>(android.R.id.edit)!!.setText(arguments!!.getCharSequence(KEY_NICKNAME))
+            findViewById<EditText>(android.R.id.edit)!!.setText(arg.nickname)
         }
 
-        override fun onClick(di: DialogInterface?, which: Int) {
-            AppDatabase.instance.clientRecordDao.lookup(mac.macToLong()).apply {
-                nickname = dialog!!.findViewById<EditText>(android.R.id.edit).text
+        override fun onClick(dialog: DialogInterface?, which: Int) {
+            AppDatabase.instance.clientRecordDao.lookup(arg.mac.macToLong()).apply {
+                nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
                 AppDatabase.instance.clientRecordDao.update(this)
             }
             IpNeighbourMonitor.instance?.flush()
         }
     }
 
-    class StatsDialogFragment : AlertDialogFragment() {
-        companion object {
-            const val KEY_TITLE = "title"
-            const val KEY_STATS = "stats"
-        }
-
-        private val title by lazy { arguments!!.getCharSequence(KEY_TITLE)!! }
-        private val stats by lazy { ParcelUtils.getVersionedParcelable<ClientStats>(arguments, KEY_STATS)!! }
-
+    data class StatsArg(val title: CharSequence, val stats: ClientStats) : VersionedParcelable
+    class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle(getString(R.string.clients_stats_title, title))
+            setTitle(getString(R.string.clients_stats_title, arg.title))
             val context = context
             val resources = resources
             val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
             setMessage("%s\n%s\n%s".format(
-                    resources.getQuantityString(R.plurals.clients_stats_message_1, stats.count.toPluralInt(),
-                            format.format(stats.count), DateUtils.formatDateTime(context, stats.timestamp,
+                    resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),
+                            format.format(arg.stats.count), DateUtils.formatDateTime(context, arg.stats.timestamp,
                             DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE)),
-                    resources.getQuantityString(R.plurals.clients_stats_message_2, stats.sentPackets.toPluralInt(),
-                            format.format(stats.sentPackets), Formatter.formatFileSize(context, stats.sentBytes)),
-                    resources.getQuantityString(R.plurals.clients_stats_message_3, stats.sentPackets.toPluralInt(),
-                            format.format(stats.receivedPackets),
-                            Formatter.formatFileSize(context, stats.receivedBytes))))
+                    resources.getQuantityString(R.plurals.clients_stats_message_2, arg.stats.sentPackets.toPluralInt(),
+                            format.format(arg.stats.sentPackets),
+                            Formatter.formatFileSize(context, arg.stats.sentBytes)),
+                    resources.getQuantityString(R.plurals.clients_stats_message_3, arg.stats.sentPackets.toPluralInt(),
+                            format.format(arg.stats.receivedPackets),
+                            Formatter.formatFileSize(context, arg.stats.receivedBytes))))
             setPositiveButton(android.R.string.ok, null)
         }
     }
@@ -123,10 +111,8 @@ class ClientsFragment : Fragment() {
             return when (item?.itemId) {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
-                    NicknameDialogFragment().apply {
-                        arguments = bundleOf(Pair(NicknameDialogFragment.KEY_MAC, client.mac),
-                                Pair(NicknameDialogFragment.KEY_NICKNAME, client.record.nickname))
-                    }.show(fragmentManager ?: return false, "NicknameDialogFragment")
+                    NicknameDialogFragment().withArg(NicknameArg(client.mac, client.record.nickname))
+                            .show(fragmentManager ?: return false, "NicknameDialogFragment")
                     true
                 }
                 R.id.block, R.id.unblock -> {
@@ -143,12 +129,9 @@ class ClientsFragment : Fragment() {
                 }
                 R.id.stats -> {
                     val client = binding.client ?: return false
-                    StatsDialogFragment().apply {
-                        arguments = bundleOf(StatsDialogFragment.KEY_TITLE to client.title).apply {
-                            ParcelUtils.putVersionedParcelable(this, StatsDialogFragment.KEY_STATS,
-                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong()))
-                        }
-                    }.show(fragmentManager ?: return false, "StatsDialogFragment")
+                    StatsDialogFragment().withArg(StatsArg(client.title,
+                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
+                            .show(fragmentManager ?: return false, "StatsDialogFragment")
                     true
                 }
                 else -> false
