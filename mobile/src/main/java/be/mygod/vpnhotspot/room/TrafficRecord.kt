@@ -1,8 +1,7 @@
 package be.mygod.vpnhotspot.room
 
-import android.os.Parcel
-import android.os.Parcelable
 import androidx.room.*
+import androidx.versionedparcelable.VersionedParcelable
 import java.net.InetAddress
 
 @Entity(foreignKeys = [ForeignKey(entity = TrafficRecord::class, parentColumns = ["id"], childColumns = ["previousId"],
@@ -69,29 +68,4 @@ data class ClientStats(
         val sentBytes: Long = 0,
         val receivedPackets: Long = 0,
         val receivedBytes: Long = 0
-) : Parcelable {
-    constructor(parcel: Parcel) : this(
-            parcel.readLong(),
-            parcel.readLong(),
-            parcel.readLong(),
-            parcel.readLong(),
-            parcel.readLong(),
-            parcel.readLong())
-
-    override fun writeToParcel(parcel: Parcel, flags: Int) {
-        parcel.writeLong(timestamp)
-        parcel.writeLong(count)
-        parcel.writeLong(sentPackets)
-        parcel.writeLong(sentBytes)
-        parcel.writeLong(receivedPackets)
-        parcel.writeLong(receivedBytes)
-    }
-
-    override fun describeContents() = 0
-
-    companion object CREATOR : Parcelable.Creator<ClientStats> {
-        override fun createFromParcel(parcel: Parcel) = ClientStats(parcel)
-
-        override fun newArray(size: Int) = arrayOfNulls<ClientStats>(size)
-    }
-}
+) : VersionedParcelable

@@ -75,7 +75,7 @@ class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientSt
         val fragmentManager = fragmentManager
         if (fragmentManager == null) SmartSnackbar.make(message).show() else try {
             MessageDialogFragment().apply {
-                arguments = bundleOf(Pair(KEY_TITLE, title), Pair(KEY_MESSAGE, message))
+                arguments = bundleOf(KEY_TITLE to title, KEY_MESSAGE to message)
             }.show(fragmentManager, "MessageDialogFragment")
         } catch (e: IllegalStateException) {
             SmartSnackbar.make(message).show()

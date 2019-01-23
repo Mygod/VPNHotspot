@@ -23,6 +23,7 @@ import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import androidx.versionedparcelable.ParcelUtils
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -73,7 +74,7 @@ class ClientsFragment : Fragment() {
         }
 
         private val title by lazy { arguments!!.getCharSequence(KEY_TITLE)!! }
-        private val stats by lazy { arguments!!.getParcelable<ClientStats>(KEY_STATS)!! }
+        private val stats by lazy { ParcelUtils.getVersionedParcelable<ClientStats>(arguments, KEY_STATS)!! }
 
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setTitle(getString(R.string.clients_stats_title, title))
@@ -143,9 +144,10 @@ class ClientsFragment : Fragment() {
                 R.id.stats -> {
                     val client = binding.client ?: return false
                     StatsDialogFragment().apply {
-                        arguments = bundleOf(Pair(StatsDialogFragment.KEY_TITLE, client.title),
-                                Pair(StatsDialogFragment.KEY_STATS,
-                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
+                        arguments = bundleOf(StatsDialogFragment.KEY_TITLE to client.title).apply {
+                            ParcelUtils.putVersionedParcelable(this, StatsDialogFragment.KEY_STATS,
+                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong()))
+                        }
                     }.show(fragmentManager ?: return false, "StatsDialogFragment")
                     true
                 }
