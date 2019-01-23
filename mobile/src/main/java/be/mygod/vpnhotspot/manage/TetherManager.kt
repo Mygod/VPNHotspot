@@ -170,7 +170,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
 
     @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 25")
+    @Deprecated("Not usable since API 26, malfunctioning on API 25")
     class WifiLegacy(parent: TetheringFragment) : TetherManager(parent) {
         override val title get() = parent.getString(R.string.tethering_manage_wifi_legacy)
         override val tetherType get() = TetherType.WIFI
