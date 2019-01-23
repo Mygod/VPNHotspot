@@ -21,24 +21,22 @@ import java.nio.charset.Charset
  * This dialog has been deprecated in API 28, but we are still using it since it works better for our purposes.
  * Related: https://android.googlesource.com/platform/packages/apps/Settings/+/defb1183ecb00d6231bac7d934d07f58f90261ea
  */
-class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, WifiP2pDialogFragment.Arg>(),
-        TextWatcher, DialogInterface.OnClickListener {
+class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, WifiP2pDialogFragment.Arg>(), TextWatcher {
     data class Arg(val configuration: WifiConfiguration) : VersionedParcelable
 
     private lateinit var mView: View
     private lateinit var mSsid: TextView
     private lateinit var mPassword: EditText
-    override val ret: Arg?
-        get() {
-            val config = WifiConfiguration()
-            config.SSID = mSsid.text.toString()
-            config.allowedAuthAlgorithms.set(AuthAlgorithm.OPEN)
-            if (mPassword.length() != 0) {
-                val password = mPassword.text.toString()
-                config.preSharedKey = password
-            }
-            return Arg(config)
+    override val ret: Arg? get() {
+        val config = WifiConfiguration()
+        config.SSID = mSsid.text.toString()
+        config.allowedAuthAlgorithms.set(AuthAlgorithm.OPEN)
+        if (mPassword.length() != 0) {
+            val password = mPassword.text.toString()
+            config.preSharedKey = password
         }
+        return Arg(config)
+    }
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
         mView = requireActivity().layoutInflater.inflate(R.layout.dialog_wifi_ap, null)

@@ -5,7 +5,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
-import androidx.fragment.app.DialogFragment
+import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.versionedparcelable.ParcelUtils
 import androidx.versionedparcelable.VersionedParcelable
 
@@ -13,7 +13,7 @@ import androidx.versionedparcelable.VersionedParcelable
  * Based on: https://android.googlesource.com/platform/packages/apps/ExactCalculator/+/8c43f06/src/com/android/calculator2/AlertDialogFragment.java
  */
 abstract class AlertDialogFragment<Arg : VersionedParcelable, Ret : VersionedParcelable> :
-        DialogFragment(), DialogInterface.OnClickListener {
+        AppCompatDialogFragment(), DialogInterface.OnClickListener {
     companion object {
         private const val KEY_ARG = "arg"
         private const val KEY_RET = "ret"

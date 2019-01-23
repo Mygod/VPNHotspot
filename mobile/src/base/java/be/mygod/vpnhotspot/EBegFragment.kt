@@ -11,8 +11,8 @@ import android.widget.Button
 import android.widget.Spinner
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.core.net.toUri
-import androidx.fragment.app.DialogFragment
 import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
@@ -21,7 +21,7 @@ import timber.log.Timber
 /**
  * Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/java/org/sufficientlysecure/donations/DonationsFragment.java
  */
-class EBegFragment : DialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
+class EBegFragment : AppCompatDialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
         SkuDetailsResponseListener, ConsumeResponseListener {
     data class MessageArg(@StringRes val title: Int, @StringRes val message: Int) : VersionedParcelable
     class MessageDialogFragment : AlertDialogFragment<MessageArg, Empty>() {

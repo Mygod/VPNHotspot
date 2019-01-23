@@ -109,12 +109,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
         if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        when (requestCode) {
-            REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-            REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data)
-            else -> super.onActivityResult(requestCode, resultCode, data)
-        }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) = when (requestCode) {
+        REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
+        REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data)
+        else -> super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
