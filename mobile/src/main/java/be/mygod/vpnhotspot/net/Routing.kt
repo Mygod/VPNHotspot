@@ -14,7 +14,6 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
-import java.lang.RuntimeException
 import java.net.*
 import java.util.concurrent.atomic.AtomicLong
 
@@ -61,10 +60,15 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
             }
         }
 
+        private fun RootSession.Transaction.iptables(command: String, revert: String) {
+            val result = execQuiet(command, revert)
+            val message = RootSession.checkOutput(command, result, err = false)
+            if (result.err.isNotEmpty()) Timber.i(message)  // busy wait message
+        }
         private fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
-                exec("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content", true)
+                iptables("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
         private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
-                exec("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content", true)
+                iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
     }
 
     class InterfaceNotFoundException : SocketException() {

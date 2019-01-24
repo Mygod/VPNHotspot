@@ -49,7 +49,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             var target: NetworkBlock? = null
             val command = "cat $CONF_PATH_TREBLE || cat $CONF_PATH_LEGACY"
             val shell = it.execQuiet(command)
-            it.checkOutput(command, shell, false, false)
+            RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
                 val bssid = group.owner.deviceAddress ?: ownerAddress
