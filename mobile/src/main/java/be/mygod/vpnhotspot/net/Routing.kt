@@ -188,8 +188,30 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         }
     }
 
-    fun ipForward() = transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
+    /**
+     * This command is available since API 23 and also handles IPv6 forwarding.
+     * https://android.googlesource.com/platform/system/netd/+/android-6.0.0_r1/server/CommandListener.cpp#527
+     *
+     * `requester` set by system service is assumed to be `tethering`.
+     * https://android.googlesource.com/platform/frameworks/base/+/bd249a19bba38a29e617aa849b2f42c3c281eff5/services/core/java/com/android/server/NetworkManagementService.java#1241
+     *
+     * The fallback approach is consistent with legacy system's IP forwarding approach,
+     * but may be broken when system tethering shutdown before local-only interfaces.
+     */
+    fun ipForward() {
+        if (Build.VERSION.SDK_INT >= 23) {
+            val command = "ndc ipfwd enable vpnhotspot_$downstream"
+            val result = transaction.execQuiet(command, "ndc ipfwd disable vpnhotspot_$downstream")
+            RootSession.checkOutput(command, result, result.out.joinToString("\n") !=
+                    "200 0 ipfwd operation succeeded")
+        } else transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
+    }
 
+    /**
+     * Alternative approach: ndc interface ipv6 $downstream <enable|disable>
+     *
+     * This approach does the same (up until now) and is easier for parsing error output.
+     */
     fun disableIpv6() = transaction.exec("echo 1 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6",
             "echo 0 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
 
