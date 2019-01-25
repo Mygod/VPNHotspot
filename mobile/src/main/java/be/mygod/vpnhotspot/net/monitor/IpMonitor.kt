@@ -103,8 +103,7 @@ abstract class IpMonitor : Runnable {
 
     fun destroy() {
         destroyed = true
-        val monitor = monitor
-        if (monitor != null) thread("${javaClass.simpleName}-killer") { monitor.destroy() }
+        monitor?.destroy()
         pool?.shutdown()
     }
 }
