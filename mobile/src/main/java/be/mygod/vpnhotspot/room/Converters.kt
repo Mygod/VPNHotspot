@@ -7,7 +7,8 @@ import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class Converters {
+object Converters {
+    @JvmStatic
     @TypeConverter
     fun persistCharSequence(cs: CharSequence): ByteArray {
         val p = Parcel.obtain()
@@ -19,6 +20,7 @@ class Converters {
         }
     }
 
+    @JvmStatic
     @TypeConverter
     fun unpersistCharSequence(data: ByteArray): CharSequence {
         val p = Parcel.obtain()
@@ -31,9 +33,11 @@ class Converters {
         }
     }
 
+    @JvmStatic
     @TypeConverter
     fun persistInetAddress(address: InetAddress): ByteArray = address.address
 
+    @JvmStatic
     @TypeConverter
     fun unpersistInetAddress(data: ByteArray): InetAddress = InetAddress.getByAddress(data)
 }

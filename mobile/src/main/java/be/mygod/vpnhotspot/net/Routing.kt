@@ -8,7 +8,6 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.lookup
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
@@ -173,7 +172,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()).blocked) continue
+                    AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong())?.blocked == true) continue
             toRemove.remove(neighbour.ip)
             try {
                 clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }

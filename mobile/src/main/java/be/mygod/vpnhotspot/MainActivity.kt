@@ -14,7 +14,6 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
-import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
@@ -45,6 +44,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
+        binding.setLifecycleOwner(this)
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         badge = QBadgeView(this)
@@ -55,7 +55,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         badge.setGravityOffset(16f, 0f, true)
         val model = ViewModelProviders.of(this).get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
-        model.clients.observe(this, Observer<List<Client>> { badge.badgeNumber = it.size })
+        model.clients.observe(this, Observer { badge.badgeNumber = it.size })
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
     }
 

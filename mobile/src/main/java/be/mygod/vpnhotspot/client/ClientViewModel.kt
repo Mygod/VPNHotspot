@@ -40,7 +40,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             var client = clients[key]
             if (client == null) {
                 if (!tetheredInterfaces.contains(neighbour.dev)) continue
-                client = TetheringClient(neighbour)
+                client = Client(neighbour.lladdr, neighbour.dev)
                 clients[key] = client
             }
             client.ip += Pair(neighbour.ip, neighbour.state)

@@ -38,9 +38,13 @@ data class TrafficRecord(
          */
         val previousId: Long? = null) {
     @androidx.room.Dao
-    interface Dao {
+    abstract class Dao {
         @Insert
-        fun insertInternal(value: TrafficRecord): Long
+        protected abstract fun insertInternal(value: TrafficRecord): Long
+        fun insert(value: TrafficRecord) {
+            check(value.id == null)
+            value.id = insertInternal(value)
+        }
 
         @Query("""
             SELECT  MIN(TrafficRecord.timestamp) AS timestamp,
@@ -52,13 +56,8 @@ data class TrafficRecord(
                 FROM TrafficRecord LEFT JOIN TrafficRecord AS Next ON TrafficRecord.id = Next.previousId
                 /* We only want to find the last record for each chain so that we don't double count */
                 WHERE TrafficRecord.mac = :mac AND Next.id IS NULL""")
-        fun queryStats(mac: Long): ClientStats
+        abstract fun queryStats(mac: Long): ClientStats
     }
-}
-
-fun TrafficRecord.Dao.insert(value: TrafficRecord) {
-    check(value.id == null)
-    value.id = insertInternal(value)
 }
 
 data class ClientStats(

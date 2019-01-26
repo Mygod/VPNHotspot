@@ -6,7 +6,6 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.room.insert
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession

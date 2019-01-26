@@ -25,8 +25,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.Empty
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
@@ -53,11 +53,9 @@ class ClientsFragment : Fragment() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
-            AppDatabase.instance.clientRecordDao.lookup(arg.mac.macToLong()).apply {
+            AppDatabase.instance.clientRecordDao.upsert(arg.mac.macToLong()) {
                 nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
-                AppDatabase.instance.clientRecordDao.update(this)
             }
-            IpNeighbourMonitor.instance?.flush()
         }
     }
 
@@ -95,13 +93,14 @@ class ClientsFragment : Fragment() {
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
+            binding.setLifecycleOwner(this@ClientsFragment) // todo some way better?
             binding.root.setOnClickListener(this)
         }
 
         override fun onClick(v: View) {
             PopupMenu(binding.root.context, binding.root).apply {
                 menuInflater.inflate(R.menu.popup_client, menu)
-                menu.removeItem(if (binding.client!!.record.blocked) R.id.block else R.id.unblock)
+                menu.removeItem(if (binding.client!!.blocked) R.id.block else R.id.unblock)
                 setOnMenuItemClickListener(this@ClientViewHolder)
                 show()
             }
@@ -111,7 +110,7 @@ class ClientsFragment : Fragment() {
             return when (item?.itemId) {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
-                    NicknameDialogFragment().withArg(NicknameArg(client.mac, client.record.nickname))
+                    NicknameDialogFragment().withArg(NicknameArg(client.mac, client.nickname))
                             .show(fragmentManager ?: return false, "NicknameDialogFragment")
                     true
                 }
@@ -119,7 +118,9 @@ class ClientsFragment : Fragment() {
                     val client = binding.client ?: return false
                     val wasWorking = TrafficRecorder.isWorking(client.mac.macToLong())
                     client.record.apply {
-                        AppDatabase.instance.clientRecordDao.update(ClientRecord(mac, nickname, !blocked))
+                        val value = value ?: ClientRecord(client.mac.macToLong())
+                        value.blocked = !value.blocked
+                        AppDatabase.instance.clientRecordDao.update(value)
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {
@@ -129,7 +130,7 @@ class ClientsFragment : Fragment() {
                 }
                 R.id.stats -> {
                     val client = binding.client ?: return false
-                    StatsDialogFragment().withArg(StatsArg(client.title,
+                    StatsDialogFragment().withArg(StatsArg(client.title.value!!, // todo?
                             AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
                             .show(fragmentManager ?: return false, "StatsDialogFragment")
                     true
@@ -186,6 +187,7 @@ class ClientsFragment : Fragment() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_clients, container, false)
+        binding.setLifecycleOwner(this)
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
@@ -194,7 +196,7 @@ class ClientsFragment : Fragment() {
             IpNeighbourMonitor.instance?.flush()
         }
         ViewModelProviders.of(requireActivity()).get<ClientViewModel>().clients.observe(this,
-                Observer<List<Client>> { adapter.submitList(it.toMutableList()) })
+                Observer { adapter.submitList(it.toMutableList()) })
         return binding.root
     }
 

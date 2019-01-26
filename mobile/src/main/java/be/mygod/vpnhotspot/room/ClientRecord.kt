@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.room
 
+import androidx.lifecycle.LiveData
 import androidx.room.*
 
 @Entity
@@ -8,14 +9,23 @@ data class ClientRecord(@PrimaryKey
                         var nickname: CharSequence = "",
                         var blocked: Boolean = false) {
     @androidx.room.Dao
-    interface Dao {
+    abstract class Dao {
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
-        fun lookupOrNull(mac: Long): ClientRecord?
+        abstract fun lookup(mac: Long): ClientRecord?
+
+        fun lookupOrDefault(mac: Long) = lookup(mac) ?: ClientRecord(mac)
+
+        @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
+        abstract fun lookupSync(mac: Long): LiveData<ClientRecord>
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
-        fun updateInternal(value: ClientRecord): Long
+        protected abstract fun updateInternal(value: ClientRecord): Long
+        fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
+
+        @Transaction
+        open fun upsert(mac: Long, operation: ClientRecord.() -> Unit) = lookupOrDefault(mac).apply {
+            operation()
+            update(this)
+        }
     }
 }
-
-fun ClientRecord.Dao.lookup(mac: Long) = lookupOrNull(mac) ?: ClientRecord(mac)
-fun ClientRecord.Dao.update(value: ClientRecord) = check(updateInternal(value) == value.mac)
