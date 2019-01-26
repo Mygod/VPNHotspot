@@ -9,6 +9,8 @@ import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.preference.PreferenceManager
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
@@ -50,6 +52,12 @@ class App : Application() {
     val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
     val uiMode by lazy { getSystemService<UiModeManager>()!! }
     val wifi by lazy { getSystemService<WifiManager>()!! }
+
+    val customTabsIntent by lazy {
+        CustomTabsIntent.Builder()
+                .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
+                .build()
+    }
 
     val operatingChannel: Int get() {
         val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0

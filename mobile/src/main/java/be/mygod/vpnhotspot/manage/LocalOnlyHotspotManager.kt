@@ -14,6 +14,7 @@ import android.os.IBinder
 import android.provider.Settings
 import android.text.SpannableStringBuilder
 import android.text.Spanned
+import android.text.method.LinkMovementMethod
 import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
@@ -36,6 +37,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             View.OnClickListener {
         init {
             itemView.setOnClickListener(this)
+            binding.text.movementMethod = LinkMovementMethod.getInstance()
         }
 
         lateinit var manager: LocalOnlyHotspotManager
@@ -89,7 +91,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             }
         }
         override val text: CharSequence get() {
-            return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
+            return lookup[binder?.iface ?: return ""]?.formatAddresses(parent.requireContext()) ?: ""
         }
         override val active get() = binder?.iface != null
         override val enabled get() = binder?.iface != ""

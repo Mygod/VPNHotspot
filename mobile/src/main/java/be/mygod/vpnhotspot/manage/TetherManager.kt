@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.text.method.LinkMovementMethod
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -35,6 +36,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             itemView.updatePaddingRelative(start = itemView.resources.getDimensionPixelOffset(
                     R.dimen.listitem_manage_tether_padding_start))
             itemView.setOnClickListener(this)
+            binding.text.movementMethod = LinkMovementMethod.getInstance()
         }
 
         var manager: TetherManager? = null

@@ -2,8 +2,12 @@ package be.mygod.vpnhotspot.client
 
 import android.content.DialogInterface
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import android.text.method.LinkMovementMethod
+import android.text.style.StrikethroughSpan
 import android.util.LongSparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -16,6 +20,7 @@ import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
+import androidx.lifecycle.Transformations
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -29,12 +34,11 @@ import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
+import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
-import be.mygod.vpnhotspot.util.MainScope
-import be.mygod.vpnhotspot.util.computeIfAbsentCompat
-import be.mygod.vpnhotspot.util.toPluralInt
+import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
@@ -102,6 +106,8 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         init {
             binding.setLifecycleOwner(this@ClientsFragment)
             binding.root.setOnClickListener(this)
+            binding.titleView.movementMethod = LinkMovementMethod.getInstance()
+            binding.descriptionView.movementMethod = LinkMovementMethod.getInstance()
         }
 
         override fun onClick(v: View) {
@@ -137,7 +143,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 R.id.stats -> {
                     binding.client?.let { client ->
                         launch(start = CoroutineStart.UNDISPATCHED) {
-                            StatsDialogFragment().withArg(StatsArg(client.title.value!!,
+                            StatsDialogFragment().withArg(StatsArg(binding.title!!.value!!,
                                     AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
                                     .show(fragmentManager ?: return@launch, "StatsDialogFragment")
                         }
@@ -161,6 +167,37 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             val client = getItem(position)
             holder.binding.client = client
+            val macIface by lazy {
+                makeMacSpan(requireContext(), client.macString).apply {
+                    append('%')
+                    append(client.iface)
+                }
+            }
+            holder.binding.title = Transformations.map(client.record) { record ->
+                /**
+                 * we hijack the get title process to check if we need to perform MacLookup,
+                 * as record might not be initialized in other more appropriate places
+                 */
+                if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(client.mac)
+                SpannableStringBuilder(record?.nickname.onEmpty(macIface)).apply {
+                    if (record?.blocked == true) {
+                        setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+                    }
+                }
+            }
+            holder.binding.description = Transformations.map(client.record) { record ->
+                SpannableStringBuilder().apply {
+                    if (!record?.nickname.isNullOrEmpty()) appendln(macIface)
+                    client.ip.entries.forEach { (ip, state) ->
+                        appendln(app.getString(when (state) {
+                            IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
+                            IpNeighbour.State.VALID -> R.string.connected_state_valid
+                            IpNeighbour.State.FAILED -> R.string.connected_state_failed
+                            else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
+                        }, ip.hostAddress))
+                    }
+                }.trimEnd()
+            }
             holder.binding.rate =
                     rates.computeIfAbsentCompat(Pair(client.iface, client.mac)) { TrafficRate() }
             holder.binding.executePendingBindings()

@@ -7,6 +7,12 @@
             name="client"
             type="be.mygod.vpnhotspot.client.Client"/>
         <variable
+            name="title"
+            type="androidx.lifecycle.LiveData&lt;CharSequence&gt;"/>
+        <variable
+            name="description"
+            type="androidx.lifecycle.LiveData&lt;CharSequence&gt;"/>
+        <variable
             name="rate"
             type="be.mygod.vpnhotspot.client.ClientsFragment.TrafficRate"/>
     </data>
@@ -37,17 +43,19 @@
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/titleView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@{client.title}"
+                android:text="@{title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
                 android:textIsSelectable="@{client.titleSelectable}"
                 tools:text="01:23:45:ab:cd:ef%p2p-p2p0-0"/>
 
             <be.mygod.vpnhotspot.widget.AutoCollapseTextView
+                android:id="@+id/descriptionView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@{client.description}"
+                android:text="@{description}"
                 android:textIsSelectable="true"
                 tools:text="192.168.49.123 (reachable)\nfe80::abcd:efff:1234:5678%p2p-p2p0-0 (reachable)"/>
 

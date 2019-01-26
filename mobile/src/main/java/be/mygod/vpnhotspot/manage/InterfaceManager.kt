@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
+import android.text.method.LinkMovementMethod
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -15,6 +16,7 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
             View.OnClickListener {
         init {
             itemView.setOnClickListener(this)
+            binding.text.movementMethod = LinkMovementMethod.getInstance()
         }
 
         lateinit var iface: String
@@ -31,11 +33,11 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
     private inner class Data : be.mygod.vpnhotspot.manage.Data() {
         override val icon get() = TetherType.ofInterface(iface).icon
         override val title get() = iface
-        override val text get() = addresses
+        override val text get() = networkInterface?.formatAddresses(parent.requireContext()) ?: ""
         override val active get() = parent.binder?.isActive(iface) == true
     }
 
-    val addresses = parent.ifaceLookup[iface]?.formatAddresses() ?: ""
+    private val networkInterface = parent.ifaceLookup[iface]
     override val type get() = VIEW_TYPE_INTERFACE
     private val data = Data()
 
@@ -55,8 +57,8 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
         if (javaClass != other?.javaClass) return false
         other as InterfaceManager
         if (iface != other.iface) return false
-        if (addresses != other.addresses) return false
+        if (networkInterface != other.networkInterface) return false
         return true
     }
-    override fun hashCode(): Int = Objects.hash(iface, addresses)
+    override fun hashCode(): Int = Objects.hash(iface, networkInterface)
 }

@@ -4,11 +4,18 @@ import android.content.*
 import android.os.Build
 import android.system.Os
 import android.system.OsConstants
+import android.text.Spannable
+import android.text.SpannableStringBuilder
+import android.text.style.URLSpan
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -43,19 +50,29 @@ fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
 
-fun NetworkInterface.formatAddresses() =
-        (interfaceAddresses.asSequence()
-                .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
-                .toList() +
-                listOfNotNull(try {
-                    hardwareAddress?.joinToString(":") { "%02x".format(it) }
-                } catch (_: SocketException) {
-                    null
-                }))
-                .joinToString("\n")
+fun makeMacSpan(context: Context, mac: String) = SpannableStringBuilder(mac).apply {
+    setSpan(object : URLSpan("https://macvendors.co/results/$mac") {
+        override fun onClick(widget: View) = context.launchUrl(url)
+    }, 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+}
+
+fun NetworkInterface.formatAddresses(context: Context) = SpannableStringBuilder().apply {
+    for (address in interfaceAddresses) appendln("${address.address.hostAddress}/${address.networkPrefixLength}")
+    try {
+        hardwareAddress?.apply { appendln(makeMacSpan(context, asIterable().macToString())) }
+    } catch (_: SocketException) { }
+}.trimEnd()
 
 fun parseNumericAddress(address: String?): InetAddress? =
         Os.inet_pton(OsConstants.AF_INET, address) ?: Os.inet_pton(OsConstants.AF_INET6, address)
+
+fun Context.launchUrl(url: String) {
+    if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
+        app.customTabsIntent.launchUrl(this, url.toUri())
+        return
+    } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
+    SmartSnackbar.make(url).show()
+}
 
 fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)

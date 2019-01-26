@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.FileProvider
-import androidx.core.net.toUri
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
@@ -19,6 +18,7 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.File
@@ -120,7 +120,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.source").setOnPreferenceClickListener {
-            (activity as MainActivity).launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md".toUri())
+            requireContext().launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
             true
         }
         findPreference<Preference>("misc.donate").setOnPreferenceClickListener {

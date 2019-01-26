@@ -50,8 +50,9 @@ fun String.macToLong(): Long = ByteBuffer.allocate(8).run {
     long
 }
 
+fun Iterable<Byte>.macToString() = joinToString(":") { "%02x".format(it) }
 fun Long.macToString(): String = ByteBuffer.allocate(8).run {
     order(ByteOrder.LITTLE_ENDIAN)
     putLong(this@macToString)
-    array().take(6).joinToString(":") { "%02x".format(it) }
+    array().take(6).macToString()
 }
