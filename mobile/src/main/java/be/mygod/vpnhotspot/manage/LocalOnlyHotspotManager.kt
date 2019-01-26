@@ -91,7 +91,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             }
         }
         override val text: CharSequence get() {
-            return lookup[binder?.iface ?: return ""]?.formatAddresses(parent.requireContext()) ?: ""
+            return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
         }
         override val active get() = binder?.iface != null
         override val enabled get() = binder?.iface != ""

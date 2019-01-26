@@ -50,16 +50,16 @@ fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
 
-fun makeMacSpan(context: Context, mac: String) = SpannableStringBuilder(mac).apply {
+fun makeMacSpan(mac: String) = SpannableStringBuilder(mac).apply {
     setSpan(object : URLSpan("https://macvendors.co/results/$mac") {
-        override fun onClick(widget: View) = context.launchUrl(url)
+        override fun onClick(widget: View) = widget.context.launchUrl(url)
     }, 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 }
 
-fun NetworkInterface.formatAddresses(context: Context) = SpannableStringBuilder().apply {
+fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
     for (address in interfaceAddresses) appendln("${address.address.hostAddress}/${address.networkPrefixLength}")
     try {
-        hardwareAddress?.apply { appendln(makeMacSpan(context, asIterable().macToString())) }
+        hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
     } catch (_: SocketException) { }
 }.trimEnd()
 

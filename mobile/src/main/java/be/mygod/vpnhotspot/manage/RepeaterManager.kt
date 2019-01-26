@@ -53,7 +53,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         val ssid @Bindable get() = binder?.group?.networkName ?: ""
         val addresses: CharSequence @Bindable get() {
             return try {
-                NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses(parent.requireContext()) ?: ""
+                NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
             } catch (_: SocketException) {
                 ""
             }
