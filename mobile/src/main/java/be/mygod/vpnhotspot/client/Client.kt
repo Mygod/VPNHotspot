@@ -30,7 +30,6 @@ open class Client(val mac: String, val iface: String) {
 
     val nickname get() = record.value?.nickname ?: ""
     val blocked get() = record.value?.blocked == true
-    val macLookupPending get() = record.value?.macLookupPending != false
 
     open val icon get() = TetherType.ofInterface(iface).icon
     val title = Transformations.map(record) { record ->
