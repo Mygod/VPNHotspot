@@ -22,7 +22,7 @@ object MacLookup {
             JSONException("Server returned error for ${mac.macToString()}: $error")
 
     private val macLookupBusy = mutableMapOf<Long, Pair<HttpURLConnection, Job>>()
-    private val countryCodeRegex = "[A-Z]{2}".toRegex()
+    private val countryCodeRegex = "[A-Z]{2}".toRegex() // http://en.wikipedia.org/wiki/ISO_3166-1
 
     @MainThread
     fun abort(mac: Long) = macLookupBusy.remove(mac)?.let { (conn, job) ->
@@ -41,10 +41,9 @@ object MacLookup {
                 obj.optString("error", null)?.also { throw UnexpectedError(mac, it) }
                 val company = obj.getString("company")
                 val country = obj.optString("country")
-                if (countryCodeRegex.matchEntire(country) == null) Timber.w(UnexpectedError(mac, response))
-                val result = if (country != null) {
+                val result = if (countryCodeRegex.matchEntire(country) != null) {
                     String(country.flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' + company
-                } else company
+                } else company.also { Timber.w(UnexpectedError(mac, response)) }
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
                     nickname = result
                     macLookupPending = false
