@@ -51,7 +51,7 @@ fun setVisibility(view: View, value: Boolean) {
 }
 
 fun makeMacSpan(mac: String) = SpannableStringBuilder(mac).apply {
-    setSpan(object : URLSpan("https://macvendors.co/results/$mac") {
+    if (app.hasTouch) setSpan(object : URLSpan("https://macvendors.co/results/$mac") {
         override fun onClick(widget: View) = widget.context.launchUrl(url)
     }, 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 }
@@ -67,7 +67,7 @@ fun parseNumericAddress(address: String?): InetAddress? =
         Os.inet_pton(OsConstants.AF_INET, address) ?: Os.inet_pton(OsConstants.AF_INET6, address)
 
 fun Context.launchUrl(url: String) {
-    if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
+    if (app.hasTouch) try {
         app.customTabsIntent.launchUrl(this, url.toUri())
         return
     } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }

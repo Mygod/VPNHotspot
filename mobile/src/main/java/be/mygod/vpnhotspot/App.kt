@@ -53,6 +53,7 @@ class App : Application() {
     val uiMode by lazy { getSystemService<UiModeManager>()!! }
     val wifi by lazy { getSystemService<WifiManager>()!! }
 
+    val hasTouch by lazy { packageManager.hasSystemFeature("android.hardware.faketouch") }
     val customTabsIntent by lazy {
         CustomTabsIntent.Builder()
                 .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
