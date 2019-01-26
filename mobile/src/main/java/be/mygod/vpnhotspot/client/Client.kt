@@ -55,7 +55,7 @@ open class Client(val mac: Long, val iface: String) {
         SpannableStringBuilder().apply {
             if (!record?.nickname.isNullOrEmpty()) appendln(macIface)
             ip.entries.forEach { (ip, state) ->
-                append(makeIpSpan(ip.hostAddress))
+                append(makeIpSpan(ip))
                 appendln(app.getText(when (state) {
                     IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
                     IpNeighbour.State.VALID -> R.string.connected_state_valid
