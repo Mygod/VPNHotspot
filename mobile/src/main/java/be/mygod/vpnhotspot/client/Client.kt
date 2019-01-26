@@ -12,21 +12,22 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
-import be.mygod.vpnhotspot.room.macToLong
+import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
 import java.util.*
 
-open class Client(val mac: String, val iface: String) {
+open class Client(val mac: Long, val iface: String) {
     companion object DiffCallback : DiffUtil.ItemCallback<Client>() {
         override fun areItemsTheSame(oldItem: Client, newItem: Client) =
                 oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
         override fun areContentsTheSame(oldItem: Client, newItem: Client) = oldItem == newItem
     }
 
-    private val macIface get() = "$mac%$iface"
-    private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac.macToLong())
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
+    val macString by lazy { mac.macToString() }
+    private val macIface get() = "$macString%$iface"
+    private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac)
 
     val nickname get() = record.value?.nickname ?: ""
     val blocked get() = record.value?.blocked == true
@@ -37,7 +38,7 @@ open class Client(val mac: String, val iface: String) {
          * we hijack the get title process to check if we need to perform MacLookup,
          * as record might not be initialized in other more appropriate places
          */
-        if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(mac.macToLong())
+        if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(mac)
         SpannableStringBuilder(record?.nickname.onEmpty(macIface)).apply {
             if (record?.blocked == true) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
@@ -56,7 +57,7 @@ open class Client(val mac: String, val iface: String) {
         }.toString().trimEnd()
     }
 
-    fun obtainRecord() = record.value ?: ClientRecord(mac.macToLong())
+    fun obtainRecord() = record.value ?: ClientRecord(mac)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

@@ -8,7 +8,6 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -147,7 +146,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
     }
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
 
-    private inner class Client(private val ip: Inet4Address, mac: String) : AutoCloseable {
+    private inner class Client(private val ip: Inet4Address, mac: Long) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
             val address = ip.hostAddress
             iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
@@ -173,7 +172,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    runBlocking { AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()) }
+                    runBlocking { AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr) }
                             ?.blocked == true) continue
             toRemove.remove(neighbour.ip)
             try {

@@ -42,11 +42,11 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
-    data class NicknameArg(val mac: String, val nickname: CharSequence) : VersionedParcelable
+    data class NicknameArg(val mac: Long, val nickname: CharSequence) : VersionedParcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, arg.mac))
+            setTitle(getString(R.string.clients_nickname_title, arg.mac.macToString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
         }
@@ -58,9 +58,8 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
             GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
-                val mac = arg.mac.macToLong()
-                MacLookup.abort(mac)
-                AppDatabase.instance.clientRecordDao.upsert(mac) {
+                MacLookup.abort(arg.mac)
+                AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
                     nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
                 }
             }
@@ -124,7 +123,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 }
                 R.id.block, R.id.unblock -> {
                     val client = binding.client ?: return false
-                    val wasWorking = TrafficRecorder.isWorking(client.mac.macToLong())
+                    val wasWorking = TrafficRecorder.isWorking(client.mac)
                     client.obtainRecord().apply {
                         blocked = !blocked
                         AppDatabase.instance.clientRecordDao.update(this)
@@ -139,7 +138,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                     binding.client?.let { client ->
                         launch(start = CoroutineStart.UNDISPATCHED) {
                             StatsDialogFragment().withArg(StatsArg(client.title.value!!,
-                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
+                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
                                     .show(fragmentManager ?: return@launch, "StatsDialogFragment")
                         }
                     }
@@ -163,7 +162,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
             val client = getItem(position)
             holder.binding.client = client
             holder.binding.rate =
-                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac.macToLong())) { TrafficRate() }
+                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac)) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 
