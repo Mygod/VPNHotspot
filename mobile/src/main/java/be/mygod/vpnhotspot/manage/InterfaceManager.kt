@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
-import android.text.method.LinkMovementMethod
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
@@ -16,7 +15,6 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
             View.OnClickListener {
         init {
             itemView.setOnClickListener(this)
-            binding.text.movementMethod = LinkMovementMethod.getInstance()
         }
 
         lateinit var iface: String

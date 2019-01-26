@@ -14,7 +14,6 @@ import android.os.IBinder
 import android.provider.Settings
 import android.text.SpannableStringBuilder
 import android.text.Spanned
-import android.text.method.LinkMovementMethod
 import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
@@ -37,7 +36,6 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             View.OnClickListener {
         init {
             itemView.setOnClickListener(this)
-            binding.text.movementMethod = LinkMovementMethod.getInstance()
         }
 
         lateinit var manager: LocalOnlyHotspotManager

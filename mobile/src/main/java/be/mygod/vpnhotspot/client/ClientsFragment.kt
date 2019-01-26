@@ -108,7 +108,6 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         init {
             binding.setLifecycleOwner(this@ClientsFragment)
             binding.root.setOnClickListener(this)
-            binding.title.movementMethod = LinkMovementMethod.getInstance()
             binding.description.movementMethod = LinkMovementMethod.getInstance()
         }
 
