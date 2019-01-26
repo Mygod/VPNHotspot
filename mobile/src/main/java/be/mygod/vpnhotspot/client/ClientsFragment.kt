@@ -37,6 +37,7 @@ import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.util.MainScope
+import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -74,7 +75,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
     data class StatsArg(val title: CharSequence, val stats: ClientStats) : VersionedParcelable
     class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle(getString(R.string.clients_stats_title, arg.title))
+            setTitle(SpanFormatter.format(getString(R.string.clients_stats_title), arg.title))
             val context = context
             val resources = resources
             val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
