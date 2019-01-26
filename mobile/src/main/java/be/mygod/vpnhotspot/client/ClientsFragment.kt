@@ -32,12 +32,16 @@ import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.*
+import be.mygod.vpnhotspot.util.MainScope
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment() {
+class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
     data class NicknameArg(val mac: String, val nickname: CharSequence) : VersionedParcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
@@ -53,8 +57,12 @@ class ClientsFragment : Fragment() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
-            AppDatabase.instance.clientRecordDao.upsert(arg.mac.macToLong()) {
-                nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+            GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                val mac = arg.mac.macToLong()
+                MacLookup.abort(mac)
+                AppDatabase.instance.clientRecordDao.upsert(mac) {
+                    nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+                }
             }
         }
     }
@@ -93,7 +101,7 @@ class ClientsFragment : Fragment() {
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
-            binding.setLifecycleOwner(this@ClientsFragment) // todo some way better?
+            binding.setLifecycleOwner(this@ClientsFragment)
             binding.root.setOnClickListener(this)
         }
 
@@ -117,10 +125,9 @@ class ClientsFragment : Fragment() {
                 R.id.block, R.id.unblock -> {
                     val client = binding.client ?: return false
                     val wasWorking = TrafficRecorder.isWorking(client.mac.macToLong())
-                    client.record.apply {
-                        val value = value ?: ClientRecord(client.mac.macToLong())
-                        value.blocked = !value.blocked
-                        AppDatabase.instance.clientRecordDao.update(value)
+                    client.obtainRecord().apply {
+                        blocked = !blocked
+                        AppDatabase.instance.clientRecordDao.update(this)
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {
@@ -129,10 +136,13 @@ class ClientsFragment : Fragment() {
                     true
                 }
                 R.id.stats -> {
-                    val client = binding.client ?: return false
-                    StatsDialogFragment().withArg(StatsArg(client.title.value!!, // todo?
-                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
-                            .show(fragmentManager ?: return false, "StatsDialogFragment")
+                    binding.client?.let { client ->
+                        launch(start = CoroutineStart.UNDISPATCHED) {
+                            StatsDialogFragment().withArg(StatsArg(client.title.value!!,
+                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
+                                    .show(fragmentManager ?: return@launch, "StatsDialogFragment")
+                        }
+                    }
                     true
                 }
                 else -> false
@@ -210,5 +220,10 @@ class ClientsFragment : Fragment() {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        job.cancel()
+        super.onDestroy()
     }
 }

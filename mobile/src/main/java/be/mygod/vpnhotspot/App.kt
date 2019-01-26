@@ -8,7 +8,6 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Handler
 import android.preference.PreferenceManager
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -47,7 +46,6 @@ class App : Application() {
     }
 
     lateinit var deviceStorage: Application
-    val handler = Handler()
     val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
     val uiMode by lazy { getSystemService<UiModeManager>()!! }

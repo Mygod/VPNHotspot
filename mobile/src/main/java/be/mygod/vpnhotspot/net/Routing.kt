@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.net.*
 import java.util.concurrent.atomic.AtomicLong
@@ -172,7 +173,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong())?.blocked == true) continue
+                    runBlocking { AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr.macToLong()) }
+                            ?.blocked == true) continue
             toRemove.remove(neighbour.ip)
             try {
                 clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }

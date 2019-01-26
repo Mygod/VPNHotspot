@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.ClientRecord
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
@@ -24,20 +25,27 @@ open class Client(val mac: String, val iface: String) {
     }
 
     private val macIface get() = "$mac%$iface"
+    private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac.macToLong())
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
-    val record = AppDatabase.instance.clientRecordDao.lookupSync(mac.macToLong())
 
     val nickname get() = record.value?.nickname ?: ""
     val blocked get() = record.value?.blocked == true
+    val macLookupPending get() = record.value?.macLookupPending != false
 
     open val icon get() = TetherType.ofInterface(iface).icon
     val title = Transformations.map(record) { record ->
-        SpannableStringBuilder(record.nickname.onEmpty(macIface)).apply {
-            if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+        /**
+         * we hijack the get title process to check if we need to perform MacLookup,
+         * as record might not be initialized in other more appropriate places
+         */
+        if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(mac.macToLong())
+        SpannableStringBuilder(record?.nickname.onEmpty(macIface)).apply {
+            if (record?.blocked == true) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
+    val titleSelectable = Transformations.map(record) { it?.nickname.isNullOrEmpty() }
     val description = Transformations.map(record) { record ->
-        StringBuilder(if (record.nickname.isEmpty()) "" else "$macIface\n").apply {
+        StringBuilder(if (record?.nickname.isNullOrEmpty()) "" else "$macIface\n").apply {
             ip.entries.forEach { (ip, state) ->
                 appendln(app.getString(when (state) {
                     IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
@@ -48,6 +56,8 @@ open class Client(val mac: String, val iface: String) {
             }
         }.toString().trimEnd()
     }
+
+    fun obtainRecord() = record.value ?: ClientRecord(mac.macToLong())
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

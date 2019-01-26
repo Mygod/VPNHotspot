@@ -11,10 +11,10 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
+import android.os.Handler
 import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
-import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
@@ -105,6 +105,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private val p2pManager get() = RepeaterService.p2pManager!!
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
+    private val handler = Handler()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -180,7 +181,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
-            app.handler.postDelayed(1000, this, this::onChannelDisconnected)
+            handler.postDelayed(this::onChannelDisconnected, 1000)
         }
     }
 
@@ -318,7 +319,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     override fun onDestroy() {
-        app.handler.removeCallbacksAndMessages(this)
+        handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)

@@ -55,8 +55,9 @@ data class TrafficRecord(
                     SUM(TrafficRecord.receivedBytes) AS receivedBytes
                 FROM TrafficRecord LEFT JOIN TrafficRecord AS Next ON TrafficRecord.id = Next.previousId
                 /* We only want to find the last record for each chain so that we don't double count */
-                WHERE TrafficRecord.mac = :mac AND Next.id IS NULL""")
-        abstract fun queryStats(mac: Long): ClientStats
+                WHERE TrafficRecord.mac = :mac AND Next.id IS NULL
+                """)
+        abstract suspend fun queryStats(mac: Long): ClientStats
     }
 }
 
