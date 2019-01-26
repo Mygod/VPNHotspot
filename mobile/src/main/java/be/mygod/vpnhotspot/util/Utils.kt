@@ -4,11 +4,18 @@ import android.content.*
 import android.os.Build
 import android.system.Os
 import android.system.OsConstants
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -43,19 +50,39 @@ fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
 
-fun NetworkInterface.formatAddresses() =
-        (interfaceAddresses.asSequence()
-                .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
-                .toList() +
-                listOfNotNull(try {
-                    hardwareAddress?.joinToString(":") { "%02x".format(it) }
-                } catch (_: SocketException) {
-                    null
-                }))
-                .joinToString("\n")
+fun makeIpSpan(ip: String) = SpannableString(ip).apply {
+    if (app.hasTouch) {
+        val filteredIp = ip.split('%', limit = 2).first()
+        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$filteredIp"), 0, filteredIp.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+}
+fun makeMacSpan(mac: String) = SpannableString(mac).apply {
+    if (app.hasTouch) {
+        setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+}
+
+fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
+    try {
+        hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
+    } catch (_: SocketException) { }
+    for (address in interfaceAddresses) {
+        append(makeIpSpan(address.address.hostAddress))
+        appendln("/${address.networkPrefixLength}")
+    }
+}.trimEnd()
 
 fun parseNumericAddress(address: String?): InetAddress? =
         Os.inet_pton(OsConstants.AF_INET, address) ?: Os.inet_pton(OsConstants.AF_INET6, address)
+
+fun Context.launchUrl(url: String) {
+    if (app.hasTouch) try {
+        app.customTabsIntent.launchUrl(this, url.toUri())
+        return
+    } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
+    SmartSnackbar.make(url).show()
+}
 
 fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)

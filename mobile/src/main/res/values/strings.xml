@@ -58,9 +58,9 @@
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_failed">Android system has failed to start tethering.</string>
 
-    <string name="connected_state_incomplete">%s (connecting)</string>
-    <string name="connected_state_valid">%s (reachable)</string>
-    <string name="connected_state_failed">%s (lost)</string>
+    <string name="connected_state_incomplete">" (connecting)"</string>
+    <string name="connected_state_valid">" (reachable)"</string>
+    <string name="connected_state_failed">" (lost)"</string>
 
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Block</string>

@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.broadcastReceiver
 
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
@@ -29,11 +30,12 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     val clients = MutableLiveData<List<Client>>()
 
     private fun populateClients() {
-        val clients = HashMap<Pair<String, String>, Client>()
+        val clients = HashMap<Pair<String, Long>, Client>()
         val group = repeater?.group
         val p2pInterface = group?.`interface`
         if (p2pInterface != null) {
-            for (client in p2p) clients[Pair(p2pInterface, client.deviceAddress)] = WifiP2pClient(p2pInterface, client)
+            for (client in p2p) clients[Pair(p2pInterface, client.deviceAddress.macToLong())] =
+                    WifiP2pClient(p2pInterface, client)
         }
         for (neighbour in neighbours) {
             val key = Pair(neighbour.dev, neighbour.lladdr)
@@ -45,7 +47,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             }
             client.ip += Pair(neighbour.ip, neighbour.state)
         }
-        this.clients.postValue(clients.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.mac }))
+        this.clients.postValue(clients.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.macString }))
     }
 
     private fun refreshP2p() {

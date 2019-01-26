@@ -35,7 +35,7 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
         override val active get() = parent.binder?.isActive(iface) == true
     }
 
-    val addresses = parent.ifaceLookup[iface]?.formatAddresses() ?: ""
+    private val addresses = parent.ifaceLookup[iface]?.formatAddresses() ?: ""
     override val type get() = VIEW_TYPE_INTERFACE
     private val data = Data()
 

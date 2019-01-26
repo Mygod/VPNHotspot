@@ -1,13 +1,10 @@
 package be.mygod.vpnhotspot
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
@@ -27,19 +24,6 @@ import q.rorbin.badgeview.QBadgeView
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
-    private val customTabsIntent by lazy {
-        CustomTabsIntent.Builder()
-                .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .build()
-    }
-
-    fun launchUrl(url: Uri) {
-        if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
-            customTabsIntent.launchUrl(this, url)
-            return
-        } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
-        SmartSnackbar.make(url.toString()).show()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

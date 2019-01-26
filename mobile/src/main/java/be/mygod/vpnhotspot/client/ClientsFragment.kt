@@ -4,6 +4,7 @@ import android.content.DialogInterface
 import android.os.Bundle
 import android.text.format.DateUtils
 import android.text.format.Formatter
+import android.text.method.LinkMovementMethod
 import android.util.LongSparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
@@ -31,18 +32,27 @@ import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
-import be.mygod.vpnhotspot.room.*
+import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.ClientStats
+import be.mygod.vpnhotspot.room.TrafficRecord
+import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.util.MainScope
+import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment() {
-    data class NicknameArg(val mac: String, val nickname: CharSequence) : VersionedParcelable
+class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
+    data class NicknameArg(val mac: Long, val nickname: CharSequence) : VersionedParcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, arg.mac))
+            setTitle(getString(R.string.clients_nickname_title, arg.mac.macToString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
         }
@@ -53,8 +63,11 @@ class ClientsFragment : Fragment() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
-            AppDatabase.instance.clientRecordDao.upsert(arg.mac.macToLong()) {
-                nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+            GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+                MacLookup.abort(arg.mac)
+                AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
+                    nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+                }
             }
         }
     }
@@ -62,7 +75,7 @@ class ClientsFragment : Fragment() {
     data class StatsArg(val title: CharSequence, val stats: ClientStats) : VersionedParcelable
     class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle(getString(R.string.clients_stats_title, arg.title))
+            setTitle(SpanFormatter.format(getString(R.string.clients_stats_title), arg.title))
             val context = context
             val resources = resources
             val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
@@ -93,8 +106,9 @@ class ClientsFragment : Fragment() {
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
-            binding.setLifecycleOwner(this@ClientsFragment) // todo some way better?
+            binding.setLifecycleOwner(this@ClientsFragment)
             binding.root.setOnClickListener(this)
+            binding.description.movementMethod = LinkMovementMethod.getInstance()
         }
 
         override fun onClick(v: View) {
@@ -116,11 +130,10 @@ class ClientsFragment : Fragment() {
                 }
                 R.id.block, R.id.unblock -> {
                     val client = binding.client ?: return false
-                    val wasWorking = TrafficRecorder.isWorking(client.mac.macToLong())
-                    client.record.apply {
-                        val value = value ?: ClientRecord(client.mac.macToLong())
-                        value.blocked = !value.blocked
-                        AppDatabase.instance.clientRecordDao.update(value)
+                    val wasWorking = TrafficRecorder.isWorking(client.mac)
+                    client.obtainRecord().apply {
+                        blocked = !blocked
+                        AppDatabase.instance.clientRecordDao.update(this)
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {
@@ -129,10 +142,13 @@ class ClientsFragment : Fragment() {
                     true
                 }
                 R.id.stats -> {
-                    val client = binding.client ?: return false
-                    StatsDialogFragment().withArg(StatsArg(client.title.value!!, // todo?
-                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac.macToLong())))
-                            .show(fragmentManager ?: return false, "StatsDialogFragment")
+                    binding.client?.let { client ->
+                        launch(start = CoroutineStart.UNDISPATCHED) {
+                            StatsDialogFragment().withArg(StatsArg(client.title.value!!,
+                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
+                                    .show(fragmentManager ?: return@launch, "StatsDialogFragment")
+                        }
+                    }
                     true
                 }
                 else -> false
@@ -153,7 +169,7 @@ class ClientsFragment : Fragment() {
             val client = getItem(position)
             holder.binding.client = client
             holder.binding.rate =
-                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac.macToLong())) { TrafficRate() }
+                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac)) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 
@@ -210,5 +226,10 @@ class ClientsFragment : Fragment() {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
+    }
+
+    override fun onDestroy() {
+        job.cancel()
+        super.onDestroy()
     }
 }

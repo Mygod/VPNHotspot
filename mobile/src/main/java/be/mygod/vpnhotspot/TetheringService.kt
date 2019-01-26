@@ -11,6 +11,9 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class TetheringService : IpNeighbourMonitoringService() {
@@ -90,7 +93,7 @@ class TetheringService : IpNeighbourMonitoringService() {
             }
             updateNotification()
         }
-        app.handler.post { binder.routingsChanged() }
+        GlobalScope.launch(Dispatchers.Main) { binder.routingsChanged() }
     }
 
     override fun onBind(intent: Intent?) = binder

@@ -7,13 +7,14 @@ import androidx.room.*
 data class ClientRecord(@PrimaryKey
                         val mac: Long,
                         var nickname: CharSequence = "",
-                        var blocked: Boolean = false) {
+                        var blocked: Boolean = false,
+                        var macLookupPending: Boolean = true) {
     @androidx.room.Dao
     abstract class Dao {
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
-        abstract fun lookup(mac: Long): ClientRecord?
+        abstract suspend fun lookup(mac: Long): ClientRecord?
 
-        fun lookupOrDefault(mac: Long) = lookup(mac) ?: ClientRecord(mac)
+        suspend fun lookupOrDefault(mac: Long) = lookup(mac) ?: ClientRecord(mac)
 
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
         abstract fun lookupSync(mac: Long): LiveData<ClientRecord>
@@ -23,7 +24,7 @@ data class ClientRecord(@PrimaryKey
         fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
 
         @Transaction
-        open fun upsert(mac: Long, operation: ClientRecord.() -> Unit) = lookupOrDefault(mac).apply {
+        open suspend fun upsert(mac: Long, operation: ClientRecord.() -> Unit) = lookupOrDefault(mac).apply {
             operation()
             update(this)
         }

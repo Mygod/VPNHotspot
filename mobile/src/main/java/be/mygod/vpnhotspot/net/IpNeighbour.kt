@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 import java.io.File
@@ -8,7 +9,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
-data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
+data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, val state: State) {
     enum class State {
         INCOMPLETE, VALID, FAILED, DELETING
     }
@@ -50,13 +51,13 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         "NOARP" -> return emptyList()   // skip
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
-                val result = IpNeighbour(ip, dev, lladdr, state)
+                val result = IpNeighbour(ip, dev, lladdr.macToLong(), state)
                 val devParser = devFallback.matchEntire(dev)
                 if (devParser != null) try {
                     val index = devParser.groupValues[1].toInt()
                     val iface = NetworkInterface.getByIndex(index)
                     if (iface == null) Timber.w("Failed to find network interface #$index")
-                    else return listOf(IpNeighbour(ip, iface.name, lladdr, state), result)
+                    else return listOf(IpNeighbour(ip, iface.name, lladdr.macToLong(), state), result)
                 } catch (_: SocketException) { }
                 listOf(result)
             } catch (e: Exception) {

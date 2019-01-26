@@ -41,6 +41,7 @@
                 tools:text="wlan0"/>
 
             <be.mygod.vpnhotspot.widget.AutoCollapseTextView
+                android:id="@+id/text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{data.text}"

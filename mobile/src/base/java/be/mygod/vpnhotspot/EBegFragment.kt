@@ -12,8 +12,8 @@ import android.widget.Spinner
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.core.net.toUri
 import androidx.versionedparcelable.VersionedParcelable
+import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
 import timber.log.Timber
@@ -62,9 +62,7 @@ class EBegFragment : AppCompatDialogFragment(), PurchasesUpdatedListener, Billin
         }
         @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
-                .setOnClickListener {
-                    (activity as MainActivity).launchUrl("https://mygod.be/donate/".toUri())
-                }
+                .setOnClickListener { requireContext().launchUrl("https://mygod.be/donate/") }
     }
 
     private fun openDialog(@StringRes title: Int, @StringRes message: Int) {

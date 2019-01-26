@@ -8,6 +8,7 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
 import android.os.IBinder
+import android.text.method.LinkMovementMethod
 import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
@@ -32,7 +33,11 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class RepeaterManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
-    class ViewHolder(val binding: ListitemRepeaterBinding) : RecyclerView.ViewHolder(binding.root)
+    class ViewHolder(val binding: ListitemRepeaterBinding) : RecyclerView.ViewHolder(binding.root) {
+        init {
+            binding.addresses.movementMethod = LinkMovementMethod.getInstance()
+        }
+    }
     inner class Data : BaseObservable() {
         val switchEnabled: Boolean
             @Bindable get() = when (binder?.service?.status) {

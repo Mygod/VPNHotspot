@@ -1,7 +1,9 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.net.InetAddress
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
@@ -61,7 +63,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
     private fun postUpdateLocked() {
         if (updatePosted || instance != this) return
-        app.handler.post {
+        GlobalScope.launch(Dispatchers.Main) {
             val neighbours = synchronized(neighbours) {
                 updatePosted = false
                 neighbours.values.toList()

@@ -6,7 +6,6 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
@@ -24,11 +23,8 @@ object TrafficRecorder {
     private val records = HashMap<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
-    fun register(ip: InetAddress, downstream: String, mac: String) {
-        val record = TrafficRecord(
-                mac = mac.macToLong(),
-                ip = ip,
-                downstream = downstream)
+    fun register(ip: InetAddress, downstream: String, mac: Long) {
+        val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
             DebugHelper.log(TAG, "Registering $ip%$downstream")

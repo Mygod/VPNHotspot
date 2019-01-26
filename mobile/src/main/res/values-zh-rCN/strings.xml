@@ -54,9 +54,9 @@
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_failed">Android 系统无法打开网络共享。</string>
 
-    <string name="connected_state_incomplete">%s (正在连接)</string>
-    <string name="connected_state_valid">%s (已连上)</string>
-    <string name="connected_state_failed">%s (已断开)</string>
+    <string name="connected_state_incomplete">（正在连接）</string>
+    <string name="connected_state_valid">（已连上）</string>
+    <string name="connected_state_failed">（已断开）</string>
 
     <string name="clients_popup_nickname">昵称…</string>
     <string name="clients_popup_block">拉黑</string>

@@ -11,43 +11,62 @@ import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.macToLong
+import be.mygod.vpnhotspot.room.ClientRecord
+import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.util.makeIpSpan
+import be.mygod.vpnhotspot.util.makeMacSpan
 import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
 import java.util.*
 
-open class Client(val mac: String, val iface: String) {
+open class Client(val mac: Long, val iface: String) {
     companion object DiffCallback : DiffUtil.ItemCallback<Client>() {
         override fun areItemsTheSame(oldItem: Client, newItem: Client) =
                 oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
         override fun areContentsTheSame(oldItem: Client, newItem: Client) = oldItem == newItem
     }
 
-    private val macIface get() = "$mac%$iface"
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
-    val record = AppDatabase.instance.clientRecordDao.lookupSync(mac.macToLong())
+    val macString by lazy { mac.macToString() }
+    private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac)
+    private val macIface get() = SpannableStringBuilder(makeMacSpan(macString)).apply {
+        append('%')
+        append(iface)
+    }
 
     val nickname get() = record.value?.nickname ?: ""
     val blocked get() = record.value?.blocked == true
 
     open val icon get() = TetherType.ofInterface(iface).icon
     val title = Transformations.map(record) { record ->
-        SpannableStringBuilder(record.nickname.onEmpty(macIface)).apply {
-            if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+        /**
+         * we hijack the get title process to check if we need to perform MacLookup,
+         * as record might not be initialized in other more appropriate places
+         */
+        if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(mac)
+        SpannableStringBuilder(record?.nickname.onEmpty(macIface)).apply {
+            if (record?.blocked == true) {
+                setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+            }
         }
     }
+    val titleSelectable = Transformations.map(record) { it?.nickname.isNullOrEmpty() }
     val description = Transformations.map(record) { record ->
-        StringBuilder(if (record.nickname.isEmpty()) "" else "$macIface\n").apply {
+        SpannableStringBuilder().apply {
+            if (!record?.nickname.isNullOrEmpty()) appendln(macIface)
             ip.entries.forEach { (ip, state) ->
-                appendln(app.getString(when (state) {
+                append(makeIpSpan(ip.hostAddress))
+                appendln(app.getText(when (state) {
                     IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
                     IpNeighbour.State.VALID -> R.string.connected_state_valid
                     IpNeighbour.State.FAILED -> R.string.connected_state_failed
                     else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
-                }, ip.hostAddress))
+                }))
             }
-        }.toString().trimEnd()
+        }.trimEnd()
     }
+
+    fun obtainRecord() = record.value ?: ClientRecord(mac)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
