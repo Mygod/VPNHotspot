@@ -14,7 +14,7 @@ import java.util.*
  * @author George T. Steel
  */
 object SpanFormatter {
-    private val FORMAT_SEQUENCE = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[tT][a-zA-Z])".toPattern()
+    private val formatSequence = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[tT][a-zA-Z])".toPattern()
 
     /**
      * Version of [String.format] that works on [Spanned] strings to preserve rich text formatting.
@@ -29,9 +29,7 @@ object SpanFormatter {
      * additional arguments are ignored.
      * @return the formatted string (with spans).
      */
-    fun format(format: CharSequence, vararg args: Any): SpannedString {
-        return format(Locale.getDefault(), format, *args)
-    }
+    fun format(format: CharSequence, vararg args: Any) = format(Locale.getDefault(), format, *args)
 
     /**
      * Version of [String.format] that works on [Spanned] strings to preserve rich text formatting.
@@ -54,7 +52,7 @@ object SpanFormatter {
         var argAt = -1
 
         while (i < out.length) {
-            val m = FORMAT_SEQUENCE.matcher(out)
+            val m = formatSequence.matcher(out)
             if (!m.find(i)) break
             i = m.start()
             val exprEnd = m.end()
