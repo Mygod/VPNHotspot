@@ -5,7 +5,7 @@ import android.text.Spanned
 import android.text.style.StrikethroughSpan
 import androidx.lifecycle.Transformations
 import androidx.recyclerview.widget.DiffUtil
-import be.mygod.vpnhotspot.App
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.IpNeighbour
@@ -13,6 +13,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
 import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.util.makeMacSpan
 import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
@@ -28,7 +29,7 @@ open class Client(val mac: Long, val iface: String) {
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
     val macString by lazy { mac.macToString() }
     private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac)
-    private val macIface get() = makeMacSpan(macString).apply {
+    private val macIface get() = SpannableStringBuilder(makeMacSpan(macString)).apply {
         append('%')
         append(iface)
     }
@@ -54,12 +55,13 @@ open class Client(val mac: Long, val iface: String) {
         SpannableStringBuilder().apply {
             if (!record?.nickname.isNullOrEmpty()) appendln(macIface)
             ip.entries.forEach { (ip, state) ->
-                appendln(App.app.getString(when (state) {
+                append(makeIpSpan(ip.hostAddress))
+                appendln(app.getText(when (state) {
                     IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
                     IpNeighbour.State.VALID -> R.string.connected_state_valid
                     IpNeighbour.State.FAILED -> R.string.connected_state_failed
                     else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
-                }, ip.hostAddress))
+                }))
             }
         }.trimEnd()
     }

@@ -5,8 +5,8 @@ import android.os.Build
 import android.system.Os
 import android.system.OsConstants
 import android.text.Spannable
+import android.text.SpannableString
 import android.text.SpannableStringBuilder
-import android.text.style.URLSpan
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
@@ -50,17 +50,23 @@ fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
 
-fun makeMacSpan(mac: String) = SpannableStringBuilder(mac).apply {
-    if (app.hasTouch) setSpan(object : URLSpan("https://macvendors.co/results/$mac") {
-        override fun onClick(widget: View) = widget.context.launchUrl(url)
-    }, 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+fun makeIpSpan(ip: String) = SpannableString(ip).apply {
+    if (app.hasTouch) setSpan(CustomTabsUrlSpan("https://ipinfo.io/$ip"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+}
+fun makeMacSpan(mac: String) = SpannableString(mac).apply {
+    if (app.hasTouch) {
+        setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
 }
 
 fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
     try {
         hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
     } catch (_: SocketException) { }
-    for (address in interfaceAddresses) appendln("${address.address.hostAddress}/${address.networkPrefixLength}")
+    for (address in interfaceAddresses) {
+        append(makeIpSpan(address.address.hostAddress))
+        appendln("/${address.networkPrefixLength}")
+    }
 }.trimEnd()
 
 fun parseNumericAddress(address: String?): InetAddress? =
