@@ -51,7 +51,11 @@ fun setVisibility(view: View, value: Boolean) {
 }
 
 fun makeIpSpan(ip: String) = SpannableString(ip).apply {
-    if (app.hasTouch) setSpan(CustomTabsUrlSpan("https://ipinfo.io/$ip"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    if (app.hasTouch) {
+        val filteredIp = ip.split('%', limit = 2).first()
+        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$filteredIp"), 0, filteredIp.length,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
 }
 fun makeMacSpan(mac: String) = SpannableString(mac).apply {
     if (app.hasTouch) {
