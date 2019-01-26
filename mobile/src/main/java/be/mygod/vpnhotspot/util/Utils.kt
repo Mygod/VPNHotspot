@@ -57,10 +57,10 @@ fun makeMacSpan(mac: String) = SpannableStringBuilder(mac).apply {
 }
 
 fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
-    for (address in interfaceAddresses) appendln("${address.address.hostAddress}/${address.networkPrefixLength}")
     try {
         hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
     } catch (_: SocketException) { }
+    for (address in interfaceAddresses) appendln("${address.address.hostAddress}/${address.networkPrefixLength}")
 }.trimEnd()
 
 fun parseNumericAddress(address: String?): InetAddress? =
