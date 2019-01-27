@@ -2,8 +2,6 @@ package be.mygod.vpnhotspot.util
 
 import android.content.*
 import android.os.Build
-import android.system.Os
-import android.system.OsConstants
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -72,8 +70,12 @@ fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
     }
 }.trimEnd()
 
-fun parseNumericAddress(address: String?): InetAddress? =
-        Os.inet_pton(OsConstants.AF_INET, address) ?: Os.inet_pton(OsConstants.AF_INET6, address)
+private val parseNumericAddress by lazy {
+    InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
+        isAccessible = true
+    }
+}
+fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

@@ -34,8 +34,8 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
         fun parse(line: String): List<IpNeighbour> {
             return try {
                 val match = parser.matchEntire(line)!!
-                val ip = parseNumericAddress(match.groupValues[2])!!    // by regex, ip is non-empty
-                val dev = match.groupValues[3]                          // by regex, dev is non-empty as well
+                val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
+                val dev = match.groupValues[3]                      // by regex, dev is non-empty as well
                 var lladdr = checkLladdrNotLoopback(match.groupValues[5])
                 // use ARP as fallback
                 if (lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
