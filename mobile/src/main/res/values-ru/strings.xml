@@ -1,13 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
- Values copied from:
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/e5ed810/res/values/strings.xml
-    * @string/wifi_tether_configure_ap_text
-    * @string/usb_tethering_button_text
-    * @string/wifi_hotspot_checkbox_text
-    * @string/bluetooth_tether_checkbox_text
-  -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
 
@@ -49,17 +40,15 @@
 
     <string name="credentials_password_too_short">Пароль должен содержать не менее 8 символов.</string>
 
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
+    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-ru/donations__strings.xml -->
     <string name="donations__button_close">Закрыть</string>
-    <string name="donations__description">Считаете ли вы это приложение полезным?\n
- Поддержите его разработку, отправив пожертвование разработчику!</string>
+    <string name="donations__description">Считаете это приложение полезным?\\nПоддержите его разработку, отправив пожертвование разработчику!</string>
     <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported_title">Пожертвования в приложении не поддерживаются.</string>
-    <string name="donations__google_android_market_not_supported">Пожертвования в приложении не поддерживаются. Google Play Store установлен правильно?</string>
-    <string name="donations__google_android_market_description">Google взимает комиссию 30%</string>
-    <string name="donations__google_android_market_donate_button">Пожертвование!</string>
-    <string name="donations__google_android_market_text">Сколько стоит?</string>
-    <string name="donations__thanks_dialog_title">Спасибо!</string>
-    <string name="donations__thanks_dialog">Thanks for donating!\n
- I really appreciate this!</string>
+    <string name="donations__google_android_market_not_supported_title">In-App пожертвования не поддерживаются.</string>
+    <string name="donations__google_android_market_not_supported">Пожертвования через приложение не поддерживаются. Google Play Store установлен правильно?</string>
+    <string name="donations__google_android_market_description">Google взимает 30% комиссии с каждого пожертвования!</string>
+    <string name="donations__google_android_market_donate_button">Пожертвовать!</string>
+    <string name="donations__google_android_market_text">Сколько?</string>
+    <string name="donations__thanks_dialog_title">Благодарю!</string>
+    <string name="donations__thanks_dialog">Благодарю за пожертвование! Я очень это ценю!</string>
 </resources>
