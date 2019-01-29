@@ -17,7 +17,7 @@
 
     <string name="repeater_p2p_unavailable">Wi-Fi директ недоступен, пожалуйста включите Wi-Fi</string>
     <string name="repeater_create_group_failure">Не удалось создать группу P2P (причина: %s)</string>
-    <string name="repeater_remove_group_failure">Не удалось удалить группу P2P (причина:% s)</string>
+    <string name="repeater_remove_group_failure">Не удалось удалить группу P2P (причина: %s)</string>
 
     <string name="repeater_failure_reason_error">внутренняя ошибка</string>
     <string name="repeater_failure_reason_p2p_unsupported">Wi-Fi напрямую не поддерживается</string>
