@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.annotation.SuppressLint
 import android.app.Application
 import android.app.UiModeManager
-import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
@@ -16,6 +15,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.RootSession
+import java.util.*
 
 class App : Application() {
     companion object {
@@ -48,7 +48,12 @@ class App : Application() {
     }
 
     lateinit var deviceStorage: Application
-    val pref: SharedPreferences by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
+    val english by lazy {
+        createConfigurationContext(Configuration(resources.configuration).apply {
+            setLocale(Locale.ENGLISH)
+        })
+    }
+    val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
     val uiMode by lazy { getSystemService<UiModeManager>()!! }
     val wifi by lazy { getSystemService<WifiManager>()!! }

@@ -55,6 +55,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
             setTitle(getString(R.string.clients_nickname_title, arg.mac.macToString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
+            setNeutralButton(R.string.clients_nickname_set_to_vendor, listener)
         }
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
@@ -63,11 +64,14 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
-            GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
-                MacLookup.abort(arg.mac)
-                AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
-                    nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+            when (which) {
+                DialogInterface.BUTTON_POSITIVE -> GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+                    MacLookup.abort(arg.mac)
+                    AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
+                        nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+                    }
                 }
+                DialogInterface.BUTTON_NEUTRAL -> MacLookup.perform(arg.mac, true)
             }
         }
     }
