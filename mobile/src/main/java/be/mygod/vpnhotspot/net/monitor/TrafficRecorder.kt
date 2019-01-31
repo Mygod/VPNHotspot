@@ -10,6 +10,10 @@ import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
@@ -25,7 +29,9 @@ object TrafficRecorder {
 
     fun register(ip: InetAddress, downstream: String, mac: Long) {
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
-        AppDatabase.instance.trafficRecordDao.insert(record)
+        GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+            AppDatabase.instance.trafficRecordDao.insert(record)
+        }
         synchronized(this) {
             DebugHelper.log(TAG, "Registering $ip%$downstream")
             check(records.put(Pair(ip, downstream), record) == null)
@@ -117,7 +123,9 @@ object TrafficRecorder {
             check(record.sentBytes >= 0)
             check(record.receivedPackets >= 0)
             check(record.receivedBytes >= 0)
-            AppDatabase.instance.trafficRecordDao.insert(record)
+            GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+                AppDatabase.instance.trafficRecordDao.insert(record)
+            }
         }
         foregroundListeners(records.values, oldRecords)
     }

@@ -46,6 +46,7 @@ class App : Application() {
                 R.array.com_google_android_gms_fonts_certs)).apply {
             setEmojiSpanIndicatorEnabled(BuildConfig.DEBUG)
             registerInitCallback(object : EmojiCompat.InitCallback() {
+                override fun onInitialized() = DebugHelper.log("EmojiCompat", "Initialized")
                 override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
             })
         })
