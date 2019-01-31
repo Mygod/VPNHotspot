@@ -21,7 +21,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
          *   https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
          * Assumptions: IP addr (key) always present and RTM_GETNEIGH is never used
          */
-        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr (.[^ ]+))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
+        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr ([^ ]*))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
                 .toRegex()
         /**
          * Fallback format will be used if if_indextoname returns null, which some stupid devices do.
@@ -43,7 +43,8 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                         .map { it[ARP_HW_ADDRESS] }
                         .singleOrNull() ?: "")
-                val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
+                if (lladdr.isEmpty()) return emptyList()
+                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else
                     when (match.groupValues[7]) {
                         "", "INCOMPLETE" -> State.INCOMPLETE
                         "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
