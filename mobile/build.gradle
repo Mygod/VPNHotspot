@@ -64,16 +64,17 @@ dependencies {
     kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation "androidx.browser:browser:1.0.0"
+    implementation 'androidx.browser:browser:1.0.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha3'
-    implementation "androidx.core:core-ktx:1.0.1"
+    implementation 'androidx.core:core-ktx:1.0.1'
+    implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
-    implementation "androidx.preference:preference:1.1.0-alpha02"
+    implementation 'androidx.preference:preference:1.1.0-alpha02'
     implementation "androidx.room:room-coroutines:$roomVersion"
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.github.topjohnwu.libsu:core:2.2.0'
-    implementation "com.google.android.material:material:1.0.0"
+    implementation 'com.google.android.material:material:1.0.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.21.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
@@ -87,7 +88,7 @@ dependencies {
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
     androidTestImplementation 'androidx.test:runner:1.1.1'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
-    androidTestImplementation "androidx.test.ext:junit-ktx:1.1.0"
+    androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.0'
 }
 
 if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))

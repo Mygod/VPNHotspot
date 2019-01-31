@@ -55,7 +55,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
             setTitle(getString(R.string.clients_nickname_title, arg.mac.macToString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
-            setNeutralButton(R.string.clients_nickname_set_to_vendor, listener)
+            setNeutralButton(emojize(getText(R.string.clients_nickname_set_to_vendor)), listener)
         }
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {

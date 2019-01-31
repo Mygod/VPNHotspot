@@ -15,7 +15,6 @@ import be.mygod.vpnhotspot.room.ClientRecord
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.util.makeMacSpan
-import be.mygod.vpnhotspot.util.onEmpty
 import java.net.InetAddress
 import java.util.*
 
@@ -43,8 +42,10 @@ open class Client(val mac: Long, val iface: String) {
          * we hijack the get title process to check if we need to perform MacLookup,
          * as record might not be initialized in other more appropriate places
          */
-        if (record?.nickname.isNullOrEmpty() && record?.macLookupPending != false) MacLookup.perform(mac)
-        SpannableStringBuilder(record?.nickname.onEmpty(macIface)).apply {
+        SpannableStringBuilder(if (record?.nickname.isNullOrEmpty()) {
+            if (record?.macLookupPending != false) MacLookup.perform(mac)
+            macIface
+        } else emojize(record?.nickname)).apply {
             if (record?.blocked == true) {
                 setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
             }

@@ -11,10 +11,14 @@ import android.preference.PreferenceManager
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import androidx.core.provider.FontRequest
+import androidx.emoji.text.EmojiCompat
+import androidx.emoji.text.FontRequestEmojiCompatConfig
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.RootSession
+import timber.log.Timber
 import java.util.*
 
 class App : Application() {
@@ -35,6 +39,16 @@ class App : Application() {
         } else deviceStorage = this
         DebugHelper.init()
         ServiceNotification.updateNotificationChannels()
+        EmojiCompat.init(FontRequestEmojiCompatConfig(deviceStorage, FontRequest(
+                "com.google.android.gms.fonts",
+                "com.google.android.gms",
+                "Noto Color Emoji Compat",
+                R.array.com_google_android_gms_fonts_certs)).apply {
+            setEmojiSpanIndicatorEnabled(BuildConfig.DEBUG)
+            registerInitCallback(object : EmojiCompat.InitCallback() {
+                override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
+            })
+        })
     }
 
     override fun onConfigurationChanged(newConfig: Configuration?) {
