@@ -28,8 +28,6 @@ fun Long.toPluralInt(): Int {
     return (this % 1000000000).toInt() + 1000000000
 }
 
-fun CharSequence?.onEmpty(otherwise: CharSequence): CharSequence = if (isNullOrEmpty()) otherwise else this!!
-
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
 }
