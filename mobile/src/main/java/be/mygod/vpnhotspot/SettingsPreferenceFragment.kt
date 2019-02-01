@@ -11,7 +11,6 @@ import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
@@ -132,24 +131,23 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
 
     override fun onDisplayPreferenceDialog(preference: Preference) {
         when (preference.key) {
-            UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
-                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat().apply {
-                    setArguments(preference.key, try {
-                        NetworkInterface.getNetworkInterfaces().asSequence()
-                                .filter {
-                                    try {
-                                        it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
-                                    } catch (_: SocketException) {
-                                        false
-                                    }
+            UpstreamMonitor.KEY -> AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat().apply {
+                setArguments(preference.key, try {
+                    NetworkInterface.getNetworkInterfaces().asSequence()
+                            .filter {
+                                try {
+                                    it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
+                                } catch (_: SocketException) {
+                                    false
                                 }
-                                .map { it.name }.sorted().toList().toTypedArray()
-                    } catch (e: SocketException) {
-                        Timber.d(e)
-                        emptyArray<String>()
-                    })
-                    setTargetFragment(this@SettingsPreferenceFragment, 0)
-                }.show(fragmentManager ?: return, preference.key)
+                            }
+                            .map { it.name }.sorted().toList().toTypedArray()
+                } catch (e: SocketException) {
+                    Timber.d(e)
+                    emptyArray<String>()
+                })
+                setTargetFragment(this@SettingsPreferenceFragment, 0)
+            }.show(fragmentManager ?: return, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)
         }
     }

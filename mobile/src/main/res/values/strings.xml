@@ -106,8 +106,6 @@
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
-    <string name="settings_upstream_fallback">Fallback upstream interface</string>
-    <string name="settings_upstream_fallback_auto">Auto detect system default network</string>
     <string name="settings_service_dhcp_workaround">Enable DHCP workaround</string>
     <string name="settings_service_dhcp_workaround_summary">Use this if clients cannot obtain IP addresses.</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>

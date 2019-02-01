@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.DefaultNetworkMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
@@ -283,16 +283,14 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
 
     fun stop() {
         IpNeighbourMonitor.unregisterCallback(this)
-        FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
+        DefaultNetworkMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
     }
 
     fun commit(localOnly: Boolean = false) {
         transaction.commit()
         Timber.i("Started routing for $downstream")
-        if (localOnly || masqueradeMode != MasqueradeMode.Netd) {
-            FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
-        }
+        if (localOnly || masqueradeMode != MasqueradeMode.Netd) DefaultNetworkMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }
