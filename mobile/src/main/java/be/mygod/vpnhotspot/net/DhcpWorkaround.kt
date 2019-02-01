@@ -32,6 +32,9 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
                     e.result.err.joinToString("\n") == "RTNETLINK answers: File exists") return
             Timber.w(e)
             SmartSnackbar.make(e).show()
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
         }
     }
 
