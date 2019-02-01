@@ -20,7 +20,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
         private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
         private const val CONF_PATH_LEGACY = "/data/misc/wifi/p2p_supplicant.conf"
         private val networkParser =
-                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$))".toRegex()
+                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
         private val whitespaceMatcher = "\\s+".toRegex()
     }
 
@@ -64,9 +64,11 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                                 block.ssidLine = block.size
                             } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
                                 val match = networkParser.find(parser.trimmed)
-                                if (match != null) if (match.groups[5] != null) {
+                                if (match != null) if (match.groups[4] != null) {
                                     check(block.pskLine == null && block.psk == null)
-                                    block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                    if (match.groups[5] != null) {
+                                        block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                    }
                                     block.pskLine = block.size
                                 } else if (match.groups[2] != null && match.groupValues[2].equals(bssid, true)) {
                                     block.bssidMatches = true
