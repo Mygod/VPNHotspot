@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.content.DialogInterface
 import android.os.Bundle
+import android.os.Parcelable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -12,10 +13,10 @@ import android.widget.Spinner
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
+import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
 
 /**
@@ -23,7 +24,8 @@ import timber.log.Timber
  */
 class EBegFragment : AppCompatDialogFragment(), PurchasesUpdatedListener, BillingClientStateListener,
         SkuDetailsResponseListener, ConsumeResponseListener {
-    data class MessageArg(@StringRes val title: Int, @StringRes val message: Int) : VersionedParcelable
+    @Parcelize
+    data class MessageArg(@StringRes val title: Int, @StringRes val message: Int) : Parcelable
     class MessageDialogFragment : AlertDialogFragment<MessageArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setTitle(arg.title)

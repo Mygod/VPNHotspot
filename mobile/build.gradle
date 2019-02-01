@@ -1,5 +1,6 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
+apply plugin: 'kotlin-android-extensions'
 apply plugin: 'kotlin-kapt'
 
 if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
@@ -58,6 +59,10 @@ android {
     sourceSets {
         androidTest.assets.srcDirs += files("$projectDir/schemas".toString())
     }
+}
+
+androidExtensions {
+    experimental = true
 }
 
 dependencies {

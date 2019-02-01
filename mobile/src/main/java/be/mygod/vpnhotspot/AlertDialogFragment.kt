@@ -4,36 +4,33 @@ import android.app.Activity
 import android.content.DialogInterface
 import android.content.Intent
 import android.os.Bundle
+import android.os.Parcelable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.versionedparcelable.ParcelUtils
-import androidx.versionedparcelable.VersionedParcelable
+import kotlinx.android.parcel.Parcelize
 
 /**
  * Based on: https://android.googlesource.com/platform/packages/apps/ExactCalculator/+/8c43f06/src/com/android/calculator2/AlertDialogFragment.java
  */
-abstract class AlertDialogFragment<Arg : VersionedParcelable, Ret : VersionedParcelable> :
+abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable> :
         AppCompatDialogFragment(), DialogInterface.OnClickListener {
     companion object {
         private const val KEY_ARG = "arg"
         private const val KEY_RET = "ret"
-        fun <T : VersionedParcelable> getRet(data: Intent) =
-                ParcelUtils.getVersionedParcelable<T>(data.extras, KEY_RET)!!
+        fun <T : Parcelable> getRet(data: Intent) = data.extras!!.getParcelable<T>(KEY_RET)!!
     }
     protected abstract fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener)
 
-    protected val arg by lazy { ParcelUtils.getVersionedParcelable<Arg>(arguments, KEY_ARG)!! }
+    protected val arg by lazy { arguments!!.getParcelable<Arg>(KEY_ARG)!! }
     protected open val ret: Ret? get() = null
-    fun withArg(arg: Arg) = apply {
-        arguments = Bundle().also { ParcelUtils.putVersionedParcelable(it, KEY_ARG, arg) }
-    }
+    fun withArg(arg: Arg) = apply { arguments = Bundle().apply { putParcelable(KEY_ARG, arg) } }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): AlertDialog =
             AlertDialog.Builder(requireContext()).also { it.prepare(this) }.create()
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
         targetFragment?.onActivityResult(targetRequestCode, which, ret?.let {
-            Intent().replaceExtras(Bundle().apply { ParcelUtils.putVersionedParcelable(this, KEY_RET, it) })
+            Intent().replaceExtras(Bundle().apply { putParcelable(KEY_RET, it) })
         })
     }
 
@@ -43,4 +40,5 @@ abstract class AlertDialogFragment<Arg : VersionedParcelable, Ret : VersionedPar
     }
 }
 
-class Empty : VersionedParcelable
+@Parcelize
+class Empty : Parcelable

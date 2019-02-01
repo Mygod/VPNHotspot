@@ -1,7 +1,8 @@
 package be.mygod.vpnhotspot.room
 
+import android.os.Parcelable
 import androidx.room.*
-import androidx.versionedparcelable.VersionedParcelable
+import kotlinx.android.parcel.Parcelize
 import java.net.InetAddress
 
 @Entity(foreignKeys = [ForeignKey(entity = TrafficRecord::class, parentColumns = ["id"], childColumns = ["previousId"],
@@ -61,6 +62,7 @@ data class TrafficRecord(
     }
 }
 
+@Parcelize
 data class ClientStats(
         val timestamp: Long = 0,
         val count: Long = 0,
@@ -68,4 +70,4 @@ data class ClientStats(
         val sentBytes: Long = 0,
         val receivedPackets: Long = 0,
         val receivedBytes: Long = 0
-) : VersionedParcelable
+) : Parcelable

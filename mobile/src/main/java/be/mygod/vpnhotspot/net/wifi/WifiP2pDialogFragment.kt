@@ -3,16 +3,17 @@ package be.mygod.vpnhotspot.net.wifi
 import android.content.DialogInterface
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiConfiguration.AuthAlgorithm
+import android.os.Parcelable
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
-import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.R
 import com.google.android.material.textfield.TextInputLayout
+import kotlinx.android.parcel.Parcelize
 import java.nio.charset.Charset
 
 /**
@@ -22,7 +23,8 @@ import java.nio.charset.Charset
  * Related: https://android.googlesource.com/platform/packages/apps/Settings/+/defb1183ecb00d6231bac7d934d07f58f90261ea
  */
 class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, WifiP2pDialogFragment.Arg>(), TextWatcher {
-    data class Arg(val configuration: WifiConfiguration) : VersionedParcelable
+    @Parcelize
+    data class Arg(val configuration: WifiConfiguration) : Parcelable
 
     private lateinit var mView: View
     private lateinit var mSsid: TextView

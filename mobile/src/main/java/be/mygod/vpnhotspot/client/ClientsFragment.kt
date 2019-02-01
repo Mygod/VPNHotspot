@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.client
 
 import android.content.DialogInterface
 import android.os.Bundle
+import android.os.Parcelable
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
@@ -23,7 +24,6 @@ import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.Empty
@@ -41,6 +41,7 @@ import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -48,7 +49,8 @@ import kotlinx.coroutines.launch
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
-    data class NicknameArg(val mac: Long, val nickname: CharSequence) : VersionedParcelable
+    @Parcelize
+    data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
@@ -76,7 +78,8 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         }
     }
 
-    data class StatsArg(val title: CharSequence, val stats: ClientStats) : VersionedParcelable
+    @Parcelize
+    data class StatsArg(val title: CharSequence, val stats: ClientStats) : Parcelable
     class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setTitle(SpanFormatter.format(getString(R.string.clients_stats_title), arg.title))

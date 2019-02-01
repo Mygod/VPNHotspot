@@ -8,6 +8,7 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
 import android.os.IBinder
+import android.os.Parcelable
 import android.text.method.LinkMovementMethod
 import android.view.WindowManager
 import android.widget.EditText
@@ -19,7 +20,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
 import androidx.recyclerview.widget.RecyclerView
-import androidx.versionedparcelable.VersionedParcelable
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
@@ -28,6 +28,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -112,7 +113,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    data class WpsRet(val pin: String?) : VersionedParcelable
+    @Parcelize
+    data class WpsRet(val pin: String?) : Parcelable
     class WpsDialogFragment : AlertDialogFragment<Empty, WpsRet>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setTitle(R.string.repeater_wps_dialog_title)
