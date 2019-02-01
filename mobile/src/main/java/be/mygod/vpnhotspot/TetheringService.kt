@@ -67,7 +67,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                 val (downstream, value) = iterator.next()
                 if (value != null) continue
                 try {
-                    routings[downstream] = Routing(downstream).apply {
+                    routings[downstream] = Routing(this, downstream).apply {
                         try {
                             forward()
                             masquerade(Routing.masquerade)

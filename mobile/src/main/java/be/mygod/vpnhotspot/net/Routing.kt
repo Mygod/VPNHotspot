@@ -20,7 +20,8 @@ import java.net.*
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : IpNeighbourMonitor.Callback {
+class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAddress? = null) :
+        IpNeighbourMonitor.Callback {
     companion object {
         /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
@@ -289,14 +290,14 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
 
     fun commit(localOnly: Boolean = false) {
         transaction.commit()
-        Timber.i("Started routing for $downstream")
+        Timber.i("Started routing for $downstream by $caller")
         if (localOnly || masqueradeMode != MasqueradeMode.Netd) DefaultNetworkMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }
     fun revert() {
         stop()
-        Timber.i("Stopped routing for $downstream")
+        Timber.i("Stopped routing for $downstream by $caller")
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         clients.values.forEach { it.close() }
         fallbackUpstream.subrouting?.transaction?.revert()
