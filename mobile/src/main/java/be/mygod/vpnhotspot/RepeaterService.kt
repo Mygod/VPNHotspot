@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.NetworkInfo
-import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
@@ -68,13 +67,14 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val groupChanged = StickyEvent1 { group }
         var thisDevice: WifiP2pDevice? = null
 
+        @Deprecated("WPS was deprecated RIP")
         fun startWps(pin: String? = null) {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else if (active) p2pManager.startWps(channel, WpsInfo().apply {
-                setup = if (pin == null) WpsInfo.PBC else {
+            else @Suppress("DEPRECATION") if (active) p2pManager.startWps(channel, android.net.wifi.WpsInfo().apply {
+                setup = if (pin == null) android.net.wifi.WpsInfo.PBC else {
                     this.pin = pin
-                    WpsInfo.KEYPAD
+                    android.net.wifi.WpsInfo.KEYPAD
                 }
             }, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = SmartSnackbar.make(
