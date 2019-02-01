@@ -7,6 +7,7 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.RootSession
 import java.io.File
+import java.lang.IllegalStateException
 
 /**
  * This parser is based on:
@@ -126,8 +127,11 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             RootSession.use {
                 it.exec("cat ${tempFile.absolutePath} > ${if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE}")
                 if (Build.VERSION.SDK_INT >= 23) it.exec("pkill wpa_supplicant") else {
-                    val result = it.execOut("ps | grep wpa_supplicant").split(whitespaceMatcher)
-                    check(result.size >= 2) { "wpa_supplicant not found, please toggle Airplane mode manually" }
+                    val result = try {
+                        it.execOut("ps | grep wpa_supplicant").split(whitespaceMatcher).apply { check(size >= 2) }
+                    } catch (e: Exception) {
+                        throw IllegalStateException("wpa_supplicant not found, please toggle Airplane mode manually", e)
+                    }
                     it.exec("kill ${result[1]}")
                 }
             }
