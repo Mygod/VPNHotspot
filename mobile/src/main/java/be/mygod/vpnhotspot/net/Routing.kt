@@ -14,7 +14,6 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.net.*
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A transaction wrapper that helps set up routing environment.
@@ -31,8 +30,6 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
          */
         private const val RULE_PRIORITY_UPSTREAM = 17800
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
-
-        private val dhcpWorkaroundCounter = AtomicLong()
 
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -55,7 +52,6 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
                 it.execQuiet("$IPTABLES -t nat -X vpnhotspot_masquerade")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
-                it.execQuiet("while ip rule del iif lo uidrange 0-0 lookup local_network priority 11000; do done")
             }
         }
 
@@ -251,22 +247,6 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
                 null
             }
         }
-    }
-
-    /**
-     * Similarly, assuming RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000.
-     * Normally this is used to forward packets from remote to local, but it works anyways. It just needs to be before
-     * RULE_PRIORITY_SECURE_VPN = 12000. It would be great if we can gain better understanding into why this is only
-     * needed on some of the devices but not others.
-     *
-     * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#57
-     */
-    fun dhcpWorkaround() {
-        // workaround for adding multiple exact same rules
-        // if somebody decides to do this 1000 times to break this, god bless you
-        val priority = 11000 + dhcpWorkaroundCounter.getAndAdd(1) % 1000
-        transaction.exec("ip rule add iif lo uidrange 0-0 lookup local_network priority $priority",
-                "ip rule del iif lo uidrange 0-0 lookup local_network priority $priority")
     }
 
     fun stop() {

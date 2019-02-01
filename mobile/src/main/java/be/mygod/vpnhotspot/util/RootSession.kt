@@ -60,12 +60,12 @@ class RootSession : AutoCloseable {
             val msg = StringBuilder("$command exited with ${result.code}")
             if (out) result.out.forEach { msg.append("\n$it") }
             if (err) result.err.forEach { msg.append("\nE $it") }
-            if (!result.isSuccess || out || err) throw UnexpectedOutputException(msg.toString())
+            if (!result.isSuccess || out || err) throw UnexpectedOutputException(msg.toString(), result)
             return msg.toString()
         }
     }
 
-    class UnexpectedOutputException(msg: String) : RuntimeException(msg)
+    class UnexpectedOutputException(msg: String, val result: Shell.Result) : RuntimeException(msg)
 
     private val shell = Shell.newInstance("su")
     private val stdout = ArrayList<String>()

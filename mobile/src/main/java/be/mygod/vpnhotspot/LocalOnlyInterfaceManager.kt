@@ -23,7 +23,6 @@ class LocalOnlyInterfaceManager(val downstream: String) {
         routing = try {
             Routing(downstream, owner).apply {
                 try {
-                    if (app.dhcpWorkaround) dhcpWorkaround()
                     ipForward()                                     // local only interfaces need to enable ip_forward
                     forward()
                     if (app.masquerade) masquerade()

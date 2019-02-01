@@ -14,6 +14,7 @@ import androidx.core.content.getSystemService
 import androidx.core.provider.FontRequest
 import androidx.emoji.text.EmojiCompat
 import androidx.emoji.text.FontRequestEmojiCompatConfig
+import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Event0
@@ -48,6 +49,7 @@ class App : Application() {
                 override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
             })
         })
+        if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration?) {
@@ -79,7 +81,6 @@ class App : Application() {
     }
 
     val masquerade get() = pref.getBoolean("service.masquerade", true)
-    val dhcpWorkaround get() = pref.getBoolean("service.dhcpWorkaround", false)
 
     val onPreCleanRoutings = Event0()
     val onRoutingsCleaned = Event0()

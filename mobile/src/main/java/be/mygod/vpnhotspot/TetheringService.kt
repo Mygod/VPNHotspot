@@ -69,7 +69,6 @@ class TetheringService : IpNeighbourMonitoringService() {
                 try {
                     routings[downstream] = Routing(downstream).apply {
                         try {
-                            if (app.dhcpWorkaround) dhcpWorkaround()
                             // system tethering already has working forwarding rules
                             // so it doesn't make sense to add additional forwarding rules
                             forward()
