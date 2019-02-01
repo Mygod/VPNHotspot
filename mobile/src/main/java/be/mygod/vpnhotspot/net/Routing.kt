@@ -87,12 +87,16 @@ class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAd
         None, Simple, Netd
     }
 
-    class InterfaceNotFoundException : SocketException() {
+    class InterfaceNotFoundException(override val cause: Throwable) : SocketException() {
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
     }
 
-    val hostAddress = ownerAddress ?: NetworkInterface.getByName(downstream)?.interfaceAddresses?.asSequence()
-            ?.singleOrNull { it.address is Inet4Address } ?: throw InterfaceNotFoundException()
+    val hostAddress = try {
+        ownerAddress ?: NetworkInterface.getByName(downstream)!!.interfaceAddresses!!
+                .asSequence().single { it.address is Inet4Address }
+    } catch (e: Exception) {
+        throw InterfaceNotFoundException(e)
+    }
     val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     private val transaction = RootSession.beginTransaction()
 
