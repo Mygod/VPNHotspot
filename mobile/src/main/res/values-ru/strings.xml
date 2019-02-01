@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VPN Hotspot</string>
+
+    <string name="repeater_configure">Настройка Wi-Fi ретранслятора</string>
+    <string name="repeater_configure_failure">Действительный конфиг не найден. Пожалуйста, сначала запустите ретранслятор.</string>
+    <string name="repeater_clean_pog_failure">Не удалось удалить избыточную группу P2P (причина: %s)</string>
+
+    <string name="repeater_p2p_unavailable">Wi-Fi директ недоступен, пожалуйста включите Wi-Fi</string>
+    <string name="repeater_create_group_failure">Не удалось создать группу P2P (причина: %s)</string>
+    <string name="repeater_remove_group_failure">Не удалось удалить группу P2P (причина: %s)</string>
+
+    <string name="repeater_failure_reason_error">внутренняя ошибка</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi-Fi напрямую не поддерживается</string>
+    <string name="repeater_failure_reason_no_service_requests">запросы на обслуживание не добавлены</string>
+    <string name="repeater_failure_reason_unsupported_operation">неподдерживаемая операция</string>
+    <string name="repeater_failure_disconnected">Сервис недоступен. Попробуйте позже</string>
+
+
+
+    <string name="connected_state_incomplete">" (подключение)"</string>
+    <string name="connected_state_valid">" (доступный)"</string>
+    <string name="connected_state_failed">" (потеря)"</string>
+
+    <string name="clients_popup_nickname">Никнэйм...</string>
+    <string name="clients_popup_block">Блок</string>
+    <string name="clients_popup_block_service_inactive">Включите службу для этого интерфейса, чтобы заблокировать клиента.</string>
+    <string name="clients_popup_unblock">Разблокировать</string>
+    <string name="clients_popup_stats">Статистика...</string>
+    <string name="clients_nickname_title">Никнэйм  для %s</string>
+    <string name="clients_stats_title">Статистика для %s</string>
+
+
+    <string name="notification_tethering_title">VPN-модем активен</string>
+    <string name="notification_channel_tethering">VPN модемная служба</string>
+
+    <string name="failure_reason_unknown">Неизвестно #%d</string>
+    <string name="exception_interface_not_found">Ошибка: Нисходящий интерфейс не найден</string>
+    <string name="noisy_su_failure">Что-то пошло не так, пожалуйста, проверьте отладочную информацию.</string>
+
+    <string name="credentials_password_too_short">Пароль должен содержать не менее 8 символов.</string>
+
+    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-ru/donations__strings.xml -->
+    <string name="donations__button_close">Закрыть</string>
+    <string name="donations__description">Считаете это приложение полезным?\\nПоддержите его разработку, отправив пожертвование разработчику!</string>
+    <string name="donations__google_android_market">Google Play Store</string>
+    <string name="donations__google_android_market_not_supported_title">In-App пожертвования не поддерживаются.</string>
+    <string name="donations__google_android_market_not_supported">Пожертвования через приложение не поддерживаются. Google Play Store установлен правильно?</string>
+    <string name="donations__google_android_market_description">Google взимает 30% комиссии с каждого пожертвования!</string>
+    <string name="donations__google_android_market_donate_button">Пожертвовать!</string>
+    <string name="donations__google_android_market_text">Сколько?</string>
+    <string name="donations__thanks_dialog_title">Благодарю!</string>
+    <string name="donations__thanks_dialog">Благодарю за пожертвование! Я очень это ценю!</string>
+</resources>
