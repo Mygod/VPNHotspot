@@ -36,6 +36,8 @@ import java.lang.reflect.InvocationTargetException
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         private const val TAG = "RepeaterService"
+        const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+
         /**
          * This is only a "ServiceConnection" to system service and its impact on system is minimal.
          */
@@ -49,6 +51,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         }
         val supported get() = p2pManager != null
         var persistentSupported = false
+
+        val operatingChannel: Int get() {
+            val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
+            return if (result in 1..165) result else 0
+        }
     }
 
     enum class Status {
@@ -156,7 +163,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(oc: Int = app.operatingChannel) = try {
+    private fun setOperatingChannel(oc: Int = operatingChannel) = try {
         val channel = channel
         if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
         // we don't care about listening channel
@@ -186,7 +193,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == App.KEY_OPERATING_CHANNEL) setOperatingChannel()
+        if (key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
     private fun onPersistentGroupsChanged() {

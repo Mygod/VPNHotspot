@@ -61,10 +61,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
         var oc: CharSequence
             @Bindable get() {
-                val oc = app.operatingChannel
+                val oc = RepeaterService.operatingChannel
                 return if (oc in 1..165) oc.toString() else ""
             }
-            set(value) = app.pref.edit().putString(App.KEY_OPERATING_CHANNEL, value.toString()).apply()
+            set(value) = app.pref.edit().putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()).apply()
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)

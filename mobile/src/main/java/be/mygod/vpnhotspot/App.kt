@@ -23,8 +23,6 @@ import java.util.*
 
 class App : Application() {
     companion object {
-        const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
-
         @SuppressLint("StaticFieldLeak")
         lateinit var app: App
     }
@@ -80,10 +78,6 @@ class App : Application() {
                 .build()
     }
 
-    val operatingChannel: Int get() {
-        val result = pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
-        return if (result in 1..165) result else 0
-    }
     val masquerade get() = pref.getBoolean("service.masquerade", true)
     val dhcpWorkaround get() = pref.getBoolean("service.dhcpWorkaround", false)
 
