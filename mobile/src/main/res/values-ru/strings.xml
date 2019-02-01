@@ -22,11 +22,11 @@
     <string name="connected_state_valid">" (доступный)"</string>
     <string name="connected_state_failed">" (потеря)"</string>
 
-    <string name="clients_popup_nickname">Никнэйм...</string>
+    <string name="clients_popup_nickname">Никнэйм…</string>
     <string name="clients_popup_block">Блок</string>
     <string name="clients_popup_block_service_inactive">Включите службу для этого интерфейса, чтобы заблокировать клиента.</string>
     <string name="clients_popup_unblock">Разблокировать</string>
-    <string name="clients_popup_stats">Статистика...</string>
+    <string name="clients_popup_stats">Статистика…</string>
     <string name="clients_nickname_title">Никнэйм  для %s</string>
     <string name="clients_stats_title">Статистика для %s</string>
 
