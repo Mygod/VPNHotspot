@@ -28,11 +28,10 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
         try {
             RootSession.use { it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000") }
         } catch (e: RootSession.UnexpectedOutputException) {
-            if (e.result.out.isEmpty() && if (enabled) {
-                        e.result.code == 2 && e.result.err.joinToString("\n") == "RTNETLINK answers: File exists"
+            if (e.result.out.isEmpty() && (e.result.code == 2 || e.result.code == 254) && if (enabled) {
+                        e.result.err.joinToString("\n") == "RTNETLINK answers: File exists"
                     } else {
-                        e.result.code == 254 &&
-                                e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
+                        e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
                     }) return
             Timber.w(e)
             SmartSnackbar.make(e).show()
