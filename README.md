@@ -146,9 +146,9 @@ DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 Undocumented system binaries are all bundled and executable:
 
 * Since API 24: `iptables-save`;
-* Since API 23: `ndc` (`ipfwd` with proper output format);
 * `echo`;
 * `ip` (`link monitor neigh rule` with proper output format);
+* `ndc` (`ipfwd` with proper output format since API 23, `nat`);
 * `iptables` (with correct version corresponding to API level, `-nvx -L <chain>` with proper output format);
 * `su`.
 
