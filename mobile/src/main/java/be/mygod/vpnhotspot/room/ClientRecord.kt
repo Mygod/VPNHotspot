@@ -2,9 +2,6 @@ package be.mygod.vpnhotspot.room
 
 import androidx.lifecycle.LiveData
 import androidx.room.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 
 @Entity
@@ -24,17 +21,13 @@ data class ClientRecord(@PrimaryKey
         abstract fun lookupSync(mac: Long): LiveData<ClientRecord>
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
-        protected abstract suspend fun updateInternal(value: ClientRecord): Long
-        suspend fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
+        protected abstract fun updateInternal(value: ClientRecord): Long
+        fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
 
         @Transaction
-        protected open fun upsertSync(mac: Long, operation: ClientRecord.() -> Unit) = runBlocking {
-            lookupOrDefault(mac).apply {
-                operation()
-                update(this)
-            }
+        open fun upsert(mac: Long, operation: ClientRecord.() -> Unit) = runBlocking { lookupOrDefault(mac) }.apply {
+            operation()
+            update(this)
         }
-        fun upsert(mac: Long, operation: ClientRecord.() -> Unit) =
-                GlobalScope.async(Dispatchers.IO) { upsertSync(mac, operation) }
     }
 }

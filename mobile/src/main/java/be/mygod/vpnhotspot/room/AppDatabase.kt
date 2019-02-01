@@ -19,6 +19,7 @@ abstract class AppDatabase : RoomDatabase() {
                     .addMigrations(
                             Migration2
                     )
+                    .allowMainThreadQueries()
                     .build()
         }
     }

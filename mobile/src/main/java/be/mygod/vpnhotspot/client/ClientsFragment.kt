@@ -140,9 +140,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                     val wasWorking = TrafficRecorder.isWorking(client.mac)
                     client.obtainRecord().apply {
                         blocked = !blocked
-                        GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
-                            AppDatabase.instance.clientRecordDao.update(this@apply)
-                        }
+                        AppDatabase.instance.clientRecordDao.update(this)
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {

@@ -41,8 +41,8 @@ data class TrafficRecord(
     @androidx.room.Dao
     abstract class Dao {
         @Insert
-        protected abstract suspend fun insertInternal(value: TrafficRecord): Long
-        suspend fun insert(value: TrafficRecord) {
+        protected abstract fun insertInternal(value: TrafficRecord): Long
+        fun insert(value: TrafficRecord) {
             check(value.id == null)
             value.id = insertInternal(value)
         }
