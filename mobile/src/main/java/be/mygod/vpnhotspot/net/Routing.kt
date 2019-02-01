@@ -26,6 +26,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
          * This also works for Wi-Fi direct where there's no rule at 18000.
          *
+         * We override system tethering rules by adding our own rules at higher priority.
+         *
          * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
          */
         private const val RULE_PRIORITY_UPSTREAM = 17800
@@ -39,6 +41,15 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
          */
         val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
         const val KEY_DNS = "service.dns"
+        const val KEY_MASQUERADE = "service.masqueradeMode"
+
+        var masquerade: MasqueradeMode
+            get() {
+                app.pref.getString(KEY_MASQUERADE, null)?.let { return MasqueradeMode.valueOf(it) }
+                return if (app.pref.getBoolean("service.masquerade", true)) // legacy settings
+                    MasqueradeMode.Simple else MasqueradeMode.None
+            }
+            set(value) = app.pref.edit().putString(KEY_MASQUERADE, value.name).apply()
 
         fun clean() {
             TrafficRecorder.clean()
@@ -64,6 +75,15 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
                 iptables("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
         private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
+
+        private fun RootSession.Transaction.ndc(name: String, command: String, revert: String) {
+            val result = execQuiet(command, revert)
+            RootSession.checkOutput(command, result, result.out.joinToString("\n") != "200 0 $name operation succeeded")
+        }
+    }
+
+    enum class MasqueradeMode {
+        None, Simple, Netd
     }
 
     class InterfaceNotFoundException : SocketException() {
@@ -75,7 +95,7 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
     val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     private val transaction = RootSession.beginTransaction()
 
-    var hasMasquerade = false
+    var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
@@ -89,10 +109,22 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
                             // by the time stopScript is called, table entry for upstream may already get removed
                             "ip rule del from all iif $downstream priority $priority")
                 }
-                // note: specifying -i wouldn't work for POSTROUTING
-                if (hasMasquerade) {
-                    iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
-                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                when (masqueradeMode) {
+                    // note: specifying -i wouldn't work for POSTROUTING
+                    MasqueradeMode.Simple -> {
+                        iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
+                            "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                    }
+                    MasqueradeMode.Netd -> {
+                        check(upstream != null)
+                        /**
+                         * 0 means that there are no interface addresses coming after, which is unused anyway.
+                         *
+                         * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
+                         * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
+                         */
+                        ndc("Nat", "ndc nat enable $downstream $upstream 0", "ndc nat disable $downstream $upstream 0")
+                    }
                 }
             }
         }
@@ -196,10 +228,8 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
      */
     fun ipForward() {
         if (Build.VERSION.SDK_INT >= 23) {
-            val command = "ndc ipfwd enable vpnhotspot_$downstream"
-            val result = transaction.execQuiet(command, "ndc ipfwd disable vpnhotspot_$downstream")
-            RootSession.checkOutput(command, result, result.out.joinToString("\n") !=
-                    "200 0 ipfwd operation succeeded")
+            transaction.ndc("ipfwd", "ndc ipfwd enable vpnhotspot_$downstream",
+                    "ndc ipfwd disable vpnhotspot_$downstream")
         } else transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
     }
 
@@ -218,11 +248,13 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         // the real forwarding filters will be added in Subrouting when clients are connected
     }
 
-    fun masquerade() {
-        transaction.execQuiet("$IPTABLES -t nat -N vpnhotspot_masquerade")
-        transaction.iptablesInsert("POSTROUTING -j vpnhotspot_masquerade", "nat")
-        hasMasquerade = true
-        // further rules are added when upstreams are found
+    fun masquerade(mode: MasqueradeMode) {
+        masqueradeMode = mode
+        if (mode == MasqueradeMode.Simple) {
+            transaction.execQuiet("$IPTABLES -t nat -N vpnhotspot_masquerade")
+            transaction.iptablesInsert("POSTROUTING -j vpnhotspot_masquerade", "nat")
+            // further rules are added when upstreams are found
+        }
     }
 
     private inner class DnsRoute(val dns: String) {
@@ -255,10 +287,12 @@ class Routing(val downstream: String, ownerAddress: InterfaceAddress? = null) : 
         UpstreamMonitor.unregisterCallback(upstream)
     }
 
-    fun commit() {
+    fun commit(localOnly: Boolean = false) {
         transaction.commit()
         Timber.i("Started routing for $downstream")
-        FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+        if (localOnly || masqueradeMode != MasqueradeMode.Netd) {
+            FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+        }
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }

@@ -80,8 +80,10 @@
 
     <string name="settings_upstream">上游</string>
     <string name="settings_downstream">下游</string>
-    <string name="settings_service_masquerade">IP 掩蔽</string>
-    <string name="settings_service_masquerade_summary">建议使用广告拦截器与 socksfier 等虚拟 VPN 应用时禁用此选项。</string>
+    <string name="settings_service_masquerade">IP 掩蔽模式</string>
+    <string name="settings_service_masquerade_none">无</string>
+    <string name="settings_service_masquerade_simple">简易</string>
+    <string name="settings_service_masquerade_netd">Android Netd 服务</string>
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>

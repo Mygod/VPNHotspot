@@ -69,10 +69,8 @@ class TetheringService : IpNeighbourMonitoringService() {
                 try {
                     routings[downstream] = Routing(downstream).apply {
                         try {
-                            // system tethering already has working forwarding rules
-                            // so it doesn't make sense to add additional forwarding rules
                             forward()
-                            if (app.masquerade) masquerade()
+                            masquerade(Routing.masquerade)
                             if (disableIpv6) disableIpv6()
                             commit()
                         } catch (e: Exception) {

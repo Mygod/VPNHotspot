@@ -17,12 +17,13 @@
             app:icon="@drawable/ic_action_settings_input_component"
             app:title="@string/settings_upstream_fallback"
             app:summary="@string/settings_upstream_fallback_auto"/>
-        <SwitchPreference
-            app:key="service.masquerade"
+        <com.takisoft.preferencex.SimpleMenuPreference
+            app:key="service.masqueradeMode"
             app:icon="@drawable/ic_social_people"
             app:title="@string/settings_service_masquerade"
-            app:summary="@string/settings_service_masquerade_summary"
-            app:defaultValue="true"/>
+            app:entries="@array/settings_service_masquerade"
+            app:entryValues="@array/settings_service_masquerade_values"
+            app:useSimpleSummaryProvider="true"/>
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_downstream">
@@ -52,8 +53,8 @@
             app:entries="@array/settings_service_wifi_lock"
             app:entryValues="@array/settings_service_wifi_lock_values"
             app:defaultValue="Full"
-            app:summary="%s"
-            app:title="@string/settings_service_wifi_lock"/>
+            app:title="@string/settings_service_wifi_lock"
+            app:useSimpleSummaryProvider="true"/>
         <SwitchPreference
             app:key="service.repeater.startOnBoot"
             app:icon="@drawable/ic_action_autorenew"
@@ -64,8 +65,8 @@
             app:entries="@array/settings_service_ip_monitor"
             app:entryValues="@array/settings_service_ip_monitor_values"
             app:defaultValue="Poll"
-            app:summary="%s"
-            app:title="@string/settings_service_ip_monitor"/>
+            app:title="@string/settings_service_ip_monitor"
+            app:useSimpleSummaryProvider="true"/>
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_help">

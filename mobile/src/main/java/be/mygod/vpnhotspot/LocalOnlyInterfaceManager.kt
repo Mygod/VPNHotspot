@@ -23,10 +23,10 @@ class LocalOnlyInterfaceManager(val downstream: String) {
         routing = try {
             Routing(downstream, owner).apply {
                 try {
-                    ipForward()                                     // local only interfaces need to enable ip_forward
+                    ipForward() // local only interfaces need to enable ip_forward
                     forward()
-                    if (app.masquerade) masquerade()
-                    commit()
+                    masquerade(Routing.masquerade)
+                    commit(true)
                 } catch (e: Exception) {
                     revert()
                     throw e

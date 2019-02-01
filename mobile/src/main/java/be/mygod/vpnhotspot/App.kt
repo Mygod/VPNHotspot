@@ -80,8 +80,6 @@ class App : Application() {
                 .build()
     }
 
-    val masquerade get() = pref.getBoolean("service.masquerade", true)
-
     val onPreCleanRoutings = Event0()
     val onRoutingsCleaned = Event0()
 }
