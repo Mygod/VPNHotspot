@@ -1,20 +1,16 @@
 package be.mygod.vpnhotspot
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
-import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
@@ -28,23 +24,11 @@ import q.rorbin.badgeview.QBadgeView
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
     private lateinit var badge: QBadgeView
-    private val customTabsIntent by lazy {
-        CustomTabsIntent.Builder()
-                .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .build()
-    }
-
-    fun launchUrl(url: Uri) {
-        if (packageManager.hasSystemFeature("android.hardware.faketouch")) try {
-            customTabsIntent.launchUrl(this, url)
-            return
-        } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
-        SmartSnackbar.make(url.toString()).show()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
+        binding.setLifecycleOwner(this)
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         badge = QBadgeView(this)
@@ -55,7 +39,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         badge.setGravityOffset(16f, 0f, true)
         val model = ViewModelProviders.of(this).get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
-        model.clients.observe(this, Observer<List<Client>> { badge.badgeNumber = it.size })
+        model.clients.observe(this, Observer { badge.badgeNumber = it.size })
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
     }
 

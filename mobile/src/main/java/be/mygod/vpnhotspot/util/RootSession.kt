@@ -54,16 +54,18 @@ class RootSession : AutoCloseable {
             instance.haltTimeout()
             instance.close()
         }
+
+        fun checkOutput(command: String, result: Shell.Result, out: Boolean = result.out.isNotEmpty(),
+                        err: Boolean = result.err.isNotEmpty()): String {
+            val msg = StringBuilder("$command exited with ${result.code}")
+            if (out) result.out.forEach { msg.append("\n$it") }
+            if (err) result.err.forEach { msg.append("\nE $it") }
+            if (!result.isSuccess || out || err) throw UnexpectedOutputException(msg.toString(), result)
+            return msg.toString()
+        }
     }
 
-    class UnexpectedOutputException(msg: String) : RuntimeException(msg)
-    private fun checkOutput(command: String, result: Shell.Result, out: Boolean = result.out.isNotEmpty(),
-                            err: Boolean = result.err.isNotEmpty()): String {
-        val msg = StringBuilder("$command exited with ${result.code}")
-        if (out) result.out.forEach { msg.append("\n$it") }
-        if (err) result.err.forEach { msg.append("\nE $it") }
-        if (!result.isSuccess || out || err) throw UnexpectedOutputException(msg.toString()) else return msg.toString()
-    }
+    class UnexpectedOutputException(msg: String, val result: Shell.Result) : RuntimeException(msg)
 
     private val shell = Shell.newInstance("su")
     private val stdout = ArrayList<String>()
@@ -101,11 +103,6 @@ class RootSession : AutoCloseable {
         }).exec()
     }
     fun exec(command: String) = checkOutput(command, execQuiet(command))
-    fun execWithWait(command: String) {
-        val result = execQuiet(command)
-        val message = checkOutput(command, result, err = false)
-        if (result.err.isNotEmpty()) Timber.i(message)
-    }
     fun execOutUnjoined(command: String): List<String> {
         val result = execQuiet(command)
         checkOutput(command, result, false)
@@ -119,11 +116,11 @@ class RootSession : AutoCloseable {
     inner class Transaction {
         private val revertCommands = LinkedList<String>()
 
-        fun exec(command: String, revert: String? = null, wait: Boolean = false) {
+        fun exec(command: String, revert: String? = null) = checkOutput(command, execQuiet(command, revert))
+        fun execQuiet(command: String, revert: String? = null): Shell.Result {
             if (revert != null) revertCommands.addFirst(revert) // add first just in case exec fails
-            if (wait) this@RootSession.execWithWait(command) else this@RootSession.exec(command)
+            return this@RootSession.execQuiet(command)
         }
-        fun execQuiet(command: String) = this@RootSession.execQuiet(command)
 
         fun commit() = unlock()
 

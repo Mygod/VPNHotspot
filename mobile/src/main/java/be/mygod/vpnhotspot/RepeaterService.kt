@@ -5,16 +5,15 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.NetworkInfo
-import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
+import android.os.Handler
 import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
-import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
@@ -37,6 +36,8 @@ import java.lang.reflect.InvocationTargetException
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         private const val TAG = "RepeaterService"
+        const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+
         /**
          * This is only a "ServiceConnection" to system service and its impact on system is minimal.
          */
@@ -49,6 +50,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             }
         }
         val supported get() = p2pManager != null
+        var persistentSupported = false
+
+        val operatingChannel: Int get() {
+            val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
+            return if (result in 1..165) result else 0
+        }
     }
 
     enum class Status {
@@ -67,13 +74,14 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val groupChanged = StickyEvent1 { group }
         var thisDevice: WifiP2pDevice? = null
 
+        @Deprecated("WPS was deprecated RIP")
         fun startWps(pin: String? = null) {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else if (active) p2pManager.startWps(channel, WpsInfo().apply {
-                setup = if (pin == null) WpsInfo.PBC else {
+            else @Suppress("DEPRECATION") if (active) p2pManager.startWps(channel, android.net.wifi.WpsInfo().apply {
+                setup = if (pin == null) android.net.wifi.WpsInfo.PBC else {
                     this.pin = pin
-                    WpsInfo.KEYPAD
+                    android.net.wifi.WpsInfo.KEYPAD
                 }
             }, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = SmartSnackbar.make(
@@ -104,6 +112,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private val p2pManager get() = RepeaterService.p2pManager!!
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
+    private val handler = Handler()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -154,7 +163,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(oc: Int = app.operatingChannel) = try {
+    private fun setOperatingChannel(oc: Int = operatingChannel) = try {
         val channel = channel
         if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
         // we don't care about listening channel
@@ -179,12 +188,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
-            app.handler.postDelayed(1000, this, this::onChannelDisconnected)
+            handler.postDelayed(this::onChannelDisconnected, 1000)
         }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (key == App.KEY_OPERATING_CHANNEL) setOperatingChannel()
+        if (key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
     private fun onPersistentGroupsChanged() {
@@ -192,6 +201,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val device = binder.thisDevice ?: return
         try {
             p2pManager.requestPersistentGroupInfo(channel) {
+                if (it.isNotEmpty()) persistentSupported = true
                 val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
                 val main = ownedGroups.minBy { it.netId }
                 // do not replace current group if it's better
@@ -272,7 +282,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         locked = true
         binder.group = group
         check(routingManager == null)
-        routingManager = LocalOnlyInterfaceManager(group.`interface`!!)
+        routingManager = LocalOnlyInterfaceManager(this, group.`interface`!!)
         status = Status.ACTIVE
         showNotification(group)
     }
@@ -316,7 +326,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
 
     override fun onDestroy() {
-        app.handler.removeCallbacksAndMessages(this)
+        handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)

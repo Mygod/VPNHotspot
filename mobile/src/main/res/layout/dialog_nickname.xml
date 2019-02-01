@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
-    <EditText
+    <androidx.emoji.widget.EmojiEditText
         android:id="@android:id/edit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -13,5 +13,5 @@
         android:importantForAutofill="no"
         tools:text="Nick">
         <requestFocus/>
-    </EditText>
+    </androidx.emoji.widget.EmojiEditText>
 </FrameLayout>

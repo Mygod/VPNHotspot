@@ -1,12 +1,12 @@
 # VPN Hotspot
 
-[![CircleCI](https://circleci.com/gh/Mygod/VPNHotspot.svg?style=svg)](https://circleci.com/gh/Mygod/VPNHotspot)
+[![CircleCI](https://circleci.com/gh/Mygod/VPNHotspot.svg?style=shield)](https://circleci.com/gh/Mygod/VPNHotspot)
 [![API](https://img.shields.io/badge/API-21%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=21)
 [![Releases](https://img.shields.io/github/downloads/Mygod/VPNHotspot/total.svg)](https://github.com/Mygod/VPNHotspot/releases)
 [![F-Droid](https://img.shields.io/f-droid/v/be.mygod.vpnhotspot.svg)](https://f-droid.org/en/packages/be.mygod.vpnhotspot)
 [![Language: Kotlin](https://img.shields.io/github/languages/top/Mygod/VPNHotspot.svg)](https://github.com/Mygod/VPNHotspot/search?l=kotlin)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/e70e52b1a58045819b505c09edcae816)](https://www.codacy.com/app/Mygod/VPNHotspot?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Mygod/VPNHotspot&amp;utm_campaign=Badge_Grade)
-[![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](https://github.com/Mygod/VPNHotspot/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](LICENSE)
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 <a href="https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot" target="_blank"><img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" height="60"></a>
@@ -42,12 +42,16 @@ Default settings are picked to suit general use cases and maximize compatibility
 * Upstream network interface: Main upstream used to reroute traffic. Leave blank for auto detect system VPN.
   Put `none` (or other similarly invalid entries) to suppress tethering VPN.
   Put your interface name for tethering WireGuard.
-* Fallback upstream: Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
-  Leave blank for auto detect. Put `none` (or other similarly invalid entries) to forbid falling back.
-  Put other interface name if you feel like it.
-* IP Masquerade: Source address/port from downstream packets will be remapped. Leave on if you don't know what it does.
-  I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers (like
-  Shadowsocks). But you should never turn it off for real VPNs like OpenVPN, WireGuard, etc.
+* IP Masquerade Mode:
+  - None:
+    Nothing will be done to remap address/port from downstream.
+    I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
+    But you should never use this for real VPNs like OpenVPN, WireGuard, etc.
+  - Simple: Source address/port from downstream packets will be remapped and that's about it.
+  - Android Netd Service: (experimental since 2.2.0)
+    Let your system handle masquerade.
+    Android system will do a few extra things to make things like FTP and tethering traffic counter work.
+    You should probably not use this if you are trying to hide your tethering activity from your carrier.
 
 ### Downstream
 
@@ -80,6 +84,8 @@ Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
 
 ### [What changes exactly can this app do to my system? (and how to revert them)](https://github.com/Mygod/VPNHotspot/issues/8#issuecomment-448529512)
 
+### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
+
 ### Failed to create group due to internal error/repeater shuts down after a while?
 
 This could caused by the Wi-Fi channel you selected is no longer available, due to:
@@ -89,21 +95,6 @@ This could caused by the Wi-Fi channel you selected is no longer available, due 
 
 For maximum stability, you need to set channel = 0 so that your device will pick a channel automatically.
 You can also use WPS to connect your 2.4GHz-only device to force the repeater to switch from 5GHz to 2.4GHz for this time.
-
-### No root?
-
-This app requires root to make changes to iptables and ip rule. This restriction is imposed by Linux kernel.
-
-Without root, you can only:
-
-* View connected devices for system tethering and monitor them;
-* Create a hotspot that has only LAN connections;
-* Toggle tether switches if you can't do it already;
-* Play around with settings and the user interface in general;
-* Alternatively you can use try these apps (requires manual proxy configuration or client apps) for normal repeater
-  tethering/bypassing tethering limits: (note: these apps are neither free nor open source)
-  * [PdaNet+](https://play.google.com/store/apps/details?id=com.pdanet)
-  * [NetShare-no-root-tethering](https://play.google.com/store/apps/details?id=kha.prog.mikrotik)
 
 ## Private APIs used / Assumptions for Android customizations
 
@@ -155,6 +146,7 @@ DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 Undocumented system binaries are all bundled and executable:
 
 * Since API 24: `iptables-save`;
+* Since API 23: `ndc` (`ipfwd` with proper output format);
 * `echo`;
 * `ip` (`link monitor neigh rule` with proper output format);
 * `iptables` (with correct version corresponding to API level, `-nvx -L <chain>` with proper output format);
@@ -164,6 +156,5 @@ If some of these are unavailable, you can alternatively install a recent version
 
 Wi-Fi driver `wpa_supplicant`:
 
-* P2P configuration file is assumed to be saved to `/data/misc/wifi/p2p_supplicant.conf` or
-  `/data/vendor/wifi/wpa/p2p_supplicant.conf` for API 28+ and have reasonable format;
+* P2P configuration file is assumed to be saved to [`/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/0b4856b6dc451e290f1f64f6af17e010be78c073/wpa_supplicant/hidl/1.1/supplicant.cpp#26) and have reasonable format;
 * Android system is expected to restart `wpa_supplicant` after it crashes.

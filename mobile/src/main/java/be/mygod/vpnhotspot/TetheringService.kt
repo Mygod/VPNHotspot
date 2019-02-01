@@ -11,6 +11,9 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class TetheringService : IpNeighbourMonitoringService() {
@@ -58,19 +61,16 @@ class TetheringService : IpNeighbourMonitoringService() {
                 app.onRoutingsCleaned[this] = { synchronized(routings) { updateRoutingsLocked() } }
                 IpNeighbourMonitor.registerCallback(this)
             }
-            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", false)
+            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", true)
             val iterator = routings.iterator()
             while (iterator.hasNext()) {
                 val (downstream, value) = iterator.next()
                 if (value != null) continue
                 try {
-                    routings[downstream] = Routing(downstream).apply {
+                    routings[downstream] = Routing(this, downstream).apply {
                         try {
-                            if (app.dhcpWorkaround) dhcpWorkaround()
-                            // system tethering already has working forwarding rules
-                            // so it doesn't make sense to add additional forwarding rules
                             forward()
-                            if (app.masquerade) masquerade()
+                            masquerade(Routing.masquerade)
                             if (disableIpv6) disableIpv6()
                             commit()
                         } catch (e: Exception) {
@@ -90,7 +90,7 @@ class TetheringService : IpNeighbourMonitoringService() {
             }
             updateNotification()
         }
-        app.handler.post { binder.routingsChanged() }
+        GlobalScope.launch(Dispatchers.Main) { binder.routingsChanged() }
     }
 
     override fun onBind(intent: Intent?) = binder
@@ -114,6 +114,7 @@ class TetheringService : IpNeighbourMonitoringService() {
     }
 
     override fun onDestroy() {
+        routings.values.forEach { it?.revert() }    // force clean to prevent leakage
         unregisterReceiver()
         super.onDestroy()
     }

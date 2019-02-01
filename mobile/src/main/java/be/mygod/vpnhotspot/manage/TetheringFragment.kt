@@ -96,6 +96,7 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
+        binding.setLifecycleOwner(this)
         binding.interfaces.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
@@ -109,12 +110,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
         if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
     }
 
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        when (requestCode) {
-            REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-            REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data)
-            else -> super.onActivityResult(requestCode, resultCode, data)
-        }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) = when (requestCode) {
+        REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
+        REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data)
+        else -> super.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

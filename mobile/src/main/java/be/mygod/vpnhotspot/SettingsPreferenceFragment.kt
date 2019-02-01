@@ -5,21 +5,20 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.FileProvider
-import androidx.core.net.toUri
-import androidx.core.os.bundleOf
 import androidx.preference.Preference
+import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
+import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.takisoft.preferencex.PreferenceFragmentCompat
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
@@ -28,8 +27,9 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
-    override fun onCreatePreferencesFix(savedInstanceState: Bundle?, rootKey: String?) {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
+        Routing.masquerade = Routing.masquerade // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
         val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
         if (RepeaterService.supported) {
@@ -39,7 +39,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             }
             boot.isChecked = BootReceiver.enabled
         } else boot.parent!!.removePreference(boot)
-        findPreference("service.clean").setOnPreferenceClickListener {
+        findPreference<Preference>("service.clean").setOnPreferenceClickListener {
             app.onPreCleanRoutings()
             val cleaned = try {
                 Routing.clean()
@@ -52,11 +52,12 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             if (cleaned) app.onRoutingsCleaned()
             true
         }
-        findPreference(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->
+        SummaryFallbackProvider(findPreference(Routing.KEY_DNS))
+        findPreference<Preference>(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->
             SmartSnackbar.make(R.string.settings_restart_required).show()
             true
         }
-        findPreference("misc.logcat").setOnPreferenceClickListener {
+        findPreference<Preference>("misc.logcat").setOnPreferenceClickListener {
             val context = requireContext()
             val logDir = File(context.cacheDir, "log")
             logDir.mkdir()
@@ -118,28 +119,36 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     getString(R.string.abc_shareactionprovider_share_with)))
             true
         }
-        findPreference("misc.source").setOnPreferenceClickListener {
-            (activity as MainActivity).launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md".toUri())
+        findPreference<Preference>("misc.source").setOnPreferenceClickListener {
+            requireContext().launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
             true
         }
-        findPreference("misc.donate").setOnPreferenceClickListener {
+        findPreference<Preference>("misc.donate").setOnPreferenceClickListener {
             EBegFragment().show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
             true
         }
     }
 
-    override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
-        UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY -> displayPreferenceDialog(
-                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat(), preference.key,
-                bundleOf(Pair(AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat.KEY_SUGGESTIONS,
-                        try {
-                            NetworkInterface.getNetworkInterfaces().asSequence()
-                                    .filter { it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty() }
-                                    .map { it.name }.sorted().toList().toTypedArray()
-                        } catch (e: SocketException) {
-                            Timber.w(e)
-                            emptyArray<String>()
-                        })))
-        else -> super.onDisplayPreferenceDialog(preference)
+    override fun onDisplayPreferenceDialog(preference: Preference) {
+        when (preference.key) {
+            UpstreamMonitor.KEY -> AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat().apply {
+                setArguments(preference.key, try {
+                    NetworkInterface.getNetworkInterfaces().asSequence()
+                            .filter {
+                                try {
+                                    it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
+                                } catch (_: SocketException) {
+                                    false
+                                }
+                            }
+                            .map { it.name }.sorted().toList().toTypedArray()
+                } catch (e: SocketException) {
+                    Timber.d(e)
+                    emptyArray<String>()
+                })
+                setTargetFragment(this@SettingsPreferenceFragment, 0)
+            }.show(fragmentManager ?: return, preference.key)
+            else -> super.onDisplayPreferenceDialog(preference)
+        }
     }
 }

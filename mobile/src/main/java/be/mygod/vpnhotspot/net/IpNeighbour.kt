@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 import java.io.File
@@ -8,7 +9,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
-data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String, val state: State) {
+data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, val state: State) {
     enum class State {
         INCOMPLETE, VALID, FAILED, DELETING
     }
@@ -20,7 +21,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
          *   https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
          * Assumptions: IP addr (key) always present and RTM_GETNEIGH is never used
          */
-        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr (.[^ ]+))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
+        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr ([^ ]*))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
                 .toRegex()
         /**
          * Fallback format will be used if if_indextoname returns null, which some stupid devices do.
@@ -42,7 +43,12 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                         .map { it[ARP_HW_ADDRESS] }
                         .singleOrNull() ?: "")
-                val state = if (match.groupValues[1].isNotEmpty() || lladdr.isEmpty()) State.DELETING else
+                val mac = if (lladdr.isEmpty()) {
+                    if (match.groups[4] == null) return emptyList()
+                    Timber.w(IOException("Failed to find MAC address for $line"))
+                    0
+                } else lladdr.macToLong()
+                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else
                     when (match.groupValues[7]) {
                         "", "INCOMPLETE" -> State.INCOMPLETE
                         "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
@@ -50,16 +56,14 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: String,
                         "NOARP" -> return emptyList()   // skip
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
-                val result = IpNeighbour(ip, dev, lladdr, state)
+                val result = IpNeighbour(ip, dev, mac, state)
                 val devParser = devFallback.matchEntire(dev)
                 if (devParser != null) try {
                     val index = devParser.groupValues[1].toInt()
                     val iface = NetworkInterface.getByIndex(index)
                     if (iface == null) Timber.w("Failed to find network interface #$index")
-                    else return listOf(IpNeighbour(ip, iface.name, lladdr, state), result)
-                } catch (e: SocketException) {
-                    Timber.d(e)
-                }
+                    else return listOf(IpNeighbour(ip, iface.name, mac, state), result)
+                } catch (_: SocketException) { }
                 listOf(result)
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))

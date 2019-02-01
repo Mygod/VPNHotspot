@@ -5,7 +5,6 @@ import android.system.OsConstants
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.util.thread
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.IOException
@@ -13,6 +12,7 @@ import java.io.InterruptedIOException
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 abstract class IpMonitor : Runnable {
     companion object {
@@ -41,7 +41,7 @@ abstract class IpMonitor : Runnable {
             return
         }
         monitor = process
-        val err = thread("${javaClass.simpleName}-error") {
+        val err = thread(name = "${javaClass.simpleName}-error") {
             try {
                 process.errorStream.bufferedReader().forEachLine { Timber.e(it) }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
@@ -49,7 +49,13 @@ abstract class IpMonitor : Runnable {
             }
         }
         try {
-            process.inputStream.bufferedReader().forEachLine(this::processLine)
+            process.inputStream.bufferedReader().forEachLine {
+                // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
+                if (it.endsWith("Dump was interrupted and may be inconsistent.")) {
+                    Timber.w(it)
+                    process.destroy()   // move on to next mode
+                } else processLine(it)
+            }
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
             if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
         }
@@ -59,7 +65,7 @@ abstract class IpMonitor : Runnable {
     }
 
     init {
-        thread("${javaClass.simpleName}-input") {
+        thread(name = "${javaClass.simpleName}-input") {
             val mode = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
             if (mode != Mode.Poll) {
                 if (mode != Mode.MonitorRoot) {
@@ -77,14 +83,14 @@ abstract class IpMonitor : Runnable {
         }
     }
 
-    fun flush() = thread("${javaClass.simpleName}-flush") { run() }
+    fun flush() = thread(name = "${javaClass.simpleName}-flush") { run() }
 
     override fun run() {
         val process = ProcessBuilder("ip", monitoredObject)
                 .redirectErrorStream(true)
                 .start()
         process.waitFor()
-        thread("${javaClass.simpleName}-flush-error") {
+        thread(name = "${javaClass.simpleName}-flush-error") {
             val err = process.errorStream.bufferedReader().readText()
             if (err.isNotBlank()) {
                 Timber.e(err)
@@ -97,8 +103,7 @@ abstract class IpMonitor : Runnable {
 
     fun destroy() {
         destroyed = true
-        val monitor = monitor
-        if (monitor != null) thread("${javaClass.simpleName}-killer") { monitor.destroy() }
+        monitor?.destroy()
         pool?.shutdown()
     }
 }

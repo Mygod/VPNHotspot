@@ -6,12 +6,14 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.room.insert
-import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
@@ -25,12 +27,11 @@ object TrafficRecorder {
     private val records = HashMap<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
-    fun register(ip: InetAddress, downstream: String, mac: String) {
-        val record = TrafficRecord(
-                mac = mac.macToLong(),
-                ip = ip,
-                downstream = downstream)
-        AppDatabase.instance.trafficRecordDao.insert(record)
+    fun register(ip: InetAddress, downstream: String, mac: Long) {
+        val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
+        GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+            AppDatabase.instance.trafficRecordDao.insert(record)
+        }
         synchronized(this) {
             DebugHelper.log(TAG, "Registering $ip%$downstream")
             check(records.put(Pair(ip, downstream), record) == null)
@@ -64,7 +65,13 @@ object TrafficRecorder {
 
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
-        loop@ for (line in RootSession.use { it.execOutUnjoined("$IPTABLES -nvx -L vpnhotspot_fwd").drop(2) }) {
+        loop@ for (line in RootSession.use {
+            val command = "$IPTABLES -nvx -L vpnhotspot_fwd"
+            val result = it.execQuiet(command)
+            val message = RootSession.checkOutput(command, result, false, false)
+            if (result.err.isNotEmpty()) Timber.i(message)
+            result.out.drop(2)
+        }) {
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
@@ -116,7 +123,9 @@ object TrafficRecorder {
             check(record.sentBytes >= 0)
             check(record.receivedPackets >= 0)
             check(record.receivedBytes >= 0)
-            AppDatabase.instance.trafficRecordDao.insert(record)
+            GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+                AppDatabase.instance.trafficRecordDao.insert(record)
+            }
         }
         foregroundListeners(records.values, oldRecords)
     }

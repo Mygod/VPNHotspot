@@ -6,6 +6,7 @@
     <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
 
+    <string name="repeater_wps">WPS（不安全）</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
@@ -54,16 +55,18 @@
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_failed">Android 系统无法打开网络共享。</string>
 
-    <string name="connected_state_incomplete">%s (正在连接)</string>
-    <string name="connected_state_valid">%s (已连上)</string>
-    <string name="connected_state_failed">%s (已断开)</string>
+    <string name="connected_state_incomplete">（正在连接）</string>
+    <string name="connected_state_valid">（已连上）</string>
+    <string name="connected_state_failed">（已断开）</string>
 
     <string name="clients_popup_nickname">昵称…</string>
     <string name="clients_popup_block">拉黑</string>
     <string name="clients_popup_block_service_inactive">拉黑需要为该接口打开服务。</string>
     <string name="clients_popup_unblock">洗白</string>
     <string name="clients_popup_stats">流量…</string>
+    <string name="clients_mac_lookup_unexpected_error">服务器为 %1$s 返回错误：%2$s</string>
     <string name="clients_nickname_title">%s 的昵称</string>
+    <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 厂商</string>
     <string name="clients_stats_title">%s 的流量</string>
     <plurals name="clients_stats_message_1">
         <item quantity="other">自 %2$s 以来连接了 %1$s 次</item>
@@ -77,8 +80,10 @@
 
     <string name="settings_upstream">上游</string>
     <string name="settings_downstream">下游</string>
-    <string name="settings_service_masquerade">IP 掩蔽</string>
-    <string name="settings_service_masquerade_summary">建议使用广告拦截器与 socksfier 等虚拟 VPN 应用时禁用此选项。</string>
+    <string name="settings_service_masquerade">IP 掩蔽模式</string>
+    <string name="settings_service_masquerade_none">无</string>
+    <string name="settings_service_masquerade_simple">简易</string>
+    <string name="settings_service_masquerade_netd">Android Netd 服务</string>
     <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
     <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
@@ -95,8 +100,6 @@
     <string name="settings_service_dns">备用 DNS 服务器[:端口]</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
-    <string name="settings_upstream_fallback">备用上游接口</string>
-    <string name="settings_upstream_fallback_auto">自动检测系统默认网络</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_service_clean_summary">将修改的设置应用到当前启用的服务上。也可用于修复偶尔会发生的竞态条件。</string>
     <string name="settings_service_dhcp_workaround">尝试修复 DHCP</string>
@@ -121,7 +124,6 @@
         <item quantity="other">%d 个接口</item>
     </plurals>
 
-    <string name="root_unavailable">似乎没有 root</string>
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>

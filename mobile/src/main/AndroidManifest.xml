@@ -130,7 +130,7 @@
         <service
             android:name=".manage.TetheringTileService$WifiLegacy"
             android:directBootAware="true"
-            android:enabled="@bool/api_lt_26"
+            android:enabled="@bool/api_lt_25"
             android:icon="@drawable/ic_device_wifi_tethering"
             android:label="@string/tethering_manage_wifi_legacy"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">

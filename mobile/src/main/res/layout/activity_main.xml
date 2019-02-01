@@ -3,18 +3,20 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools">
+
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         tools:context="be.mygod.vpnhotspot.MainActivity">
 
         <androidx.appcompat.widget.Toolbar
-            android:layout_height="?attr/actionBarSize"
+            android:id="@+id/toolbar"
             android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorPrimary"
             android:elevation="4dp"
-            app:title="@string/app_name"
-            android:id="@+id/toolbar"/>
+            app:layout_constraintTop_toTopOf="parent"
+            app:title="@string/app_name"/>
 
         <androidx.coordinatorlayout.widget.CoordinatorLayout
             android:layout_width="0dp"

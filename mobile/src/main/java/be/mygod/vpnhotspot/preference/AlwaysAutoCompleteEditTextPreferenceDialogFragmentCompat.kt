@@ -5,11 +5,16 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.EditText
 import androidx.appcompat.widget.AppCompatAutoCompleteTextView
+import androidx.core.os.bundleOf
 import androidx.preference.PreferenceDialogFragmentCompat
 
 open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : PreferenceDialogFragmentCompat() {
     companion object {
-        const val KEY_SUGGESTIONS = "suggestions"
+        private const val ARG_SUGGESTIONS = "suggestions"
+    }
+
+    fun setArguments(key: String, suggestions: Array<String>) {
+        arguments = bundleOf(Pair(ARG_KEY, key), Pair(ARG_SUGGESTIONS, suggestions))
     }
 
     private lateinit var editText: AppCompatAutoCompleteTextView
@@ -19,12 +24,13 @@ open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : Preference
         super.onBindDialogView(view)
 
         editText = editTextPreference.editText
+        editText.hint = (editTextPreference.summaryProvider as SummaryFallbackProvider).fallback
         editText.setText(this.editTextPreference.text)
 
         val text = editText.text
         if (text != null) editText.setSelection(text.length, text.length)
 
-        val suggestions = arguments?.getStringArray(KEY_SUGGESTIONS)
+        val suggestions = arguments?.getStringArray(ARG_SUGGESTIONS)
         if (suggestions != null)
             editText.setAdapter(ArrayAdapter(view.context, android.R.layout.select_dialog_item, suggestions))
 

@@ -6,7 +6,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.net.InterfaceAddress
 
-class LocalOnlyInterfaceManager(val downstream: String) {
+class LocalOnlyInterfaceManager(val caller: Any, val downstream: String) {
     private var routing: Routing? = null
 
     init {
@@ -21,13 +21,12 @@ class LocalOnlyInterfaceManager(val downstream: String) {
 
     private fun initRouting(owner: InterfaceAddress? = null) {
         routing = try {
-            Routing(downstream, owner).apply {
+            Routing(caller, downstream, owner).apply {
                 try {
-                    if (app.dhcpWorkaround) dhcpWorkaround()
-                    ipForward()                                     // local only interfaces need to enable ip_forward
+                    ipForward() // local only interfaces need to enable ip_forward
                     forward()
-                    if (app.masquerade) masquerade()
-                    commit()
+                    masquerade(Routing.masquerade)
+                    commit(true)
                 } catch (e: Exception) {
                     revert()
                     throw e

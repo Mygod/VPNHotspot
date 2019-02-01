@@ -54,7 +54,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         } else {
             val routingManager = routingManager
             if (routingManager == null) {
-                this.routingManager = LocalOnlyInterfaceManager(iface)
+                this.routingManager = LocalOnlyInterfaceManager(this, iface)
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }
@@ -107,7 +107,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                     SmartSnackbar.make(message).show()
                     startFailure()
                 }
-            }, app.handler)
+            }, null)
         } catch (e: IllegalStateException) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
@@ -127,6 +127,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     override fun onDestroy() {
+        binder.stop()
         unregisterReceiver()
         super.onDestroy()
     }

@@ -8,11 +8,12 @@ import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
 import android.os.IBinder
+import android.os.Parcelable
+import android.text.method.LinkMovementMethod
 import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
-import androidx.core.os.bundleOf
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.lifecycle.ViewModel
@@ -27,13 +28,17 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
-import java.lang.RuntimeException
 import java.net.NetworkInterface
 import java.net.SocketException
 
 class RepeaterManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
-    class ViewHolder(val binding: ListitemRepeaterBinding) : RecyclerView.ViewHolder(binding.root)
+    class ViewHolder(val binding: ListitemRepeaterBinding) : RecyclerView.ViewHolder(binding.root) {
+        init {
+            binding.addresses.movementMethod = LinkMovementMethod.getInstance()
+        }
+    }
     inner class Data : BaseObservable() {
         val switchEnabled: Boolean
             @Bindable get() = when (binder?.service?.status) {
@@ -50,16 +55,16 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         val addresses: CharSequence @Bindable get() {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
-            } catch (e: SocketException) {
+            } catch (_: SocketException) {
                 ""
             }
         }
         var oc: CharSequence
             @Bindable get() {
-                val oc = app.operatingChannel
+                val oc = RepeaterService.operatingChannel
                 return if (oc in 1..165) oc.toString() else ""
             }
-            set(value) = app.pref.edit().putString(App.KEY_OPERATING_CHANNEL, value.toString()).apply()
+            set(value) = app.pref.edit().putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()).apply()
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
@@ -96,13 +101,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             if (group != null) try {
                 val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
                 holder.config = config
-                WifiP2pDialogFragment().apply {
-                    arguments = bundleOf(Pair(WifiP2pDialogFragment.KEY_CONFIGURATION, WifiConfiguration().apply {
-                        SSID = group.networkName
-                        preSharedKey = config.psk
-                    }))
-                    setTargetFragment(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
-                }.show(parent.fragmentManager ?: return, WifiP2pDialogFragment.TAG)
+                WifiP2pDialogFragment().withArg(WifiP2pDialogFragment.Arg(WifiConfiguration().apply {
+                    SSID = group.networkName
+                    preSharedKey = config.psk
+                })).show(parent.fragmentManager ?: return, "WifiP2pDialogFragment")
                 return
             } catch (e: RuntimeException) {
                 Timber.w(e)
@@ -111,11 +113,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    class WpsDialogFragment : AlertDialogFragment() {
-        companion object {
-            const val KEY_PIN = "pin"
-        }
-
+    @Parcelize
+    data class WpsRet(val pin: String?) : Parcelable
+    class WpsDialogFragment : AlertDialogFragment<Empty, WpsRet>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setTitle(R.string.repeater_wps_dialog_title)
             setView(R.layout.dialog_wps)
@@ -123,8 +123,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             setNegativeButton(android.R.string.cancel, null)
             setNeutralButton(R.string.repeater_wps_dialog_pbc, listener)
         }
-        override val data: Intent get() = Intent()
-                .putExtra(KEY_PIN, dialog.findViewById<EditText>(android.R.id.edit)?.text?.toString())
+
+        override val ret get() = WpsRet(dialog!!.findViewById<EditText>(android.R.id.edit)?.text?.toString())
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
             window!!.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
@@ -166,7 +166,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
     fun onWpsResult(which: Int, data: Intent?) {
         when (which) {
-            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(data!!.getStringExtra(WpsDialogFragment.KEY_PIN))
+            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(AlertDialogFragment.getRet<WpsRet>(data!!).pin)
             DialogInterface.BUTTON_NEUTRAL -> binder?.startWps(null)
         }
     }
@@ -175,7 +175,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         when (which) {
             DialogInterface.BUTTON_POSITIVE -> try {
                 val master = holder.config ?: return
-                val config = data!!.getParcelableExtra<WifiConfiguration>(WifiP2pDialogFragment.KEY_CONFIGURATION)
+                val config = AlertDialogFragment.getRet<WifiP2pDialogFragment.Arg>(data!!).configuration
                 master.update(config.SSID, config.preSharedKey)
                 binder!!.group = null
             } catch (e: Exception) {

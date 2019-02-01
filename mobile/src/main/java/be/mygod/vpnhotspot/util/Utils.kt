@@ -2,14 +2,18 @@ package be.mygod.vpnhotspot.util
 
 import android.content.*
 import android.os.Build
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
-import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import timber.log.Timber
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -23,8 +27,6 @@ fun Long.toPluralInt(): Int {
     if (this <= Int.MAX_VALUE) return toInt()
     return (this % 1000000000).toInt() + 1000000000
 }
-
-fun CharSequence?.onEmpty(otherwise: CharSequence): CharSequence = if (isNullOrEmpty()) otherwise else this!!
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
@@ -44,17 +46,27 @@ fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
 
-fun NetworkInterface.formatAddresses() =
-        (interfaceAddresses.asSequence()
-                .map { "${it.address.hostAddress}/${it.networkPrefixLength}" }
-                .toList() +
-                listOfNotNull(try {
-                    hardwareAddress?.joinToString(":") { "%02x".format(it) }
-                } catch (e: SocketException) {
-                    Timber.w(e)
-                    null
-                }))
-                .joinToString("\n")
+fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
+    // exclude all bogon IP addresses supported by Android APIs
+    if (app.hasTouch && !(ip.isMulticastAddress || ip.isAnyLocalAddress || ip.isLoopbackAddress ||
+                    ip.isLinkLocalAddress || ip.isSiteLocalAddress || ip.isMCGlobal || ip.isMCNodeLocal ||
+                    ip.isMCLinkLocal || ip.isMCSiteLocal || ip.isMCOrgLocal)) SpannableString(it).apply {
+        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$it"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    } else it
+}
+fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
+    setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+} else mac
+
+fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
+    try {
+        hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
+    } catch (_: SocketException) { }
+    for (address in interfaceAddresses) {
+        append(makeIpSpan(address.address))
+        appendln("/${address.networkPrefixLength}")
+    }
+}.trimEnd()
 
 private val parseNumericAddress by lazy {
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
@@ -63,18 +75,12 @@ private val parseNumericAddress by lazy {
 }
 fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
 
-/**
- * Wrapper for kotlin.concurrent.thread that silences uncaught exceptions.
- */
-fun thread(name: String? = null, start: Boolean = true, isDaemon: Boolean = false,
-           contextClassLoader: ClassLoader? = null, priority: Int = -1, block: () -> Unit): Thread {
-    val thread = kotlin.concurrent.thread(false, isDaemon, contextClassLoader, name, priority, block)
-    thread.setUncaughtExceptionHandler { _, e ->
-        SmartSnackbar.make(R.string.noisy_su_failure).show()
-        Timber.w(e)
-    }
-    if (start) thread.start()
-    return thread
+fun Context.launchUrl(url: String) {
+    if (app.hasTouch) try {
+        app.customTabsIntent.launchUrl(this, url.toUri())
+        return
+    } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
+    SmartSnackbar.make(url).show()
 }
 
 fun Context.stopAndUnbind(connection: ServiceConnection) {

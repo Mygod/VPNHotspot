@@ -4,8 +4,10 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
+import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.RootSession
 import java.io.File
+import java.lang.IllegalStateException
 
 /**
  * This parser is based on:
@@ -15,11 +17,11 @@ import java.io.File
 class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
     companion object {
         private const val TAG = "P2pSupplicantConfiguration"
+        private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
+        private const val CONF_PATH_LEGACY = "/data/misc/wifi/p2p_supplicant.conf"
         private val networkParser =
-                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$))".toRegex()
+                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
         private val whitespaceMatcher = "\\s+".toRegex()
-        private val confPath = if (Build.VERSION.SDK_INT >= 28)
-            "/data/vendor/wifi/wpa/p2p_supplicant.conf" else "/data/misc/wifi/p2p_supplicant.conf"
     }
 
     private class NetworkBlock : ArrayList<String>() {
@@ -46,8 +48,12 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
         RootSession.use {
             val result = ArrayList<Any>()
             var target: NetworkBlock? = null
-            val parser = Parser(it.execOutUnjoined("cat $confPath"))
+            val command = "cat $CONF_PATH_TREBLE || cat $CONF_PATH_LEGACY"
+            val shell = it.execQuiet(command)
+            RootSession.checkOutput(command, shell, false, false)
+            val parser = Parser(shell.out)
             try {
+                val bssid = group.owner.deviceAddress ?: ownerAddress
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
@@ -58,12 +64,13 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                                 block.ssidLine = block.size
                             } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
                                 val match = networkParser.find(parser.trimmed)
-                                if (match != null) if (match.groups[5] != null) {
+                                if (match != null) if (match.groups[4] != null) {
                                     check(block.pskLine == null && block.psk == null)
-                                    block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                    if (match.groups[5] != null) {
+                                        block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                    }
                                     block.pskLine = block.size
-                                } else if (match.groups[2] != null &&
-                                        match.groupValues[2].equals(group.owner.deviceAddress ?: ownerAddress, true)) {
+                                } else if (match.groups[2] != null && match.groupValues[2].equals(bssid, true)) {
                                     block.bssidMatches = true
                                 }
                             }
@@ -77,7 +84,27 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                         }
                     } else result.add(parser.line)
                 }
-                Pair(result, target!!)
+                if (target == null && !RepeaterService.persistentSupported) {
+                    result.add("")
+                    result.add(NetworkBlock().apply {
+                        // generate a basic network block, it is likely that vendor is going to add more stuff here
+                        add("network={")
+                        ssidLine = size
+                        add("")
+                        add("\tbssid=$bssid")
+                        pskLine = size
+                        add("")
+                        add("\tproto=RSN")
+                        add("\tkey_mgmt=WPA-PSK")
+                        add("\tpairwise=CCMP")
+                        add("\tauth_alg=OPEN")
+                        add("\tmode=3")
+                        add("\tdisabled=2")
+                        add("}")
+                        target = this
+                    })
+                }
+                Triple(result, target!!, shell.err.isNotEmpty())
             } catch (e: RuntimeException) {
                 DebugHelper.setString(TAG, parser.lines.joinToString("\n"))
                 DebugHelper.setString("$TAG.ownerAddress", ownerAddress)
@@ -89,7 +116,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
     val psk = group.passphrase ?: content.second.psk!!
 
     fun update(ssid: String, psk: String) {
-        val (lines, block) = content
+        val (lines, block, legacy) = content
         block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
                 .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
@@ -100,10 +127,13 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             }
             // pkill not available on Lollipop. Source: https://android.googlesource.com/platform/system/core/+/master/shell_and_utilities/README.md
             RootSession.use {
-                it.exec("cat ${tempFile.absolutePath} > $confPath")
+                it.exec("cat ${tempFile.absolutePath} > ${if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE}")
                 if (Build.VERSION.SDK_INT >= 23) it.exec("pkill wpa_supplicant") else {
-                    val result = it.execOut("ps | grep wpa_supplicant").split(whitespaceMatcher)
-                    check(result.size >= 2) { "wpa_supplicant not found, please toggle Airplane mode manually" }
+                    val result = try {
+                        it.execOut("ps | grep wpa_supplicant").split(whitespaceMatcher).apply { check(size >= 2) }
+                    } catch (e: Exception) {
+                        throw IllegalStateException("wpa_supplicant not found, please toggle Airplane mode manually", e)
+                    }
                     it.exec("kill ${result[1]}")
                 }
             }

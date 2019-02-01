@@ -15,7 +15,7 @@
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
 
-    <string name="repeater_wps">WPS</string>
+    <string name="repeater_wps">WPS (insecure)</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
     <string name="repeater_wps_success_pbc">Please use WPS push button within the next 2 minutes to connect your
@@ -58,16 +58,18 @@
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_failed">Android system has failed to start tethering.</string>
 
-    <string name="connected_state_incomplete">%s (connecting)</string>
-    <string name="connected_state_valid">%s (reachable)</string>
-    <string name="connected_state_failed">%s (lost)</string>
+    <string name="connected_state_incomplete">" (connecting)"</string>
+    <string name="connected_state_valid">" (reachable)"</string>
+    <string name="connected_state_failed">" (lost)"</string>
 
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Block</string>
     <string name="clients_popup_block_service_inactive">Turn on service for this interface to block the client.</string>
     <string name="clients_popup_unblock">Unblock</string>
     <string name="clients_popup_stats">Stats…</string>
+    <string name="clients_mac_lookup_unexpected_error">Server returned error for %1$s: %2$s</string>
     <string name="clients_nickname_title">Nickname for %s</string>
+    <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Vendor</string>
     <string name="clients_stats_title">Stats for %s</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Connected 1 time since %2$s</item>
@@ -84,9 +86,10 @@
 
     <string name="settings_upstream">Upstream</string>
     <string name="settings_downstream">Downstream</string>
-    <string name="settings_service_masquerade">IP Masquerade</string>
-    <string name="settings_service_masquerade_summary">Recommended to disable this option for dummy VPNs like
-        ad-blockers and socksifiers.</string>
+    <string name="settings_service_masquerade">IP Masquerade Mode</string>
+    <string name="settings_service_masquerade_none">None</string>
+    <string name="settings_service_masquerade_simple">Simple</string>
+    <string name="settings_service_masquerade_netd">Android Netd Service</string>
     <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
     <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
@@ -103,8 +106,6 @@
     <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
-    <string name="settings_upstream_fallback">Fallback upstream interface</string>
-    <string name="settings_upstream_fallback_auto">Auto detect system default network</string>
     <string name="settings_service_dhcp_workaround">Enable DHCP workaround</string>
     <string name="settings_service_dhcp_workaround_summary">Use this if clients cannot obtain IP addresses.</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
@@ -132,7 +133,6 @@
         <item quantity="other">%d interfaces</item>
     </plurals>
 
-    <string name="root_unavailable">Root unavailable</string>
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>

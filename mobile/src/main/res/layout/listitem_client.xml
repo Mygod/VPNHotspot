@@ -36,15 +36,16 @@
             android:layout_weight="1"
             android:orientation="vertical">
 
-            <TextView
+            <be.mygod.vpnhotspot.widget.LinkTextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{client.title}"
                 android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
-                android:textIsSelectable="@{client.record.nickname.length() == 0}"
+                android:textIsSelectable="@{client.titleSelectable}"
                 tools:text="01:23:45:ab:cd:ef%p2p-p2p0-0"/>
 
             <be.mygod.vpnhotspot.widget.AutoCollapseTextView
+                android:id="@+id/description"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
