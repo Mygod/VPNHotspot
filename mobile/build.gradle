@@ -87,7 +87,7 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.1'
     baseImplementation 'com.android.billingclient:billing:1.2'
     baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.8'
-    baseImplementation 'com.google.firebase:firebase-core:16.0.6'
+    baseImplementation 'com.google.firebase:firebase-core:16.0.7'
     testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
