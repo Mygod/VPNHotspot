@@ -43,11 +43,6 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                         .map { it[ARP_HW_ADDRESS] }
                         .singleOrNull() ?: "")
-                val mac = if (lladdr.isEmpty()) {
-                    if (match.groups[4] == null) return emptyList()
-                    Timber.w(IOException("Failed to find MAC address for $line"))
-                    0
-                } else lladdr.macToLong()
                 val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else
                     when (match.groupValues[7]) {
                         "", "INCOMPLETE" -> State.INCOMPLETE
@@ -56,6 +51,11 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         "NOARP" -> return emptyList()   // skip
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
+                val mac = if (lladdr.isEmpty()) {
+                    if (match.groups[4] == null) return emptyList()
+                    Timber.w(IOException("Failed to find MAC address for $line"))
+                    0
+                } else lladdr.macToLong()
                 val result = IpNeighbour(ip, dev, mac, state)
                 val devParser = devFallback.matchEntire(dev)
                 if (devParser != null) try {
