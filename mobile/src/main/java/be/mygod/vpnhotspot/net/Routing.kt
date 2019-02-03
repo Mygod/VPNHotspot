@@ -79,7 +79,8 @@ class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAd
 
         private fun RootSession.Transaction.ndc(name: String, command: String, revert: String) {
             val result = execQuiet(command, revert)
-            RootSession.checkOutput(command, result, result.out.joinToString("\n") != "200 0 $name operation succeeded")
+            val log = RootSession.checkOutput(command, result, result.out.last() != "200 0 $name operation succeeded")
+            if (result.out.size > 1) Timber.i(log)
         }
     }
 
@@ -232,10 +233,14 @@ class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAd
      * but may be broken when system tethering shutdown before local-only interfaces.
      */
     fun ipForward() {
-        if (Build.VERSION.SDK_INT >= 23) {
+        if (Build.VERSION.SDK_INT >= 23) try {
             transaction.ndc("ipfwd", "ndc ipfwd enable vpnhotspot_$downstream",
                     "ndc ipfwd disable vpnhotspot_$downstream")
-        } else transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
+            return
+        } catch (e: RootSession.UnexpectedOutputException) {
+            Timber.w(e)
+        }
+        transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
     }
 
     /**
