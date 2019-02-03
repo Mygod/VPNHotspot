@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.client
 
 import android.content.Context
+import android.os.Build
 import androidx.annotation.MainThread
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -35,7 +36,7 @@ object MacLookup {
     @MainThread
     fun abort(mac: Long) = macLookupBusy.remove(mac)?.let { (conn, job) ->
         job.cancel()
-        conn.disconnect()
+        if (Build.VERSION.SDK_INT >= 26) conn.disconnect() else GlobalScope.launch(Dispatchers.IO) { conn.disconnect() }
     }
 
     @MainThread
