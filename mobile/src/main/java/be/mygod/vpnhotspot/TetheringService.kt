@@ -64,10 +64,9 @@ class TetheringService : IpNeighbourMonitoringService() {
             val disableIpv6 = app.pref.getBoolean("service.disableIpv6", true)
             val iterator = routings.iterator()
             while (iterator.hasNext()) {
-                val (downstream, value) = iterator.next()
-                if (value != null) continue
-                try {
-                    routings[downstream] = Routing(this, downstream).apply {
+                val entry = iterator.next()
+                if (entry.value == null) try {
+                    entry.setValue(Routing(this, entry.key).apply {
                         try {
                             forward()
                             masquerade(Routing.masquerade)
@@ -77,7 +76,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                             revert()
                             throw e
                         }
-                    }
+                    })
                 } catch (e: Exception) {
                     Timber.w(e)
                     SmartSnackbar.make(e).show()
