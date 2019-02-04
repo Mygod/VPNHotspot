@@ -79,7 +79,8 @@ class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAd
 
         private fun RootSession.Transaction.ndc(name: String, command: String, revert: String) {
             val result = execQuiet(command, revert)
-            val log = RootSession.checkOutput(command, result, result.out.last() != "200 0 $name operation succeeded")
+            val log = RootSession.checkOutput(command, result,
+                    result.out.lastOrNull() != "200 0 $name operation succeeded")
             if (result.out.size > 1) Timber.i(log)
         }
     }
