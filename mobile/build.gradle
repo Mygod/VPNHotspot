@@ -18,8 +18,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 28
         resConfigs "ru", "zh-rCN"
-        versionCode 117
-        versionName "2.2.2"
+        versionCode 118
+        versionName "2.2.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
@@ -78,7 +78,7 @@ dependencies {
     implementation 'androidx.preference:preference:1.1.0-alpha02'
     implementation "androidx.room:room-coroutines:$roomVersion"
     implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu.libsu:core:2.2.1'
+    implementation 'com.github.topjohnwu.libsu:core:2.3.0'
     implementation 'com.google.android.material:material:1.0.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.21.0'
