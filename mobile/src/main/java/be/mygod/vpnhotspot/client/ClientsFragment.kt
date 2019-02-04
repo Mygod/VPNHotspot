@@ -132,7 +132,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
                     NicknameDialogFragment().withArg(NicknameArg(client.mac, client.nickname))
-                            .show(fragmentManager ?: return false, "NicknameDialogFragment")
+                            .show(this@ClientsFragment)
                     true
                 }
                 R.id.block, R.id.unblock -> {
@@ -151,9 +151,10 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 R.id.stats -> {
                     binding.client?.let { client ->
                         launch(start = CoroutineStart.UNDISPATCHED) {
-                            StatsDialogFragment().withArg(StatsArg(client.title.value ?: return@launch,
-                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
-                                    .show(fragmentManager ?: return@launch, "StatsDialogFragment")
+                            StatsDialogFragment().withArg(StatsArg(
+                                    client.title.value ?: return@launch,
+                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
+                            )).show(this@ClientsFragment)
                         }
                     }
                     true
