@@ -6,7 +6,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.net.InterfaceAddress
 
-class LocalOnlyInterfaceManager(val caller: Any, val downstream: String) {
+class LocalOnlyInterfaceManager(private val caller: Any, val downstream: String) {
     private var routing: Routing? = null
 
     init {

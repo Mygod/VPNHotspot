@@ -20,7 +20,7 @@ import java.net.*
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(val caller: Any, val downstream: String, ownerAddress: InterfaceAddress? = null) :
+class Routing(private val caller: Any, private val downstream: String, ownerAddress: InterfaceAddress? = null) :
         IpNeighbourMonitor.Callback {
     companion object {
         /**
