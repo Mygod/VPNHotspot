@@ -57,8 +57,9 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 * Disable IPv6 tethering: Turning this option on will disable IPv6 for system tethering. Useful for stopping IPv6 leaks
   as this app currently doesn't handle IPv6 VPN tethering (see [#6](https://github.com/Mygod/VPNHotspot/issues/6)).
-* Fallback DNS server[:port]: Only used when a DNS server isn't found on the upstream interface.
-* Enable DHCP workaround: Only used if your device isn't able to get your clients IP addresses with VPN on.
+* Enable DHCP workaround:
+    Only used if your device isn't able to get your clients IP addresses with VPN on.
+    This is a global setting, meaning it will only be applied once globally.
 
 ### Misc
 

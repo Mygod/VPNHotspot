@@ -15,7 +15,6 @@ import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
-import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -29,7 +28,7 @@ import java.net.SocketException
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
-        Routing.masquerade = Routing.masquerade // flush default value
+        RoutingManager.masquerade = RoutingManager.masquerade   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
         val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
         if (RepeaterService.supported) {
@@ -52,7 +51,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             if (cleaned) app.onRoutingsCleaned()
             true
         }
-        SummaryFallbackProvider(findPreference(Routing.KEY_DNS))
         findPreference<Preference>(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->
             SmartSnackbar.make(R.string.settings_restart_required).show()
             true

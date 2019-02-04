@@ -132,7 +132,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> onPersistentGroupsChanged()
         }
     }
-    private var routingManager: LocalOnlyInterfaceManager? = null
+    private var routingManager: RoutingManager? = null
     private var locked = false
 
     var status = Status.IDLE
@@ -282,7 +282,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         locked = true
         binder.group = group
         check(routingManager == null)
-        routingManager = LocalOnlyInterfaceManager(this, group.`interface`!!)
+        routingManager = RoutingManager.LocalOnly(this, group.`interface`!!).apply { initRouting() }
         status = Status.ACTIVE
         showNotification(group)
     }

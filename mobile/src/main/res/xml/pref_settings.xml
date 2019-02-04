@@ -28,12 +28,6 @@
             app:title="@string/settings_service_disable_ipv6"
             app:summary="@string/settings_service_disable_ipv6_summary"
             app:defaultValue="true"/>
-        <EditTextPreference
-            app:key="service.dns"
-            app:icon="@drawable/ic_action_dns"
-            app:title="@string/settings_service_dns"
-            app:summary="8.8.8.8"
-            app:defaultValue="8.8.8.8"/>
         <SwitchPreference
             app:key="service.dhcpWorkaround"
             app:icon="@drawable/ic_action_build"

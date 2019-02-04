@@ -10,11 +10,9 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 class TetheringService : IpNeighbourMonitoringService() {
     companion object {
@@ -25,29 +23,38 @@ class TetheringService : IpNeighbourMonitoringService() {
     inner class Binder : android.os.Binder() {
         val routingsChanged = Event0()
 
-        fun isActive(iface: String): Boolean = synchronized(routings) { routings.containsKey(iface) }
+        fun isActive(iface: String): Boolean = synchronized(downstreams) { downstreams.containsKey(iface) }
+    }
+
+    inner class Downstream(caller: Any, downstream: String) : RoutingManager(caller, downstream) {
+        override fun Routing.configure() {
+            forward()
+            masquerade(RoutingManager.masqueradeMode)
+            if (app.pref.getBoolean("service.disableIpv6", true)) disableIpv6()
+            commit()
+        }
     }
 
     private val binder = Binder()
-    private val routings = HashMap<String, Routing?>()
+    private val downstreams = mutableMapOf<String, Downstream>()
     private var locked = false
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
-        synchronized(routings) {
-            for (iface in routings.keys - TetheringManager.getTetheredIfaces(extras))
-                routings.remove(iface)?.revert()
+        synchronized(downstreams) {
+            for (iface in downstreams.keys - TetheringManager.getTetheredIfaces(extras))
+                downstreams.remove(iface)?.stop()
             updateRoutingsLocked()
         }
     }
-    override val activeIfaces get() = synchronized(routings) { routings.keys.toList() }
+    override val activeIfaces get() = synchronized(downstreams) { downstreams.keys.toList() }
 
     private fun updateRoutingsLocked() {
-        if (locked && routings.keys.all { !TetherType.ofInterface(it).isWifi }) {
+        if (locked && downstreams.keys.all { !TetherType.ofInterface(it).isWifi }) {
             WifiDoubleLock.release()
             locked = false
         }
-        if (routings.isEmpty()) {
+        if (downstreams.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
@@ -55,35 +62,14 @@ class TetheringService : IpNeighbourMonitoringService() {
             if (!receiverRegistered) {
                 receiverRegistered = true
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                app.onPreCleanRoutings[this] = {
-                    synchronized(routings) { for (iface in routings.keys) routings.put(iface, null)?.stop() }
-                }
-                app.onRoutingsCleaned[this] = { synchronized(routings) { updateRoutingsLocked() } }
                 IpNeighbourMonitor.registerCallback(this)
             }
-            val disableIpv6 = app.pref.getBoolean("service.disableIpv6", true)
-            val iterator = routings.iterator()
+            val iterator = downstreams.iterator()
             while (iterator.hasNext()) {
-                val entry = iterator.next()
-                if (entry.value == null) try {
-                    entry.setValue(Routing(this, entry.key).apply {
-                        try {
-                            forward()
-                            masquerade(Routing.masquerade)
-                            if (disableIpv6) disableIpv6()
-                            commit()
-                        } catch (e: Exception) {
-                            revert()
-                            throw e
-                        }
-                    })
-                } catch (e: Exception) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
-                    iterator.remove()
-                }
+                val downstream = iterator.next().value
+                if (downstream.routing == null && !downstream.initRouting()) iterator.remove()
             }
-            if (routings.isEmpty()) {
+            if (downstreams.isEmpty()) {
                 updateRoutingsLocked()
                 return
             }
@@ -97,23 +83,26 @@ class TetheringService : IpNeighbourMonitoringService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent != null) {
             val ifaces = intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()
-            synchronized(routings) {
+            synchronized(downstreams) {
                 for (iface in ifaces) {
-                    routings[iface] = null
+                    Downstream(this, iface).apply {
+                        downstreams[iface] = this
+                        initRouting()
+                    }
                     if (TetherType.ofInterface(iface).isWifi && !locked) {
                         WifiDoubleLock.acquire()
                         locked = true
                     }
                 }
-                routings.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.revert()
+                downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
                 updateRoutingsLocked()
             }
-        } else if (routings.isEmpty()) stopSelf(startId)
+        } else if (downstreams.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        routings.values.forEach { it?.revert() }    // force clean to prevent leakage
+        downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
         unregisterReceiver()
         super.onDestroy()
     }

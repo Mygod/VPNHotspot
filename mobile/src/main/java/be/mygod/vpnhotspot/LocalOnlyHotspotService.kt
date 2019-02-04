@@ -38,7 +38,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
     private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
-    private var routingManager: LocalOnlyInterfaceManager? = null
+    private var routingManager: RoutingManager? = null
     private var locked = false
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -54,7 +54,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         } else {
             val routingManager = routingManager
             if (routingManager == null) {
-                this.routingManager = LocalOnlyInterfaceManager(this, iface)
+                this.routingManager = RoutingManager.LocalOnly(this, iface).apply { initRouting() }
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }

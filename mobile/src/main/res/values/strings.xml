@@ -103,7 +103,6 @@
     <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
     <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_dns">Fallback DNS server[:port]</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_service_dhcp_workaround">Enable DHCP workaround</string>

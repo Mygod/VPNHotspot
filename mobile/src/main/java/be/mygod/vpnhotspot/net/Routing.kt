@@ -20,8 +20,7 @@ import java.net.*
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(private val caller: Any, private val downstream: String, ownerAddress: InterfaceAddress? = null) :
-        IpNeighbourMonitor.Callback {
+class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
     companion object {
         /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
@@ -41,16 +40,6 @@ class Routing(private val caller: Any, private val downstream: String, ownerAddr
          * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
          */
         val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
-        const val KEY_DNS = "service.dns"
-        const val KEY_MASQUERADE = "service.masqueradeMode"
-
-        var masquerade: MasqueradeMode
-            get() {
-                app.pref.getString(KEY_MASQUERADE, null)?.let { return MasqueradeMode.valueOf(it) }
-                return if (app.pref.getBoolean("service.masquerade", true)) // legacy settings
-                    MasqueradeMode.Simple else MasqueradeMode.None
-            }
-            set(value) = app.pref.edit().putString(KEY_MASQUERADE, value.name).apply()
 
         fun clean() {
             TrafficRecorder.clean()
@@ -93,16 +82,15 @@ class Routing(private val caller: Any, private val downstream: String, ownerAddr
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
     }
 
-    val hostAddress = try {
-        ownerAddress ?: NetworkInterface.getByName(downstream)!!.interfaceAddresses!!
-                .asSequence().single { it.address is Inet4Address }
+    private val hostAddress = try {
+        NetworkInterface.getByName(downstream)!!.interfaceAddresses!!.asSequence().single { it.address is Inet4Address }
     } catch (e: Exception) {
         throw InterfaceNotFoundException(e)
     }
-    val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
+    private val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     private val transaction = RootSession.beginTransaction()
 
-    var masqueradeMode = MasqueradeMode.None
+    private var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
@@ -117,6 +105,7 @@ class Routing(private val caller: Any, private val downstream: String, ownerAddr
                             "ip rule del from all iif $downstream priority $priority")
                 }
                 when (masqueradeMode) {
+                    MasqueradeMode.None -> { }  // nothing to be done here
                     // note: specifying -i wouldn't work for POSTROUTING
                     MasqueradeMode.Simple -> {
                         iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
@@ -278,11 +267,10 @@ class Routing(private val caller: Any, private val downstream: String, ownerAddr
     private var currentDns: DnsRoute? = null
     private fun updateDnsRoute() {
         var dns = (upstream.dns + fallbackUpstream.dns).firstOrNull { it is Inet4Address }?.hostAddress
-                ?: app.pref.getString(KEY_DNS, null)
-        if (dns.isNullOrBlank()) dns = "8.8.8.8"
+        if (dns.isNullOrBlank()) dns = null
         if (dns != currentDns?.dns) {
             currentDns?.transaction?.revert()
-            currentDns = try {
+            currentDns = if (dns == null) null else try {
                 DnsRoute(dns)
             } catch (e: RuntimeException) {
                 Timber.w(e)
