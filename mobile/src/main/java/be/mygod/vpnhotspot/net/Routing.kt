@@ -89,7 +89,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     init {
-        check(downstreams.add(downstream)) { "Double routing detected" }
+        check(downstreams.add(downstream)) { "Double routing detected from $caller" }
     }
 
     private val hostAddress = try {
@@ -312,6 +312,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         fallbackUpstream.subrouting?.transaction?.revert()
         upstream.subrouting?.transaction?.revert()
         transaction.revert()
-        check(downstreams.remove(downstream)) { "Double reverting detected" }
+        check(downstreams.remove(downstream)) { "Double reverting detected from $caller" }
     }
 }
