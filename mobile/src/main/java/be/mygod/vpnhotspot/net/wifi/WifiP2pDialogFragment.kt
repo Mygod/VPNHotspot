@@ -12,8 +12,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.R
-import com.google.android.material.textfield.TextInputLayout
 import kotlinx.android.parcel.Parcelize
+import kotlinx.android.synthetic.main.dialog_wifi_ap.view.*
 import java.nio.charset.Charset
 
 /**
@@ -44,8 +44,8 @@ class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, Wif
         mView = requireActivity().layoutInflater.inflate(R.layout.dialog_wifi_ap, null)
         setView(mView)
         setTitle(R.string.repeater_configure)
-        mSsid = mView.findViewById(R.id.ssid)
-        mPassword = mView.findViewById(R.id.password)
+        mSsid = mView.ssid
+        mPassword = mView.password
         setPositiveButton(context.getString(R.string.wifi_save), listener)
         setNegativeButton(context.getString(R.string.wifi_cancel), null)
         setNeutralButton(context.getString(R.string.repeater_reset_credentials), listener)
@@ -64,7 +64,7 @@ class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, Wif
         val mSsidString = mSsid.text.toString()
         val ssidValid = mSsid.length() != 0 && Charset.forName("UTF-8").encode(mSsidString).limit() <= 32
         val passwordValid = mPassword.length() >= 8
-        mView.findViewById<TextInputLayout>(R.id.password_wrapper).error =
+        mView.password_wrapper.error =
                 if (passwordValid) null else requireContext().getString(R.string.credentials_password_too_short)
         (dialog as AlertDialog).getButton(DialogInterface.BUTTON_POSITIVE).isEnabled = ssidValid && passwordValid
     }

@@ -6,7 +6,6 @@ import android.os.Parcelable
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewStub
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -17,6 +16,7 @@ import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.android.billingclient.api.*
 import kotlinx.android.parcel.Parcelize
+import kotlinx.android.synthetic.main.fragment_ebeg.view.*
 import timber.log.Timber
 
 /**
@@ -52,9 +52,9 @@ class EBegFragment : AppCompatDialogFragment(), PurchasesUpdatedListener, Billin
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         dialog!!.setTitle(R.string.settings_misc_donate)
-        googleSpinner = view.findViewById(R.id.donations__google_android_market_spinner)
+        googleSpinner = view.donations__google_android_market_spinner
         onBillingServiceDisconnected()
-        view.findViewById<Button>(R.id.donations__google_android_market_donate_button).setOnClickListener {
+        view.donations__google_android_market_donate_button.setOnClickListener {
             val sku = skus?.getOrNull(googleSpinner.selectedItemPosition)
             if (sku == null) {
                 openDialog(R.string.donations__google_android_market_not_supported_title,
@@ -63,7 +63,7 @@ class EBegFragment : AppCompatDialogFragment(), PurchasesUpdatedListener, Billin
                     .setSkuDetails(sku).build())
         }
         @Suppress("ConstantConditionIf")
-        if (BuildConfig.DONATIONS) (view.findViewById<ViewStub>(R.id.donations__more_stub).inflate() as Button)
+        if (BuildConfig.DONATIONS) (view.donations__more_stub.inflate() as Button)
                 .setOnClickListener { requireContext().launchUrl("https://mygod.be/donate/") }
     }
 
