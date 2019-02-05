@@ -8,7 +8,6 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
-import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -39,7 +38,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var routingManager: RoutingManager? = null
-    private var locked = false
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val ifaces = TetheringManager.getLocalOnlyTetheredIfaces(intent.extras ?: return@broadcastReceiver)
@@ -76,9 +74,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
-                        check(!locked)
-                        WifiDoubleLock.acquire()
-                        locked = true
                         if (!receiverRegistered) {
                             registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                             receiverRegistered = true
@@ -135,10 +130,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     private fun unregisterReceiver() {
         routingManager?.stop()
         routingManager = null
-        if (locked) {
-            WifiDoubleLock.release()
-            locked = false
-        }
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             IpNeighbourMonitor.unregisterCallback(this)

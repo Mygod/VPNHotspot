@@ -28,7 +28,7 @@ import java.net.SocketException
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
-        RoutingManager.masquerade = RoutingManager.masquerade   // flush default value
+        RoutingManager.masqueradeMode = RoutingManager.masqueradeMode   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
         val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
         if (RepeaterService.supported) {

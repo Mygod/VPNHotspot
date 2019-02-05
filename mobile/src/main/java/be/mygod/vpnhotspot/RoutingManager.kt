@@ -2,10 +2,11 @@ package be.mygod.vpnhotspot
 
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
-abstract class RoutingManager(private val caller: Any, val downstream: String) {
+abstract class RoutingManager(private val caller: Any, val downstream: String, private val isWifi: Boolean) {
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
         var masqueradeMode: Routing.MasqueradeMode
@@ -17,7 +18,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String) {
             set(value) = app.pref.edit().putString(KEY_MASQUERADE_MODE, value.name).apply()
     }
 
-    class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream) {
+    /**
+     * Both repeater and local-only hotspot are Wi-Fi based.
+     */
+    class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
         override fun Routing.configure() {
             ipForward() // local only interfaces need to enable ip_forward
             forward()
@@ -31,6 +35,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String) {
     init {
         app.onPreCleanRoutings[this] = { routing?.stop() }
         app.onRoutingsCleaned[this] = { initRouting() }
+        if (isWifi) WifiDoubleLock.acquire(this)
     }
 
     fun initRouting() = try {
@@ -53,8 +58,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String) {
     protected abstract fun Routing.configure()
 
     fun stop() {
+        routing?.revert()
+        if (isWifi) WifiDoubleLock.release(this)
         app.onPreCleanRoutings -= this
         app.onRoutingsCleaned -= this
-        routing?.revert()
     }
 }

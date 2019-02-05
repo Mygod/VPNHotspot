@@ -17,20 +17,20 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
             WifiDoubleLock.Mode.valueOf(app.pref.getString(KEY, WifiDoubleLock.Mode.Full.toString()) ?: "").lockType
         private val service by lazy { app.getSystemService<PowerManager>()!! }
 
-        private var referenceCount = 0
+        private var holders = mutableSetOf<Any>()
         private var lock: WifiDoubleLock? = null
 
-        fun acquire() = synchronized(this) {
-            if (referenceCount == 0) {
+        fun acquire(holder: Any) = synchronized(this) {
+            if (holders.isEmpty()) {
                 app.pref.registerOnSharedPreferenceChangeListener(this)
                 val lockType = lockType
                 if (lockType != null) lock = WifiDoubleLock(lockType)
             }
-            referenceCount += 1
+            check(holders.add(holder))
         }
-        fun release() = synchronized(this) {
-            referenceCount -= 1
-            if (referenceCount == 0) {
+        fun release(holder: Any) = synchronized(this) {
+            check(holders.remove(holder))
+            if (holders.isEmpty()) {
                 lock?.close()
                 lock = null
                 app.pref.unregisterOnSharedPreferenceChangeListener(this)

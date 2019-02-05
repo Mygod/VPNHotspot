@@ -7,7 +7,6 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
-import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +25,8 @@ class TetheringService : IpNeighbourMonitoringService() {
         fun isActive(iface: String): Boolean = synchronized(downstreams) { downstreams.containsKey(iface) }
     }
 
-    inner class Downstream(caller: Any, downstream: String) : RoutingManager(caller, downstream) {
+    inner class Downstream(caller: Any, downstream: String) :
+            RoutingManager(caller, downstream, TetherType.ofInterface(downstream).isWifi) {
         override fun Routing.configure() {
             forward()
             masquerade(RoutingManager.masqueradeMode)
@@ -37,7 +37,6 @@ class TetheringService : IpNeighbourMonitoringService() {
 
     private val binder = Binder()
     private val downstreams = mutableMapOf<String, Downstream>()
-    private var locked = false
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
@@ -50,10 +49,6 @@ class TetheringService : IpNeighbourMonitoringService() {
     override val activeIfaces get() = synchronized(downstreams) { downstreams.keys.toList() }
 
     private fun updateRoutingsLocked() {
-        if (locked && downstreams.keys.all { !TetherType.ofInterface(it).isWifi }) {
-            WifiDoubleLock.release()
-            locked = false
-        }
         if (downstreams.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
@@ -85,13 +80,9 @@ class TetheringService : IpNeighbourMonitoringService() {
             val ifaces = intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()
             synchronized(downstreams) {
                 for (iface in ifaces) {
-                    Downstream(this, iface).apply {
+                    Downstream(this, iface).run {
                         downstreams[iface] = this
                         initRouting()
-                    }
-                    if (TetherType.ofInterface(iface).isWifi && !locked) {
-                        WifiDoubleLock.acquire()
-                        locked = true
                     }
                 }
                 downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
@@ -110,8 +101,6 @@ class TetheringService : IpNeighbourMonitoringService() {
     private fun unregisterReceiver() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
-            app.onPreCleanRoutings -= this
-            app.onRoutingsCleaned -= this
             IpNeighbourMonitor.unregisterCallback(this)
             receiverRegistered = false
         }
