@@ -25,7 +25,7 @@ class TetheringService : IpNeighbourMonitoringService() {
         fun isActive(iface: String): Boolean = synchronized(downstreams) { downstreams.containsKey(iface) }
     }
 
-    inner class Downstream(caller: Any, downstream: String) :
+    private inner class Downstream(caller: Any, downstream: String) :
             RoutingManager(caller, downstream, TetherType.ofInterface(downstream).isWifi) {
         override fun Routing.configure() {
             forward()
@@ -43,12 +43,12 @@ class TetheringService : IpNeighbourMonitoringService() {
         synchronized(downstreams) {
             for (iface in downstreams.keys - TetheringManager.getTetheredIfaces(extras))
                 downstreams.remove(iface)?.stop()
-            updateRoutingsLocked()
+            onDownstreamsChangedLocked()
         }
     }
     override val activeIfaces get() = synchronized(downstreams) { downstreams.keys.toList() }
 
-    private fun updateRoutingsLocked() {
+    private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
@@ -58,15 +58,6 @@ class TetheringService : IpNeighbourMonitoringService() {
                 receiverRegistered = true
                 registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 IpNeighbourMonitor.registerCallback(this)
-            }
-            val iterator = downstreams.iterator()
-            while (iterator.hasNext()) {
-                val downstream = iterator.next().value
-                if (downstream.routing == null && !downstream.initRouting()) iterator.remove()
-            }
-            if (downstreams.isEmpty()) {
-                updateRoutingsLocked()
-                return
             }
             updateNotification()
         }
@@ -79,22 +70,21 @@ class TetheringService : IpNeighbourMonitoringService() {
         if (intent != null) {
             val ifaces = intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()
             synchronized(downstreams) {
-                for (iface in ifaces) {
-                    Downstream(this, iface).run {
-                        downstreams[iface] = this
-                        initRouting()
-                    }
+                for (iface in ifaces) Downstream(this, iface).let { downstream ->
+                    if (downstream.initRouting()) downstreams[iface] = downstream else downstream.stop()
                 }
                 downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
-                updateRoutingsLocked()
+                onDownstreamsChangedLocked()
             }
         } else if (downstreams.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
-        downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
-        unregisterReceiver()
+        synchronized(downstreams) {
+            downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
+            unregisterReceiver()
+        }
         super.onDestroy()
     }
 
