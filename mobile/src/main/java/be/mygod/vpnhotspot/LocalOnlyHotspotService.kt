@@ -52,7 +52,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
         } else {
             val routingManager = routingManager
             if (routingManager == null) {
-                this.routingManager = RoutingManager.LocalOnly(this, iface).apply { initRouting() }
+                this.routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
                 IpNeighbourMonitor.registerCallback(this)
             } else check(iface == routingManager.downstream)
         }
@@ -128,7 +128,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
     }
 
     private fun unregisterReceiver() {
-        routingManager?.stop()
+        routingManager?.destroy()
         routingManager = null
         if (receiverRegistered) {
             unregisterReceiver(receiver)

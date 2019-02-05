@@ -9,12 +9,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
+import java.util.*
 
 object ServiceNotification {
     private const val CHANNEL = "tethering"
     private const val CHANNEL_ID = 1
 
-    private val deviceCountsMap = HashMap<Service, Map<String, Int>>()
+    private val deviceCountsMap = WeakHashMap<Service, Map<String, Int>>()
+    private val inactiveMap = WeakHashMap<Service, List<String>>()
     private val manager = app.getSystemService<NotificationManager>()!!
 
     private fun buildNotification(context: Context): Notification {
@@ -27,32 +29,29 @@ object ServiceNotification {
                         Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         val deviceCounts = deviceCountsMap.values.flatMap { it.entries }.sortedBy { it.key }
-        return when (deviceCounts.size) {
-            0 -> builder.build()
-            1 -> {
-                val (dev, size) = deviceCounts.single()
-                builder.setContentText(context.resources.getQuantityString(R.plurals.notification_connected_devices,
-                        size, size, dev))
-                        .build()
-            }
-            else -> {
-                val deviceCount = deviceCounts.sumBy { it.value }
-                NotificationCompat.BigTextStyle(builder
-                        .setContentText(context.resources.getQuantityString(R.plurals.notification_connected_devices,
-                                deviceCount, deviceCount,
-                                context.resources.getQuantityString(R.plurals.notification_interfaces,
-                                        deviceCounts.size, deviceCounts.size))))
-                        .bigText(deviceCounts.joinToString("\n") { (dev, size) ->
-                            context.resources.getQuantityString(R.plurals.notification_connected_devices,
-                                    size, size, dev)
-                        })
-                        .build()
-            }
+        val inactive = inactiveMap.values.flatten()
+        var lines = deviceCounts.map { (dev, size) ->
+            context.resources.getQuantityString(R.plurals.notification_connected_devices, size, size, dev)
+        }
+        if (inactive.isNotEmpty()) {
+            lines += context.getString(R.string.notification_interfaces_inactive) + inactive.joinToString()
+        }
+        return if (lines.size <= 1) builder.setContentText(lines.singleOrNull()).build() else {
+            val deviceCount = deviceCounts.sumBy { it.value }
+            val interfaceCount = deviceCounts.size + inactive.size
+            NotificationCompat.BigTextStyle(builder
+                    .setContentText(context.resources.getQuantityString(R.plurals.notification_connected_devices,
+                            deviceCount, deviceCount,
+                            context.resources.getQuantityString(R.plurals.notification_interfaces,
+                                    interfaceCount, interfaceCount))))
+                    .bigText(lines.joinToString("\n"))
+                    .build()
         }
     }
 
-    fun startForeground(service: Service, deviceCounts: Map<String, Int>) {
+    fun startForeground(service: Service, deviceCounts: Map<String, Int>, inactive: List<String> = emptyList()) {
         deviceCountsMap[service] = deviceCounts
+        if (inactive.isEmpty()) inactiveMap.remove(service) else inactiveMap[service] = inactive
         service.startForeground(CHANNEL_ID, buildNotification(service))
     }
     fun stopForeground(service: Service) {

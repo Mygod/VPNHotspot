@@ -58,11 +58,11 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
     setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
-fun NetworkInterface.formatAddresses() = SpannableStringBuilder().apply {
+fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
     try {
         hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
     } catch (_: SocketException) { }
-    for (address in interfaceAddresses) {
+    if (!macOnly) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))
         appendln("/${address.networkPrefixLength}")
     }

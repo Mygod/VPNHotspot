@@ -30,15 +30,21 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    var routing: Routing? = null
-
+    var started = false
+    private var routing: Routing? = null
     init {
-        app.onPreCleanRoutings[this] = { routing?.stop() }
-        app.onRoutingsCleaned[this] = { initRouting() }
         if (isWifi) WifiDoubleLock.acquire(this)
     }
 
-    fun initRouting() = try {
+    fun start(): Boolean {
+        check(!started)
+        started = true
+        app.onPreCleanRoutings[this] = { routing?.stop() }
+        app.onRoutingsCleaned[this] = { initRouting() }
+        return initRouting()
+    }
+
+    private fun initRouting() = try {
         routing = Routing(caller, downstream).apply {
             try {
                 configure()
@@ -58,9 +64,15 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     protected abstract fun Routing.configure()
 
     fun stop() {
+        if (!started) return
         routing?.revert()
-        if (isWifi) WifiDoubleLock.release(this)
         app.onPreCleanRoutings -= this
         app.onRoutingsCleaned -= this
+        started = false
+    }
+
+    fun destroy() {
+        if (isWifi) WifiDoubleLock.release(this)
+        stop()
     }
 }

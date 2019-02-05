@@ -39,6 +39,9 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">模式不兼容</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">共享被禁用</string>
 
+    <string name="tethering_monitor">监视…</string>
+    <string name="tethering_state_monitored">%s（监视）</string>
+
     <string name="tethering_manage">管理系统共享…</string>
     <string name="tethering_manage_offload_enabled">若 VPN 共享无法使用，请尝试禁用“开发者选项”中的“网络共享硬件加速”。</string>
     <!--
@@ -122,6 +125,7 @@
     <plurals name="notification_interfaces">
         <item quantity="other">%d 个接口</item>
     </plurals>
+    <string name="notification_interfaces_inactive">不活跃：</string>
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>

@@ -9,29 +9,26 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
+import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import be.mygod.vpnhotspot.LocalOnlyHotspotService
-import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.RepeaterService
-import be.mygod.vpnhotspot.TetheringService
+import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import kotlinx.android.synthetic.main.activity_main.*
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
 
-class TetheringFragment : Fragment(), ServiceConnection {
+class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClickListener {
     companion object {
         const val START_LOCAL_ONLY_HOTSPOT = 1
         const val REPEATER_EDIT_CONFIGURATION = 2
@@ -63,7 +60,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
             val list = ArrayList<Manager>()
             if (RepeaterService.supported) list.add(repeaterManager)
             if (Build.VERSION.SDK_INT >= 26) list.add(localOnlyHotspotManager)
-            list.addAll(activeIfaces.map { InterfaceManager(this@TetheringFragment, it) }.sortedBy { it.iface })
+            val monitoredIfaces = binder?.monitoredIfaces ?: emptyList()
+            updateMonitorList(activeIfaces - monitoredIfaces)
+            list.addAll((activeIfaces + monitoredIfaces).toSortedSet()
+                    .map { InterfaceManager(this@TetheringFragment, it) })
             list.add(ManageBar)
             if (Build.VERSION.SDK_INT >= 24) {
                 list.addAll(tetherManagers)
@@ -92,6 +92,27 @@ class TetheringFragment : Fragment(), ServiceConnection {
         adapter.update(TetheringManager.getTetheredIfaces(extras),
                 TetheringManager.getLocalOnlyTetheredIfaces(extras),
                 extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER)!!)
+    }
+
+    private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
+        val toolbar = requireActivity().toolbar
+        val menu = toolbar.menu
+        if (canMonitor.isEmpty()) menu.removeItem(R.id.monitor) else {
+            var item = menu.findItem(R.id.monitor)
+            if (item == null) {
+                toolbar.inflateMenu(R.menu.toolbar_monitor)
+                item = menu.findItem(R.id.monitor)!!
+            }
+            item.subMenu.apply {
+                clear()
+                canMonitor.sorted().forEach { add(it).setOnMenuItemClickListener(this@TetheringFragment) }
+            }
+        }
+    }
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        ContextCompat.startForegroundService(requireContext(), Intent(context, TetheringService::class.java)
+                .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, item?.title ?: return false))
+        return true
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
@@ -127,7 +148,13 @@ class TetheringFragment : Fragment(), ServiceConnection {
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
-        service.routingsChanged[this] = { adapter.notifyDataSetChanged() }
+        service.routingsChanged[this] = {
+            requireContext().apply {
+                // flush tethered interfaces
+                unregisterReceiver(receiver)
+                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+            }
+        }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
     }
 
@@ -135,5 +162,10 @@ class TetheringFragment : Fragment(), ServiceConnection {
         (binder ?: return).routingsChanged -= this
         binder = null
         requireContext().unregisterReceiver(receiver)
+    }
+
+    override fun onDestroy() {
+        updateMonitorList()
+        super.onDestroy()
     }
 }

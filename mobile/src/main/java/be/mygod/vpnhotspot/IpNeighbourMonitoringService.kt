@@ -8,6 +8,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
     private var neighbours = emptyList<IpNeighbour>()
 
     protected abstract val activeIfaces: List<String>
+    protected open val inactiveIfaces get() = emptyList<String>()
 
     override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) {
         this.neighbours = neighbours
@@ -20,6 +21,8 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
                     .distinctBy { it.lladdr }
                     .size
         }
-        ServiceNotification.startForeground(this, activeIfaces.associate { Pair(it, sizeLookup[it] ?: 0) })
+        ServiceNotification.startForeground(this,
+                activeIfaces.associate { Pair(it, sizeLookup[it] ?: 0) },
+                inactiveIfaces)
     }
 }

@@ -49,6 +49,9 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">incompatible mode</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering disallowed</string>
 
+    <string name="tethering_monitor">Monitor…</string>
+    <string name="tethering_state_monitored">%s (monitored)</string>
+
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
         if VPN tethering does not work.</string>
@@ -131,6 +134,7 @@
         <item quantity="one">%d interface</item>
         <item quantity="other">%d interfaces</item>
     </plurals>
+    <string name="notification_interfaces_inactive">"Inactive: "</string>
 
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>

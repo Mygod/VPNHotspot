@@ -277,7 +277,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private fun doStart(group: WifiP2pGroup) {
         binder.group = group
         check(routingManager == null)
-        routingManager = RoutingManager.LocalOnly(this, group.`interface`!!).apply { initRouting() }
+        routingManager = RoutingManager.LocalOnly(this, group.`interface`!!).apply { start() }
         status = Status.ACTIVE
         showNotification(group)
     }
@@ -309,7 +309,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     }
     private fun clean() {
         unregisterReceiver()
-        routingManager?.stop()
+        routingManager?.destroy()
         routingManager = null
         status = Status.IDLE
         ServiceNotification.stopForeground(this)

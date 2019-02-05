@@ -16,16 +16,22 @@ import kotlinx.coroutines.launch
 class TetheringService : IpNeighbourMonitoringService() {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
+        const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
     }
 
     inner class Binder : android.os.Binder() {
         val routingsChanged = Event0()
+        val monitoredIfaces get() = synchronized(downstreams) {
+            downstreams.values.filter { it.monitor }.map { it.downstream }
+        }
 
-        fun isActive(iface: String): Boolean = synchronized(downstreams) { downstreams.containsKey(iface) }
+        fun isActive(iface: String) = synchronized(downstreams) { downstreams.containsKey(iface) }
+        fun isInactive(iface: String) = synchronized(downstreams) { downstreams[iface] }?.run { !started && monitor }
+        fun monitored(iface: String) = synchronized(downstreams) { downstreams[iface] }?.monitor
     }
 
-    private inner class Downstream(caller: Any, downstream: String) :
+    private inner class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
             RoutingManager(caller, downstream, TetherType.ofInterface(downstream).isWifi) {
         override fun Routing.configure() {
             forward()
@@ -41,12 +47,23 @@ class TetheringService : IpNeighbourMonitoringService() {
     private val receiver = broadcastReceiver { _, intent ->
         val extras = intent.extras ?: return@broadcastReceiver
         synchronized(downstreams) {
-            for (iface in downstreams.keys - TetheringManager.getTetheredIfaces(extras))
-                downstreams.remove(iface)?.stop()
+            val toRemove = downstreams.toMutableMap()   // make a copy
+            for (iface in TetheringManager.getTetheredIfaces(extras)) {
+                val downstream = toRemove.remove(iface) ?: continue
+                if (downstream.monitor && !downstream.started) downstream.start()
+            }
+            for ((iface, downstream) in toRemove) {
+                if (downstream.monitor) downstream.stop() else downstreams.remove(iface)?.destroy()
+            }
             onDownstreamsChangedLocked()
         }
     }
-    override val activeIfaces get() = synchronized(downstreams) { downstreams.keys.toList() }
+    override val activeIfaces get() = synchronized(downstreams) {
+        downstreams.values.filter { it.started }.map { it.downstream }
+    }
+    override val inactiveIfaces get() = synchronized(downstreams) {
+        downstreams.values.filter { !it.started }.map { it.downstream }
+    }
 
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
@@ -67,22 +84,30 @@ class TetheringService : IpNeighbourMonitoringService() {
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent != null) {
-            val ifaces = intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()
-            synchronized(downstreams) {
-                for (iface in ifaces) Downstream(this, iface).let { downstream ->
-                    if (downstream.initRouting()) downstreams[iface] = downstream else downstream.stop()
+        if (intent != null) synchronized(downstreams) {
+            for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
+                if (downstreams[iface] == null) Downstream(this, iface).apply {
+                    if (start()) check(downstreams.put(iface, this) == null) else destroy()
                 }
-                downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.stop()
-                onDownstreamsChangedLocked()
             }
+            intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { iface ->
+                val downstream = downstreams[iface]
+                if (downstream == null) Downstream(this, iface, true).apply {
+                    start()
+                    check(downstreams.put(iface, this) == null)
+                    downstreams[iface] = this
+                } else downstream.monitor = true
+            }
+            downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.destroy()
+            updateNotification()    // call this first just in case we are shutting down immediately
+            onDownstreamsChangedLocked()
         } else if (downstreams.isEmpty()) stopSelf(startId)
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         synchronized(downstreams) {
-            downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
+            downstreams.values.forEach { it.destroy() } // force clean to prevent leakage
             unregisterReceiver()
         }
         super.onDestroy()
