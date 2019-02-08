@@ -70,7 +70,6 @@ dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.0.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.0.0-alpha3'
     implementation 'androidx.core:core-ktx:1.0.1'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
