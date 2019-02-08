@@ -3,8 +3,10 @@ apply plugin: 'kotlin-android'
 apply plugin: 'kotlin-android-extensions'
 apply plugin: 'kotlin-kapt'
 
-if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
+if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdroid")) {
+    apply plugin: 'com.google.gms.google-services'
     apply plugin: 'io.fabric'
+}
 
 android {
     buildToolsVersion "28.0.3"
@@ -26,6 +28,7 @@ android {
                 arguments = ["room.schemaLocation": "$projectDir/schemas".toString()]
             }
         }
+        buildConfigField "boolean", "DONATIONS", "true"
     }
     buildTypes {
         debug {
@@ -38,18 +41,13 @@ android {
         }
     }
     dataBinding.enabled = true
-    flavorDimensions("fdroid", "freedom")
+    flavorDimensions("freedom")
     productFlavors {
-        base {
-            dimension "fdroid"
-        }
         fdroid {
-            dimension "fdroid"
+            dimension "freedom"
         }
-
         freedom {
             dimension "freedom"
-            buildConfigField "boolean", "DONATIONS", "true"
         }
         google {
             dimension "freedom"
@@ -65,6 +63,10 @@ androidExtensions {
     experimental = true
 }
 
+def aux = [
+        'com.crashlytics.sdk.android:crashlytics:2.9.8',
+        'com.google.firebase:firebase-core:16.0.7',
+]
 dependencies {
     kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
@@ -85,8 +87,10 @@ dependencies {
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.1'
-    baseImplementation 'com.crashlytics.sdk.android:crashlytics:2.9.8'
-    baseImplementation 'com.google.firebase:firebase-core:16.0.7'
+    for (dep in aux) {
+        freedomImplementation dep
+        googleImplementation dep
+    }
     testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
@@ -94,6 +98,3 @@ dependencies {
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
     androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.0'
 }
-
-if (getGradle().getStartParameter().getTaskRequests().toString().contains("Base"))
-    apply plugin: 'com.google.gms.google-services'
