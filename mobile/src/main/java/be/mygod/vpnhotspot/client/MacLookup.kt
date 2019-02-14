@@ -49,11 +49,10 @@ object MacLookup {
                 val obj = JSONObject(response).getJSONObject("result")
                 obj.optString("error", null)?.also { throw UnexpectedError(mac, it) }
                 val company = obj.getString("company")
-                val match = obj.optString("country")?.let { countryCodeRegex.matchEntire(it) }
-                        ?: obj.optString("address")?.let { countryCodeRegex.find(it) }
+                val match = extractCountry(mac, response, obj)
                 val result = if (match != null) {
                     String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' + company
-                } else company.also { Timber.w(UnexpectedError(mac, response)) }
+                } else company
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
                     nickname = result
                     macLookupPending = false
@@ -69,5 +68,14 @@ object MacLookup {
                 if (explicit) SmartSnackbar.make(e).show()
             }
         }
+    }
+
+    private fun extractCountry(mac: Long, response: String, obj: JSONObject): MatchResult? {
+        obj.optString("country")?.let { countryCodeRegex.matchEntire(it) }?.also { return it }
+        val address = obj.optString("address")
+        if (address.isNullOrBlank()) return null
+        countryCodeRegex.find(address)?.also { return it }
+        Timber.w(UnexpectedError(mac, response))
+        return null
     }
 }
