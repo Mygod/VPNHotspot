@@ -77,6 +77,7 @@ Default settings are picked to suit general use cases and maximize compatibility
      but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
    - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
      devices. Recommended to switch to other modes if possible.
+   - Poll with root: Same as Poll but polling is done using a root shell.
 
 
 ## Q & A

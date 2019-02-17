@@ -5,6 +5,7 @@ import android.system.OsConstants
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.IOException
@@ -17,10 +18,11 @@ import kotlin.concurrent.thread
 abstract class IpMonitor : Runnable {
     companion object {
         const val KEY = "service.ipMonitor"
+        private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
     }
 
-    enum class Mode {
-        Monitor, MonitorRoot, Poll
+    enum class Mode(val isMonitor: Boolean = false) {
+        Monitor(true), MonitorRoot(true), Poll, PollRoot
     }
 
     private class FlushFailure : RuntimeException()
@@ -66,8 +68,8 @@ abstract class IpMonitor : Runnable {
 
     init {
         thread(name = "${javaClass.simpleName}-input") {
-            val mode = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
-            if (mode != Mode.Poll) {
+            val mode = currentMode
+            if (mode.isMonitor) {
                 if (mode != Mode.MonitorRoot) {
                     // monitor may get rejected by SELinux enforcing
                     handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
@@ -85,7 +87,7 @@ abstract class IpMonitor : Runnable {
 
     fun flush() = thread(name = "${javaClass.simpleName}-flush") { run() }
 
-    override fun run() {
+    private fun poll() {
         val process = ProcessBuilder("ip", monitoredObject)
                 .redirectErrorStream(true)
                 .start()
@@ -99,6 +101,26 @@ abstract class IpMonitor : Runnable {
             }
         }
         process.inputStream.bufferedReader().useLines(this::processLines)
+    }
+
+    override fun run() {
+        if (currentMode == Mode.Poll) try {
+            return poll()
+        } catch (e: IOException) {
+            DebugHelper.logEvent("ip_poll_failure")
+            Timber.d(e)
+        }
+        try {
+            val command = "ip $monitoredObject"
+            RootSession.use {
+                val result = it.execQuiet(command)
+                RootSession.checkOutput(command, result, false)
+                processLines(result.out.asSequence())
+            }
+        } catch (e: RuntimeException) {
+            DebugHelper.logEvent("ip_su_poll_failure")
+            Timber.w(e)
+        }
     }
 
     fun destroy() {
