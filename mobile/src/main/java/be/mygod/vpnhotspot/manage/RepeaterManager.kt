@@ -163,8 +163,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
     fun onWpsResult(which: Int, data: Intent?) {
         when (which) {
-            DialogInterface.BUTTON_POSITIVE -> binder?.startWps(AlertDialogFragment.getRet<WpsRet>(data!!).pin)
-            DialogInterface.BUTTON_NEUTRAL -> binder?.startWps(null)
+            DialogInterface.BUTTON_POSITIVE -> binder!!.startWps(AlertDialogFragment.getRet<WpsRet>(data!!).pin)
+            DialogInterface.BUTTON_NEUTRAL -> binder!!.startWps(null)
         }
     }
 
