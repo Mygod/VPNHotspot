@@ -141,7 +141,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         override fun onAvailable(ifname: String, dns: List<InetAddress>) = synchronized(this@Routing) {
             val subrouting = subrouting
             when {
-                subrouting != null -> check(subrouting.upstream == ifname)
+                subrouting != null -> check(subrouting.upstream == ifname) { "${subrouting.upstream} != $ifname" }
                 !upstreams.add(ifname) -> return
                 else -> this.subrouting = try {
                     Subrouting(priority, ifname)
