@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
+import java.lang.NumberFormatException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -37,7 +38,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
                 val dev = match.groupValues[3]                      // by regex, dev is non-empty as well
                 var lladdr = checkLladdrNotLoopback(match.groupValues[5])
-                // use ARP as fallback
+                // use ARP as fallback for IPv4
                 if (lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
                         .asSequence()
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
@@ -51,11 +52,13 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         "NOARP" -> return emptyList()   // skip
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
-                val mac = if (lladdr.isEmpty()) {
+                val mac = try {
+                    lladdr.macToLong()
+                } catch (e: NumberFormatException) {
                     if (match.groups[4] == null) return emptyList()
                     Timber.w(IOException("Failed to find MAC address for $line"))
-                    0
-                } else lladdr.macToLong()
+                    0L
+                }
                 val result = IpNeighbour(ip, dev, mac, state)
                 val devParser = devFallback.matchEntire(dev)
                 if (devParser != null) try {
