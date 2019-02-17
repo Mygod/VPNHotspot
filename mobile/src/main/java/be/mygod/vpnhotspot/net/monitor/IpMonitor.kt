@@ -18,6 +18,8 @@ import kotlin.concurrent.thread
 abstract class IpMonitor : Runnable {
     companion object {
         const val KEY = "service.ipMonitor"
+        // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
+        private const val MAGIC_SUFFIX = "Dump was interrupted and may be inconsistent."
         private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
     }
 
@@ -52,8 +54,7 @@ abstract class IpMonitor : Runnable {
         }
         try {
             process.inputStream.bufferedReader().forEachLine {
-                // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
-                if (it.endsWith("Dump was interrupted and may be inconsistent.")) {
+                if (it.endsWith(MAGIC_SUFFIX)) {
                     Timber.w(it)
                     process.destroy()   // move on to next mode
                 } else processLine(it)
@@ -100,7 +101,12 @@ abstract class IpMonitor : Runnable {
                 SmartSnackbar.make(R.string.noisy_su_failure).show()
             }
         }
-        process.inputStream.bufferedReader().useLines(this::processLines)
+        process.inputStream.bufferedReader().useLines {
+            processLines(it.map { line ->
+                if (line.endsWith(MAGIC_SUFFIX)) throw IOException(line)
+                line
+            })
+        }
     }
 
     override fun run() {
@@ -115,6 +121,7 @@ abstract class IpMonitor : Runnable {
             RootSession.use {
                 val result = it.execQuiet(command)
                 RootSession.checkOutput(command, result, false)
+                if (result.out.any { it.endsWith(MAGIC_SUFFIX) }) throw IOException(result.out.joinToString("\n"))
                 processLines(result.out.asSequence())
             }
         } catch (e: RuntimeException) {
