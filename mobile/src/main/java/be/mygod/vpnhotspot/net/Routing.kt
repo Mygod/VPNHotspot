@@ -115,15 +115,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                             // by the time stopScript is called, table entry for upstream may already get removed
                             "ip rule del from all iif $downstream priority $priority")
                 }
+                fun simpleMasquerade() {
+                    // note: specifying -i wouldn't work for POSTROUTING
+                    iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
+                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                }
                 when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
-                    // note: specifying -i wouldn't work for POSTROUTING
-                    MasqueradeMode.Simple -> {
-                        iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
-                            "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
-                    }
-                    MasqueradeMode.Netd -> {
-                        check(upstream != null)
+                    MasqueradeMode.Simple -> simpleMasquerade()
+                    // fallback is only needed for repeater on API 23
+                    MasqueradeMode.Netd -> if (upstream == null) simpleMasquerade() else {
                         /**
                          * 0 means that there are no interface addresses coming after, which is unused anyway.
                          *
