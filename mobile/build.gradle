@@ -67,6 +67,8 @@ def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.9.9',
         'com.google.firebase:firebase-core:16.0.7',
 ]
+def lifecycleVersion = '2.0.0'
+def roomVersion = '2.1.0-alpha04'
 dependencies {
     kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
