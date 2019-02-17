@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.io.IOException
 
 /**
  * Assuming RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000.
@@ -33,7 +34,7 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
                     } else {
                         e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
                     }) return
-            Timber.w(e)
+            Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
             SmartSnackbar.make(e).show()
         } catch (e: Exception) {
             Timber.w(e)

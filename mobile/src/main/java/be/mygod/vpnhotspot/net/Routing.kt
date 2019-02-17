@@ -13,6 +13,7 @@ import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
+import java.io.IOException
 import java.net.*
 
 /**
@@ -238,7 +239,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     "ndc ipfwd disable vpnhotspot_$downstream")
             return
         } catch (e: RootSession.UnexpectedOutputException) {
-            Timber.w(e)
+            Timber.w(IOException("ndc ipfwd enable failure", e))
         }
         transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
     }
