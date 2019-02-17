@@ -117,7 +117,7 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
-        binding.setLifecycleOwner(this)
+        binding.lifecycleOwner = this
         binding.interfaces.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter

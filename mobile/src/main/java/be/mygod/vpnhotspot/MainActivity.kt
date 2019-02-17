@@ -28,7 +28,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = DataBindingUtil.setContentView(this, R.layout.activity_main)
-        binding.setLifecycleOwner(this)
+        binding.lifecycleOwner = this
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         badge = QBadgeView(this)

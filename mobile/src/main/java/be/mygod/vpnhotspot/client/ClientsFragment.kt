@@ -113,7 +113,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
-            binding.setLifecycleOwner(this@ClientsFragment)
+            binding.lifecycleOwner = this@ClientsFragment
             binding.root.setOnClickListener(this)
             binding.description.movementMethod = LinkMovementMethod.getInstance()
         }
@@ -211,7 +211,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         binding = DataBindingUtil.inflate(inflater, R.layout.fragment_clients, container, false)
-        binding.setLifecycleOwner(this)
+        binding.lifecycleOwner = this
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
