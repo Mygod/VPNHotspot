@@ -64,7 +64,7 @@ androidExtensions {
 }
 
 def aux = [
-        'com.crashlytics.sdk.android:crashlytics:2.9.8',
+        'com.crashlytics.sdk.android:crashlytics:2.9.9',
         'com.google.firebase:firebase-core:16.0.7',
 ]
 dependencies {
