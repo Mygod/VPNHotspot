@@ -14,6 +14,7 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import java.lang.RuntimeException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -79,7 +80,7 @@ fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {
         app.customTabsIntent.launchUrl(this, url.toUri())
         return
-    } catch (_: ActivityNotFoundException) { } catch (_: SecurityException) { }
+    } catch (_: RuntimeException) { }
     SmartSnackbar.make(url).show()
 }
 

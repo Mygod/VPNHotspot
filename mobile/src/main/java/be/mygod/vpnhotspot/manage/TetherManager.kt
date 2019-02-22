@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.manage
 
-import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
@@ -50,7 +49,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                         "package:${mainActivity.packageName}".toUri()))
                 return
-            } catch (e: ActivityNotFoundException) {
+            } catch (e: RuntimeException) {
                 DebugHelper.logEvent("manage_write_settings", bundleOf(Pair("message", e.message)))
             }
             val started = manager.isStarted

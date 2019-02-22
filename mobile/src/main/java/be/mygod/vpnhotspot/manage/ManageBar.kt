@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.manage
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -45,21 +44,13 @@ object ManageBar : Manager() {
     fun start(context: Context) {
         try {
             context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_1))
-        } catch (e: ActivityNotFoundException) {
-            startAlternative(context, e)
-        } catch (e: SecurityException) {
-            startAlternative(context, e)
-        }
-    }
-
-    private fun startAlternative(context: Context, e: RuntimeException) {
-        try {
-            context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_2))
-            DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e.message)))
-        } catch (e: ActivityNotFoundException) {
-            DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e.message), Pair(SETTINGS_2, e.message)))
-        } catch (e: SecurityException) {
-            DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e.message), Pair(SETTINGS_2, e.message)))
+        } catch (e1: RuntimeException) {
+            try {
+                context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_2))
+                DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e1.message)))
+            } catch (e2: RuntimeException) {
+                DebugHelper.logEvent(TAG, bundleOf(Pair(SETTINGS_1, e1.message), Pair(SETTINGS_2, e2.message)))
+            }
         }
     }
 }
