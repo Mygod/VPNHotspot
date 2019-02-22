@@ -55,7 +55,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
     private val power = service.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "vpnhotspot:power").apply { acquire() }
 
     override fun close() {
-        wifi.release()
-        power.release()
+        if (wifi.isHeld) wifi.release()
+        if (power.isHeld) power.release()
     }
 }
