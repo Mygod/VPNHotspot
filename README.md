@@ -48,7 +48,7 @@ Default settings are picked to suit general use cases and maximize compatibility
     I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
     But you should never use this for real VPNs like OpenVPN, WireGuard, etc.
   - Simple: Source address/port from downstream packets will be remapped and that's about it.
-  - Android Netd Service: (experimental since 2.2.0)
+  - Android Netd Service:
     Let your system handle masquerade.
     Android system will do a few extra things to make things like FTP and tethering traffic counter work.
     You should probably not use this if you are trying to hide your tethering activity from your carrier.
