@@ -56,7 +56,8 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                     lladdr.macToLong()
                 } catch (e: NumberFormatException) {
                     if (match.groups[4] == null) return emptyList()
-                    Timber.w(IOException("Failed to find MAC address for $line"))
+                    // for DELETING, we only care about IP address and do not care if MAC is not present
+                    if (state != State.DELETING) Timber.w(IOException("Failed to find MAC address for $line"))
                     0L
                 }
                 val result = IpNeighbour(ip, dev, mac, state)
