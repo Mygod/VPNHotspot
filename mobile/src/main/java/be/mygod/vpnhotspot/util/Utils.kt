@@ -19,6 +19,8 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
+val Throwable.readableMessage get() = localizedMessage ?: javaClass.name
+
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
  * marvelously for everybody.

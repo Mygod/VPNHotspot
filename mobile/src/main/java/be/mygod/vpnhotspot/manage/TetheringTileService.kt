@@ -14,6 +14,7 @@ import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -74,14 +75,14 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         func()
     } catch (e: IOException) {
         Timber.w(e)
-        Toast.makeText(this, e.localizedMessage, Toast.LENGTH_LONG).show()
+        Toast.makeText(this, e.readableMessage, Toast.LENGTH_LONG).show()
     } catch (e: InvocationTargetException) {
         if (e.targetException !is SecurityException) Timber.w(e)
         var cause: Throwable? = e
         while (cause != null) {
             cause = cause.cause
             if (cause != null && cause !is InvocationTargetException) {
-                Toast.makeText(this, cause.localizedMessage, Toast.LENGTH_LONG).show()
+                Toast.makeText(this, cause.readableMessage, Toast.LENGTH_LONG).show()
                 break
             }
         }

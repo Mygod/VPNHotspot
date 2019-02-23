@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.IOException
@@ -57,7 +58,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 if (started) manager.stop() else manager.start()
             } catch (e: IOException) {
                 Timber.w(e)
-                Toast.makeText(mainActivity, e.localizedMessage, Toast.LENGTH_LONG).show()
+                Toast.makeText(mainActivity, e.readableMessage, Toast.LENGTH_LONG).show()
                 ManageBar.start(itemView.context)
             } catch (e: InvocationTargetException) {
                 if (e.targetException !is SecurityException) Timber.w(e)
@@ -65,7 +66,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 while (cause != null) {
                     cause = cause.cause
                     if (cause != null && cause !is InvocationTargetException) {
-                        Toast.makeText(mainActivity, cause.localizedMessage, Toast.LENGTH_LONG).show()
+                        Toast.makeText(mainActivity, cause.readableMessage, Toast.LENGTH_LONG).show()
                         ManageBar.start(itemView.context)
                         break
                     }
@@ -120,7 +121,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 }
             } catch (e: InvocationTargetException) {
                 if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
-                e.localizedMessage
+                e.readableMessage
             }
         }
         data.notifyChange()
