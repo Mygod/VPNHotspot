@@ -9,7 +9,6 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
@@ -39,16 +38,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             boot.isChecked = BootReceiver.enabled
         } else boot.parent!!.removePreference(boot)
         findPreference<Preference>("service.clean").setOnPreferenceClickListener {
-            app.onPreCleanRoutings()
-            val cleaned = try {
-                Routing.clean()
-                true
-            } catch (e: RuntimeException) {
-                Timber.d(e)
-                SmartSnackbar.make(e).show()
-                false
-            }
-            if (cleaned) app.onRoutingsCleaned()
+            RoutingManager.clean()
             true
         }
         findPreference<Preference>(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->

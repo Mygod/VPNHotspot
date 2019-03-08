@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -16,6 +17,22 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     Routing.MasqueradeMode.Simple else Routing.MasqueradeMode.None
             }
             set(value) = app.pref.edit().putString(KEY_MASQUERADE_MODE, value.name).apply()
+
+        private val onPreCleanRoutings = Event0()
+        private val onRoutingsCleaned = Event0()
+
+        fun clean() {
+            onPreCleanRoutings()
+            val cleaned = try {
+                Routing.clean()
+                true
+            } catch (e: RuntimeException) {
+                Timber.d(e)
+                SmartSnackbar.make(e).show()
+                false
+            }
+            if (cleaned) onRoutingsCleaned()
+        }
     }
 
     /**
@@ -39,8 +56,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     fun start(): Boolean {
         check(!started)
         started = true
-        app.onPreCleanRoutings[this] = { routing?.stop() }
-        app.onRoutingsCleaned[this] = { initRouting() }
+        onPreCleanRoutings[this] = { routing?.stop() }
+        onRoutingsCleaned[this] = { initRouting() }
         return initRouting()
     }
 
@@ -66,8 +83,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     fun stop() {
         if (!started) return
         routing?.revert()
-        app.onPreCleanRoutings -= this
-        app.onRoutingsCleaned -= this
+        onPreCleanRoutings -= this
+        onRoutingsCleaned -= this
         started = false
     }
 

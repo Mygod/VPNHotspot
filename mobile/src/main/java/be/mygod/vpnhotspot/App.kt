@@ -17,7 +17,6 @@ import androidx.emoji.text.FontRequestEmojiCompatConfig
 import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
-import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.RootSession
 import timber.log.Timber
 import java.util.*
@@ -79,7 +78,4 @@ class App : Application() {
                 .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
                 .build()
     }
-
-    val onPreCleanRoutings = Event0()
-    val onRoutingsCleaned = Event0()
 }
