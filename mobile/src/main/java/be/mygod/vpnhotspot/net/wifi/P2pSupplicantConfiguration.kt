@@ -53,7 +53,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
-                val bssid = group.owner.deviceAddress ?: ownerAddress
+                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress).distinct()
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
@@ -71,7 +71,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                                             block.psk = match.groupValues[5].apply { check(length in 8..63) }
                                         }
                                         block.pskLine = block.size
-                                    } else if (matchedBssid.equals(bssid, true)) block.bssidMatches = true
+                                    } else if (bssids.any { matchedBssid.equals(it, true) }) block.bssidMatches = true
                                 }
                             }
                             block.add(parser.line)
@@ -84,7 +84,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                         }
                     } else result.add(parser.line)
                 }
-                if (target == null && !RepeaterService.persistentSupported) {
+                if (target == null && !RepeaterService.persistentSupported) bssids.forEach { bssid ->
                     result.add("")
                     result.add(NetworkBlock().apply {
                         // generate a basic network block, it is likely that vendor is going to add more stuff here
@@ -101,7 +101,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                         add("\tmode=3")
                         add("\tdisabled=2")
                         add("}")
-                        target = this
+                        if (target == null) target = this
                     })
                 }
                 Triple(result, target!!, shell.err.isNotEmpty())
