@@ -110,7 +110,7 @@ abstract class IpMonitor : Runnable {
     }
 
     override fun run() {
-        if (currentMode == Mode.Poll) try {
+        if (currentMode != Mode.PollRoot) try {
             return poll()
         } catch (e: IOException) {
             DebugHelper.logEvent("ip_poll_failure")
