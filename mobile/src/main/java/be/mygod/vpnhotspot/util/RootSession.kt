@@ -103,12 +103,11 @@ class RootSession : AutoCloseable {
         }).exec()
     }
     fun exec(command: String) = checkOutput(command, execQuiet(command))
-    fun execOutUnjoined(command: String): List<String> {
+    fun execOut(command: String): String {
         val result = execQuiet(command)
         checkOutput(command, result, false)
-        return result.out
+        return result.out.joinToString("\n")
     }
-    fun execOut(command: String): String = execOutUnjoined(command).joinToString("\n")
 
     /**
      * This transaction is different from what you may have in mind since you can revert it after committing it.
