@@ -3,12 +3,11 @@ package be.mygod.vpnhotspot.preference
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.EditText
 import androidx.appcompat.widget.AppCompatAutoCompleteTextView
 import androidx.core.os.bundleOf
 import androidx.preference.PreferenceDialogFragmentCompat
 
-open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : PreferenceDialogFragmentCompat() {
+class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : PreferenceDialogFragmentCompat() {
     companion object {
         private const val ARG_SUGGESTIONS = "suggestions"
     }
@@ -35,24 +34,15 @@ open class AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat : Preference
             editText.setAdapter(ArrayAdapter(view.context, android.R.layout.select_dialog_item, suggestions))
 
         val oldParent = editText.parent as? ViewGroup?
-        if (oldParent !== view) {
-            oldParent?.removeView(editText)
-            onAddEditTextToDialogView(view, editText)
-        }
+        if (oldParent === view) return
+        oldParent?.removeView(editText)
+        val oldEditText = view.findViewById<View>(android.R.id.edit) ?: return
+        val container = oldEditText.parent as? ViewGroup? ?: return
+        container.removeView(oldEditText)
+        container.addView(editText, oldEditText.layoutParams)
     }
 
     override fun needInputMethod(): Boolean = true
-
-    protected open fun onAddEditTextToDialogView(dialogView: View, editText: EditText) {
-        val oldEditText = dialogView.findViewById<View>(android.R.id.edit)
-        if (oldEditText != null) {
-            val container = oldEditText.parent as? ViewGroup?
-            if (container != null) {
-                container.removeView(oldEditText)
-                container.addView(editText, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-            }
-        }
-    }
 
     override fun onDialogClosed(positiveResult: Boolean) {
         if (positiveResult) {
