@@ -50,7 +50,7 @@ class TetheringService : IpNeighbourMonitoringService() {
             val toRemove = downstreams.toMutableMap()   // make a copy
             for (iface in TetheringManager.getTetheredIfaces(extras)) {
                 val downstream = toRemove.remove(iface) ?: continue
-                if (downstream.monitor && !downstream.started) downstream.start()
+                if (downstream.monitor) downstream.start()
             }
             for ((iface, downstream) in toRemove) {
                 if (downstream.monitor) downstream.stop() else downstreams.remove(iface)?.destroy()

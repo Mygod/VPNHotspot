@@ -3,7 +3,8 @@ package be.mygod.vpnhotspot
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.putIfAbsentCompat
+import be.mygod.vpnhotspot.util.removeCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -18,11 +19,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             }
             set(value) = app.pref.edit().putString(KEY_MASQUERADE_MODE, value.name).apply()
 
-        private val onPreCleanRoutings = Event0()
-        private val onRoutingsCleaned = Event0()
+        private val active = mutableMapOf<String, RoutingManager>()
 
         fun clean() {
-            onPreCleanRoutings()
+            for (manager in active.values) manager.routing?.stop()
             val cleaned = try {
                 Routing.clean()
                 true
@@ -31,7 +31,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 SmartSnackbar.make(e).show()
                 false
             }
-            if (cleaned) onRoutingsCleaned()
+            if (cleaned) for (manager in active.values) manager.initRouting()
         }
     }
 
@@ -47,18 +47,16 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    var started = false
+    val started get() = active[downstream] === this
     private var routing: Routing? = null
     init {
         if (isWifi) WifiDoubleLock.acquire(this)
     }
 
-    fun start(): Boolean {
-        check(!started)
-        started = true
-        onPreCleanRoutings[this] = { routing?.stop() }
-        onRoutingsCleaned[this] = { initRouting() }
-        return initRouting()
+    fun start() = when (active.putIfAbsentCompat(downstream, this)) {
+        null -> initRouting()
+        this -> true    // already started
+        else -> throw IllegalStateException("Double routing detected from $caller")
     }
 
     private fun initRouting() = try {
@@ -81,11 +79,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     protected abstract fun Routing.configure()
 
     fun stop() {
-        if (!started) return
-        routing?.revert()
-        onPreCleanRoutings -= this
-        onRoutingsCleaned -= this
-        started = false
+        if (active.removeCompat(downstream, this)) routing?.revert()
     }
 
     fun destroy() {

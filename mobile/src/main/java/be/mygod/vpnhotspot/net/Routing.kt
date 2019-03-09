@@ -42,11 +42,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          */
         val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
 
-        /**
-         * For debugging: check that we do not start a Routing for the same interface twice.
-         */
-        private var downstreams = mutableSetOf<String>()
-
         fun clean() {
             TrafficRecorder.clean()
             RootSession.use {
@@ -60,7 +55,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             }
-            downstreams.clear()
         }
 
         private fun RootSession.Transaction.iptables(command: String, revert: String) {
@@ -87,10 +81,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     class InterfaceNotFoundException(override val cause: Throwable) : SocketException() {
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
-    }
-
-    init {
-        check(downstreams.add(downstream)) { "Double routing detected from $caller" }
     }
 
     private val hostAddress = try {
@@ -314,6 +304,5 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         fallbackUpstream.subrouting?.transaction?.revert()
         upstream.subrouting?.transaction?.revert()
         transaction.revert()
-        check(downstreams.remove(downstream)) { "Double reverting detected from $caller" }
     }
 }

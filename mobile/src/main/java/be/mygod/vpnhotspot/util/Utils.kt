@@ -91,5 +91,14 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     unbindService(connection)
 }
 
-fun <K, V> HashMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 26)
+fun <K, V> MutableMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 26)
     computeIfAbsent(key) { value() } else this[key] ?: value().also { put(key, it) }
+fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) = if (Build.VERSION.SDK_INT >= 24)
+    putIfAbsent(key, value) else this[key] ?: put(key, value)
+fun <K, V> MutableMap<K, V>.removeCompat(key: K, value: V) = if (Build.VERSION.SDK_INT >= 24) remove(key, value) else {
+    val curValue = get(key)
+    if (curValue === value && (curValue != null || containsKey(key))) {
+        remove(key)
+        true
+    } else false
+}
