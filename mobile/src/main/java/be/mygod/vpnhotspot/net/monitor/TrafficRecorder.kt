@@ -75,7 +75,8 @@ object TrafficRecorder {
                     "ACCEPT" -> {
                         val isReceive = columns[7] == ANYWHERE
                         val isSend = columns[8] == ANYWHERE
-                        check(isReceive != isSend)  // this check might fail when the user performed an upgrade from 1.x
+                        // this check might fail when the user performed an upgrade from 1.x
+                        check(isReceive != isSend) { "Failed to set up blocking rules, please clean routing rules" }
                         val ip = parseNumericAddress(columns[if (isReceive) 8 else 7])
                         val downstream = columns[if (isReceive) 6 else 5]
                         val key = Pair(ip, downstream)
