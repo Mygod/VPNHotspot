@@ -109,7 +109,7 @@ object TrafficRecorder {
                     }
                     else -> check(false)
                 }
-            } catch (e: RuntimeException) {
+            } catch (e: Exception) {
                 Timber.w(line)
                 Timber.w(e)
             }
