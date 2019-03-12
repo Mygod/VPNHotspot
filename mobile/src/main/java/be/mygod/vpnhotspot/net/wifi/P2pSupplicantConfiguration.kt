@@ -53,7 +53,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
-                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress).distinct()
+                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress)
+                        .distinct()
+                        .filter { it != "00:00:00:00:00:00" }
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
@@ -84,7 +86,8 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                         }
                     } else result.add(parser.line)
                 }
-                if (target == null && !RepeaterService.persistentSupported) bssids.forEach { bssid ->
+                if (target == null && !RepeaterService.persistentSupported) {
+                    val bssid = bssids.single()
                     result.add("")
                     result.add(NetworkBlock().apply {
                         // generate a basic network block, it is likely that vendor is going to add more stuff here
