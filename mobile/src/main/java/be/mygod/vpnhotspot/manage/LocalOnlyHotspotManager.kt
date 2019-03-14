@@ -18,6 +18,7 @@ import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
+import androidx.core.os.BuildCompat
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.DebugHelper
@@ -32,6 +33,11 @@ import java.net.NetworkInterface
 
 @TargetApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
+    companion object {
+        val permission = if (BuildCompat.isAtLeastQ())
+            Manifest.permission.ACCESS_FINE_LOCATION else Manifest.permission.ACCESS_COARSE_LOCATION
+    }
+
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
@@ -44,10 +50,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             val binder = manager.binder
             if (binder?.iface != null) binder.stop() else {
                 val context = manager.parent.requireContext()
-                if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
-                        PackageManager.PERMISSION_GRANTED) {
-                    manager.parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
-                            TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
+                if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                    manager.parent.requestPermissions(arrayOf(permission), TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
                     return
                 }
                 /**
