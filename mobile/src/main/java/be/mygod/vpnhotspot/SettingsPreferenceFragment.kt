@@ -29,7 +29,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
-        val boot = findPreference("service.repeater.startOnBoot") as SwitchPreference
+        val boot = findPreference<SwitchPreference>("service.repeater.startOnBoot")!!
         if (RepeaterService.supported) {
             boot.setOnPreferenceChangeListener { _, value ->
                 BootReceiver.enabled = value as Boolean
@@ -37,15 +37,15 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             }
             boot.isChecked = BootReceiver.enabled
         } else boot.parent!!.removePreference(boot)
-        findPreference<Preference>("service.clean").setOnPreferenceClickListener {
+        findPreference<Preference>("service.clean")!!.setOnPreferenceClickListener {
             RoutingManager.clean()
             true
         }
-        findPreference<Preference>(IpMonitor.KEY).setOnPreferenceChangeListener { _, _ ->
+        findPreference<Preference>(IpMonitor.KEY)!!.setOnPreferenceChangeListener { _, _ ->
             SmartSnackbar.make(R.string.settings_restart_required).show()
             true
         }
-        findPreference<Preference>("misc.logcat").setOnPreferenceClickListener {
+        findPreference<Preference>("misc.logcat")!!.setOnPreferenceClickListener {
             val context = requireContext()
             val logDir = File(context.cacheDir, "log")
             logDir.mkdir()
@@ -107,11 +107,11 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     getString(R.string.abc_shareactionprovider_share_with)))
             true
         }
-        findPreference<Preference>("misc.source").setOnPreferenceClickListener {
+        findPreference<Preference>("misc.source")!!.setOnPreferenceClickListener {
             requireContext().launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
             true
         }
-        findPreference<Preference>("misc.donate").setOnPreferenceClickListener {
+        findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
             EBegFragment().show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
             true
         }

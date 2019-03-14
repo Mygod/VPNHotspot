@@ -78,9 +78,9 @@ dependencies {
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
-    implementation 'androidx.preference:preference:1.1.0-alpha03'
+    implementation 'androidx.preference:preference:1.1.0-alpha04'
     implementation "androidx.room:room-coroutines:$roomVersion"
-    implementation 'com.android.billingclient:billing:1.2.1'
+    implementation 'com.android.billingclient:billing:1.2.2'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.github.topjohnwu.libsu:core:2.3.1'
     implementation 'com.google.android.material:material:1.0.0'
