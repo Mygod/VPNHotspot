@@ -91,7 +91,7 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     unbindService(connection)
 }
 
-fun <K, V> MutableMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 26)
+fun <K, V> MutableMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 24)
     computeIfAbsent(key) { value() } else this[key] ?: value().also { put(key, it) }
 fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) = if (Build.VERSION.SDK_INT >= 24)
     putIfAbsent(key, value) else this[key] ?: put(key, value)
