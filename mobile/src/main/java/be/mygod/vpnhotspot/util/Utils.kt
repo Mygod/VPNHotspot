@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.*
+import android.net.InetAddresses
 import android.os.Build
 import android.text.Spannable
 import android.text.SpannableString
@@ -9,6 +10,7 @@ import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.core.net.toUri
+import androidx.core.os.BuildCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
@@ -76,7 +78,8 @@ private val parseNumericAddress by lazy {
         isAccessible = true
     }
 }
-fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
+fun parseNumericAddress(address: String) = if (BuildCompat.isAtLeastQ())
+    InetAddresses.parseNumericAddress(address) else parseNumericAddress.invoke(null, address) as InetAddress
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

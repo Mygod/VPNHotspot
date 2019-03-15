@@ -9,8 +9,7 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 }
 
 android {
-    buildToolsVersion "28.0.3"
-    compileSdkVersion 28
+    compileSdkVersion 'android-Q'
     compileOptions {
         sourceCompatibility 1.8
         targetCompatibility 1.8
