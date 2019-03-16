@@ -29,6 +29,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
 
     override fun destroyLocked() {
         IpLinkMonitor.unregisterCallback(this)
+        currentIface = null
         registered = false
     }
 }
