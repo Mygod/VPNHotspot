@@ -1,9 +1,11 @@
 package be.mygod.vpnhotspot.manage
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Bundle
@@ -14,6 +16,7 @@ import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import androidx.core.os.BuildCompat
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.lifecycle.ViewModel
@@ -82,6 +85,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> {
                     val context = parent.requireContext()
+                    if (BuildCompat.isAtLeastQ() && context.checkSelfPermission(
+                                    Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                        parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                                TetheringFragment.START_REPEATER)
+                        return
+                    }
                     ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
                 }
                 RepeaterService.Status.ACTIVE -> binder.shutdown()

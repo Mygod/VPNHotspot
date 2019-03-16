@@ -9,7 +9,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
-import android.view.*
+import android.view.LayoutInflater
+import android.view.MenuItem
+import android.view.View
+import android.view.ViewGroup
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
@@ -17,7 +20,10 @@ import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import be.mygod.vpnhotspot.*
+import be.mygod.vpnhotspot.LocalOnlyHotspotService
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
@@ -32,6 +38,7 @@ import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClickListener {
     companion object {
+        const val START_REPEATER = 4
         const val START_LOCAL_ONLY_HOTSPOT = 1
         const val REPEATER_EDIT_CONFIGURATION = 2
         const val REPEATER_WPS = 3
@@ -138,12 +145,19 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        if (requestCode == START_LOCAL_ONLY_HOTSPOT) @TargetApi(26) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+        when (requestCode) {
+            START_REPEATER -> if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) @TargetApi(29) {
                 val context = requireContext()
-                context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
+                context.startForegroundService(Intent(context, RepeaterService::class.java))
             }
-        } else super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+            START_LOCAL_ONLY_HOTSPOT -> {
+                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) @TargetApi(26) {
+                    val context = requireContext()
+                    context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
+                }
+            }
+            else -> super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        }
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
