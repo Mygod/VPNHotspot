@@ -65,10 +65,10 @@ androidExtensions {
 
 def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.9.9',
-        'com.google.firebase:firebase-core:16.0.7',
+        'com.google.firebase:firebase-core:16.0.8',
 ]
 def lifecycleVersion = '2.0.0'
-def roomVersion = '2.1.0-alpha04'
+def roomVersion = '2.1.0-alpha05'
 dependencies {
     kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
@@ -79,7 +79,7 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0-alpha04'
-    implementation "androidx.room:room-coroutines:$roomVersion"
+    implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:1.2.2'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
     implementation 'com.github.topjohnwu.libsu:core:2.3.1'

@@ -21,11 +21,11 @@ data class ClientRecord(@PrimaryKey
         abstract fun lookupSync(mac: Long): LiveData<ClientRecord>
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
-        protected abstract fun updateInternal(value: ClientRecord): Long
-        fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
+        protected abstract suspend fun updateInternal(value: ClientRecord): Long
+        suspend fun update(value: ClientRecord) = check(updateInternal(value) == value.mac)
 
         @Transaction
-        open fun upsert(mac: Long, operation: ClientRecord.() -> Unit) = runBlocking { lookupOrDefault(mac) }.apply {
+        open suspend fun upsert(mac: Long, operation: suspend ClientRecord.() -> Unit) = lookupOrDefault(mac).apply {
             operation()
             update(this)
         }

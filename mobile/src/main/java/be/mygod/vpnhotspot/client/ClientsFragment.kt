@@ -42,7 +42,6 @@ import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -67,10 +66,12 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
             when (which) {
-                DialogInterface.BUTTON_POSITIVE -> GlobalScope.launch(Dispatchers.Main, CoroutineStart.UNDISPATCHED) {
+                DialogInterface.BUTTON_POSITIVE -> {
                     MacLookup.abort(arg.mac)
-                    AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
-                        nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+                    GlobalScope.launch(Dispatchers.Unconfined) {
+                        AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
+                            nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
+                        }
                     }
                 }
                 DialogInterface.BUTTON_NEUTRAL -> MacLookup.perform(arg.mac, true)
@@ -140,7 +141,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                     val wasWorking = TrafficRecorder.isWorking(client.mac)
                     client.obtainRecord().apply {
                         blocked = !blocked
-                        AppDatabase.instance.clientRecordDao.update(this)
+                        launch(Dispatchers.Unconfined) { AppDatabase.instance.clientRecordDao.update(this@apply) }
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {
@@ -150,7 +151,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 }
                 R.id.stats -> {
                     binding.client?.let { client ->
-                        launch(start = CoroutineStart.UNDISPATCHED) {
+                        launch(Dispatchers.Unconfined) {
                             StatsDialogFragment().withArg(StatsArg(
                                     client.title.value ?: return@launch,
                                     AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
