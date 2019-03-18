@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.room
 
 import androidx.lifecycle.LiveData
 import androidx.room.*
-import kotlinx.coroutines.runBlocking
 
 @Entity
 data class ClientRecord(@PrimaryKey

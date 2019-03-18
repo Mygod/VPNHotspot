@@ -18,7 +18,7 @@ abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable> :
     companion object {
         private const val KEY_ARG = "arg"
         private const val KEY_RET = "ret"
-        fun <T : Parcelable> getRet(data: Intent) = data.extras!!.getParcelable<T>(KEY_RET)!!
+        fun <T : Parcelable> getRet(data: Intent) = data.getParcelableExtra<T>(KEY_RET)!!
     }
     protected abstract fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener)
 
