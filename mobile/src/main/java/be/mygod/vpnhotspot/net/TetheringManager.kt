@@ -9,6 +9,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
+import java.lang.ref.WeakReference
 
 /**
  * Heavily based on:
@@ -115,17 +116,19 @@ object TetheringManager {
      */
     @RequiresApi(24)
     fun start(type: Int, showProvisioningUi: Boolean, callback: OnStartTetheringCallback, handler: Handler? = null) {
+        val reference = WeakReference(callback)
         val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback)
                 .dexCache(app.deviceStorage.cacheDir)
                 .handler { proxy, method, args ->
                     if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
+                    @Suppress("NAME_SHADOWING") val callback = reference.get()
                     when (method.name) {
                         "onTetheringStarted" -> {
-                            callback.onTetheringStarted()
+                            callback?.onTetheringStarted()
                             null
                         }
                         "onTetheringFailed" -> {
-                            callback.onTetheringFailed()
+                            callback?.onTetheringFailed()
                             null
                         }
                         else -> {

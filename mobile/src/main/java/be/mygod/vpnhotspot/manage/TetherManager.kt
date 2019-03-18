@@ -22,7 +22,6 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.readableMessage
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.IOException
 import java.lang.reflect.InvocationTargetException
