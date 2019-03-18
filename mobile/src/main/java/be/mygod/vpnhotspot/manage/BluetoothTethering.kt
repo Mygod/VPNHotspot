@@ -93,6 +93,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         pan = proxy
     }
     override fun close() {
+        app.unregisterReceiver(receiver)
         BluetoothAdapter.getDefaultAdapter()?.closeProfileProxy(PAN, pan)
         pan = null
     }
