@@ -94,7 +94,10 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     protected abstract fun stop()
 
     override fun onTetheringStarted() = data.notifyChange()
-    override fun onTetheringFailed() = SmartSnackbar.make(R.string.tethering_manage_failed).show()
+    override fun onTetheringFailed() {
+        DebugHelper.log(javaClass.simpleName, "onTetheringFailed")
+        data.notifyChange()
+    }
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).manager = this
