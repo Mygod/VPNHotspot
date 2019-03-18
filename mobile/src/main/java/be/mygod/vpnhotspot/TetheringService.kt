@@ -6,6 +6,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -45,10 +46,9 @@ class TetheringService : IpNeighbourMonitoringService() {
     private val downstreams = mutableMapOf<String, Downstream>()
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val extras = intent.extras ?: return@broadcastReceiver
         synchronized(downstreams) {
             val toRemove = downstreams.toMutableMap()   // make a copy
-            for (iface in TetheringManager.getTetheredIfaces(extras)) {
+            for (iface in intent.tetheredIfaces) {
                 val downstream = toRemove.remove(iface) ?: continue
                 if (downstream.monitor) downstream.start()
             }

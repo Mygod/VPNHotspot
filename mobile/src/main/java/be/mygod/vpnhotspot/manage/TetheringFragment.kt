@@ -21,6 +21,8 @@ import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import kotlinx.android.synthetic.main.activity_main.*
@@ -88,10 +90,8 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
     var binder: TetheringService.Binder? = null
     private val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        val extras = intent.extras ?: return@broadcastReceiver
-        adapter.update(TetheringManager.getTetheredIfaces(extras),
-                TetheringManager.getLocalOnlyTetheredIfaces(extras),
-                extras.getStringArrayList(TetheringManager.EXTRA_ERRORED_TETHER)!!)
+        adapter.update(intent.tetheredIfaces, intent.localOnlyTetheredIfaces,
+                intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER))
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {

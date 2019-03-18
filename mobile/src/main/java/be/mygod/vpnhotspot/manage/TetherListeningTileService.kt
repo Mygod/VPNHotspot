@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.manage
 import android.content.IntentFilter
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.broadcastReceiver
 
@@ -11,14 +12,14 @@ abstract class TetherListeningTileService : KillableTileService() {
     protected var tethered: List<String> = emptyList()
 
     private val receiver = broadcastReceiver { _, intent ->
-        tethered = TetheringManager.getTetheredIfaces(intent.extras ?: return@broadcastReceiver)
+        tethered = intent.tetheredIfaces
         updateTile()
     }
 
     override fun onStartListening() {
         super.onStartListening()
-        tethered = TetheringManager.getTetheredIfaces(registerReceiver(
-                receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))?.extras ?: return)
+        val intent = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        if (intent != null) tethered = intent.tetheredIfaces
     }
 
     override fun onStopListening() {

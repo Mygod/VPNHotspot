@@ -149,7 +149,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), LifecycleObserver {
-        private val tethering = BluetoothTethering(parent.requireContext())
+        private val tethering = BluetoothTethering(parent.requireContext()) { onTetheringStarted() }
 
         init {
             parent.lifecycle.addObserver(this)
@@ -163,7 +163,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_BLUETOOTH
         override val isStarted get() = tethering.active == true
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, this)
+        override fun start() = BluetoothTethering.start(this)
         override fun stop() {
             TetheringManager.stop(TetheringManager.TETHERING_BLUETOOTH)
             Thread.sleep(1)         // give others a room to breathe

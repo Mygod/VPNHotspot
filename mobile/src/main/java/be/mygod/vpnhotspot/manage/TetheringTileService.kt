@@ -127,7 +127,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         override val labelString get() = R.string.tethering_manage_bluetooth
         override val tetherType get() = TetherType.BLUETOOTH
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, this)
+        override fun start() = BluetoothTethering.start(this)
         override fun stop() {
             TetheringManager.stop(TetheringManager.TETHERING_BLUETOOTH)
             Thread.sleep(1)         // give others a room to breathe
@@ -135,7 +135,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         }
 
         override fun onStartListening() {
-            tethering = BluetoothTethering(this)
+            tethering = BluetoothTethering(this) { updateTile() }
             super.onStartListening()
         }
         override fun onStopListening() {

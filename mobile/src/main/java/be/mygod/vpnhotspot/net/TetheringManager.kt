@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot.net
 
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -165,9 +165,8 @@ object TetheringManager {
      */
     fun getLastTetherError(iface: String): Int = getLastTetherError.invoke(app.connectivity, iface) as Int
 
-    fun getTetheredIfaces(extras: Bundle) = extras.getStringArrayList(
-            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)!!
-    fun getLocalOnlyTetheredIfaces(extras: Bundle) =
-            if (Build.VERSION.SDK_INT >= 26) extras.getStringArrayList(EXTRA_ACTIVE_LOCAL_ONLY)!!
-            else emptyList<String>()
+    val Intent.tetheredIfaces get() = getStringArrayListExtra(
+            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
+    val Intent.localOnlyTetheredIfaces get() =
+            if (Build.VERSION.SDK_INT >= 26) getStringArrayListExtra(EXTRA_ACTIVE_LOCAL_ONLY) else emptyList<String>()
 }

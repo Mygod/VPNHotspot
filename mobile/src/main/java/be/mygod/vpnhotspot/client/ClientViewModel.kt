@@ -11,6 +11,8 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -18,9 +20,7 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        val extras = intent.extras ?: return@broadcastReceiver
-        tetheredInterfaces = TetheringManager.getTetheredIfaces(extras).toSet() +
-                TetheringManager.getLocalOnlyTetheredIfaces(extras)
+        tetheredInterfaces = intent.tetheredIfaces.toSet() + intent.localOnlyTetheredIfaces
         populateClients()
     }
 
