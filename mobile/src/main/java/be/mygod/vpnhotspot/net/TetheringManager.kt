@@ -30,6 +30,8 @@ object TetheringManager {
          * Called when starting tethering failed.
          */
         fun onTetheringFailed() { }
+
+        fun onException() { }
     }
 
     /**

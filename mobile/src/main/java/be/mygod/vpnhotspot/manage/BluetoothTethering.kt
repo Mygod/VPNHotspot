@@ -8,12 +8,16 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.io.IOException
+import java.lang.reflect.InvocationTargetException
 
 class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
@@ -39,8 +43,23 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         @TargetApi(24)
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.bluetoothState) {
-                BluetoothAdapter.STATE_ON -> {
+                BluetoothAdapter.STATE_ON -> try {
                     TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, pendingCallback!!)
+                } catch (e: IOException) {
+                    Timber.w(e)
+                    Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
+                    pendingCallback!!.onException()
+                } catch (e: InvocationTargetException) {
+                    if (e.targetException !is SecurityException) Timber.w(e)
+                    var cause: Throwable? = e
+                    while (cause != null) {
+                        cause = cause.cause
+                        if (cause != null && cause !is InvocationTargetException) {
+                            Toast.makeText(context, cause.readableMessage, Toast.LENGTH_LONG).show()
+                            pendingCallback!!.onException()
+                            break
+                        }
+                    }
                 }
                 BluetoothAdapter.STATE_OFF, BluetoothAdapter.ERROR -> { }
                 else -> return  // ignore transition states
