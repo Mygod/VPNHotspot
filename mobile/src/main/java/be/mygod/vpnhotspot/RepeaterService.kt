@@ -22,10 +22,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
-import be.mygod.vpnhotspot.util.StickyEvent0
-import be.mygod.vpnhotspot.util.StickyEvent1
-import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.intentFilter
+import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -233,29 +230,41 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
         receiverRegistered = true
-        p2pManager.requestGroupInfo(channel) {
-            when {
-                it == null -> doStart()
-                it.isGroupOwner -> if (routingManager == null) doStart(it)
-                else -> {
-                    Timber.i("Removing old group ($it)")
-                    p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() = doStart()
-                        override fun onFailure(reason: Int) =
-                                startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                    })
+        try {
+            p2pManager.requestGroupInfo(channel) {
+                when {
+                    it == null -> doStart()
+                    it.isGroupOwner -> if (routingManager == null) doStart(it)
+                    else -> {
+                        Timber.i("Removing old group ($it)")
+                        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = doStart()
+                            override fun onFailure(reason: Int) =
+                                    startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                        })
+                    }
                 }
             }
+        } catch (e: SecurityException) {
+            Timber.w(e)
+            startFailure(e.readableMessage)
         }
         return START_NOT_STICKY
     }
     /**
      * startService Step 2 (if a group isn't already available)
      */
-    private fun doStart() = p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
-        override fun onFailure(reason: Int) = startFailure(formatReason(R.string.repeater_create_group_failure, reason))
-        override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
-    })
+    private fun doStart() = try {
+        p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
+            override fun onFailure(reason: Int) {
+                startFailure(formatReason(R.string.repeater_create_group_failure, reason))
+            }
+            override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
+        })
+    } catch (e: SecurityException) {
+        Timber.w(e)
+        startFailure(e.readableMessage)
+    }
     /**
      * Used during step 2, also called when connection changed
      */
