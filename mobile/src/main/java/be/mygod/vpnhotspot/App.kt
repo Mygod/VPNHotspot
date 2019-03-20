@@ -7,13 +7,13 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.preference.PreferenceManager
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.provider.FontRequest
 import androidx.emoji.text.EmojiCompat
 import androidx.emoji.text.FontRequestEmojiCompatConfig
+import androidx.preference.PreferenceManager
 import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
@@ -32,7 +32,8 @@ class App : Application() {
         app = this
         if (Build.VERSION.SDK_INT >= 24) {
             deviceStorage = DeviceStorageApp(this)
-            deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager.getDefaultSharedPreferencesName(this))
+            // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
+            deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
         DebugHelper.init()
@@ -51,7 +52,7 @@ class App : Application() {
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 
-    override fun onConfigurationChanged(newConfig: Configuration?) {
+    override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         ServiceNotification.updateNotificationChannels()
     }

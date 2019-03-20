@@ -120,9 +120,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
                         WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
+                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)!!,
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
+                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
         }
     }
     private val deviceListener = broadcastReceiver { _, intent ->

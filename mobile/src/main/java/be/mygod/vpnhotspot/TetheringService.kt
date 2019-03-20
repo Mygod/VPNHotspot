@@ -90,7 +90,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                     if (start()) check(downstreams.put(iface, this) == null) else destroy()
                 }
             }
-            intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { iface ->
+            intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.also { iface ->
                 val downstream = downstreams[iface]
                 if (downstream == null) Downstream(this, iface, true).apply {
                     start()
@@ -98,7 +98,7 @@ class TetheringService : IpNeighbourMonitoringService() {
                     downstreams[iface] = this
                 } else downstream.monitor = true
             }
-            downstreams.remove(intent.getStringExtra(EXTRA_REMOVE_INTERFACE))?.destroy()
+            intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.destroy() }
             updateNotification()    // call this first just in case we are shutting down immediately
             onDownstreamsChangedLocked()
         } else if (downstreams.isEmpty()) stopSelf(startId)

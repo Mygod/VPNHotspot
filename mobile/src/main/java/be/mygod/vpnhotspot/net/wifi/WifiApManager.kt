@@ -25,11 +25,13 @@ object WifiApManager {
     private fun WifiManager.setWifiApEnabled(wifiConfig: WifiConfiguration?, enabled: Boolean) =
             setWifiApEnabled.invoke(this, wifiConfig, enabled) as Boolean
 
+    @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")
     fun start(wifiConfig: WifiConfiguration? = null) {
         app.wifi.isWifiEnabled = false
         app.wifi.setWifiApEnabled(wifiConfig, true)
     }
+    @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26")
     fun stop() {
         app.wifi.setWifiApEnabled(null, false)

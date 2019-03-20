@@ -47,7 +47,7 @@ object MacLookup {
             try {
                 val response = conn.inputStream.bufferedReader().readText()
                 val obj = JSONObject(response).getJSONObject("result")
-                obj.optString("error", null)?.also { throw UnexpectedError(mac, it) }
+                obj.opt("error")?.also { throw UnexpectedError(mac, it.toString()) }
                 val company = obj.getString("company")
                 val match = extractCountry(mac, response, obj)
                 val result = if (match != null) {
@@ -71,7 +71,7 @@ object MacLookup {
     }
 
     private fun extractCountry(mac: Long, response: String, obj: JSONObject): MatchResult? {
-        obj.optString("country")?.let { countryCodeRegex.matchEntire(it) }?.also { return it }
+        countryCodeRegex.matchEntire(obj.optString("country"))?.also { return it }
         val address = obj.optString("address")
         if (address.isNullOrBlank()) return null
         countryCodeRegex.find(address)?.also { return it }
