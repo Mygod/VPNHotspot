@@ -4,7 +4,15 @@ import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.wifi.WifiManager
 import android.os.PowerManager
+import android.view.WindowManager
+import androidx.activity.ComponentActivity
+import androidx.annotation.RequiresApi
+import androidx.core.content.edit
 import androidx.core.content.getSystemService
+import androidx.core.os.BuildCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleObserver
+import androidx.lifecycle.OnLifecycleEvent
 import be.mygod.vpnhotspot.App.Companion.app
 
 /**
@@ -13,8 +21,12 @@ import be.mygod.vpnhotspot.App.Companion.app
 class WifiDoubleLock(lockType: Int) : AutoCloseable {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
         private const val KEY = "service.wifiLock"
-        private val lockType get() =
-            WifiDoubleLock.Mode.valueOf(app.pref.getString(KEY, WifiDoubleLock.Mode.Full.toString()) ?: "").lockType
+        var mode: Mode
+            @Suppress("DEPRECATION")
+            get() = Mode.valueOf(app.pref.getString(KEY, Mode.Full.toString()) ?: "").let {
+                if (it == Mode.Full && BuildCompat.isAtLeastQ()) Mode.None else it
+            }
+            set(value) = app.pref.edit { putString(KEY, value.toString()) }
         private val service by lazy { app.getSystemService<PowerManager>()!! }
 
         private var holders = mutableSetOf<Any>()
@@ -23,7 +35,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         fun acquire(holder: Any) = synchronized(this) {
             if (holders.isEmpty()) {
                 app.pref.registerOnSharedPreferenceChangeListener(this)
-                val lockType = lockType
+                val lockType = mode.lockType
                 if (lockType != null) lock = WifiDoubleLock(lockType)
             }
             check(holders.add(holder))
@@ -40,14 +52,45 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
             if (key == KEY) synchronized(this) {
                 lock?.close()
-                val lockType = lockType
+                val lockType = mode.lockType
                 lock = if (lockType == null) null else WifiDoubleLock(lockType)
             }
         }
     }
 
-    enum class Mode(val lockType: Int? = null) {
-        None, Full(WifiManager.WIFI_MODE_FULL), HighPerf(WifiManager.WIFI_MODE_FULL_HIGH_PERF)
+    enum class Mode(val lockType: Int? = null, val keepScreenOn: Boolean = false) {
+        None,
+        @Suppress("DEPRECATION")
+        @Deprecated("This constant was deprecated in API level Q.\n" +
+                "This API is non-functional and will have no impact.")
+        Full(WifiManager.WIFI_MODE_FULL),
+        HighPerf(WifiManager.WIFI_MODE_FULL_HIGH_PERF),
+        @RequiresApi(29)
+        LowLatency(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, true),
+    }
+
+    class ActivityListener(val activity: ComponentActivity) :
+            LifecycleObserver, SharedPreferences.OnSharedPreferenceChangeListener {
+        private var keepScreenOn: Boolean = false
+            set(value) {
+                if (field == value) return
+                field = value
+                if (value) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+
+        init {
+            activity.lifecycle.addObserver(this)
+            app.pref.registerOnSharedPreferenceChangeListener(this)
+            keepScreenOn = mode.keepScreenOn
+        }
+
+        override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+            if (key == KEY) keepScreenOn = mode.keepScreenOn
+        }
+
+        @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        fun shutdown() = app.pref.unregisterOnSharedPreferenceChangeListener(this)
     }
 
     private val wifi = app.wifi.createWifiLock(lockType, "vpnhotspot:wifi").apply { acquire() }

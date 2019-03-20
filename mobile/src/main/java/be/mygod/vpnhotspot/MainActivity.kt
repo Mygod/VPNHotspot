@@ -15,6 +15,7 @@ import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.bottomnavigation.BottomNavigationMenuView
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this, Observer { badge.badgeNumber = it.size })
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
+        WifiDoubleLock.ActivityListener(this)
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {

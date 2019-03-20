@@ -65,8 +65,20 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 * Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
    - Choose "System default" to save battery life;
-   - Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
-   - Choose "High Performance Mode" to minimize packet loss and latency (will consume more power).
+   - (up to Android 9) Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
+   - (up to Android 9) Choose "High Performance Mode" to minimize packet loss and latency (will consume more power);
+   - (since Android Q) Choose "Disable power save" to decrease packet latency.
+     An example use case is when a voice connection needs to be kept active even after the device screen goes off.
+     Using this mode may improve the call quality.
+     Requires support from the hardware.
+   - (since Android Q) Choose "Low latency mode" to optimize for reduced packet latency, and this might result in:
+     1. Reduced battery life.
+     2. Reduced throughput.
+     3. Reduced frequency of Wi-Fi scanning.
+        This may cause the device not roaming or switching to the AP with highest signal quality, and location accuracy may be reduced.
+     Example use cases are real time gaming or virtual reality applications where low latency is a key factor for user experience.
+     Requires support from the hardware.
+     Note: Requires this app running in foreground with screen on.
 * Start repeater on boot: Self explanatory.
 * Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
   (when custom upstream is used).

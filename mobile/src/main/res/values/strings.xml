@@ -101,6 +101,8 @@
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On</string>
     <string name="settings_service_wifi_lock_high_perf">High Performance Mode</string>
+    <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
+    <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
     <string name="settings_service_ip_monitor">Network status monitor mode</string>
     <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
