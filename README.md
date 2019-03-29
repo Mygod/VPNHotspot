@@ -86,6 +86,8 @@ Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
 
 ### [What changes exactly can this app do to my system? (and how to revert them)](https://github.com/Mygod/VPNHotspot/issues/8#issuecomment-448529512)
 
+### [Unable to find "Tethering hardware acceleration" in Developer options?](https://github.com/Mygod/VPNHotspot/issues/41#issuecomment-425732001)
+
 ### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
 
 ### Failed to create group due to internal error/repeater shuts down after a while?
