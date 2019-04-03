@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.isNotGone
 import kotlinx.android.synthetic.main.activity_main.*
 import timber.log.Timber
 import java.net.NetworkInterface
@@ -95,18 +96,11 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
-        val toolbar = requireActivity().toolbar
-        val menu = toolbar.menu
-        if (canMonitor.isEmpty()) menu.removeItem(R.id.monitor) else {
-            var item = menu.findItem(R.id.monitor)
-            if (item == null) {
-                toolbar.inflateMenu(R.menu.toolbar_monitor)
-                item = menu.findItem(R.id.monitor)!!
-            }
-            item.subMenu.apply {
-                clear()
-                canMonitor.sorted().forEach { add(it).setOnMenuItemClickListener(this@TetheringFragment) }
-            }
+        val item = requireActivity().toolbar.menu.findItem(R.id.monitor) ?: return  // assuming no longer foreground
+        item.isNotGone = canMonitor.isNotEmpty()
+        item.subMenu.apply {
+            clear()
+            canMonitor.sorted().forEach { add(it).setOnMenuItemClickListener(this@TetheringFragment) }
         }
     }
     override fun onMenuItemClick(item: MenuItem?): Boolean {
@@ -123,7 +117,13 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
         binding.interfaces.adapter = adapter
         adapter.update(emptyList(), emptyList(), emptyList())
         ServiceForegroundConnector(this, this, TetheringService::class)
+        requireActivity().toolbar.inflateMenu(R.menu.toolbar_tethering)
         return binding.root
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        requireActivity().toolbar.menu.clear()
     }
 
     override fun onResume() {
@@ -162,10 +162,5 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
         (binder ?: return).routingsChanged -= this
         binder = null
         requireContext().unregisterReceiver(receiver)
-    }
-
-    override fun onDestroy() {
-        updateMonitorList()
-        super.onDestroy()
     }
 }

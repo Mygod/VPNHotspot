@@ -5,6 +5,7 @@ import android.os.Build
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
+import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
@@ -90,6 +91,13 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)
     unbindService(connection)
 }
+
+var MenuItem.isNotGone: Boolean
+    get() = isVisible || isEnabled
+    set(value) {
+        isVisible = value
+        isEnabled = value
+    }
 
 fun <K, V> MutableMap<K, V>.computeIfAbsentCompat(key: K, value: () -> V) = if (Build.VERSION.SDK_INT >= 24)
     computeIfAbsent(key) { value() } else this[key] ?: value().also { put(key, it) }

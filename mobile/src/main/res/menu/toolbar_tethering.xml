@@ -4,6 +4,8 @@
     <item android:id="@+id/monitor"
           android:icon="@drawable/ic_image_remove_red_eye"
           android:title="@string/tethering_monitor"
+          android:enabled="false"
+          android:visible="false"
           app:showAsAction="always">
         <menu/>
     </item>
