@@ -68,7 +68,7 @@ def aux = [
         'com.google.firebase:firebase-core:16.0.8',
 ]
 def lifecycleVersion = '2.0.0'
-def roomVersion = '2.1.0-alpha05'
+def roomVersion = '2.1.0-alpha06'
 dependencies {
     kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
@@ -82,10 +82,10 @@ dependencies {
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:1.2.2'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu.libsu:core:2.3.1'
+    implementation 'com.github.topjohnwu.libsu:core:2.3.3'
     implementation 'com.google.android.material:material:1.0.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
-    implementation 'com.linkedin.dexmaker:dexmaker:2.21.0'
+    implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.1'
