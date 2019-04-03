@@ -91,7 +91,7 @@
             android:name=".manage.LocalOnlyHotspotTileService"
             android:directBootAware="true"
             android:enabled="@bool/api_ge_26"
-            android:icon="@drawable/ic_device_wifi_tethering"
+            android:icon="@drawable/ic_action_perm_scan_wifi"
             android:label="@string/tethering_temp_hotspot"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
