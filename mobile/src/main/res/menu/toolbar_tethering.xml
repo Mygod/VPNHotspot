@@ -9,4 +9,18 @@
           app:showAsAction="always">
         <menu/>
     </item>
+
+    <item android:id="@+id/configuration"
+          android:icon="@drawable/ic_device_wifi_lock"
+          android:title="@string/configuration_view"
+          app:showAsAction="always">
+        <menu>
+            <item android:id="@+id/configuration_repeater"
+                  android:title="@string/title_repeater"/>
+            <item android:id="@+id/configuration_temp_hotspot"
+                  android:title="@string/tethering_temp_hotspot"/>
+            <item android:id="@+id/configuration_ap"
+                  android:title="@string/tethering_manage_wifi"/>
+        </menu>
+    </item>
 </menu>

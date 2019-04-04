@@ -12,7 +12,6 @@
     <string name="repeater_wps_success_pbc">请在 2 分钟内在需要连接的设备上使用一键加密以连接到此中继。</string>
     <string name="repeater_wps_success_keypad">成功注册 PIN。</string>
     <string name="repeater_wps_failure">打开 WPS 失败（原因：%s）</string>
-    <string name="repeater_configure">设置 WLAN 中继</string>
     <string name="repeater_configure_failure">未能找到有效的档案。请尝试先打开中继。</string>
     <string name="repeater_clean_pog_failure">删除多余 P2P 群组失败（原因：%s）</string>
 
@@ -44,7 +43,7 @@
     <!--
      Values copied from:
         * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-        * https://android.googlesource.com/platform/packages/apps/Settings/+/b63de87/res/values-zh-rCN/strings.xml
+        * https://android.googlesource.com/platform/packages/apps/Settings/+/419086d/res/values-zh-rCN/strings.xml
         * @string/usb_tethering_button_text
         * @string/wifi_hotspot_checkbox_text
         * @string/bluetooth_tether_checkbox_text
@@ -83,8 +82,6 @@
     <string name="settings_service_masquerade_none">无</string>
     <string name="settings_service_masquerade_simple">简易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服务</string>
-    <string name="settings_service_repeater_oc">Wi\u2011Fi 运行频段 (不稳定)</string>
-    <string name="settings_service_repeater_oc_summary">"自动 (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)"</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 VPN 通过 IPv6 泄漏。</string>
     <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
@@ -128,11 +125,17 @@
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
 
+    <string name="configuration_view">设置 WLAN 中继</string>
+    <string name="configuration_rejected">Android 系统拒绝使用此配置。（详情参见日志）</string>
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
+    <string name="wifi_security" msgid="6603611185592956936">"安全性"</string>
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
     <string name="credentials_password_too_short" msgid="7502749986405522663">"密码至少应包含 8 个字符。"</string>
+    <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
+    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
+    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5.0 GHz 频段"</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
-    <string name="wifi_cancel" msgid="6763568902542968964">"取消"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
     <string name="donations__button_close">关闭</string>

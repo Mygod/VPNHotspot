@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Source: https://android.googlesource.com/platform/packages/apps/Settings/+/6b4a31c/res/layout/wifi_ap_dialog.xml -->
+<!-- Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/6b4a31c/res/layout/wifi_ap_dialog.xml -->
 <!-- Copyright (C) 2010 The Android Open Source Project
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -26,8 +26,7 @@
             android:id="@+id/ssid_wrapper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dip"
-            android:layout_marginBottom="8dip">
+            android:layout_marginTop="8dip">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/ssid"
                 android:layout_width="match_parent"
@@ -37,10 +36,29 @@
                 android:inputType="textMultiLine|textNoSuggestions"
                 android:maxLength="32" />
         </com.google.android.material.textfield.TextInputLayout>
+        <LinearLayout
+            android:id="@+id/security_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dip"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item_label"
+                android:text="@string/wifi_security" />
+            <Spinner
+                android:id="@+id/security"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item_content"
+                android:prompt="@string/wifi_security" />
+        </LinearLayout>
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/password_wrapper"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="8dip"
             app:passwordToggleEnabled="true"
             app:errorEnabled="true">
             <com.google.android.material.textfield.TextInputEditText
@@ -55,5 +73,23 @@
                 android:maxLength="63"
                 android:imeOptions="flagForceAscii" />
         </com.google.android.material.textfield.TextInputLayout>
+        <LinearLayout
+            android:id="@+id/band_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dip"
+            android:orientation="vertical">
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item_label"
+                android:text="@string/wifi_hotspot_ap_band_title" />
+            <Spinner
+                android:id="@+id/band"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/wifi_item_content"
+                android:prompt="@string/wifi_hotspot_ap_band_title" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>

@@ -1,8 +1,8 @@
 package be.mygod.vpnhotspot.room
 
-import android.os.Parcel
 import android.text.TextUtils
 import androidx.room.TypeConverter
+import be.mygod.vpnhotspot.util.useParcel
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -10,27 +10,17 @@ import java.nio.ByteOrder
 object Converters {
     @JvmStatic
     @TypeConverter
-    fun persistCharSequence(cs: CharSequence): ByteArray {
-        val p = Parcel.obtain()
-        try {
-            TextUtils.writeToParcel(cs, p, 0)
-            return p.marshall()
-        } finally {
-            p.recycle()
-        }
+    fun persistCharSequence(cs: CharSequence) = useParcel { p ->
+        TextUtils.writeToParcel(cs, p, 0)
+        p.marshall()
     }
 
     @JvmStatic
     @TypeConverter
-    fun unpersistCharSequence(data: ByteArray): CharSequence {
-        val p = Parcel.obtain()
-        try {
-            p.unmarshall(data, 0, data.size)
-            p.setDataPosition(0)
-            return TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
-        } finally {
-            p.recycle()
-        }
+    fun unpersistCharSequence(data: ByteArray) = useParcel { p ->
+        p.unmarshall(data, 0, data.size)
+        p.setDataPosition(0)
+        TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
     }
 
     @JvmStatic

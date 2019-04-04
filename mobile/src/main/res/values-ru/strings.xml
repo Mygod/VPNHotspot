@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+     Values copied from:
+       * https://android.googlesource.com/platform/packages/apps/Settings/+/419086d/res/values-ru/strings.xml
+    -->
 
-    <string name="repeater_configure">Настройка Wi-Fi ретранслятора</string>
     <string name="repeater_configure_failure">Действительный конфиг не найден. Пожалуйста, сначала запустите ретранслятор.</string>
     <string name="repeater_clean_pog_failure">Не удалось удалить избыточную группу P2P (причина: %s)</string>
 
@@ -15,7 +18,9 @@
     <string name="repeater_failure_reason_unsupported_operation">неподдерживаемая операция</string>
     <string name="repeater_failure_disconnected">Сервис недоступен. Попробуйте позже</string>
 
-
+    <string name="tethering_manage_usb" msgid="585829947108007917">"USB-модем"</string>
+    <string name="tethering_manage_wifi" msgid="7763495093333664887">"Точка доступа Wi‑Fi"</string>
+    <string name="tethering_manage_bluetooth" msgid="2379175828878753652">"Bluetooth-модем"</string>
 
     <string name="connected_state_incomplete">" (подключение)"</string>
     <string name="connected_state_valid">" (доступный)"</string>
@@ -37,7 +42,16 @@
     <string name="exception_interface_not_found">Ошибка: Нисходящий интерфейс не найден</string>
     <string name="noisy_su_failure">Что-то пошло не так, пожалуйста, проверьте отладочную информацию.</string>
 
+    <string name="configuration_view">Настройка Wi-Fi ретранслятора</string>
+    <string name="wifi_ssid" msgid="5519636102673067319">"Имя сети"</string>
+    <string name="wifi_security" msgid="6603611185592956936">"Защита"</string>
+    <string name="wifi_password" msgid="5948219759936151048">"Пароль"</string>
     <string name="credentials_password_too_short">Пароль должен содержать не менее 8 символов.</string>
+    <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"Диапазон частот Wi-Fi"</string>
+    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Авто"</string>
+    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2,4 ГГц"</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5,0 ГГц"</string>
+    <string name="wifi_save" msgid="3331121567988522826">"Сохранить"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-ru/donations__strings.xml -->
     <string name="donations__button_close">Закрыть</string>
