@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.net.wifi.WifiConfiguration
+import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import android.os.Bundle
@@ -32,6 +33,7 @@ import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
+import java.lang.IllegalArgumentException
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -112,6 +114,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
+    @Deprecated("No longer used since Android Q")
+    @Suppress("DEPRECATION")
     class ConfigHolder : ViewModel() {
         var config: P2pSupplicantConfiguration? = null
     }
@@ -124,6 +128,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     private val data = Data()
     internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
+    @Suppress("DEPRECATION")
     private val holder = ViewModelProviders.of(parent).get<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
@@ -153,25 +158,51 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     }
 
     val configuration: WifiConfiguration? get() {
-        val group = binder?.group
-        if (group != null) try {
-            val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
-            holder.config = config
-            return newWifiApConfiguration(group.networkName, config.psk).apply {
-                allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
-                if (Build.VERSION.SDK_INT >= 23) {
-                    apBand = AP_BAND_ANY
+        if (BuildCompat.isAtLeastQ()) {
+            val networkName = RepeaterService.networkName
+            val passphrase = RepeaterService.passphrase
+            if (networkName != null && passphrase != null) {
+                return newWifiApConfiguration(networkName, passphrase).apply {
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
+                    apBand = when (RepeaterService.operatingBand) {
+                        WifiP2pConfig.GROUP_OWNER_BAND_AUTO -> AP_BAND_ANY
+                        WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> AP_BAND_2GHZ
+                        WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> AP_BAND_5GHZ
+                        else -> throw IllegalArgumentException("Unknown operatingBand")
+                    }
                     apChannel = RepeaterService.operatingChannel
                 }
             }
-        } catch (e: RuntimeException) {
-            Timber.w(e)
+        } else @Suppress("DEPRECATION") {
+            val group = binder?.group
+            if (group != null) try {
+                val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                holder.config = config
+                return newWifiApConfiguration(group.networkName, config.psk).apply {
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
+                    if (Build.VERSION.SDK_INT >= 23) {
+                        apBand = AP_BAND_ANY
+                        apChannel = RepeaterService.operatingChannel
+                    }
+                }
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+            }
         }
         SmartSnackbar.make(R.string.repeater_configure_failure).show()
         return null
     }
     fun updateConfiguration(config: WifiConfiguration) {
-        holder.config?.let { master ->
+        if (BuildCompat.isAtLeastQ()) {
+            RepeaterService.networkName = config.SSID
+            RepeaterService.passphrase = config.preSharedKey
+            RepeaterService.operatingBand = when (config.apBand) {
+                AP_BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+                AP_BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                AP_BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                else -> throw IllegalArgumentException("Unknown apBand")
+            }
+        } else @Suppress("DEPRECATION") holder.config?.let { master ->
             if (binder?.group?.networkName != config.SSID || master.psk != config.preSharedKey) try {
                 master.update(config.SSID, config.preSharedKey)
                 binder!!.group = null

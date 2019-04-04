@@ -5,14 +5,12 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.NetworkInfo
-import android.net.wifi.p2p.WifiP2pDevice
-import android.net.wifi.p2p.WifiP2pGroup
-import android.net.wifi.p2p.WifiP2pInfo
-import android.net.wifi.p2p.WifiP2pManager
+import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.StringRes
+import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -33,7 +31,10 @@ import java.lang.reflect.InvocationTargetException
 class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         private const val TAG = "RepeaterService"
-        const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+        private const val KEY_NETWORK_NAME = "service.repeater.networkName"
+        private const val KEY_PASSPHRASE = "service.repeater.passphrase"
+        private const val KEY_OPERATING_BAND = "service.repeater.band"
+        private const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
 
         /**
          * This is only a "ServiceConnection" to system service and its impact on system is minimal.
@@ -49,12 +50,23 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val supported get() = p2pManager != null
         var persistentSupported = false
 
+        var networkName: String?
+            get() = app.pref.getString(KEY_NETWORK_NAME, null)
+            set(value) = app.pref.edit { putString(KEY_NETWORK_NAME, value) }
+        var passphrase: String?
+            get() = app.pref.getString(KEY_PASSPHRASE, null)
+            set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
+        var operatingBand: Int
+            get() = app.pref.getInt(KEY_OPERATING_BAND, 0)
+            set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
                 val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
                 return if (result in 1..165) result else 0
             }
-            set(value) = app.pref.edit().putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()).apply()
+            set(value) = app.pref.edit { putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()) }
+
+        private val networkNameField by lazy { WifiP2pConfig::class.java.getDeclaredField("networkName") }
     }
 
     enum class Status {
@@ -120,6 +132,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         }
     }
     private var routingManager: RoutingManager? = null
+    private var persistNextGroup = false
 
     var status = Status.IDLE
         private set(value) {
@@ -245,12 +258,25 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      * startService Step 2 (if a group isn't already available)
      */
     private fun doStart() = try {
-        p2pManager.createGroup(channel, object : WifiP2pManager.ActionListener {
+        val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
                 startFailure(formatReason(R.string.repeater_create_group_failure, reason))
             }
             override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
-        })
+        }
+        val networkName = networkName
+        val passphrase = passphrase
+        if (!BuildCompat.isAtLeastQ() || networkName == null || passphrase == null) {
+            persistNextGroup = true
+            p2pManager.createGroup(channel, listener)
+        } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+            setNetworkName("DIRECT-00-VPNHotspot")  // placeholder for bypassing networkName check
+            setPassphrase(passphrase)
+            val frequency = operatingChannel
+            if (frequency == 0) setGroupOperatingBand(operatingBand) else setGroupOperatingFrequency(frequency)
+        }.build().apply {
+            networkNameField.set(this, networkName)
+        }, listener)
     } catch (e: SecurityException) {
         Timber.w(e)
         startFailure(e.readableMessage)
@@ -276,6 +302,11 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
      */
     private fun doStart(group: WifiP2pGroup) {
         binder.group = group
+        if (persistNextGroup) {
+            networkName = group.networkName
+            passphrase = group.passphrase
+            persistNextGroup = false
+        }
         check(routingManager == null)
         routingManager = RoutingManager.LocalOnly(this, group.`interface`!!).apply { start() }
         status = Status.ACTIVE
