@@ -11,4 +11,8 @@
           android:icon="?attr/actionModePasteDrawable"
           android:title="@android:string/paste"
           app:showAsAction="ifRoom"/>
+    <item android:id="@+id/share_qr"
+          android:icon="@drawable/ic_social_share"
+          android:title="@string/configuration_share"
+          app:showAsAction="ifRoom"/>
 </menu>

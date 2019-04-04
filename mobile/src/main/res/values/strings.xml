@@ -134,6 +134,7 @@
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
 
     <string name="configuration_view">Wi\u2011Fi configuration</string>
+    <string name="configuration_share">Share via QR code</string>
     <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
     <string name="wifi_ssid">Network name</string>
     <string name="wifi_security">Security</string>

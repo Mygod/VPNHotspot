@@ -65,6 +65,35 @@ fun channelToFrequency(channel: Int) = when (channel) {
     else -> throw IllegalArgumentException("Invalid channel $channel")
 }
 
+val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0).also { selected ->
+    check(selected >= 0) { "No key management selected" }
+    check(allowedKeyManagement.nextSetBit(selected + 1) < 0) { "More than 1 key managements supplied" }
+}
+
+private val qrSanitizer = Regex("([\\\\\":;,])")
+/**
+ * Documentation: https://github.com/zxing/zxing/wiki/Barcode-Contents#wi-fi-network-config-android-ios-11
+ */
+fun WifiConfiguration.toQRString() = StringBuilder("WIFI:").apply {
+    fun String.sanitize() = qrSanitizer.replace(this) { "\\${it.groupValues[1]}" }
+    var password = true
+    when (apKeyManagement) {
+        WifiConfiguration.KeyMgmt.NONE -> password = false
+        WifiConfiguration.KeyMgmt.WPA_PSK, WifiConfiguration.KeyMgmt.WPA_EAP, WPA2_PSK -> append("T:WPA;")
+        else -> throw IllegalArgumentException("Unsupported authentication type")
+    }
+    append("S:")
+    append(SSID.sanitize())
+    append(';')
+    if (password) {
+        append("P:")
+        append(preSharedKey.sanitize())
+        append(';')
+    }
+    if (hiddenSSID) append("H:true;")
+    append(';')
+}.toString()
+
 /**
  * Based on:
  * https://android.googlesource.com/platform/packages/apps/Settings/+/android-5.0.0_r1/src/com/android/settings/wifi/WifiApDialog.java#88

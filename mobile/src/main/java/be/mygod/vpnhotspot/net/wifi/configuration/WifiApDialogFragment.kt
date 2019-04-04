@@ -20,6 +20,7 @@ import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
 import kotlinx.android.parcel.Parcelize
@@ -128,14 +129,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     private fun populateFromConfiguration(configuration: WifiConfiguration) {
         dialogView.ssid.setText(configuration.SSID)
-        if (!arg.p2pMode) {
-            val selected = configuration.allowedKeyManagement.nextSetBit(0)
-            check(selected >= 0) { "No key management selected" }
-            check(configuration.allowedKeyManagement.nextSetBit(selected + 1) < 0) {
-                "More than 1 key managements supplied"
-            }
-            dialogView.security.setSelection(selected)
-        }
+        if (!arg.p2pMode) dialogView.security.setSelection(configuration.apKeyManagement)
         dialogView.password.setText(configuration.preSharedKey)
         if (Build.VERSION.SDK_INT >= 23) {
             dialogView.band.setSelection(if (configuration.apChannel in 1..165) {
@@ -171,18 +165,25 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) { }
     override fun afterTextChanged(editable: Editable) = validate()
 
-    override fun onMenuItemClick(item: MenuItem?) = when (item?.itemId) {
-        android.R.id.copy -> {
-            app.clipboard.primaryClip =
-                    ClipData.newPlainText(null, Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
-            true
-        }
-        android.R.id.paste -> {
-            app.clipboard.primaryClip?.getItemAt(0)?.text?.let {
-                populateFromConfiguration(Base64.decode(it.toString(), BASE64_FLAGS).toParcelable())
+    override fun onMenuItemClick(item: MenuItem?): Boolean {
+        return when (item?.itemId) {
+            android.R.id.copy -> {
+                app.clipboard.primaryClip =
+                        ClipData.newPlainText(null, Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
+                true
             }
-            true
+            android.R.id.paste -> {
+                app.clipboard.primaryClip?.getItemAt(0)?.text?.let {
+                    populateFromConfiguration(Base64.decode(it.toString(), BASE64_FLAGS).toParcelable())
+                }
+                true
+            }
+            R.id.share_qr -> {
+                QRCodeDialog().withArg(ret.configuration.toQRString())
+                        .show(fragmentManager ?: return false, "QRCodeDialog")
+                true
+            }
+            else -> false
         }
-        else -> false
     }
 }
