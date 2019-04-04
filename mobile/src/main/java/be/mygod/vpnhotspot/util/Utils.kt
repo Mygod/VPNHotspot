@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.*
 import android.os.Build
 import android.os.Parcel
+import android.os.Parcelable
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -40,6 +41,16 @@ fun <T> useParcel(block: (Parcel) -> T) = Parcel.obtain().run {
     } finally {
         recycle()
     }
+}
+
+fun Parcelable.toByteArray(parcelableFlags: Int = 0) = useParcel { p ->
+    p.writeParcelable(this, parcelableFlags)
+    p.marshall()
+}
+fun <T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
+    p.unmarshall(this, 0, size)
+    p.setDataPosition(0)
+    p.readParcelable<T>(javaClass.classLoader)
 }
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {

@@ -13,7 +13,6 @@
 
     <!-- https://android.googlesource.com/platform/packages/apps/Settings/+/7efcc35/res/values/styles.xml -->
     <style name="wifi_item">
-        <item name="android:layout_marginTop">8dip</item>
         <item name="android:layout_marginStart">8dip</item>
         <item name="android:layout_marginEnd">8dip</item>
         <item name="android:paddingStart">8dip</item>
