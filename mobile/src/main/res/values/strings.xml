@@ -134,7 +134,7 @@
         <item quantity="one">%d interface</item>
         <item quantity="other">%d interfaces</item>
     </plurals>
-    <string name="notification_interfaces_inactive">"Inactive: "</string>
+    <string name="notification_interfaces_inactive">Inactive: %s</string>
 
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>

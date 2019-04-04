@@ -125,7 +125,7 @@
     <plurals name="notification_interfaces">
         <item quantity="other">%d 个接口</item>
     </plurals>
-    <string name="notification_interfaces_inactive">不活跃：</string>
+    <string name="notification_interfaces_inactive">不活跃：%s</string>
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
