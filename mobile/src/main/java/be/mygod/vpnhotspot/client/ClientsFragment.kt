@@ -67,11 +67,10 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         override fun onClick(dialog: DialogInterface?, which: Int) {
             when (which) {
                 DialogInterface.BUTTON_POSITIVE -> {
+                    val newNickname = this.dialog!!.findViewById<EditText>(android.R.id.edit).text
                     MacLookup.abort(arg.mac)
                     GlobalScope.launch(Dispatchers.Unconfined) {
-                        AppDatabase.instance.clientRecordDao.upsert(arg.mac) {
-                            nickname = this@NicknameDialogFragment.dialog!!.findViewById<EditText>(android.R.id.edit).text
-                        }
+                        AppDatabase.instance.clientRecordDao.upsert(arg.mac) { nickname = newNickname }
                     }
                 }
                 DialogInterface.BUTTON_NEUTRAL -> MacLookup.perform(arg.mac, true)

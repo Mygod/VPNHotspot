@@ -79,10 +79,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
     private inner class Data : be.mygod.vpnhotspot.manage.Data() {
         private val lookup: Map<String, NetworkInterface> get() = parent.ifaceLookup
 
-        override val icon: Int get() {
-            val iface = binder?.iface
-            return (if (iface.isNullOrBlank()) TetherType.WIFI else TetherType.ofInterface(iface)).icon
-        }
+        override val icon get() = R.drawable.ic_action_perm_scan_wifi
         override val title: CharSequence get() {
             val configuration = binder?.configuration ?: return parent.getString(R.string.tethering_temp_hotspot)
             return SpannableStringBuilder("${configuration.SSID} - ").apply {

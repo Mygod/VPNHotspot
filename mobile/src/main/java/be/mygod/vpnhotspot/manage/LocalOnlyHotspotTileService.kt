@@ -15,7 +15,7 @@ import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(26)
 class LocalOnlyHotspotTileService : KillableTileService() {
-    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_device_wifi_tethering) }
+    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
 
     private var binder: LocalOnlyHotspotService.Binder? = null
 
