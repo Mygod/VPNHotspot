@@ -12,14 +12,15 @@ abstract class TetherListeningTileService : KillableTileService() {
     protected var tethered: List<String> = emptyList()
 
     private val receiver = broadcastReceiver { _, intent ->
-        tethered = intent.tetheredIfaces
+        tethered = intent.tetheredIfaces ?: return@broadcastReceiver
         updateTile()
     }
 
     override fun onStartListening() {
         super.onStartListening()
-        val intent = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        if (intent != null) tethered = intent.tetheredIfaces
+        registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))?.tetheredIfaces?.let {
+            tethered = it
+        }
     }
 
     override fun onStopListening() {

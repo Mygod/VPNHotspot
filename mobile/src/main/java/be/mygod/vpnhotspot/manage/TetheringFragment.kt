@@ -98,8 +98,9 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
     var binder: TetheringService.Binder? = null
     private val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(intent.tetheredIfaces, intent.localOnlyTetheredIfaces,
-                intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER))
+        adapter.update(intent.tetheredIfaces ?: return@broadcastReceiver,
+                intent.localOnlyTetheredIfaces ?: return@broadcastReceiver,
+                intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER) ?: return@broadcastReceiver)
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {

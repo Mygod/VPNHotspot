@@ -48,7 +48,7 @@ class TetheringService : IpNeighbourMonitoringService() {
     private val receiver = broadcastReceiver { _, intent ->
         synchronized(downstreams) {
             val toRemove = downstreams.toMutableMap()   // make a copy
-            for (iface in intent.tetheredIfaces) {
+            for (iface in intent.tetheredIfaces ?: return@synchronized) {
                 val downstream = toRemove.remove(iface) ?: continue
                 if (downstream.monitor) downstream.start()
             }
