@@ -48,7 +48,6 @@ class WifiP2pDialogFragment : AlertDialogFragment<WifiP2pDialogFragment.Arg, Wif
         mPassword = mView.password
         setPositiveButton(context.getString(R.string.wifi_save), listener)
         setNegativeButton(context.getString(R.string.wifi_cancel), null)
-        setNeutralButton(context.getString(R.string.repeater_reset_credentials), listener)
         mSsid.text = arg.configuration.SSID
         mSsid.addTextChangedListener(this@WifiP2pDialogFragment)
         mPassword.setText(arg.configuration.preSharedKey)

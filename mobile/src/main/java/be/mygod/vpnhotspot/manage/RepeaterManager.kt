@@ -168,18 +168,15 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    fun onEditResult(which: Int, data: Intent?) {
-        when (which) {
-            DialogInterface.BUTTON_POSITIVE -> try {
-                val master = holder.config ?: return
-                val config = AlertDialogFragment.getRet<WifiP2pDialogFragment.Arg>(data!!).configuration
-                master.update(config.SSID, config.preSharedKey)
-                binder!!.group = null
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-            }
-            DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()
+    fun onEditResult(data: Intent?) {
+        val master = holder.config ?: return
+        try {
+            val config = AlertDialogFragment.getRet<WifiP2pDialogFragment.Arg>(data!!).configuration
+            master.update(config.SSID, config.preSharedKey)
+            binder!!.group = null
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
         }
         holder.config = null
     }

@@ -133,7 +133,7 @@ class TetheringFragment : Fragment(), ServiceConnection, MenuItem.OnMenuItemClic
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) = when (requestCode) {
         REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-        REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(resultCode, data)
+        REPEATER_EDIT_CONFIGURATION -> adapter.repeaterManager.onEditResult(data)
         else -> super.onActivityResult(requestCode, resultCode, data)
     }
 

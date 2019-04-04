@@ -24,9 +24,6 @@
     <string name="repeater_wps_failure">Failed to start WPS (reason: %s)</string>
     <string name="repeater_configure">Configure Wi\u2011Fi repeater</string>
     <string name="repeater_configure_failure">Valid config not found. Please start repeater first.</string>
-    <string name="repeater_reset_credentials">Reset</string>
-    <string name="repeater_reset_credentials_success">Credentials reset.</string>
-    <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
     <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>

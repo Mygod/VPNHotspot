@@ -95,18 +95,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         fun shutdown() {
             if (active) removeGroup()
         }
-
-        fun resetCredentials() {
-            val channel = channel
-            if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else p2pManager.deletePersistentGroup(channel, (group ?: return).netId,
-                    object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
-                                .shortToast().show()
-                        override fun onFailure(reason: Int) = SmartSnackbar.make(
-                                formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
-                    })
-        }
     }
 
     private val p2pManager get() = RepeaterService.p2pManager!!
