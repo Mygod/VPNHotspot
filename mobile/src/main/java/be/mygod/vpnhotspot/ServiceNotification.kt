@@ -34,7 +34,7 @@ object ServiceNotification {
             context.resources.getQuantityString(R.plurals.notification_connected_devices, size, size, dev)
         }
         if (inactive.isNotEmpty()) {
-            lines += context.getString(R.string.notification_interfaces_inactive) + inactive.joinToString()
+            lines += context.getString(R.string.notification_interfaces_inactive, inactive.joinToString())
         }
         return if (lines.size <= 1) builder.setContentText(lines.singleOrNull()).build() else {
             val deviceCount = deviceCounts.sumBy { it.value }

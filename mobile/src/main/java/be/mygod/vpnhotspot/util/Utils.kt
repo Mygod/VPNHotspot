@@ -1,8 +1,11 @@
 package be.mygod.vpnhotspot.util
 
+import android.annotation.SuppressLint
 import android.content.*
 import android.net.InetAddresses
 import android.os.Build
+import android.os.Parcel
+import android.os.Parcelable
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -17,7 +20,6 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import java.lang.RuntimeException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -32,6 +34,25 @@ fun Long.toPluralInt(): Int {
     check(this >= 0)    // please don't mess with me
     if (this <= Int.MAX_VALUE) return toInt()
     return (this % 1000000000).toInt() + 1000000000
+}
+
+@SuppressLint("Recycle")
+fun <T> useParcel(block: (Parcel) -> T) = Parcel.obtain().run {
+    try {
+        block(this)
+    } finally {
+        recycle()
+    }
+}
+
+fun Parcelable.toByteArray(parcelableFlags: Int = 0) = useParcel { p ->
+    p.writeParcelable(this, parcelableFlags)
+    p.marshall()
+}
+fun <T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
+    p.unmarshall(this, 0, size)
+    p.setDataPosition(0)
+    p.readParcelable<T>(javaClass.classLoader)
 }
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {

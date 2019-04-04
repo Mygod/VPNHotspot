@@ -7,14 +7,10 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.graphics.Typeface
 import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
@@ -25,7 +21,6 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
-import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -80,15 +75,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         private val lookup: Map<String, NetworkInterface> get() = parent.ifaceLookup
 
         override val icon get() = R.drawable.ic_action_perm_scan_wifi
-        override val title: CharSequence get() {
-            val configuration = binder?.configuration ?: return parent.getString(R.string.tethering_temp_hotspot)
-            return SpannableStringBuilder("${configuration.SSID} - ").apply {
-                val start = length
-                append(configuration.preSharedKey)
-                setSpan(if (Build.VERSION.SDK_INT >= 28) TypefaceSpan(Typeface.MONOSPACE) else
-                    TypefaceSpan("monospace"), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-        }
+        override val title: CharSequence get() = parent.getString(R.string.tethering_temp_hotspot)
         override val text: CharSequence get() {
             return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
         }
@@ -103,7 +90,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
     private val data = Data()
-    private var binder: LocalOnlyHotspotService.Binder? = null
+    internal var binder: LocalOnlyHotspotService.Binder? = null
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         viewHolder as ViewHolder

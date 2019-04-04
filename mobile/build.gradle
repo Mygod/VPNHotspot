@@ -19,8 +19,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 28
         resConfigs "ru", "zh-rCN"
-        versionCode 122
-        versionName "2.3.3"
+        versionCode 200
+        versionName "3.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
@@ -86,6 +86,7 @@ dependencies {
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
+    implementation 'net.glxn.qrgen:android:2.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.1'
     for (dep in aux) {

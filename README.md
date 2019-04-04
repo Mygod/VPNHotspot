@@ -128,6 +128,9 @@ Undocumented API list:
 * (since API 24) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112882)
 * (since API 24) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112972)
 * (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112974)
+* [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#121357)
+* [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#121416)
+* (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
 * [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123194)
 * [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123239)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123431)
@@ -135,7 +138,6 @@ Undocumented API list:
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123458)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123459)
 * [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#299587)
-* (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
 
 Undocumented system configurations:
 

@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net.wifi
+package be.mygod.vpnhotspot.net.wifi.configuration
 
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build

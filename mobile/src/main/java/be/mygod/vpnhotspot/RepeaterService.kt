@@ -49,10 +49,12 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val supported get() = p2pManager != null
         var persistentSupported = false
 
-        val operatingChannel: Int get() {
-            val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
-            return if (result in 1..165) result else 0
-        }
+        var operatingChannel: Int
+            get() {
+                val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
+                return if (result in 1..165) result else 0
+            }
+            set(value) = app.pref.edit().putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()).apply()
     }
 
     enum class Status {
@@ -91,18 +93,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
         fun shutdown() {
             if (active) removeGroup()
-        }
-
-        fun resetCredentials() {
-            val channel = channel
-            if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else p2pManager.deletePersistentGroup(channel, (group ?: return).netId,
-                    object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() = SmartSnackbar.make(R.string.repeater_reset_credentials_success)
-                                .shortToast().show()
-                        override fun onFailure(reason: Int) = SmartSnackbar.make(
-                                formatReason(R.string.repeater_reset_credentials_failure, reason)).show()
-                    })
         }
     }
 
