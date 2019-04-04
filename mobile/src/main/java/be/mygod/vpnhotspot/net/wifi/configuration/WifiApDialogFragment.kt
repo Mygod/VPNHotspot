@@ -168,8 +168,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         return when (item?.itemId) {
             android.R.id.copy -> {
-                app.clipboard.primaryClip =
-                        ClipData.newPlainText(null, Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
+                app.clipboard.primaryClip = ClipData.newPlainText(null,
+                        Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
                 true
             }
             android.R.id.paste -> {
