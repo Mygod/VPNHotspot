@@ -173,8 +173,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 true
             }
             android.R.id.paste -> {
-                app.clipboard.primaryClip?.getItemAt(0)?.text?.let {
-                    populateFromConfiguration(Base64.decode(it.toString(), BASE64_FLAGS).toParcelable())
+                app.clipboard.primaryClip?.getItemAt(0)?.text?.apply {
+                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<WifiConfiguration>()
+                            ?.let { populateFromConfiguration(it) }
                 }
                 true
             }
