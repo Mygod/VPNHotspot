@@ -65,8 +65,8 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 * Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
    - Choose "System default" to save battery life;
-   - (up to Android 9) Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
-   - (up to Android 9) Choose "High Performance Mode" to minimize packet loss and latency (will consume more power);
+   - (prior to Android Q) Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
+   - (prior to Android Q) Choose "High Performance Mode" to minimize packet loss and latency (will consume more power);
    - (since Android Q) Choose "Disable power save" to decrease packet latency.
      An example use case is when a voice connection needs to be kept active even after the device screen goes off.
      Using this mode may improve the call quality.
