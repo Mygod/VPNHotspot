@@ -86,6 +86,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 groupChanged(value)
             }
         val groupChanged = StickyEvent1 { group }
+        @Deprecated("Not initialized and no use at all since Android Q")
         var thisDevice: WifiP2pDevice? = null
 
         @Deprecated("WPS was deprecated RIP")
@@ -127,6 +128,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
         }
     }
+    @Deprecated("No longer used since Android Q")
+    @Suppress("DEPRECATION")
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> binder.thisDevice =
@@ -158,7 +161,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onCreate() {
         super.onCreate()
         onChannelDisconnected()
-        registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
+        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") registerReceiver(deviceListener, intentFilter(
+                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
                 WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
@@ -198,6 +202,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
+    @Deprecated("No longer used since Android Q")
+    @Suppress("DEPRECATION")
     private fun onPersistentGroupsChanged() {
         val channel = channel ?: return
         val device = binder.thisDevice ?: return
@@ -377,7 +383,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
-        unregisterReceiver(deviceListener)
+        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") unregisterReceiver(deviceListener)
         status = Status.DESTROYED
         if (Build.VERSION.SDK_INT >= 27) channel?.close()
         super.onDestroy()
