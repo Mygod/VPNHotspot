@@ -64,6 +64,11 @@ fun channelToFrequency(channel: Int) = when (channel) {
     in 15..165 -> 5000 + 5 * channel
     else -> throw IllegalArgumentException("Invalid channel $channel")
 }
+fun frequencyToChannel(frequency: Int) = when (frequency % 5) {
+    2 -> ((frequency - 2407) / 5).also { check(it in 1..14) { "Invalid 2.4 GHz frequency $frequency" } }
+    0 -> ((frequency - 5000) / 5).also { check(it in 15..165) { "Invalid 5 GHz frequency $frequency" } }
+    else -> throw IllegalArgumentException("Invalid frequency $frequency")
+}
 
 val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0).also { selected ->
     check(selected >= 0) { "No key management selected" }

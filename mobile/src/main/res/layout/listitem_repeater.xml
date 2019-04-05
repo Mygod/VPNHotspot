@@ -40,7 +40,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/title_repeater"
+                    android:text="@{data.title}"
                     android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
                 <be.mygod.vpnhotspot.widget.AutoCollapseTextView

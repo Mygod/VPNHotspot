@@ -55,6 +55,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 else -> false
             }
 
+        val title: CharSequence @Bindable get() {
+            if (BuildCompat.isAtLeastQ()) binder?.group?.frequency?.let {
+                return parent.getString(R.string.repeater_channel, it, frequencyToChannel(it))
+            }
+            return parent.getString(R.string.title_repeater)
+        }
         val addresses: CharSequence @Bindable get() {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -70,6 +76,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
             p2pInterface = group?.`interface`
+            if (BuildCompat.isAtLeastQ()) notifyPropertyChanged(BR.title)
             notifyPropertyChanged(BR.addresses)
         }
 

@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
+import be.mygod.vpnhotspot.net.wifi.configuration.channelToFrequency
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
@@ -279,8 +280,9 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
             setNetworkName(PLACEHOLDER_NETWORK_NAME)
             setPassphrase(passphrase)
-            val frequency = operatingChannel
-            if (frequency == 0) setGroupOperatingBand(operatingBand) else setGroupOperatingFrequency(frequency)
+            val channel = operatingChannel
+            if (channel == 0) setGroupOperatingBand(operatingBand)
+            else setGroupOperatingFrequency(channelToFrequency(channel))
         }.build().run {
             useParcel { p ->
                 p.writeParcelable(this, 0)

@@ -16,6 +16,7 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
@@ -112,7 +113,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
         if (Build.VERSION.SDK_INT >= 23) {
             bandOptions = mutableListOf<BandOption>().apply {
-                if (arg.p2pMode) add(BandOption.BandAny) else {
+                if (arg.p2pMode) {
+                    add(BandOption.BandAny)
+                    if (BuildCompat.isAtLeastQ()) {
+                        add(BandOption.Band2GHz)
+                        add(BandOption.Band5GHz)
+                    }
+                } else {
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
