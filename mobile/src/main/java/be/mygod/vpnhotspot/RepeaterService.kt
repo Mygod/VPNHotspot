@@ -1,10 +1,10 @@
 package be.mygod.vpnhotspot
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
-import android.net.NetworkInfo
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
@@ -62,7 +62,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             get() = app.pref.getString(KEY_PASSPHRASE, null)
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
-            get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
+            @SuppressLint("InlinedApi") get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
@@ -89,14 +89,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         @Deprecated("Not initialized and no use at all since Android Q")
         var thisDevice: WifiP2pDevice? = null
 
-        @Deprecated("WPS was deprecated RIP")
         fun startWps(pin: String? = null) {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else @Suppress("DEPRECATION") if (active) p2pManager.startWps(channel, android.net.wifi.WpsInfo().apply {
-                setup = if (pin == null) android.net.wifi.WpsInfo.PBC else {
+            else if (active) p2pManager.startWps(channel, WpsInfo().apply {
+                setup = if (pin == null) WpsInfo.PBC else {
                     this.pin = pin
-                    android.net.wifi.WpsInfo.KEYPAD
+                    WpsInfo.KEYPAD
                 }
             }, object : WifiP2pManager.ActionListener {
                 override fun onSuccess() = SmartSnackbar.make(
@@ -124,7 +123,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                         WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)!!,
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
         }
     }
@@ -315,8 +313,8 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     /**
      * Used during step 2, also called when connection changed
      */
-    private fun onP2pConnectionChanged(info: WifiP2pInfo, net: NetworkInfo?, group: WifiP2pGroup) {
-        DebugHelper.log(TAG, "P2P connection changed: $info\n$net\n$group")
+    private fun onP2pConnectionChanged(info: WifiP2pInfo, group: WifiP2pGroup) {
+        DebugHelper.log(TAG, "P2P connection changed: $info\n$group")
         when {
             !info.groupFormed || !info.isGroupOwner || !group.isGroupOwner -> {
                 if (routingManager != null) clean() // P2P shutdown, else other groups changing before start, ignore
