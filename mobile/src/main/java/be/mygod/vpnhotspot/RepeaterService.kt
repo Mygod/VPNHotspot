@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
@@ -150,7 +149,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         WifiP2pManager.NO_SERVICE_REQUESTS -> getString(R.string.repeater_failure_reason_no_service_requests)
         WifiP2pManagerHelper.UNSUPPORTED -> getString(R.string.repeater_failure_reason_unsupported_operation)
         else -> getString(R.string.failure_reason_unknown, reason)
-    }).also { if (BuildCompat.isAtLeastQ()) Timber.w(RuntimeException(it)) }
+    })
 
     override fun onCreate() {
         super.onCreate()
