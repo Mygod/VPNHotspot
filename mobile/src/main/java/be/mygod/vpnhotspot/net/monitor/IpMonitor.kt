@@ -19,7 +19,7 @@ abstract class IpMonitor : Runnable {
     companion object {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
-        private const val MAGIC_SUFFIX = "Dump was interrupted and may be inconsistent."
+        private val errorMatcher = "Dump (was interrupted and may be inconsistent.|terminated)$".toRegex()
         private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
     }
 
@@ -54,7 +54,7 @@ abstract class IpMonitor : Runnable {
         }
         try {
             process.inputStream.bufferedReader().forEachLine {
-                if (it.endsWith(MAGIC_SUFFIX)) {
+                if (errorMatcher.matches(it)) {
                     Timber.w(it)
                     process.destroy()   // move on to next mode
                 } else processLine(it)
@@ -103,7 +103,7 @@ abstract class IpMonitor : Runnable {
         }
         process.inputStream.bufferedReader().useLines {
             processLines(it.map { line ->
-                if (line.endsWith(MAGIC_SUFFIX)) throw IOException(line)
+                if (errorMatcher.matches(line)) throw IOException(line)
                 line
             })
         }
@@ -121,7 +121,7 @@ abstract class IpMonitor : Runnable {
             RootSession.use {
                 val result = it.execQuiet(command)
                 RootSession.checkOutput(command, result, false)
-                if (result.out.any { it.endsWith(MAGIC_SUFFIX) }) throw IOException(result.out.joinToString("\n"))
+                if (result.out.any { errorMatcher.matches(it) }) throw IOException(result.out.joinToString("\n"))
                 processLines(result.out.asSequence())
             }
         } catch (e: RuntimeException) {
