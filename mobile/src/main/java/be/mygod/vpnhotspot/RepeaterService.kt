@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.net.NetworkInfo
+import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Handler
@@ -35,6 +36,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
         private const val KEY_OPERATING_BAND = "service.repeater.band"
         private const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+        /**
+         * Placeholder for bypassing networkName check.
+         */
+        private const val PLACEHOLDER_NETWORK_NAME = "DIRECT-00-VPNHotspot"
 
         /**
          * This is only a "ServiceConnection" to system service and its impact on system is minimal.
@@ -57,7 +62,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             get() = app.pref.getString(KEY_PASSPHRASE, null)
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
-            get() = app.pref.getInt(KEY_OPERATING_BAND, 0)
+            get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
@@ -65,8 +70,6 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 return if (result in 1..165) result else 0
             }
             set(value) = app.pref.edit { putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()) }
-
-        private val networkNameField by lazy { WifiP2pConfig::class.java.getDeclaredField("networkName") }
     }
 
     enum class Status {
@@ -270,12 +273,34 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)
         } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
-            setNetworkName("DIRECT-00-VPNHotspot")  // placeholder for bypassing networkName check
+            setNetworkName(PLACEHOLDER_NETWORK_NAME)
             setPassphrase(passphrase)
             val frequency = operatingChannel
             if (frequency == 0) setGroupOperatingBand(operatingBand) else setGroupOperatingFrequency(frequency)
-        }.build().apply {
-            networkNameField.set(this, networkName)
+        }.build().run {
+            useParcel { p ->
+                p.writeParcelable(this, 0)
+                val end = p.dataPosition()
+                p.setDataPosition(0)
+                val creator = p.readString()
+                val deviceAddress = p.readString()
+                val wps = p.readParcelable<WpsInfo>(javaClass.classLoader)
+                val long = p.readLong()
+                check(p.readString() == PLACEHOLDER_NETWORK_NAME)
+                check(p.readString() == passphrase)
+                val int = p.readInt()
+                check(p.dataPosition() == end)
+                p.setDataPosition(0)
+                p.writeString(creator)
+                p.writeString(deviceAddress)
+                p.writeParcelable(wps, 0)
+                p.writeLong(long)
+                p.writeString(networkName)
+                p.writeString(passphrase)
+                p.writeInt(int)
+                p.setDataPosition(0)
+                p.readParcelable<WifiP2pConfig>(javaClass.classLoader)
+            }
         }, listener)
     } catch (e: SecurityException) {
         Timber.w(e)
