@@ -148,6 +148,7 @@ Undocumented system configurations:
 
 Other:
 
+* (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order.
 * (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#144760) is assumed to be `"tether_offload_disabled"`.
 * (since API 27) `com.android.server.connectivity.tethering.OffloadHardwareInterface.DEFAULT_TETHER_OFFLOAD_DISABLED` is assumed to be 0.
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
