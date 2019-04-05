@@ -2,7 +2,6 @@
 <layout
     xmlns:android="http://schemas.android.com/apk/res/android">
     <data>
-        <import type="android.view.View"/>
         <variable
             name="data"
             type="be.mygod.vpnhotspot.manage.ManageBar.Data"/>
@@ -42,7 +41,7 @@
                 android:id="@+id/offloadEnabled"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:visibility="@{data.offloadEnabled ? View.VISIBLE : View.GONE}"
+                android:visibility="@{data.offloadEnabled}"
                 android:text="@string/tethering_manage_offload_enabled"/>
         </LinearLayout>
 

@@ -4,7 +4,6 @@ import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.DialogInterface
 import android.net.wifi.WifiConfiguration
-import android.net.wifi.WifiConfiguration.AuthAlgorithm
 import android.os.Build
 import android.os.Parcelable
 import android.text.Editable
@@ -21,6 +20,7 @@ import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
@@ -79,7 +79,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         SSID = dialogView.ssid.text.toString()
         allowedKeyManagement.set(
                 if (arg.p2pMode) WifiConfiguration.KeyMgmt.WPA_PSK else dialogView.security.selectedItemPosition)
-        allowedAuthAlgorithms.set(AuthAlgorithm.OPEN)
+        allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN)
         if (dialogView.password.length() != 0) preSharedKey = dialogView.password.text.toString()
         if (Build.VERSION.SDK_INT >= 23) {
             val bandOption = dialogView.band.selectedItem as BandOption
@@ -111,7 +111,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
-        if (Build.VERSION.SDK_INT >= 23) {
+        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {
             bandOptions = mutableListOf<BandOption>().apply {
                 if (arg.p2pMode) {
                     add(BandOption.BandAny)
@@ -126,11 +126,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 }
                 addAll(channels)
             }
-            dialogView.band.adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
-                    bandOptions).apply {
+            adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, bandOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-        } else dialogView.band_wrapper.isGone = true
+            if (Build.VERSION.SDK_INT < 23) {
+                setSelection(bandOptions.indexOfFirst { it.apChannel == RepeaterService.operatingChannel })
+            }
+        }
         populateFromConfiguration(arg.configuration)
     }
 
@@ -192,6 +194,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 true
             }
             else -> false
+        }
+    }
+
+    override fun onClick(dialog: DialogInterface?, which: Int) {
+        super.onClick(dialog, which)
+        if (Build.VERSION.SDK_INT < 23 && which == DialogInterface.BUTTON_POSITIVE) {
+            RepeaterService.operatingChannel = (dialogView.band.selectedItem as BandOption).apChannel
         }
     }
 }
