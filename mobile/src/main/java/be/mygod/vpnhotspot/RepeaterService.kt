@@ -161,8 +161,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         super.onCreate()
         onChannelDisconnected()
         if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") {
-            registerReceiver(deviceListener, intentFilter(
-                    WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
+            registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
                     WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
             app.pref.registerOnSharedPreferenceChangeListener(this)
         }
@@ -388,8 +387,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
-        app.pref.unregisterOnSharedPreferenceChangeListener(this)
-        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") unregisterReceiver(deviceListener)
+        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") {
+            app.pref.unregisterOnSharedPreferenceChangeListener(this)
+            unregisterReceiver(deviceListener)
+        }
         status = Status.DESTROYED
         if (Build.VERSION.SDK_INT >= 27) channel?.close()
         super.onDestroy()
