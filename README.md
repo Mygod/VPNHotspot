@@ -121,23 +121,23 @@ This is only meant to be an index. You can read more in the source code.
 
 Undocumented API list:
 
-* (since API 24) [`Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#28703)
-* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112695)
-* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112696)
-* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112697)
-* (since API 24) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112882)
-* (since API 24) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112972)
-* (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112974)
-* [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#121357)
-* [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#121416)
+* (since API 24) [`Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#31689)
+* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122391)
+* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122392)
+* (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122393)
+* (since API 24) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122588)
+* (since API 24) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122683)
+* (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122685)
+* [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131756)
+* [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131825)
 * (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
-* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123194)
-* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123239)
-* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123431)
-* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123450)
-* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123458)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123459)
-* (prior to API Q) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#299587)
+* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#133878)
+* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#133925)
+* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134141)
+* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134166)
+* (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134175)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134176)
+* (prior to API Q) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#332821)
 
 Undocumented system configurations:
 
@@ -149,21 +149,21 @@ Undocumented system configurations:
 Other:
 
 * (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order.
-* (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#144760) is assumed to be `"tether_offload_disabled"`.
+* (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#157569) is assumed to be `"tether_offload_disabled"`.
 * (since API 27) `com.android.server.connectivity.tethering.OffloadHardwareInterface.DEFAULT_TETHER_OFFLOAD_DISABLED` is assumed to be 0.
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
 * Following broadcasts are assumed to be sticky:
-  - [`Landroid/net/ConnectivityManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#112743) is assumed to be `android.net.conn.TETHER_STATE_CHANGED`.
-  - [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/aa21a6e/appcompat/hiddenapi-flags.csv#123415) is assumed to be `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED`;
+  - [`Landroid/net/ConnectivityManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122441) is assumed to be `android.net.conn.TETHER_STATE_CHANGED`.
+  - (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134124) is assumed to be `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED`;
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 
-For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000
-respectively; `RULE_PRIORITY_DEFAULT_NETWORK` is assumed to be 22000 (or at least > 18000) for API 27-.
+For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000 respectively;
+(prior to API 24) `RULE_PRIORITY_DEFAULT_NETWORK` is assumed to be 22000 (or at least > 18000).
 DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:
 
-* Since API 24: `iptables-save`;
+* (since API 24) `iptables-save`;
 * `echo`;
 * `ip` (`link monitor neigh rule` with proper output format);
 * `ndc` (`ipfwd` with proper output format since API 23, `nat`);
@@ -172,7 +172,7 @@ Undocumented system binaries are all bundled and executable:
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
 
-Wi-Fi driver `wpa_supplicant`:
+(prior to API Q) Wi-Fi driver `wpa_supplicant`:
 
 * P2P configuration file is assumed to be saved to [`/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/0b4856b6dc451e290f1f64f6af17e010be78c073/wpa_supplicant/hidl/1.1/supplicant.cpp#26) and have reasonable format;
 * Android system is expected to restart `wpa_supplicant` after it crashes.
