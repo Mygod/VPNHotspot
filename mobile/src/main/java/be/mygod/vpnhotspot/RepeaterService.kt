@@ -54,6 +54,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             }
         }
         val supported get() = p2pManager != null
+        @Deprecated("Not initialized and no use at all since Android Q")
         var persistentSupported = false
 
         var networkName: String?
