@@ -160,14 +160,18 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onCreate() {
         super.onCreate()
         onChannelDisconnected()
-        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") registerReceiver(deviceListener, intentFilter(
-                WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
-                WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
-        app.pref.registerOnSharedPreferenceChangeListener(this)
+        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") {
+            registerReceiver(deviceListener, intentFilter(
+                    WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
+                    WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
+            app.pref.registerOnSharedPreferenceChangeListener(this)
+        }
     }
 
     override fun onBind(intent: Intent) = binder
 
+    @Deprecated("No longer used since Android Q")
+    @Suppress("DEPRECATION")
     private fun setOperatingChannel(oc: Int = operatingChannel) = try {
         val channel = channel
         if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
@@ -190,13 +194,15 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         channel = null
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-            setOperatingChannel()
+            if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
             handler.postDelayed(this::onChannelDisconnected, 1000)
         }
     }
 
+    @Deprecated("No longer used since Android Q")
+    @Suppress("DEPRECATION")
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }

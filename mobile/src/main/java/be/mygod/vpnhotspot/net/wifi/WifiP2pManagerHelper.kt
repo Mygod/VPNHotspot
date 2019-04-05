@@ -25,6 +25,7 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("setWifiP2pChannels", WifiP2pManager.Channel::class.java,
                 Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
+    @Deprecated("No longer used since Android Q")
     fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
                                           listener: WifiP2pManager.ActionListener) {
         try {
@@ -112,5 +113,6 @@ object WifiP2pManagerHelper {
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
      */
     private val getNetworkId by lazy { WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId") }
+    @Deprecated("No longer used since Android Q")
     val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
 }
