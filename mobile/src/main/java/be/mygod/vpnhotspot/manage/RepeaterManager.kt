@@ -172,6 +172,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             holder.config = null
         }
-        RepeaterService.operatingChannel = config.apChannel
+        if (Build.VERSION.SDK_INT >= 23) RepeaterService.operatingChannel = config.apChannel
     }
 }
