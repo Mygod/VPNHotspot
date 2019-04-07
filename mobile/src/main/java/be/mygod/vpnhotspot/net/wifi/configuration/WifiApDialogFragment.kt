@@ -74,10 +74,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private lateinit var dialogView: View
     private lateinit var bandOptions: MutableList<BandOption>
     private var started = false
+    private val selectedSecurity get() =
+        if (arg.p2pMode) WifiConfiguration.KeyMgmt.WPA_PSK else dialogView.security.selectedItemPosition
     override val ret get() = Arg(WifiConfiguration().apply {
         SSID = dialogView.ssid.text.toString()
-        allowedKeyManagement.set(
-                if (arg.p2pMode) WifiConfiguration.KeyMgmt.WPA_PSK else dialogView.security.selectedItemPosition)
+        allowedKeyManagement.set(selectedSecurity)
         allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN)
         if (dialogView.password.length() != 0) preSharedKey = dialogView.password.text.toString()
         if (Build.VERSION.SDK_INT >= 23) {
@@ -153,7 +154,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!started) return
         val ssidValid = dialogView.ssid.length() != 0 &&
                 Charset.forName("UTF-8").encode(dialogView.ssid.text.toString()).limit() <= 32
-        val passwordValid = when (dialogView.security.selectedItemPosition) {
+        val passwordValid = when (selectedSecurity) {
             WifiConfiguration.KeyMgmt.WPA_PSK, WPA2_PSK -> dialogView.password.length() >= 8
             else -> true    // do not try to validate
         }
