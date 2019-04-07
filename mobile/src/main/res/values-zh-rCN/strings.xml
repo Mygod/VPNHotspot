@@ -90,6 +90,8 @@
     <string name="settings_service_wifi_lock_none">系统默认</string>
     <string name="settings_service_wifi_lock_full">开</string>
     <string name="settings_service_wifi_lock_high_perf">高性能模式</string>
+    <string name="settings_service_wifi_lock_high_perf_v29">禁用省电</string>
+    <string name="settings_service_wifi_lock_low_latency">低延迟模式</string>
     <string name="settings_service_ip_monitor">网络状态监听模式</string>
     <string name="settings_service_ip_monitor_monitor">Netlink 监听</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink 监听 (root)</string>
