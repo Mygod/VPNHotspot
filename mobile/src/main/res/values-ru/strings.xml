@@ -7,7 +7,6 @@
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
-  -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
 
@@ -43,7 +42,7 @@
     <string name="clients_popup_stats">Статистика…</string>
     <string name="clients_mac_lookup_unexpected_error">Сервер вернул ошибку для %1$s: %2$s</string>
     <string name="clients_nickname_title">Никнэйм  для %s</string>
-    <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Vendor</string>
+    <string name="clients_nickname_set_to_vendor">Имя вендора</string>
     <string name="clients_stats_title">Статистика для %s</string>
 
 
