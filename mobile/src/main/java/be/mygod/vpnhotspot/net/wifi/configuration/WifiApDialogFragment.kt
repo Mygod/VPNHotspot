@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import kotlinx.android.synthetic.main.dialog_wifi_ap.view.*
 import java.lang.IllegalStateException
@@ -175,12 +176,15 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                         Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
                 true
             }
-            android.R.id.paste -> {
+            android.R.id.paste -> try {
                 app.clipboard.primaryClip?.getItemAt(0)?.text?.apply {
                     Base64.decode(toString(), BASE64_FLAGS).toParcelable<WifiConfiguration>()
                             ?.let { populateFromConfiguration(it) }
                 }
                 true
+            } catch (e: IllegalArgumentException) {
+                SmartSnackbar.make(e).show()
+                false
             }
             R.id.share_qr -> {
                 QRCodeDialog().withArg(ret.configuration.toQRString())
