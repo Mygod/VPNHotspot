@@ -88,19 +88,15 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
                 }
 
                 override fun onFailed(reason: Int) {
-                    val message = getString(R.string.tethering_temp_hotspot_failure,
-                            when (reason) {
-                                WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL ->
-                                    getString(R.string.tethering_temp_hotspot_failure_no_channel)
-                                WifiManager.LocalOnlyHotspotCallback.ERROR_GENERIC ->
-                                    getString(R.string.tethering_temp_hotspot_failure_generic)
-                                WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMPATIBLE_MODE ->
-                                    getString(R.string.tethering_temp_hotspot_failure_incompatible_mode)
-                                WifiManager.LocalOnlyHotspotCallback.ERROR_TETHERING_DISALLOWED ->
-                                    getString(R.string.tethering_temp_hotspot_failure_tethering_disallowed)
-                                else -> getString(R.string.failure_reason_unknown, reason)
-                            })
-                    SmartSnackbar.make(message).show()
+                    SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure, when (reason) {
+                        ERROR_NO_CHANNEL -> getString(R.string.tethering_temp_hotspot_failure_no_channel)
+                        ERROR_GENERIC -> getString(R.string.tethering_temp_hotspot_failure_generic)
+                        ERROR_INCOMPATIBLE_MODE -> getString(R.string.tethering_temp_hotspot_failure_incompatible_mode)
+                        ERROR_TETHERING_DISALLOWED -> {
+                            getString(R.string.tethering_temp_hotspot_failure_tethering_disallowed)
+                        }
+                        else -> getString(R.string.failure_reason_unknown, reason)
+                    })).show()
                     startFailure()
                 }
             }, null)

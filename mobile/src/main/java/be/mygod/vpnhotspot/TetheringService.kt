@@ -36,7 +36,7 @@ class TetheringService : IpNeighbourMonitoringService() {
             RoutingManager(caller, downstream, TetherType.ofInterface(downstream).isWifi) {
         override fun Routing.configure() {
             forward()
-            masquerade(RoutingManager.masqueradeMode)
+            masquerade(masqueradeMode)
             if (app.pref.getBoolean("service.disableIpv6", true)) disableIpv6()
             commit()
         }

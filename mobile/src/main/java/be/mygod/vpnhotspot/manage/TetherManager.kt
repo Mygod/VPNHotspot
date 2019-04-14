@@ -105,8 +105,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     fun updateErrorMessage(errored: List<String>) {
         data.text = errored.filter { TetherType.ofInterface(it) == tetherType }.joinToString("\n") {
             "$it: " + try {
-                val error = TetheringManager.getLastTetherError(it)
-                when (error) {
+                when (val error = TetheringManager.getLastTetherError(it)) {
                     TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
                     TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
                     TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
