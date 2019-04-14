@@ -36,18 +36,15 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.macToString
-import be.mygod.vpnhotspot.util.MainScope
 import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
+class ClientsFragment : Fragment() {
     @Parcelize
     data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
@@ -140,7 +137,9 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                     val wasWorking = TrafficRecorder.isWorking(client.mac)
                     client.obtainRecord().apply {
                         blocked = !blocked
-                        launch(Dispatchers.Unconfined) { AppDatabase.instance.clientRecordDao.update(this@apply) }
+                        GlobalScope.launch(Dispatchers.Unconfined) {
+                            AppDatabase.instance.clientRecordDao.update(this@apply)
+                        }
                     }
                     IpNeighbourMonitor.instance?.flush()
                     if (!wasWorking && item.itemId == R.id.block) {
@@ -150,7 +149,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
                 }
                 R.id.stats -> {
                     binding.client?.let { client ->
-                        launch(Dispatchers.Unconfined) {
+                        scope.launch {
                             StatsDialogFragment().withArg(StatsArg(
                                     client.title.value ?: return@launch,
                                     AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
@@ -205,6 +204,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
         }
     }
 
+    private val scope = MainScope() + Dispatchers.Unconfined
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
     private var rates = HashMap<Pair<String, Long>, TrafficRate>()
@@ -237,7 +237,7 @@ class ClientsFragment : Fragment(), MainScope by MainScope.Supervisor() {
     }
 
     override fun onDestroy() {
-        job.cancel()
+        scope.cancel()
         super.onDestroy()
     }
 }
