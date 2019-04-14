@@ -127,7 +127,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             if (Build.VERSION.SDK_INT < 23) {
                 setSelection(bandOptions.indexOfFirst { it.apChannel == RepeaterService.operatingChannel })
             }
-        }
+        } else dialogView.band_wrapper.isGone = true
         populateFromConfiguration(arg.configuration)
     }
 
@@ -197,7 +197,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     override fun onClick(dialog: DialogInterface?, which: Int) {
         super.onClick(dialog, which)
-        if (Build.VERSION.SDK_INT < 23 && which == DialogInterface.BUTTON_POSITIVE) {
+        if (Build.VERSION.SDK_INT < 23 && arg.p2pMode && which == DialogInterface.BUTTON_POSITIVE) {
             RepeaterService.operatingChannel = (dialogView.band.selectedItem as BandOption).apChannel
         }
     }
