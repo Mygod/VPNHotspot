@@ -42,6 +42,7 @@ android {
     }
     dataBinding.enabled = true
     flavorDimensions("freedom")
+    packagingOptions.exclude 'META-INF/*.kotlin_module'
     productFlavors {
         fdroid {
             dimension "freedom"
@@ -82,14 +83,14 @@ dependencies {
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:1.2.2'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu.libsu:core:2.3.3'
+    implementation 'com.github.topjohnwu.libsu:core:2.4.0'
     implementation 'com.google.android.material:material:1.0.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
     implementation 'net.glxn.qrgen:android:2.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.1.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.2.0'
     for (dep in aux) {
         freedomImplementation dep
         googleImplementation dep

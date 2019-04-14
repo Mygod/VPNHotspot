@@ -3,5 +3,5 @@
     <issue id="InvalidPackage">
         <ignore regexp="org.mockito.*" />
     </issue>
-    <issue id="MissingTranslation" severity="informational" />
+    <issue id="MissingTranslation" severity="ignore" />
 </lint>
