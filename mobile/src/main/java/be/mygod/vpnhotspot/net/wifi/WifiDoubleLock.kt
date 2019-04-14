@@ -69,7 +69,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         LowLatency(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, true),
     }
 
-    class ActivityListener(val activity: ComponentActivity) :
+    class ActivityListener(private val activity: ComponentActivity) :
             LifecycleObserver, SharedPreferences.OnSharedPreferenceChangeListener {
         private var keepScreenOn: Boolean = false
             set(value) {

@@ -73,7 +73,7 @@ object MacLookup {
     private fun extractCountry(mac: Long, response: String, obj: JSONObject): MatchResult? {
         countryCodeRegex.matchEntire(obj.optString("country"))?.also { return it }
         val address = obj.optString("address")
-        if (address.isNullOrBlank()) return null
+        if (address.isBlank()) return null
         countryCodeRegex.find(address)?.also { return it }
         Timber.w(UnexpectedError(mac, response))
         return null

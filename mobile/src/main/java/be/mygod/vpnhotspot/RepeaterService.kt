@@ -71,7 +71,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 val result = app.pref.getString(KEY_OPERATING_CHANNEL, null)?.toIntOrNull() ?: 0
                 return if (result in 1..165) result else 0
             }
-            set(value) = app.pref.edit { putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()) }
+            set(value) = app.pref.edit { putString(KEY_OPERATING_CHANNEL, value.toString()) }
     }
 
     enum class Status {
