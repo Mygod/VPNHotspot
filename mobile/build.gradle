@@ -42,7 +42,7 @@ android {
     }
     dataBinding.enabled = true
     flavorDimensions("freedom")
-    packagingOptions.exclude 'META-INF/*.kotlin_module'
+    packagingOptions.exclude '**/*.kotlin_*'
     productFlavors {
         fdroid {
             dimension "freedom"
