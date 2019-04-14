@@ -6,9 +6,6 @@
     -->
 
     <string name="repeater_configure_failure">Действительный конфиг не найден. Пожалуйста, сначала запустите ретранслятор.</string>
-    <string name="repeater_reset_credentials">Сброс</string>
-    <string name="repeater_reset_credentials_success">Сброс учетных данных.</string>
-    <string name="repeater_reset_credentials_failure">Не удалось сбросить учетные данные (причина:%s)</string>
     <string name="repeater_clean_pog_failure">Не удалось удалить избыточную группу P2P (причина: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi-Fi директ недоступен, пожалуйста включите Wi-Fi</string>
