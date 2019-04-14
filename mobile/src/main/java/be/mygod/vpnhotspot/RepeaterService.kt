@@ -271,52 +271,56 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     /**
      * startService Step 2 (if a group isn't already available)
      */
-    private fun doStart() = try {
+    private fun doStart() {
         val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
                 startFailure(formatReason(R.string.repeater_create_group_failure, reason))
             }
             override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
         }
+        val channel = channel ?: return listener.onFailure(WifiP2pManager.BUSY)
         val networkName = networkName
         val passphrase = passphrase
-        if (!BuildCompat.isAtLeastQ() || networkName == null || passphrase == null) {
-            persistNextGroup = true
-            p2pManager.createGroup(channel, listener)
-        } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
-            setNetworkName(PLACEHOLDER_NETWORK_NAME)
-            setPassphrase(passphrase)
-            val channel = operatingChannel
-            if (channel == 0) setGroupOperatingBand(operatingBand)
-            else setGroupOperatingFrequency(channelToFrequency(channel))
-        }.build().run {
-            useParcel { p ->
-                p.writeParcelable(this, 0)
-                val end = p.dataPosition()
-                p.setDataPosition(0)
-                val creator = p.readString()
-                val deviceAddress = p.readString()
-                val wps = p.readParcelable<WpsInfo>(javaClass.classLoader)
-                val long = p.readLong()
-                check(p.readString() == PLACEHOLDER_NETWORK_NAME)
-                check(p.readString() == passphrase)
-                val int = p.readInt()
-                check(p.dataPosition() == end)
-                p.setDataPosition(0)
-                p.writeString(creator)
-                p.writeString(deviceAddress)
-                p.writeParcelable(wps, 0)
-                p.writeLong(long)
-                p.writeString(networkName)
-                p.writeString(passphrase)
-                p.writeInt(int)
-                p.setDataPosition(0)
-                p.readParcelable<WifiP2pConfig>(javaClass.classLoader)
-            }
-        }, listener)
-    } catch (e: SecurityException) {
-        Timber.w(e)
-        startFailure(e.readableMessage)
+        try {
+            if (!BuildCompat.isAtLeastQ() || networkName == null || passphrase == null) {
+                persistNextGroup = true
+                p2pManager.createGroup(channel, listener)
+            } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+                setNetworkName(PLACEHOLDER_NETWORK_NAME)
+                setPassphrase(passphrase)
+                operatingChannel.let { oc ->
+                    if (oc == 0) setGroupOperatingBand(operatingBand)
+                    else setGroupOperatingFrequency(channelToFrequency(oc))
+                }
+            }.build().run {
+                useParcel { p ->
+                    p.writeParcelable(this, 0)
+                    val end = p.dataPosition()
+                    p.setDataPosition(0)
+                    val creator = p.readString()
+                    val deviceAddress = p.readString()
+                    val wps = p.readParcelable<WpsInfo>(javaClass.classLoader)
+                    val long = p.readLong()
+                    check(p.readString() == PLACEHOLDER_NETWORK_NAME)
+                    check(p.readString() == passphrase)
+                    val int = p.readInt()
+                    check(p.dataPosition() == end)
+                    p.setDataPosition(0)
+                    p.writeString(creator)
+                    p.writeString(deviceAddress)
+                    p.writeParcelable(wps, 0)
+                    p.writeLong(long)
+                    p.writeString(networkName)
+                    p.writeString(passphrase)
+                    p.writeInt(int)
+                    p.setDataPosition(0)
+                    p.readParcelable<WifiP2pConfig>(javaClass.classLoader)
+                }
+            }, listener)
+        } catch (e: SecurityException) {
+            Timber.w(e)
+            startFailure(e.readableMessage)
+        }
     }
     /**
      * Used during step 2, also called when connection changed
