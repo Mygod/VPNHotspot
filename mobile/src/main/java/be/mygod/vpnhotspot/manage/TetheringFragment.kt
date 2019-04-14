@@ -105,7 +105,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
-        val item = requireActivity().toolbar.menu.findItem(R.id.monitor) ?: return  // assuming no longer foreground
+        val item = activity?.toolbar?.menu?.findItem(R.id.monitor) ?: return    // assuming no longer foreground
         item.isNotGone = canMonitor.isNotEmpty()
         item.subMenu.apply {
             clear()

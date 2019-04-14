@@ -13,7 +13,9 @@ object WifiApManager {
     var configuration: WifiConfiguration
         get() = getWifiApConfiguration.invoke(app.wifi) as WifiConfiguration
         set(value) {
-            if (setWifiApConfiguration.invoke(app.wifi, value) as? Boolean != true) throw IllegalArgumentException()
+            if (setWifiApConfiguration.invoke(app.wifi, value) as? Boolean != true) {
+                throw IllegalArgumentException("setWifiApConfiguration failed")
+            }
         }
 
     private val setWifiApEnabled by lazy {

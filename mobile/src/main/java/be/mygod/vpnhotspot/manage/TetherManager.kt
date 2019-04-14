@@ -163,7 +163,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_BLUETOOTH
         override val isStarted get() = tethering.active == true
 
-        override fun onException() = ManageBar.start(parent.requireContext())
+        override fun onException() = ManageBar.start(parent.context ?: app)
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {
