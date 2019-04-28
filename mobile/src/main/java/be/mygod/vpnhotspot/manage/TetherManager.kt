@@ -9,9 +9,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.core.view.updatePaddingRelative
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
@@ -147,15 +146,14 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_USB)
     }
     @RequiresApi(24)
-    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), LifecycleObserver {
+    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
         private val tethering = BluetoothTethering(parent.requireContext()) { onTetheringStarted() }
 
         init {
             parent.lifecycle.addObserver(this)
         }
 
-        @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        fun onDestroy() = tethering.close()
+        override fun onDestroy(owner: LifecycleOwner) = tethering.close()
 
         override val title get() = parent.getString(R.string.tethering_manage_bluetooth)
         override val tetherType get() = TetherType.BLUETOOTH

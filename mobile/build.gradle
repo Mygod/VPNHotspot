@@ -69,27 +69,27 @@ def aux = [
         'com.google.firebase:firebase-core:16.0.8',
 ]
 def lifecycleVersion = '2.0.0'
-def roomVersion = '2.1.0-alpha06'
+def roomVersion = '2.1.0-alpha07'
 dependencies {
-    kapt "androidx.lifecycle:lifecycle-compiler:$lifecycleVersion"
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.0.0'
     implementation 'androidx.core:core-ktx:1.0.1'
     implementation 'androidx.emoji:emoji:1.0.0'
+    implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0-alpha04'
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:1.2.2'
     implementation 'com.github.luongvo:BadgeView:1.1.5'
-    implementation 'com.github.topjohnwu.libsu:core:2.4.0'
+    implementation 'com.github.topjohnwu.libsu:core:2.5.0'
     implementation 'com.google.android.material:material:1.0.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
-    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.2.0'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.2.1'
     for (dep in aux) {
         freedomImplementation dep
         googleImplementation dep

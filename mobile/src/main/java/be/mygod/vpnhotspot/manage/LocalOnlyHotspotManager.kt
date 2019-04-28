@@ -24,7 +24,6 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
-import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
