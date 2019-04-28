@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -21,7 +22,8 @@ abstract class Manager {
         const val VIEW_TYPE_REPEATER = 7
 
         override fun areItemsTheSame(oldItem: Manager, newItem: Manager) = oldItem.isSameItemAs(newItem)
-        override fun areContentsTheSame(oldItem: Manager, newItem: Manager) = oldItem == newItem
+        @SuppressLint("DiffUtilEquals")
+        override fun areContentsTheSame(oldItem: Manager, newItem: Manager) = oldItem === newItem
 
         fun createViewHolder(inflater: LayoutInflater, parent: ViewGroup, type: Int) = when (type) {
             VIEW_TYPE_INTERFACE ->
