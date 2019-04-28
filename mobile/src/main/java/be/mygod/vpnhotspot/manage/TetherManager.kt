@@ -9,9 +9,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import androidx.core.view.updatePaddingRelative
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.DebugHelper
@@ -105,8 +104,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     fun updateErrorMessage(errored: List<String>) {
         data.text = errored.filter { TetherType.ofInterface(it) == tetherType }.joinToString("\n") {
             "$it: " + try {
-                val error = TetheringManager.getLastTetherError(it)
-                when (error) {
+                when (val error = TetheringManager.getLastTetherError(it)) {
                     TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
                     TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
                     TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
@@ -148,15 +146,14 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_USB)
     }
     @RequiresApi(24)
-    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), LifecycleObserver {
+    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
         private val tethering = BluetoothTethering(parent.requireContext()) { onTetheringStarted() }
 
         init {
             parent.lifecycle.addObserver(this)
         }
 
-        @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        fun onDestroy() = tethering.close()
+        override fun onDestroy(owner: LifecycleOwner) = tethering.close()
 
         override val title get() = parent.getString(R.string.tethering_manage_bluetooth)
         override val tetherType get() = TetherType.BLUETOOTH
