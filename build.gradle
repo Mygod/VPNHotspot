@@ -3,7 +3,7 @@
 apply plugin: 'com.github.ben-manes.versions'
 
 buildscript {
-    ext.kotlinVersion = '1.3.30'
+    ext.kotlinVersion = '1.3.31'
     repositories {
         google()
         jcenter()
@@ -12,7 +12,7 @@ buildscript {
         }
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:3.4.0-rc03'
+        classpath 'com.android.tools.build:gradle:3.4.0'
         classpath 'com.github.ben-manes:gradle-versions-plugin:0.21.0'
         classpath 'com.google.gms:google-services:4.2.0'
         classpath 'io.fabric.tools:gradle:1.28.1'

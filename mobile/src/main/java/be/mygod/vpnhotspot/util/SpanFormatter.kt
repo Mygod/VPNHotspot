@@ -59,9 +59,8 @@ object SpanFormatter {
 
             val argTerm = m.group(1)!!
             val modTerm = m.group(2)
-            val typeTerm = m.group(3)
 
-            val cookedArg = when (typeTerm) {
+            val cookedArg = when (val typeTerm = m.group(3)) {
                 "%" -> "%"
                 "n" -> "\n"
                 else -> {

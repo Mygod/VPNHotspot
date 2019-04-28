@@ -10,9 +10,8 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import androidx.core.os.BuildCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleObserver
-import androidx.lifecycle.OnLifecycleEvent
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import be.mygod.vpnhotspot.App.Companion.app
 
 /**
@@ -70,7 +69,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
     }
 
     class ActivityListener(private val activity: ComponentActivity) :
-            LifecycleObserver, SharedPreferences.OnSharedPreferenceChangeListener {
+            DefaultLifecycleObserver, SharedPreferences.OnSharedPreferenceChangeListener {
         private var keepScreenOn: Boolean = false
             set(value) {
                 if (field == value) return
@@ -89,8 +88,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
             if (key == KEY) keepScreenOn = mode.keepScreenOn
         }
 
-        @OnLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        fun shutdown() = app.pref.unregisterOnSharedPreferenceChangeListener(this)
+        override fun onDestroy(owner: LifecycleOwner) = app.pref.unregisterOnSharedPreferenceChangeListener(this)
     }
 
     private val wifi = app.wifi.createWifiLock(lockType, "vpnhotspot:wifi").apply { acquire() }
