@@ -128,6 +128,8 @@ Undocumented API list:
 * (since API 24) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122588)
 * (since API 24) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122683)
 * (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122685)
+* (since API 23) [`Landroid/net/wifi/WifiConfiguration;->apBand:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131003)
+* (since API 23) [`Landroid/net/wifi/WifiConfiguration;->apChannel:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131004)
 * [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131756)
 * [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131825)
 * (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`

@@ -50,6 +50,7 @@ class App : Application() {
                 override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
             })
         })
+        EBegFragment.init()
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 

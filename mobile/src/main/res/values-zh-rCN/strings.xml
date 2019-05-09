@@ -144,11 +144,9 @@
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
     <string name="donations__button_close">关闭</string>
     <string name="donations__google_android_market">Google Play 商店</string>
-    <string name="donations__google_android_market_not_supported_title">不支持 In-App 捐赠。</string>
     <string name="donations__google_android_market_not_supported">不支持 In-App 捐赠。你的 Google Play 商店是否安装正确了呢？</string>
     <string name="donations__google_android_market_donate_button">捐赠！</string>
     <string name="donations__google_android_market_text">捐赠多少？</string>
-    <string name="donations__thanks_dialog_title">谢谢！</string>
     <string name="donations__thanks_dialog">谢谢捐赠！\n非常感谢您！</string>
 
     <string name="donations__description">觉得此应用很有用？\n捐赠给该开发者以支持此应用的开发！</string>
