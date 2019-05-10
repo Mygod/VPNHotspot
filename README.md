@@ -126,6 +126,9 @@ Undocumented API list:
 * (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122392)
 * (since API 24) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122393)
 * (since API 24) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122588)
+* [`Landroid/net/ConnectivityManager;->getTetherableBluetoothRegexs()[Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122608)
+* [`Landroid/net/ConnectivityManager;->getTetherableUsbRegexs()[Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122610)
+* [`Landroid/net/ConnectivityManager;->getTetherableWifiRegexs()[Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122611)
 * (since API 24) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122683)
 * (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#122685)
 * (since API 23) [`Landroid/net/wifi/WifiConfiguration;->apBand:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#131003)
@@ -140,13 +143,6 @@ Undocumented API list:
 * (prior to API Q) [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134175)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#134176)
 * (prior to API Q) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/7cb2ccf/appcompat/hiddenapi-flags.csv#332821)
-
-Undocumented system configurations:
-
-* `@android:array/config_tether_usb_regexs`
-* `@android:array/config_tether_wifi_regexs`
-* `@android:array/config_tether_wimax_regexs`
-* `@android:array/config_tether_bluetooth_regexs`
 
 Other:
 

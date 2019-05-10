@@ -9,7 +9,7 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 
 @RequiresApi(24)
 abstract class TetherListeningTileService : KillableTileService() {
-    protected var tethered: List<String> = emptyList()
+    protected var tethered: List<String>? = null
 
     private val receiver = broadcastReceiver { _, intent ->
         tethered = intent.tetheredIfaces ?: return@broadcastReceiver
@@ -18,9 +18,9 @@ abstract class TetherListeningTileService : KillableTileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))?.tetheredIfaces?.let {
-            tethered = it
-        }
+        tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                ?.tetheredIfaces
+        updateTile()
     }
 
     override fun onStopListening() {
