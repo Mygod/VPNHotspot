@@ -67,16 +67,17 @@ def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.0',
         'com.google.firebase:firebase-core:16.0.9',
 ]
-def lifecycleVersion = '2.0.0'
+def lifecycleVersion = '2.1.0-beta01'
 def roomVersion = '2.1.0-beta01'
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.0.0'
-    implementation 'androidx.core:core-ktx:1.0.2'
+    implementation 'androidx.core:core-ktx:1.1.0-beta01'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0-alpha05'
     implementation "androidx.room:room-ktx:$roomVersion"
@@ -93,10 +94,9 @@ dependencies {
         freedomImplementation dep
         googleImplementation dep
     }
-    testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
-    androidTestImplementation 'androidx.test:runner:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
-    androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.0'
+    androidTestImplementation 'androidx.test:runner:1.2.0-beta01'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0-beta01'
+    androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.1-beta01'
 }

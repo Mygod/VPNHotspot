@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot.client
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
-import androidx.lifecycle.Transformations
+import androidx.lifecycle.map
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -37,24 +37,22 @@ open class Client(val mac: Long, val iface: String) {
     val blocked get() = record.value?.blocked == true
 
     open val icon get() = TetherType.ofInterface(iface).icon
-    val title = Transformations.map(record) { record ->
+    val title = record.map { record ->
         /**
          * we hijack the get title process to check if we need to perform MacLookup,
          * as record might not be initialized in other more appropriate places
          */
-        SpannableStringBuilder(if (record?.nickname.isNullOrEmpty()) {
-            if (record?.macLookupPending != false) MacLookup.perform(mac)
+        SpannableStringBuilder(if (record.nickname.isEmpty()) {
+            if (record.macLookupPending) MacLookup.perform(mac)
             macIface
-        } else emojize(record?.nickname)).apply {
-            if (record?.blocked == true) {
-                setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
-            }
+        } else emojize(record.nickname)).apply {
+            if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
-    val titleSelectable = Transformations.map(record) { it?.nickname.isNullOrEmpty() }
-    val description = Transformations.map(record) { record ->
+    val titleSelectable = record.map { it.nickname.isEmpty() }
+    val description = record.map { record ->
         SpannableStringBuilder().apply {
-            if (!record?.nickname.isNullOrEmpty()) appendln(macIface)
+            if (!record.nickname.isEmpty()) appendln(macIface)
             ip.entries.forEach { (ip, state) ->
                 append(makeIpSpan(ip))
                 appendln(app.getText(when (state) {

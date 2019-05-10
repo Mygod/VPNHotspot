@@ -17,9 +17,9 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
+import androidx.lifecycle.observe
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -219,8 +219,9 @@ class ClientsFragment : Fragment() {
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }
-        ViewModelProviders.of(requireActivity()).get<ClientViewModel>().clients.observe(this,
-                Observer { adapter.submitList(it.toMutableList()) })
+        ViewModelProviders.of(requireActivity()).get<ClientViewModel>().clients.observe(this) {
+            adapter.submitList(it.toMutableList())
+        }
         return binding.root
     }
 
