@@ -27,7 +27,7 @@ open class Client(val mac: Long, val iface: String) {
 
     val ip = TreeMap<InetAddress, IpNeighbour.State>(InetAddressComparator)
     val macString by lazy { mac.macToString() }
-    private val record = AppDatabase.instance.clientRecordDao.lookupSync(mac)
+    private val record = AppDatabase.instance.clientRecordDao.lookupOrDefaultSync(mac)
     private val macIface get() = SpannableStringBuilder(makeMacSpan(macString)).apply {
         append('%')
         append(iface)
