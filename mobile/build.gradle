@@ -20,8 +20,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 28
         resConfigs "ru", "zh-rCN"
-        versionCode 203
-        versionName "2.4.3"
+        versionCode 204
+        versionName '2.4.4'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
