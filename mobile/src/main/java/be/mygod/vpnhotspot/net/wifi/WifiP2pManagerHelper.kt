@@ -41,17 +41,18 @@ object WifiP2pManagerHelper {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.3_r0.9/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#958
      */
-    private val startWps by lazy {
-        WifiP2pManager::class.java.getDeclaredMethod("startWps",
-                WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
-    }
-    fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo, listener: WifiP2pManager.ActionListener) {
+    @JvmStatic
+    val startWps by lazy {
         try {
-            startWps.invoke(this, c, wps, listener)
+            WifiP2pManager::class.java.getDeclaredMethod("startWps",
+                    WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
         } catch (e: NoSuchMethodException) {
             DebugHelper.logEvent("NoSuchMethod_startWps")
-            listener.onFailure(UNSUPPORTED)
+            null
         }
+    }
+    fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo, listener: WifiP2pManager.ActionListener) {
+        startWps!!.invoke(this, c, wps, listener)
     }
 
     /**
