@@ -189,6 +189,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 WifiApManager.configuration = configuration
             } catch (e: IllegalArgumentException) {
                 SmartSnackbar.make(R.string.configuration_rejected).show()
+            } catch (e: InvocationTargetException) {
+                SmartSnackbar.make(e.targetException).show()
             }
             else -> super.onActivityResult(requestCode, resultCode, data)
         }
