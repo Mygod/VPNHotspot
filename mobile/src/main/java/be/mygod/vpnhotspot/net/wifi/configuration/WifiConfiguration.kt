@@ -65,9 +65,9 @@ fun channelToFrequency(channel: Int) = when (channel) {
     else -> throw IllegalArgumentException("Invalid channel $channel")
 }
 
-val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0).also { selected ->
-    check(selected >= 0) { "No key management selected" }
+val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0).let { selected ->
     check(allowedKeyManagement.nextSetBit(selected + 1) < 0) { "More than 1 key managements supplied" }
+    if (selected < 0) WifiConfiguration.KeyMgmt.NONE else selected  // getAuthType returns NONE if nothing is selected
 }
 
 private val qrSanitizer = Regex("([\\\\\":;,])")
