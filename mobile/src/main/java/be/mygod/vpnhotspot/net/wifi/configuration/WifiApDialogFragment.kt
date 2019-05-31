@@ -194,8 +194,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 false
             }
             R.id.share_qr -> {
-                QRCodeDialog().withArg(ret.configuration.toQRString())
-                        .show(fragmentManager ?: return false, "QRCodeDialog")
+                val qrString = try {
+                    ret.configuration.toQRString()
+                } catch (e: IllegalArgumentException) {
+                    SmartSnackbar.make(e).show()
+                    return false
+                }
+                QRCodeDialog().withArg(qrString).show(fragmentManager ?: return false, "QRCodeDialog")
                 true
             }
             else -> false
