@@ -65,11 +65,11 @@ androidExtensions {
 }
 
 def aux = [
-        'com.crashlytics.sdk.android:crashlytics:2.10.0',
+        'com.crashlytics.sdk.android:crashlytics:2.10.1',
         'com.google.firebase:firebase-core:16.0.9',
 ]
 def lifecycleVersion = '2.0.0'
-def roomVersion = '2.1.0-beta01'
+def roomVersion = '2.1.0-rc01'
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
@@ -83,7 +83,7 @@ dependencies {
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:2.0.0'
     implementation 'com.github.topjohnwu.libsu:core:2.5.0'
-    implementation 'com.google.android.material:material:1.1.0-alpha06'
+    implementation 'com.google.android.material:material:1.1.0-alpha07'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
@@ -97,7 +97,7 @@ dependencies {
     testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
-    androidTestImplementation 'androidx.test:runner:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
+    androidTestImplementation 'androidx.test:runner:1.2.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
     androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.0'
 }
