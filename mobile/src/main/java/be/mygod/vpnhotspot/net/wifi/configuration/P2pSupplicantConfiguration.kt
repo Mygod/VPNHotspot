@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net.wifi
+package be.mygod.vpnhotspot.net.wifi.configuration
 
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
@@ -14,6 +14,7 @@ import java.lang.IllegalStateException
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/6fa46df/wpa_supplicant/config_file.c#182
  */
+@Deprecated("No longer used since API 29")
 class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
     companion object {
         private const val TAG = "P2pSupplicantConfiguration"

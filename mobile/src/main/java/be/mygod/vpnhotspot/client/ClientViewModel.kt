@@ -20,7 +20,8 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
-        tetheredInterfaces = intent.tetheredIfaces.toSet() + intent.localOnlyTetheredIfaces
+        tetheredInterfaces = (intent.tetheredIfaces ?: return@broadcastReceiver).toSet() +
+                (intent.localOnlyTetheredIfaces ?: return@broadcastReceiver)
         populateClients()
     }
 

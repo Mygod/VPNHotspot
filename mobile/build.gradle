@@ -9,8 +9,7 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 }
 
 android {
-    buildToolsVersion "28.0.3"
-    compileSdkVersion 28
+    compileSdkVersion 29
     compileOptions {
         sourceCompatibility 1.8
         targetCompatibility 1.8
@@ -18,10 +17,10 @@ android {
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
-        targetSdkVersion 28
+        targetSdkVersion 29
         resConfigs "ru", "zh-rCN"
-        versionCode 124
-        versionName "2.3.5"
+        versionCode 204
+        versionName '2.4.4'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
@@ -65,39 +64,39 @@ androidExtensions {
 }
 
 def aux = [
-        'com.crashlytics.sdk.android:crashlytics:2.9.9',
-        'com.google.firebase:firebase-core:16.0.8',
+        'com.crashlytics.sdk.android:crashlytics:2.10.1',
+        'com.google.firebase:firebase-core:16.0.9',
 ]
-def lifecycleVersion = '2.0.0'
-def roomVersion = '2.1.0-alpha07'
+def lifecycleVersion = '2.1.0-beta01'
+def roomVersion = '2.1.0-rc01'
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.0.0'
-    implementation 'androidx.core:core-ktx:1.0.1'
+    implementation 'androidx.core:core-ktx:1.1.0-rc01'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
+    implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
-    implementation 'androidx.preference:preference:1.1.0-alpha04'
+    implementation 'androidx.preference:preference:1.1.0-beta01'
     implementation "androidx.room:room-ktx:$roomVersion"
-    implementation 'com.android.billingclient:billing:1.2.2'
-    implementation 'com.github.luongvo:BadgeView:1.1.5'
+    implementation 'com.android.billingclient:billing:2.0.1'
     implementation 'com.github.topjohnwu.libsu:core:2.5.0'
-    implementation 'com.google.android.material:material:1.0.0'
+    implementation 'com.google.android.material:material:1.1.0-alpha07'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlinVersion"
+    implementation 'net.glxn.qrgen:android:2.0'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.2.1'
     for (dep in aux) {
         freedomImplementation dep
         googleImplementation dep
     }
-    testImplementation "androidx.arch.core:core-testing:$lifecycleVersion"
     testImplementation 'junit:junit:4.12'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
-    androidTestImplementation 'androidx.test:runner:1.1.1'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.1.1'
-    androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.0'
+    androidTestImplementation 'androidx.test:runner:1.2.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
+    androidTestImplementation 'androidx.test.ext:junit-ktx:1.1.1-beta01'
 }

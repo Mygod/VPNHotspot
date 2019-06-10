@@ -7,14 +7,10 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
-import android.graphics.Typeface
 import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.style.TypefaceSpan
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
@@ -31,6 +27,11 @@ import java.net.NetworkInterface
 
 @TargetApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
+    companion object {
+        val permission = if (Build.VERSION.SDK_INT >= 29)
+            Manifest.permission.ACCESS_FINE_LOCATION else Manifest.permission.ACCESS_COARSE_LOCATION
+    }
+
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
@@ -43,10 +44,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             val binder = manager.binder
             if (binder?.iface != null) binder.stop() else {
                 val context = manager.parent.requireContext()
-                if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
-                        PackageManager.PERMISSION_GRANTED) {
-                    manager.parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
-                            TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
+                if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                    manager.parent.requestPermissions(arrayOf(permission), TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
                     return
                 }
                 /**
@@ -75,15 +74,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         private val lookup: Map<String, NetworkInterface> get() = parent.ifaceLookup
 
         override val icon get() = R.drawable.ic_action_perm_scan_wifi
-        override val title: CharSequence get() {
-            val configuration = binder?.configuration ?: return parent.getString(R.string.tethering_temp_hotspot)
-            return SpannableStringBuilder("${configuration.SSID} - ").apply {
-                val start = length
-                append(configuration.preSharedKey)
-                setSpan(if (Build.VERSION.SDK_INT >= 28) TypefaceSpan(Typeface.MONOSPACE) else
-                    TypefaceSpan("monospace"), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            }
-        }
+        override val title: CharSequence get() = parent.getString(R.string.tethering_temp_hotspot)
         override val text: CharSequence get() {
             return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
         }
@@ -98,7 +89,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
     private val data = Data()
-    private var binder: LocalOnlyHotspotService.Binder? = null
+    internal var binder: LocalOnlyHotspotService.Binder? = null
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         viewHolder as ViewHolder

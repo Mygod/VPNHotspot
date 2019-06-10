@@ -2,8 +2,7 @@
 <!--
  Values copied from:
     * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/e5ed810/res/values/strings.xml
-    * @string/wifi_tether_configure_ap_text
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/5697a7e/res/values/strings.xml
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
@@ -15,6 +14,7 @@
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
 
+    <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (insecure)</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
@@ -22,11 +22,7 @@
         device.</string>
     <string name="repeater_wps_success_keypad">PIN registered.</string>
     <string name="repeater_wps_failure">Failed to start WPS (reason: %s)</string>
-    <string name="repeater_configure">Configure Wi\u2011Fi repeater</string>
     <string name="repeater_configure_failure">Valid config not found. Please start repeater first.</string>
-    <string name="repeater_reset_credentials">Reset</string>
-    <string name="repeater_reset_credentials_success">Credentials reset.</string>
-    <string name="repeater_reset_credentials_failure">Failed to reset credentials (reason: %s)</string>
     <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>
@@ -92,8 +88,6 @@
     <string name="settings_service_masquerade_none">None</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
-    <string name="settings_service_repeater_oc">Operating Wi\u2011Fi channel (unstable)</string>
-    <string name="settings_service_repeater_oc_summary">Auto (1\u201114 = 2.4GHz, 15\u2011165 = 5GHz)</string>
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
     <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
@@ -101,6 +95,8 @@
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On</string>
     <string name="settings_service_wifi_lock_high_perf">High Performance Mode</string>
+    <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
+    <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
     <string name="settings_service_ip_monitor">Network status monitor mode</string>
     <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
@@ -140,21 +136,26 @@
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
 
+    <string name="configuration_view">Wi\u2011Fi configuration</string>
+    <string name="configuration_share">Share via QR code</string>
+    <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
     <string name="wifi_ssid">Network name</string>
+    <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
     <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
+    <string name="wifi_hotspot_ap_band_title">AP Band</string>
+    <string name="wifi_ap_choose_auto">Auto</string>
+    <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
+    <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
     <string name="wifi_save">Save</string>
-    <string name="wifi_cancel">Cancel</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
     <string name="donations__button_close">Close</string>
     <string name="donations__description">Do you find this application useful?\nSupport its development by sending a donation to the developer!</string>
     <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported_title">In-App Donations are not supported.</string>
     <string name="donations__google_android_market_not_supported">In-App Donations are not supported. Is Google Play Store installed correctly?</string>
     <string name="donations__google_android_market_description">Google charges a fee of 30%</string>
     <string name="donations__google_android_market_donate_button">Donate!</string>
     <string name="donations__google_android_market_text">How much?</string>
-    <string name="donations__thanks_dialog_title">Thanks!</string>
     <string name="donations__thanks_dialog">Thanks for donating!\nI really appreciate this!</string>
 </resources>

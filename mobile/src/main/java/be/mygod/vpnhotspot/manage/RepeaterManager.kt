@@ -1,11 +1,15 @@
 package be.mygod.vpnhotspot.manage
 
+import android.Manifest
 import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.wifi.WifiConfiguration
+import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.os.Parcelable
@@ -21,10 +25,8 @@ import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
-import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
-import be.mygod.vpnhotspot.net.wifi.WifiP2pDialogFragment
+import be.mygod.vpnhotspot.net.wifi.configuration.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -51,7 +53,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 else -> false
             }
 
-        val ssid @Bindable get() = binder?.group?.networkName ?: ""
+        val title: CharSequence @Bindable get() {
+            if (Build.VERSION.SDK_INT >= 29) binder?.group?.frequency?.let {
+                return parent.getString(R.string.repeater_channel, it, frequencyToChannel(it))
+            }
+            return parent.getString(R.string.title_repeater)
+        }
         val addresses: CharSequence @Bindable get() {
             return try {
                 NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
@@ -59,12 +66,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 ""
             }
         }
-        var oc: CharSequence
-            @Bindable get() {
-                val oc = RepeaterService.operatingChannel
-                return if (oc in 1..165) oc.toString() else ""
-            }
-            set(value) = app.pref.edit().putString(RepeaterService.KEY_OPERATING_CHANNEL, value.toString()).apply()
 
         fun onStatusChanged() {
             notifyPropertyChanged(BR.switchEnabled)
@@ -72,8 +73,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             notifyPropertyChanged(BR.addresses)
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
-            notifyPropertyChanged(BR.ssid)
             p2pInterface = group?.`interface`
+            if (Build.VERSION.SDK_INT >= 29) notifyPropertyChanged(BR.title)
             notifyPropertyChanged(BR.addresses)
         }
 
@@ -82,6 +83,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> {
                     val context = parent.requireContext()
+                    if (Build.VERSION.SDK_INT >= 29 && context.checkSelfPermission(
+                                    Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+                        parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                                TetheringFragment.START_REPEATER)
+                        return
+                    }
                     ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
                 }
                 RepeaterService.Status.ACTIVE -> binder.shutdown()
@@ -91,22 +98,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
         fun wps() {
             if (binder?.active == true) WpsDialogFragment().show(parent, TetheringFragment.REPEATER_WPS)
-        }
-
-        fun editConfigurations() {
-            val group = binder?.group
-            if (group != null) try {
-                val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
-                holder.config = config
-                WifiP2pDialogFragment().withArg(WifiP2pDialogFragment.Arg(WifiConfiguration().apply {
-                    SSID = group.networkName
-                    preSharedKey = config.psk
-                })).show(parent, TetheringFragment.REPEATER_EDIT_CONFIGURATION)
-                return
-            } catch (e: RuntimeException) {
-                Timber.w(e)
-            }
-            SmartSnackbar.make(R.string.repeater_configure_failure).show()
         }
     }
 
@@ -128,6 +119,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
+    @Deprecated("No longer used since API 29")
+    @Suppress("DEPRECATION")
     class ConfigHolder : ViewModel() {
         var config: P2pSupplicantConfiguration? = null
     }
@@ -140,6 +133,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     private val data = Data()
     internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
+    @Suppress("DEPRECATION")
     private val holder = ViewModelProviders.of(parent).get<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
@@ -168,19 +162,61 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    fun onEditResult(which: Int, data: Intent?) {
-        when (which) {
-            DialogInterface.BUTTON_POSITIVE -> try {
-                val master = holder.config ?: return
-                val config = AlertDialogFragment.getRet<WifiP2pDialogFragment.Arg>(data!!).configuration
+    val configuration: WifiConfiguration? get() {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val networkName = RepeaterService.networkName
+            val passphrase = RepeaterService.passphrase
+            if (networkName != null && passphrase != null) {
+                return newWifiApConfiguration(networkName, passphrase).apply {
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
+                    apBand = when (RepeaterService.operatingBand) {
+                        WifiP2pConfig.GROUP_OWNER_BAND_AUTO -> AP_BAND_ANY
+                        WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> AP_BAND_2GHZ
+                        WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> AP_BAND_5GHZ
+                        else -> throw IllegalArgumentException("Unknown operatingBand")
+                    }
+                    apChannel = RepeaterService.operatingChannel
+                }
+            }
+        } else @Suppress("DEPRECATION") {
+            val group = binder?.group
+            if (group != null) try {
+                val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                holder.config = config
+                return newWifiApConfiguration(group.networkName, config.psk).apply {
+                    allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
+                    if (Build.VERSION.SDK_INT >= 23) {
+                        apBand = AP_BAND_ANY
+                        apChannel = RepeaterService.operatingChannel
+                    }
+                }
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+            }
+        }
+        SmartSnackbar.make(R.string.repeater_configure_failure).show()
+        return null
+    }
+    fun updateConfiguration(config: WifiConfiguration) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            RepeaterService.networkName = config.SSID
+            RepeaterService.passphrase = config.preSharedKey
+            RepeaterService.operatingBand = when (config.apBand) {
+                AP_BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+                AP_BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                AP_BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                else -> throw IllegalArgumentException("Unknown apBand")
+            }
+        } else @Suppress("DEPRECATION") holder.config?.let { master ->
+            if (binder?.group?.networkName != config.SSID || master.psk != config.preSharedKey) try {
                 master.update(config.SSID, config.preSharedKey)
                 binder!!.group = null
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
             }
-            DialogInterface.BUTTON_NEUTRAL -> binder!!.resetCredentials()
+            holder.config = null
         }
-        holder.config = null
+        if (Build.VERSION.SDK_INT >= 23) RepeaterService.operatingChannel = config.apChannel
     }
 }

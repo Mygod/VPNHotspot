@@ -3,6 +3,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <data>
+        <import type="be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper"/>
         <variable
             name="data"
             type="be.mygod.vpnhotspot.manage.RepeaterManager.Data"/>
@@ -40,7 +41,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="@string/title_repeater"
+                    android:text="@{data.title}"
                     android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
 
                 <be.mygod.vpnhotspot.widget.AutoCollapseTextView
@@ -69,104 +70,11 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="?android:attr/selectableItemBackground"
             android:focusable="true"
-            android:nextFocusDown="@+id/oc"
-            android:padding="16dp"
-            android:onClick="@{_ -> data.editConfigurations()}">
-
-            <Space
-                android:layout_width="40dp"
-                android:layout_height="0dp"/>
-
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:src="@drawable/ic_device_wifi_lock"
-                android:tint="?android:attr/textColorPrimary"/>
-
-            <Space
-                android:layout_width="16dp"
-                android:layout_height="0dp"/>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_gravity="center_vertical"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/wifi_ssid"
-                    android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-                <be.mygod.vpnhotspot.widget.AutoCollapseTextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@{data.ssid}"
-                    tools:text="…"/>
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:padding="16dp">
-
-            <Space
-                android:layout_width="40dp"
-                android:layout_height="0dp"/>
-
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
-                android:src="@drawable/ic_content_wave"
-                android:tint="?android:attr/textColorPrimary"/>
-
-            <Space
-                android:layout_width="16dp"
-                android:layout_height="0dp"/>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_service_repeater_oc"
-                    android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
-
-                <EditText
-                    android:id="@+id/oc"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@={data.oc}"
-                    android:inputType="number"
-                    android:imeOptions="actionDone"
-                    android:importantForAutofill="no"
-                    android:maxLength="3"
-                    android:hint="@string/settings_service_repeater_oc_summary"/>
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:focusable="true"
-            android:nextFocusUp="@+id/oc"
             android:background="?android:attr/selectableItemBackground"
             android:padding="16dp"
             android:onClick="@{_ -> data.wps()}"
-            android:visibility="@{data.serviceStarted}">
+            android:visibility="@{data.serviceStarted &amp;&amp; WifiP2pManagerHelper.startWps != null}">
 
             <Space
                 android:layout_width="40dp"

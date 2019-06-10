@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.room
 
 import androidx.lifecycle.LiveData
+import androidx.lifecycle.map
 import androidx.room.*
 
 @Entity
@@ -12,12 +13,12 @@ data class ClientRecord(@PrimaryKey
     @androidx.room.Dao
     abstract class Dao {
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
-        abstract suspend fun lookup(mac: Long): ClientRecord?
-
+        protected abstract suspend fun lookup(mac: Long): ClientRecord?
         suspend fun lookupOrDefault(mac: Long) = lookup(mac) ?: ClientRecord(mac)
 
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
-        abstract fun lookupSync(mac: Long): LiveData<ClientRecord>
+        protected abstract fun lookupSync(mac: Long): LiveData<ClientRecord?>
+        fun lookupOrDefaultSync(mac: Long) = lookupSync(mac).map { it ?: ClientRecord(mac) }
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
         protected abstract suspend fun updateInternal(value: ClientRecord): Long
