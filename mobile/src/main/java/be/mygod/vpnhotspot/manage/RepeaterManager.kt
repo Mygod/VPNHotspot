@@ -18,7 +18,6 @@ import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
-import androidx.core.os.BuildCompat
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.lifecycle.ViewModel
@@ -33,7 +32,6 @@ import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
-import java.lang.IllegalArgumentException
 import java.net.NetworkInterface
 import java.net.SocketException
 
@@ -56,7 +54,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
 
         val title: CharSequence @Bindable get() {
-            if (BuildCompat.isAtLeastQ()) binder?.group?.frequency?.let {
+            if (Build.VERSION.SDK_INT >= 29) binder?.group?.frequency?.let {
                 return parent.getString(R.string.repeater_channel, it, frequencyToChannel(it))
             }
             return parent.getString(R.string.title_repeater)
@@ -76,7 +74,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
             p2pInterface = group?.`interface`
-            if (BuildCompat.isAtLeastQ()) notifyPropertyChanged(BR.title)
+            if (Build.VERSION.SDK_INT >= 29) notifyPropertyChanged(BR.title)
             notifyPropertyChanged(BR.addresses)
         }
 
@@ -85,7 +83,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> {
                     val context = parent.requireContext()
-                    if (BuildCompat.isAtLeastQ() && context.checkSelfPermission(
+                    if (Build.VERSION.SDK_INT >= 29 && context.checkSelfPermission(
                                     Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
                         parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
                                 TetheringFragment.START_REPEATER)
@@ -165,7 +163,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     }
 
     val configuration: WifiConfiguration? get() {
-        if (BuildCompat.isAtLeastQ()) {
+        if (Build.VERSION.SDK_INT >= 29) {
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
             if (networkName != null && passphrase != null) {
@@ -200,7 +198,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         return null
     }
     fun updateConfiguration(config: WifiConfiguration) {
-        if (BuildCompat.isAtLeastQ()) {
+        if (Build.VERSION.SDK_INT >= 29) {
             RepeaterService.networkName = config.SSID
             RepeaterService.passphrase = config.preSharedKey
             RepeaterService.operatingBand = when (config.apBand) {

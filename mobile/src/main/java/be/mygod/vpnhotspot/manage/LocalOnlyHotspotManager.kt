@@ -14,7 +14,6 @@ import android.provider.Settings
 import android.view.View
 import android.widget.Toast
 import androidx.core.content.getSystemService
-import androidx.core.os.BuildCompat
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.DebugHelper
@@ -29,7 +28,7 @@ import java.net.NetworkInterface
 @TargetApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
     companion object {
-        val permission = if (BuildCompat.isAtLeastQ())
+        val permission = if (Build.VERSION.SDK_INT >= 29)
             Manifest.permission.ACCESS_FINE_LOCATION else Manifest.permission.ACCESS_COARSE_LOCATION
     }
 

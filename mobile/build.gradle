@@ -9,7 +9,7 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 }
 
 android {
-    compileSdkVersion 'android-Q'
+    compileSdkVersion 29
     compileOptions {
         sourceCompatibility 1.8
         targetCompatibility 1.8
@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
-        targetSdkVersion 28
+        targetSdkVersion 29
         resConfigs "ru", "zh-rCN"
         versionCode 204
         versionName '2.4.4'
@@ -73,15 +73,15 @@ dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.0.0'
-    implementation 'androidx.core:core-ktx:1.1.0-beta01'
+    implementation 'androidx.core:core-ktx:1.1.0-rc01'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
-    implementation 'androidx.preference:preference:1.1.0-alpha05'
+    implementation 'androidx.preference:preference:1.1.0-beta01'
     implementation "androidx.room:room-ktx:$roomVersion"
-    implementation 'com.android.billingclient:billing:2.0.0'
+    implementation 'com.android.billingclient:billing:2.0.1'
     implementation 'com.github.topjohnwu.libsu:core:2.5.0'
     implementation 'com.google.android.material:material:1.1.0-alpha07'
     implementation 'com.jakewharton.timber:timber:4.7.1'

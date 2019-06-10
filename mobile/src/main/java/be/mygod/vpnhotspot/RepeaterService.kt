@@ -13,7 +13,6 @@ import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.edit
 import androidx.core.content.getSystemService
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
@@ -161,7 +160,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onCreate() {
         super.onCreate()
         onChannelDisconnected()
-        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") {
+        if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
             registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
                     WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
             app.pref.registerOnSharedPreferenceChangeListener(this)
@@ -194,7 +193,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         channel = null
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-            if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") setOperatingChannel()
+            if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
             handler.postDelayed(this::onChannelDisconnected, 1000)
@@ -282,7 +281,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         val networkName = networkName
         val passphrase = passphrase
         try {
-            if (!BuildCompat.isAtLeastQ() || networkName == null || passphrase == null) {
+            if (Build.VERSION.SDK_INT < 29 || networkName == null || passphrase == null) {
                 persistNextGroup = true
                 p2pManager.createGroup(channel, listener)
             } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
@@ -392,7 +391,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
         clean() // force clean to prevent leakage
-        if (!BuildCompat.isAtLeastQ()) @Suppress("DEPRECATION") {
+        if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
             app.pref.unregisterOnSharedPreferenceChangeListener(this)
             unregisterReceiver(deviceListener)
         }

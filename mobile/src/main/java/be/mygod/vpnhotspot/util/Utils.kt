@@ -14,7 +14,6 @@ import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.core.net.toUri
-import androidx.core.os.BuildCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
@@ -95,12 +94,12 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
     }
 }.trimEnd()
 
-private val parseNumericAddress by lazy {
+private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
         isAccessible = true
     }
 }
-fun parseNumericAddress(address: String) = if (BuildCompat.isAtLeastQ())
+fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29)
     InetAddresses.parseNumericAddress(address) else parseNumericAddress.invoke(null, address) as InetAddress
 
 fun Context.launchUrl(url: String) {

@@ -15,7 +15,6 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
@@ -27,7 +26,6 @@ import be.mygod.vpnhotspot.util.toParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import kotlinx.android.synthetic.main.dialog_wifi_ap.view.*
-import java.lang.IllegalStateException
 import java.nio.charset.Charset
 
 /**
@@ -117,7 +115,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             bandOptions = mutableListOf<BandOption>().apply {
                 if (arg.p2pMode) {
                     add(BandOption.BandAny)
-                    if (BuildCompat.isAtLeastQ()) {
+                    if (Build.VERSION.SDK_INT >= 29) {
                         add(BandOption.Band2GHz)
                         add(BandOption.Band5GHz)
                     }

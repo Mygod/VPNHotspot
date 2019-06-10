@@ -3,13 +3,13 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.PowerManager
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import androidx.core.content.edit
 import androidx.core.content.getSystemService
-import androidx.core.os.BuildCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import be.mygod.vpnhotspot.App.Companion.app
@@ -23,7 +23,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         var mode: Mode
             @Suppress("DEPRECATION")
             get() = Mode.valueOf(app.pref.getString(KEY, Mode.Full.toString()) ?: "").let {
-                if (it == Mode.Full && BuildCompat.isAtLeastQ()) Mode.None else it
+                if (it == Mode.Full && Build.VERSION.SDK_INT >= 29) Mode.None else it
             }
             set(value) = app.pref.edit { putString(KEY, value.toString()) }
         private val service by lazy { app.getSystemService<PowerManager>()!! }
