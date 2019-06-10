@@ -11,7 +11,6 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.crashlytics.android.Crashlytics
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.IOException
@@ -94,9 +93,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val hostAddress = try {
         val addresses = NetworkInterface.getByName(downstream)!!.interfaceAddresses!!
                 .filter { it.address is Inet4Address }
-        if (addresses.size > 1) {
-            Crashlytics.logException(IllegalArgumentException("More than one addresses was found: $addresses"))
-        }
+        if (addresses.size > 1) Timber.w(IllegalArgumentException("More than one addresses was found: $addresses"))
         addresses.first()
     } catch (e: Exception) {
         throw InterfaceNotFoundException(e)
