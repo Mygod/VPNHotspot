@@ -53,7 +53,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             }
         }
         val supported get() = p2pManager != null
-        @Deprecated("Not initialized and no use at all since Android Q")
+        @Deprecated("Not initialized and no use at all since API 29")
         var persistentSupported = false
 
         var networkName: String?
@@ -87,7 +87,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                 groupChanged(value)
             }
         val groupChanged = StickyEvent1 { group }
-        @Deprecated("Not initialized and no use at all since Android Q")
+        @Deprecated("Not initialized and no use at all since API 29")
         var thisDevice: WifiP2pDevice? = null
 
         fun startWps(pin: String? = null) {
@@ -127,7 +127,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
         }
     }
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     @Suppress("DEPRECATION")
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -169,7 +169,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     override fun onBind(intent: Intent) = binder
 
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     @Suppress("DEPRECATION")
     private fun setOperatingChannel(oc: Int = operatingChannel) = try {
         val channel = channel
@@ -200,13 +200,13 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         }
     }
 
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     @Suppress("DEPRECATION")
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     @Suppress("DEPRECATION")
     private fun onPersistentGroupsChanged() {
         val channel = channel ?: return

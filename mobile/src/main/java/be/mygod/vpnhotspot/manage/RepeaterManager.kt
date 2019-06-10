@@ -119,7 +119,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     @Suppress("DEPRECATION")
     class ConfigHolder : ViewModel() {
         var config: P2pSupplicantConfiguration? = null

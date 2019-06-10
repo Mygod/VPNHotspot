@@ -12,7 +12,7 @@ import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
     const val UNSUPPORTED = -2
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     const val WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION = "android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED"
 
     /**
@@ -25,7 +25,7 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("setWifiP2pChannels", WifiP2pManager.Channel::class.java,
                 Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
                                           listener: WifiP2pManager.ActionListener) {
         try {
@@ -64,7 +64,7 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
                 WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
                                              listener: WifiP2pManager.ActionListener) {
         try {
@@ -91,7 +91,7 @@ object WifiP2pManagerHelper {
      * @param c is the channel created at {@link #initialize}
      * @param listener for callback when persistent group info list is available. Can be null.
      */
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel,
                                                   listener: (Collection<WifiP2pGroup>) -> Unit) {
         val proxy = Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
@@ -114,6 +114,6 @@ object WifiP2pManagerHelper {
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
      */
     private val getNetworkId by lazy { WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId") }
-    @Deprecated("No longer used since Android Q")
+    @Deprecated("No longer used since API 29")
     val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
 }
