@@ -12,6 +12,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession
@@ -26,6 +27,7 @@ import java.net.SocketException
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        WifiDoubleLock.mode = WifiDoubleLock.mode   // handle complicated default value and possible system upgrades
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)

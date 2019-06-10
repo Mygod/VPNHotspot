@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
 import android.content.*
+import android.net.InetAddresses
 import android.os.Build
 import android.os.Parcel
 import android.os.Parcelable
@@ -93,12 +94,13 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
     }
 }.trimEnd()
 
-private val parseNumericAddress by lazy {
+private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
         isAccessible = true
     }
 }
-fun parseNumericAddress(address: String) = parseNumericAddress.invoke(null, address) as InetAddress
+fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29)
+    InetAddresses.parseNumericAddress(address) else parseNumericAddress.invoke(null, address) as InetAddress
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

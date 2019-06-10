@@ -12,7 +12,7 @@ abstract class TetherListeningTileService : KillableTileService() {
     protected var tethered: List<String>? = null
 
     private val receiver = broadcastReceiver { _, intent ->
-        tethered = intent.tetheredIfaces
+        tethered = intent.tetheredIfaces ?: return@broadcastReceiver
         updateTile()
     }
 

@@ -26,7 +26,6 @@ import be.mygod.vpnhotspot.util.toParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import kotlinx.android.synthetic.main.dialog_wifi_ap.view.*
-import java.lang.IllegalStateException
 import java.nio.charset.Charset
 
 /**
@@ -114,7 +113,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {
             bandOptions = mutableListOf<BandOption>().apply {
-                if (arg.p2pMode) add(BandOption.BandAny) else {
+                if (arg.p2pMode) {
+                    add(BandOption.BandAny)
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        add(BandOption.Band2GHz)
+                        add(BandOption.Band5GHz)
+                    }
+                } else {
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
@@ -172,8 +177,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         return when (item?.itemId) {
             android.R.id.copy -> {
-                app.clipboard.primaryClip = ClipData.newPlainText(null,
-                        Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS))
+                app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
+                        Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS)))
                 true
             }
             android.R.id.paste -> try {
@@ -187,8 +192,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 false
             }
             R.id.share_qr -> {
-                QRCodeDialog().withArg(ret.configuration.toQRString())
-                        .show(fragmentManager ?: return false, "QRCodeDialog")
+                val qrString = try {
+                    ret.configuration.toQRString()
+                } catch (e: IllegalArgumentException) {
+                    SmartSnackbar.make(e).show()
+                    return false
+                }
+                QRCodeDialog().withArg(qrString).show(fragmentManager ?: return false, "QRCodeDialog")
                 true
             }
             else -> false

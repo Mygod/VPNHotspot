@@ -1,15 +1,14 @@
 package be.mygod.vpnhotspot.net
 
+import android.os.Build
 import android.system.ErrnoException
 import android.system.OsConstants
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
-import java.lang.NumberFormatException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -98,7 +97,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
                         .toList()
             } catch (e: IOException) {
-                if (e !is FileNotFoundException || !BuildCompat.isAtLeastQ() ||
+                if (e !is FileNotFoundException || Build.VERSION.SDK_INT < 29 ||
                         (e.cause as? ErrnoException)?.errno != OsConstants.EACCES) Timber.w(e)
             }
             return arpCache

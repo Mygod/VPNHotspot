@@ -57,7 +57,7 @@ object SpanFormatter {
             i = m.start()
             val exprEnd = m.end()
 
-            val argTerm = m.group(1)
+            val argTerm = m.group(1)!!
             val modTerm = m.group(2)
 
             val cookedArg = when (val typeTerm = m.group(3)) {

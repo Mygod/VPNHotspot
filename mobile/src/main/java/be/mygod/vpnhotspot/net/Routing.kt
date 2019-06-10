@@ -200,9 +200,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(this) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
-            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    runBlocking { AppDatabase.instance.clientRecordDao.lookup(neighbour.lladdr) }
-                            ?.blocked == true) continue
+            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address || runBlocking {
+                        AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr)
+                    }.blocked) continue
             toRemove.remove(neighbour.ip)
             try {
                 clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }

@@ -40,11 +40,13 @@ object WifiApManager {
      *
      * See also: https://android.googlesource.com/platform/frameworks/base/+/5c0b10a4a9eecc5307bb89a271221f2b20448797%5E%21/
      */
+    @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")
     fun start(wifiConfig: WifiConfiguration? = null) {
         app.wifi.isWifiEnabled = false
         app.wifi.setWifiApEnabled(wifiConfig, true)
     }
+    @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26")
     fun stop() {
         app.wifi.setWifiApEnabled(null, false)

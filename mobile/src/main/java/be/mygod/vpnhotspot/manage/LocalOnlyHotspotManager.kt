@@ -27,6 +27,11 @@ import java.net.NetworkInterface
 
 @TargetApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
+    companion object {
+        val permission = if (Build.VERSION.SDK_INT >= 29)
+            Manifest.permission.ACCESS_FINE_LOCATION else Manifest.permission.ACCESS_COARSE_LOCATION
+    }
+
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
@@ -39,10 +44,8 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             val binder = manager.binder
             if (binder?.iface != null) binder.stop() else {
                 val context = manager.parent.requireContext()
-                if (context.checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) !=
-                        PackageManager.PERMISSION_GRANTED) {
-                    manager.parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION),
-                            TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
+                if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
+                    manager.parent.requestPermissions(arrayOf(permission), TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
                     return
                 }
                 /**

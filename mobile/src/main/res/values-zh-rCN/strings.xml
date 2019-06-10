@@ -6,6 +6,7 @@
     <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
 
+    <string name="repeater_channel">无线中继 (%1$d MHz, 频道 %2$d)</string>
     <string name="repeater_wps">WPS（不安全）</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>
@@ -89,6 +90,8 @@
     <string name="settings_service_wifi_lock_none">系统默认</string>
     <string name="settings_service_wifi_lock_full">开</string>
     <string name="settings_service_wifi_lock_high_perf">高性能模式</string>
+    <string name="settings_service_wifi_lock_high_perf_v29">禁用省电</string>
+    <string name="settings_service_wifi_lock_low_latency">低延迟模式</string>
     <string name="settings_service_ip_monitor">网络状态监听模式</string>
     <string name="settings_service_ip_monitor_monitor">Netlink 监听</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink 监听 (root)</string>

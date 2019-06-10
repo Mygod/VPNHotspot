@@ -7,13 +7,14 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
+import androidx.lifecycle.observe
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -29,14 +30,15 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model = ViewModelProviders.of(this).get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
-        model.clients.observe(this, Observer {
+        model.clients.observe(this) {
             if (it.isNotEmpty()) binding.navigation.showBadge(R.id.navigation_clients).apply {
                 backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
                 badgeTextColor = ContextCompat.getColor(this@MainActivity, R.color.primary_text_default_material_light)
                 number = it.size
             } else binding.navigation.removeBadge(R.id.navigation_clients)
-        })
+        }
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
+        WifiDoubleLock.ActivityListener(this)
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {
