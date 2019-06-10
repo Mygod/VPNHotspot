@@ -52,7 +52,7 @@ open class Client(val mac: Long, val iface: String) {
     val titleSelectable = record.map { it.nickname.isEmpty() }
     val description = record.map { record ->
         SpannableStringBuilder().apply {
-            if (!record.nickname.isEmpty()) appendln(macIface)
+            if (record.nickname.isNotEmpty()) appendln(macIface)
             ip.entries.forEach { (ip, state) ->
                 append(makeIpSpan(ip))
                 appendln(app.getText(when (state) {
