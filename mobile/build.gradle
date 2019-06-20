@@ -11,8 +11,8 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 android {
     compileSdkVersion 29
     compileOptions {
-        sourceCompatibility 1.8
-        targetCompatibility 1.8
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
     defaultConfig {
         applicationId "be.mygod.vpnhotspot"
