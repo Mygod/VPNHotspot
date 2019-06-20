@@ -65,10 +65,10 @@ androidExtensions {
 
 def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
-        'com.google.firebase:firebase-core:16.0.9',
+        'com.google.firebase:firebase-core:17.0.0',
 ]
 def lifecycleVersion = '2.1.0-beta01'
-def roomVersion = '2.1.0-rc01'
+def roomVersion = '2.1.0'
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])

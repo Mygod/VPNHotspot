@@ -11,7 +11,7 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration", WifiConfiguration::class.java)
     }
     var configuration: WifiConfiguration
-        get() = (getWifiApConfiguration.invoke(app.wifi) as? WifiConfiguration) ?: WifiConfiguration()
+        get() = getWifiApConfiguration.invoke(app.wifi) as? WifiConfiguration ?: WifiConfiguration()
         set(value) {
             if (setWifiApConfiguration.invoke(app.wifi, value) as? Boolean != true) {
                 throw IllegalArgumentException("setWifiApConfiguration failed")
