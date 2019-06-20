@@ -90,7 +90,7 @@ fun WifiConfiguration.toQRString() = StringBuilder("WIFI:").apply {
     append("S:")
     append(SSID.sanitize())
     append(';')
-    if (password) {
+    if (password && preSharedKey != null) {
         append("P:")
         append(preSharedKey.sanitize())
         append(';')
