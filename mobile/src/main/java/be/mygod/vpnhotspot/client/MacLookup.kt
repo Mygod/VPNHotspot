@@ -57,7 +57,7 @@ object MacLookup {
                     nickname = result
                     macLookupPending = false
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) {
                 Timber.d(e)
                 if (explicit) SmartSnackbar.make(e).show()
             } catch (e: JSONException) {
