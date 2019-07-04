@@ -105,12 +105,13 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
+        val activity = activity
         val item = activity?.toolbar?.menu?.findItem(R.id.monitor) ?: return    // assuming no longer foreground
         item.isNotGone = canMonitor.isNotEmpty()
         item.subMenu.apply {
             clear()
             for (iface in canMonitor.sorted()) add(iface).setOnMenuItemClickListener {
-                ContextCompat.startForegroundService(requireContext(), Intent(context, TetheringService::class.java)
+                ContextCompat.startForegroundService(activity, Intent(activity, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                 true
             }
