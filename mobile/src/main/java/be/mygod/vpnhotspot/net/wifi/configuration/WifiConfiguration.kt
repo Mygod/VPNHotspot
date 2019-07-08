@@ -71,7 +71,9 @@ fun frequencyToChannel(frequency: Int) = when (frequency % 5) {
 }
 
 val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0).let { selected ->
-    check(allowedKeyManagement.nextSetBit(selected + 1) < 0) { "More than 1 key managements supplied" }
+    check(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
+        "More than 1 key managements supplied: $allowedKeyManagement"
+    }
     if (selected < 0) WifiConfiguration.KeyMgmt.NONE else selected  // getAuthType returns NONE if nothing is selected
 }
 
