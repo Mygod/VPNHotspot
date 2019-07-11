@@ -57,14 +57,14 @@ object MacLookup {
                     nickname = result
                     macLookupPending = false
                 }
-            } catch (e: Exception) {
-                Timber.d(e)
-                if (explicit) SmartSnackbar.make(e).show()
             } catch (e: JSONException) {
                 if ((e as? UnexpectedError)?.error == "no result") {
                     // no vendor found, we should not retry in the future
                     AppDatabase.instance.clientRecordDao.upsert(mac) { macLookupPending = false }
                 } else Timber.w(e)
+                if (explicit) SmartSnackbar.make(e).show()
+            } catch (e: Throwable) {
+                Timber.d(e)
                 if (explicit) SmartSnackbar.make(e).show()
             }
         }
