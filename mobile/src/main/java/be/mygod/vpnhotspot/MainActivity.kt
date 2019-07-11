@@ -31,7 +31,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         val model = ViewModelProviders.of(this).get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) {
-            if (it.isNotEmpty()) binding.navigation.showBadge(R.id.navigation_clients).apply {
+            if (it.isNotEmpty()) binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
                 backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
                 badgeTextColor = ContextCompat.getColor(this@MainActivity, R.color.primary_text_default_material_light)
                 number = it.size
