@@ -17,13 +17,14 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
-import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.material.snackbar.Snackbar
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
 import java.net.NetworkInterface
 import java.net.SocketException
+import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
@@ -44,7 +45,13 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>(IpMonitor.KEY)!!.setOnPreferenceChangeListener { _, _ ->
-            SmartSnackbar.make(R.string.settings_restart_required).show()
+            Snackbar.make(requireView(), R.string.settings_restart_required, Snackbar.LENGTH_LONG).apply {
+                setAction(R.string.settings_exit_app) {
+                    RoutingManager.clean(false)
+                    RootSession.trimMemory()
+                    exitProcess(0)
+                }
+            }.show()
             true
         }
         findPreference<Preference>("misc.logcat")!!.setOnPreferenceClickListener {

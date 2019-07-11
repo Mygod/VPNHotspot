@@ -21,17 +21,16 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
         private val active = mutableMapOf<String, RoutingManager>()
 
-        fun clean() {
+        fun clean(reinit: Boolean = true) {
             for (manager in active.values) manager.routing?.stop()
-            val cleaned = try {
+            try {
                 Routing.clean()
-                true
             } catch (e: RuntimeException) {
                 Timber.d(e)
                 SmartSnackbar.make(e).show()
-                false
+                return
             }
-            if (cleaned) for (manager in active.values) manager.initRouting()
+            if (reinit) for (manager in active.values) manager.initRouting()
         }
     }
 

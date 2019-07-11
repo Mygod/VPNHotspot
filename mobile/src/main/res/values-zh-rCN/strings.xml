@@ -113,6 +113,7 @@
     <string name="settings_misc_donate_summary">请给我钱</string>
     <string name="settings_misc_donate_more">PayPal, Flattr 等其他方式…</string>
     <string name="settings_restart_required">重启应用以应用新的设置。</string>
+    <string name="settings_exit_app">退出</string>
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
