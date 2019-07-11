@@ -10,6 +10,7 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
+import be.mygod.vpnhotspot.net.TetherOffloadManager
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
@@ -17,6 +18,7 @@ import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialog
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.snackbar.Snackbar
 import timber.log.Timber
 import java.io.File
@@ -32,6 +34,21 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
+        findPreference<SwitchPreference>("system.enableTetherOffload")!!.apply {
+            if (Build.VERSION.SDK_INT >= 27) {
+                isChecked = TetherOffloadManager.enabled
+                setOnPreferenceChangeListener { _, newValue ->
+                    try {
+                        TetherOffloadManager.enabled = newValue as Boolean
+                        TetherOffloadManager.enabled == newValue
+                    } catch (e: Exception) {
+                        Timber.d(e)
+                        SmartSnackbar.make(e).show()
+                        false
+                    }
+                }
+            } else parent!!.removePreference(this)
+        }
         val boot = findPreference<SwitchPreference>("service.repeater.startOnBoot")!!
         if (RepeaterService.supported) {
             boot.setOnPreferenceChangeListener { _, value ->

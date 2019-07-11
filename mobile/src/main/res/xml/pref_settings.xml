@@ -29,6 +29,12 @@
             app:summary="@string/settings_service_disable_ipv6_summary"
             app:defaultValue="true"/>
         <SwitchPreference
+            app:key="system.enableTetherOffload"
+            app:persistent="false"
+            app:icon="@drawable/ic_device_battery_charging_full"
+            app:title="@string/settings_system_tether_offload"
+            app:summary="@string/settings_system_tether_offload_summary"/>
+        <SwitchPreference
             app:key="service.dhcpWorkaround"
             app:icon="@drawable/ic_action_build"
             app:title="@string/settings_service_dhcp_workaround"

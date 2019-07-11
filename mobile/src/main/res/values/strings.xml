@@ -109,6 +109,8 @@
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions.</string>
+    <string name="settings_system_tether_offload">Tethering hardware acceleration</string>
+    <string name="settings_system_tether_offload_summary">Shortcut to system developer options</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_help">Help</string>
     <string name="settings_misc_logcat">Export debug information</string>
