@@ -42,6 +42,11 @@ Default settings are picked to suit general use cases and maximize compatibility
 * Upstream network interface: Main upstream used to reroute traffic. Leave blank for auto detect system VPN.
   Put `none` (or other similarly invalid entries) to suppress tethering VPN.
   Put your interface name for tethering WireGuard.
+* Fallback upstream:
+  Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
+  Leave blank for auto detect.
+  Put `none` (or other similarly invalid entries) to forbid falling back.
+  Put other interface name if you feel like it.
 * IP Masquerade Mode:
   - None:
     Nothing will be done to remap address/port from downstream.
@@ -57,6 +62,10 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 * Disable IPv6 tethering: Turning this option on will disable IPv6 for system tethering. Useful for stopping IPv6 leaks
   as this app currently doesn't handle IPv6 VPN tethering (see [#6](https://github.com/Mygod/VPNHotspot/issues/6)).
+* (since Android 8.1) Tethering hardware acceleration:
+    This is a shortcut to the same setting in system Developer options.
+    Turning this option off is probably a must for making VPN tethering over system tethering work,
+     but it might also decrease your battery life while tethering is enabled.
 * Enable DHCP workaround:
     Only used if your device isn't able to get your clients IP addresses with VPN on.
     This is a global setting, meaning it will only be applied once globally.
@@ -165,9 +174,9 @@ Undocumented system binaries are all bundled and executable:
 
 * (since API 24) `iptables-save`;
 * `echo`;
-* `ip` (`link monitor neigh rule` with proper output format);
-* `ndc` (`ipfwd` with proper output format since API 23, `nat`);
-* `iptables` (with correct version corresponding to API level, `-nvx -L <chain>` with proper output format);
+* `ip` (`link monitor neigh rule`);
+* `ndc` (`ipfwd` since API 23, `nat` since API 28);
+* `iptables` (with correct version corresponding to API level, `-nvx -L <chain>`);
 * `su`.
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
