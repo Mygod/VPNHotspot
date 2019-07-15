@@ -13,13 +13,12 @@ import timber.log.Timber
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val isWifi: Boolean) {
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
-        private val masqueradeModeUnchecked: Routing.MasqueradeMode get() {
-            app.pref.getString(KEY_MASQUERADE_MODE, null)?.let { return Routing.MasqueradeMode.valueOf(it) }
-            return if (app.pref.getBoolean("service.masquerade", true)) // legacy settings
-                Routing.MasqueradeMode.Simple else Routing.MasqueradeMode.None
-        }
         var masqueradeMode: Routing.MasqueradeMode
-            @TargetApi(28) get() = masqueradeModeUnchecked.let {
+            @TargetApi(28) get() = app.pref.run {
+                getString(KEY_MASQUERADE_MODE, null)?.let { return@run Routing.MasqueradeMode.valueOf(it) }
+                if (getBoolean("service.masquerade", true)) // legacy settings
+                    Routing.MasqueradeMode.Simple else Routing.MasqueradeMode.None
+            }.let {
                 // older app version enabled netd for everyone. should check again here
                 if (Build.VERSION.SDK_INT >= 28 || it != Routing.MasqueradeMode.Netd) it
                 else Routing.MasqueradeMode.Simple

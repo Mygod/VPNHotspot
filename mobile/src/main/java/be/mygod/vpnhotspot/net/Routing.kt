@@ -88,13 +88,12 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         None,
         Simple,
         /**
-         * Netd does not support multiple tethering upstream below Android 9, which we heavily
-         * depend on.
+         * Netd does not support multiple tethering upstream below Android 9, which we heavily depend on.
          *
          * Source: https://android.googlesource.com/platform/system/netd/+/3b47c793ff7ade843b1d85a9be8461c3b4dc693e
          */
         @RequiresApi(28)
-        Netd
+        Netd,
     }
 
     class InterfaceNotFoundException(override val cause: Throwable) : SocketException() {

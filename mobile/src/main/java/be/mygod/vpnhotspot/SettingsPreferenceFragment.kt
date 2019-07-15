@@ -30,9 +30,10 @@ import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        WifiDoubleLock.mode = WifiDoubleLock.mode   // handle complicated default value and possible system upgrades
+        // handle complicated default value and possible system upgrades
+        WifiDoubleLock.mode = WifiDoubleLock.mode
+        RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
-        RoutingManager.masqueradeMode = RoutingManager.masqueradeMode   // flush default value
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference<SwitchPreference>("system.enableTetherOffload")!!.apply {
             if (Build.VERSION.SDK_INT >= 27) {
