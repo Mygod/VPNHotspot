@@ -65,7 +65,7 @@ androidExtensions {
 
 def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
-        'com.google.firebase:firebase-core:17.0.0',
+        'com.google.firebase:firebase-core:17.0.1',
 ]
 def lifecycleVersion = '2.1.0-rc01'
 def roomVersion = '2.1.0'
