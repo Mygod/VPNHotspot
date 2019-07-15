@@ -76,7 +76,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
 
-        private fun RootSession.Transaction.ndc(name: String, command: String, revert: String) {
+        private fun RootSession.Transaction.ndc(name: String, command: String, revert: String? = null) {
             val result = execQuiet(command, revert)
             val log = RootSession.checkOutput(command, result,
                     result.out.lastOrNull() != "200 0 $name operation succeeded")
@@ -138,7 +138,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                          * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
                          * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
                          */
-                        ndc("Nat", "ndc nat enable $downstream $upstream 0", "ndc nat disable $downstream $upstream 0")
+                        ndc("Nat", "ndc nat enable $downstream $upstream 0")
                     }
                 }
             }
