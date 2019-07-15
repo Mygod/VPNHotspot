@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.net
 
+import android.annotation.TargetApi
 import android.os.Build
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.DefaultNetworkMonitor
@@ -83,7 +85,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     enum class MasqueradeMode {
-        None, Simple, Netd
+        None,
+        Simple,
+        /**
+         * Netd does not support multiple tethering upstream below Android 9, which we heavily
+         * depend on.
+         *
+         * Source: https://android.googlesource.com/platform/system/netd/+/3b47c793ff7ade843b1d85a9be8461c3b4dc693e
+         */
+        @RequiresApi(28)
+        Netd
     }
 
     class InterfaceNotFoundException(override val cause: Throwable) : SocketException() {
@@ -116,7 +127,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
                         "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
                 }
-                when (masqueradeMode) {
+                @TargetApi(28) when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> simpleMasquerade()
                     // fallback is only needed for repeater on API 23
@@ -303,6 +314,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     fun commit(localOnly: Boolean = false) {
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
+        @TargetApi(28)
         if (localOnly || masqueradeMode != MasqueradeMode.Netd) DefaultNetworkMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
