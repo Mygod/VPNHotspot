@@ -7,6 +7,8 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import be.mygod.vpnhotspot.App.Companion.app
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 @Database(entities = [ClientRecord::class, TrafficRecord::class], version = 2)
 @TypeConverters(Converters::class)
@@ -15,11 +17,12 @@ abstract class AppDatabase : RoomDatabase() {
         const val DB_NAME = "app.db"
 
         val instance by lazy {
-            Room.databaseBuilder(app.deviceStorage, AppDatabase::class.java, DB_NAME)
-                    .addMigrations(
-                            Migration2
-                    )
-                    .build()
+            Room.databaseBuilder(app.deviceStorage, AppDatabase::class.java, DB_NAME).apply {
+                addMigrations(
+                        Migration2
+                )
+                setQueryExecutor { GlobalScope.launch { it.run() } }
+            }.build()
         }
     }
 
