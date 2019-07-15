@@ -99,6 +99,8 @@
     <string name="settings_service_ip_monitor_poll_root">轮询 (root)</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
+    <string name="settings_upstream_fallback">备用上游接口</string>
+    <string name="settings_upstream_fallback_auto">自动检测系统默认网络</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_service_clean_summary">将修改的设置应用到当前启用的服务上。也可用于修复偶尔会发生的竞态条件。</string>
     <string name="settings_service_dhcp_workaround">尝试修复 DHCP</string>

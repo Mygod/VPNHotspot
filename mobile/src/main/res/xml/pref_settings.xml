@@ -12,6 +12,11 @@
             app:icon="@drawable/ic_action_settings_ethernet"
             app:title="@string/settings_service_upstream"
             app:summary="@string/settings_service_upstream_auto"/>
+        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+            app:key="service.upstream.fallback"
+            app:icon="@drawable/ic_action_settings_input_component"
+            app:title="@string/settings_upstream_fallback"
+            app:summary="@string/settings_upstream_fallback_auto"/>
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.masqueradeMode"
             app:icon="@drawable/ic_social_people"

@@ -5,7 +5,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.monitor.DefaultNetworkMonitor
+import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
@@ -52,6 +52,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 it.execQuiet("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
                 it.execQuiet("$IPTABLES -F vpnhotspot_fwd")
                 it.execQuiet("$IPTABLES -X vpnhotspot_fwd")
+                it.execQuiet("$IPTABLES -F vpnhotspot_acl")
+                it.execQuiet("$IPTABLES -X vpnhotspot_acl")
                 it.execQuiet("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
                 it.execQuiet("$IPTABLES -t nat -F vpnhotspot_masquerade")
                 it.execQuiet("$IPTABLES -t nat -X vpnhotspot_masquerade")
@@ -120,17 +122,23 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          */
         inner class Subrouting(priority: Int, val upstream: String? = null) {
             val transaction = RootSession.beginTransaction().safeguard {
-                if (upstream != null) ipRule("from all", downstream, upstream, priority)
-                fun simpleMasquerade() {
-                    // note: specifying -i wouldn't work for POSTROUTING
-                    iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
-                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                if (upstream != null) {
+                    ipRule("from all", downstream, upstream, priority)
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -o $upstream -j vpnhotspot_acl")
+                    iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
+                } else {
+                    iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
+                    iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
                 }
                 @TargetApi(28) when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
-                    MasqueradeMode.Simple -> simpleMasquerade()
-                    // fallback is only needed for repeater on API 23
-                    MasqueradeMode.Netd -> if (upstream == null) simpleMasquerade() else {
+                    MasqueradeMode.Simple -> {
+                        // note: specifying -i wouldn't work for POSTROUTING
+                        iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
+                            "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                    }
+                    MasqueradeMode.Netd -> {
+                        check(upstream != null) // fallback is only needed for repeater on API 23 < 28
                         /**
                          * 0 means that there are no interface addresses coming after, which is unused anyway.
                          *
@@ -166,7 +174,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         override fun onLost() = synchronized(this@Routing) {
             val subrouting = subrouting ?: return
             // we could be removing fallback subrouting which no collision could ever happen, check before removing
-            if (subrouting.upstream != null) check(upstreams.remove(subrouting.upstream))
+            subrouting.upstream?.let { check(upstreams.remove(it)) }
             subrouting.transaction.revert()
             this.subrouting = null
             dns = emptyList()
@@ -191,8 +199,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private inner class Client(private val ip: Inet4Address, mac: Long) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
             val address = ip.hostAddress
-            iptablesInsert("vpnhotspot_fwd -i $downstream -s $address -j ACCEPT")
-            iptablesInsert("vpnhotspot_fwd -o $downstream -d $address -m state --state ESTABLISHED,RELATED -j ACCEPT")
+            iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")
+            iptablesInsert("vpnhotspot_acl -o $downstream -d $address -j ACCEPT")
         }
 
         init {
@@ -261,6 +269,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     fun forward() {
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
+        transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
         transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j DROP")   // ensure blocking works
         // the real forwarding filters will be added in Subrouting when clients are connected
@@ -306,15 +315,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     fun stop() {
         IpNeighbourMonitor.unregisterCallback(this)
-        DefaultNetworkMonitor.unregisterCallback(fallbackUpstream)
+        FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
     }
 
-    fun commit(localOnly: Boolean = false) {
+    fun commit() {
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
-        @TargetApi(28)
-        if (localOnly || masqueradeMode != MasqueradeMode.Netd) DefaultNetworkMonitor.registerCallback(fallbackUpstream)
+        FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }

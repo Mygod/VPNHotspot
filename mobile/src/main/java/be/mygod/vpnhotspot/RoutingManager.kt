@@ -48,7 +48,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             ipForward() // local only interfaces need to enable ip_forward
             forward()
             masquerade(masqueradeMode)
-            commit(true)
+            commit()
         }
     }
 

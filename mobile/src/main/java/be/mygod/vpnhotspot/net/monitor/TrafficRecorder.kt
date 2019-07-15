@@ -62,7 +62,7 @@ object TrafficRecorder {
     private fun doUpdate(timestamp: Long) {
         val oldRecords = LongSparseArray<TrafficRecord>()
         loop@ for (line in RootSession.use {
-            val command = "$IPTABLES -nvx -L vpnhotspot_fwd"
+            val command = "$IPTABLES -nvx -L vpnhotspot_acl"
             val result = it.execQuiet(command)
             val message = RootSession.checkOutput(command, result, false, false)
             if (result.err.isNotEmpty()) Timber.i(message)
