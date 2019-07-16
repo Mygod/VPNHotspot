@@ -16,7 +16,6 @@ import be.mygod.vpnhotspot.util.RootSession
 @RequiresApi(27)
 object TetherOffloadManager {
     private const val TETHER_OFFLOAD_DISABLED = "tether_offload_disabled"
-    @JvmStatic
     var enabled: Boolean
         get() = Settings.Global.getInt(app.contentResolver, TETHER_OFFLOAD_DISABLED, 0) == 0
         set(value) {

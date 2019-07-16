@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.util
 
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import androidx.core.os.postDelayed
 import com.topjohnwu.superuser.Shell
 import timber.log.Timber
@@ -66,6 +67,12 @@ class RootSession : AutoCloseable {
     }
 
     class UnexpectedOutputException(msg: String, val result: Shell.Result) : RuntimeException(msg)
+
+    init {
+        check(Looper.getMainLooper().thread != Thread.currentThread()) {
+            "Unable to initialize shell in main thread" // https://github.com/topjohnwu/libsu/issues/33
+        }
+    }
 
     private val shell = Shell.newInstance("su")
     private val stdout = ArrayList<String>()

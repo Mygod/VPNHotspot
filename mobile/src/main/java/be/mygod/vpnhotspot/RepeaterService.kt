@@ -23,13 +23,18 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.net.wifi.configuration.channelToFrequency
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.newSingleThreadContext
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
 /**
  * Service for handling Wi-Fi P2P. `supported` must be checked before this service is started otherwise it would crash.
  */
-class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPreferences.OnSharedPreferenceChangeListener {
+class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListener,
+        SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         private const val TAG = "RepeaterService"
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
@@ -121,7 +126,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
                 if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
-                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean() // ignore P2P enabled
+                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) launch { cleanLocked() }    // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)!!,
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
@@ -136,6 +141,10 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> onPersistentGroupsChanged()
         }
     }
+    /**
+     * Writes and critical reads to routingManager should be protected with this context.
+     */
+    override val coroutineContext = newSingleThreadContext("TetheringService") + Job()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
 
@@ -250,7 +259,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             p2pManager.requestGroupInfo(channel) {
                 when {
                     it == null -> doStart()
-                    it.isGroupOwner -> if (routingManager == null) doStart(it)
+                    it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
                     else -> {
                         Timber.i("Removing old group ($it)")
                         p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
@@ -324,23 +333,23 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     /**
      * Used during step 2, also called when connection changed
      */
-    private fun onP2pConnectionChanged(info: WifiP2pInfo, group: WifiP2pGroup) {
+    private fun onP2pConnectionChanged(info: WifiP2pInfo, group: WifiP2pGroup) = launch {
         DebugHelper.log(TAG, "P2P connection changed: $info\n$group")
         when {
             !info.groupFormed || !info.isGroupOwner || !group.isGroupOwner -> {
-                if (routingManager != null) clean() // P2P shutdown, else other groups changing before start, ignore
+                if (routingManager != null) cleanLocked()   // P2P shutdown, else other groups changing before start, ignore
             }
             routingManager != null -> {
                 binder.group = group
                 showNotification(group)
             }
-            else -> doStart(group)
+            else -> doStartLocked(group)
         }
     }
     /**
      * startService Step 3
      */
-    private fun doStart(group: WifiP2pGroup) {
+    private fun doStartLocked(group: WifiP2pGroup) {
         binder.group = group
         if (persistNextGroup) {
             networkName = group.networkName
@@ -355,7 +364,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null) {
         SmartSnackbar.make(msg).show()
         showNotification()
-        if (group != null) removeGroup() else clean()
+        if (group != null) removeGroup() else cleanLocked()
     }
 
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
@@ -363,12 +372,14 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
 
     private fun removeGroup() {
         p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() = clean()
+            override fun onSuccess() {
+                launch { cleanLocked() }
+            }
             override fun onFailure(reason: Int) {
                 if (reason != WifiP2pManager.BUSY) {
                     SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                 }   // else assuming it's already gone
-                clean()
+                launch { cleanLocked() }
             }
         })
     }
@@ -378,7 +389,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
             receiverRegistered = false
         }
     }
-    private fun clean() {
+    private fun cleanLocked() {
         unregisterReceiver()
         routingManager?.destroy()
         routingManager = null
@@ -390,7 +401,7 @@ class RepeaterService : Service(), WifiP2pManager.ChannelListener, SharedPrefere
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
-        clean() // force clean to prevent leakage
+        launch { cleanLocked() }    // force clean to prevent leakage
         if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
             app.pref.unregisterOnSharedPreferenceChangeListener(this)
             unregisterReceiver(deviceListener)
