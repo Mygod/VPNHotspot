@@ -7,12 +7,12 @@
         app:summary="@string/settings_service_clean_summary"/>
     <PreferenceCategory
         app:title="@string/settings_upstream">
-        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+        <EditTextPreference
             app:key="service.upstream"
             app:icon="@drawable/ic_action_settings_ethernet"
             app:title="@string/settings_service_upstream"
             app:summary="@string/settings_service_upstream_auto"/>
-        <be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreference
+        <EditTextPreference
             app:key="service.upstream.fallback"
             app:icon="@drawable/ic_action_settings_input_component"
             app:title="@string/settings_upstream_fallback"

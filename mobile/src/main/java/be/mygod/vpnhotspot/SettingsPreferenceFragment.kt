@@ -15,8 +15,9 @@ import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat
+import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragment
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
+import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -40,6 +41,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
+        SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
+        SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
         findPreference<SwitchPreference>("system.enableTetherOffload")!!.apply {
             if (Build.VERSION.SDK_INT >= 27) {
                 isChecked = TetherOffloadManager.enabled
@@ -167,7 +170,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     override fun onDisplayPreferenceDialog(preference: Preference) {
         when (preference.key) {
             UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
-                AlwaysAutoCompleteEditTextPreferenceDialogFragmentCompat().apply {
+                AlwaysAutoCompleteEditTextPreferenceDialogFragment().apply {
                     setArguments(preference.key, try {
                         NetworkInterface.getNetworkInterfaces().asSequence()
                                 .filter {
