@@ -337,7 +337,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         DebugHelper.log(TAG, "P2P connection changed: $info\n$group")
         when {
             !info.groupFormed || !info.isGroupOwner || !group.isGroupOwner -> {
-                if (routingManager != null) cleanLocked()   // P2P shutdown, else other groups changing before start, ignore
+                if (routingManager != null) cleanLocked()
+                // P2P shutdown, else other groups changing before start, ignore
             }
             routingManager != null -> {
                 binder.group = group
