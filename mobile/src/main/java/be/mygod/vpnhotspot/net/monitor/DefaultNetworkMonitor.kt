@@ -23,48 +23,52 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         override fun onAvailable(network: Network) {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
-            when (currentNetwork) {
-                null -> { }
-                network -> {
-                    val oldProperties = currentLinkProperties!!
-                    check(ifname == oldProperties.interfaceName)
-                    if (properties.dnsServers == oldProperties.dnsServers) return
+            synchronized(this@DefaultNetworkMonitor) {
+                when (currentNetwork) {
+                    null -> { }
+                    network -> {
+                        val oldProperties = currentLinkProperties!!
+                        check(ifname == oldProperties.interfaceName)
+                        if (properties.dnsServers == oldProperties.dnsServers) return
+                    }
+                    else -> callbacks.forEach { it.onLost() }   // we are using the other default network now
                 }
-                else -> callbacks.forEach { it.onLost() }   // we are using the other default network now
+                currentNetwork = network
+                currentLinkProperties = properties
+                callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
             }
-            currentNetwork = network
-            currentLinkProperties = properties
-            callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            if (currentNetwork == null) {
-                onAvailable(network)
-                return
-            }
-            if (currentNetwork != network) return
-            val oldProperties = currentLinkProperties!!
-            currentLinkProperties = properties
-            val ifname = properties.interfaceName
-            when {
-                ifname == null -> {
-                    Timber.w("interfaceName became null: $oldProperties -> $properties")
-                    onLost(network)
+            synchronized(this@DefaultNetworkMonitor) {
+                if (currentNetwork == null) {
+                    onAvailable(network)
+                    return
                 }
-                ifname != oldProperties.interfaceName -> {
-                    Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
-                    callbacks.forEach {
-                        it.onLost()
+                if (currentNetwork != network) return
+                val oldProperties = currentLinkProperties!!
+                currentLinkProperties = properties
+                val ifname = properties.interfaceName
+                when {
+                    ifname == null -> {
+                        Timber.w("interfaceName became null: $oldProperties -> $properties")
+                        onLost(network)
+                    }
+                    ifname != oldProperties.interfaceName -> {
+                        Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
+                        callbacks.forEach {
+                            it.onLost()
+                            it.onAvailable(ifname, properties.dnsServers)
+                        }
+                    }
+                    properties.dnsServers != oldProperties.dnsServers -> callbacks.forEach {
                         it.onAvailable(ifname, properties.dnsServers)
                     }
-                }
-                properties.dnsServers != oldProperties.dnsServers -> callbacks.forEach {
-                    it.onAvailable(ifname, properties.dnsServers)
                 }
             }
         }
 
-        override fun onLost(network: Network) {
+        override fun onLost(network: Network) = synchronized(this@DefaultNetworkMonitor) {
             if (currentNetwork != network) return
             callbacks.forEach { it.onLost() }
             currentNetwork = null
