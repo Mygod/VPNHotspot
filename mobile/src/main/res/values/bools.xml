@@ -2,4 +2,5 @@
 <resources>
     <bool name="api_ge_26">false</bool>
     <bool name="api_lt_25">true</bool>
+    <bool name="is_day">true</bool>
 </resources>
