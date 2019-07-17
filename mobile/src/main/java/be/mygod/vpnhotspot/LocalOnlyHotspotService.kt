@@ -12,10 +12,11 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.*
 import timber.log.Timber
 
 @RequiresApi(26)
-class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
+class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     companion object {
         private const val TAG = "LocalOnlyHotspotService"
     }
@@ -38,6 +39,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
     private val binder = Binder()
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+    /**
+     * Writes and critical reads to routingManager should be protected with this context.
+     */
+    override val coroutineContext = newSingleThreadContext("LocalOnlyHotspotService") + Job()
     private var routingManager: RoutingManager? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -50,11 +55,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
-        } else {
+        } else launch {
             val routingManager = routingManager
             if (routingManager == null) {
-                this.routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
-                IpNeighbourMonitor.registerCallback(this)
+                this@LocalOnlyHotspotService.routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
+                IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
             } else check(iface == routingManager.downstream)
         }
     }
@@ -120,13 +125,16 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService() {
 
     override fun onDestroy() {
         binder.stop()
-        unregisterReceiver()
+        unregisterReceiver(true)
         super.onDestroy()
     }
 
-    private fun unregisterReceiver() {
-        routingManager?.destroy()
-        routingManager = null
+    private fun unregisterReceiver(exit: Boolean = false) {
+        launch {
+            routingManager?.destroy()
+            routingManager = null
+            if (exit) cancel()
+        }
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             IpNeighbourMonitor.unregisterCallback(this)

@@ -23,10 +23,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.net.wifi.configuration.channelToFrequency
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.*
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
@@ -144,7 +141,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
-    override val coroutineContext = newSingleThreadContext("TetheringService") + Job()
+    override val coroutineContext = newSingleThreadContext("RepeaterService") + Job()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
 
@@ -402,7 +399,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
-        launch { cleanLocked() }    // force clean to prevent leakage
+        launch {    // force clean to prevent leakage
+            cleanLocked()
+            cancel()
+        }
         if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
             app.pref.unregisterOnSharedPreferenceChangeListener(this)
             unregisterReceiver(deviceListener)
