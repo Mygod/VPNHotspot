@@ -31,6 +31,8 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -197,7 +199,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         SmartSnackbar.make(R.string.repeater_configure_failure).show()
         return null
     }
-    fun updateConfiguration(config: WifiConfiguration) {
+    suspend fun updateConfiguration(config: WifiConfiguration) {
         if (Build.VERSION.SDK_INT >= 29) {
             RepeaterService.networkName = config.SSID
             RepeaterService.passphrase = config.preSharedKey
@@ -209,7 +211,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
         } else @Suppress("DEPRECATION") holder.config?.let { master ->
             if (binder?.group?.networkName != config.SSID || master.psk != config.preSharedKey) try {
-                master.update(config.SSID, config.preSharedKey)
+                withContext(Dispatchers.Default) { master.update(config.SSID, config.preSharedKey) }
                 binder!!.group = null
             } catch (e: Exception) {
                 Timber.w(e)

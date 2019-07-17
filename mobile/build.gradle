@@ -67,7 +67,7 @@ def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
         'com.google.firebase:firebase-core:17.0.1',
 ]
-def lifecycleVersion = '2.1.0-rc01'
+def lifecycleVersion = '2.2.0-alpha02'
 def roomVersion = '2.1.0'
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
@@ -78,6 +78,7 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
+    implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0-rc01'
     implementation "androidx.room:room-ktx:$roomVersion"

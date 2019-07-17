@@ -14,6 +14,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -31,6 +32,8 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.synthetic.main.activity_main.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.lang.IllegalArgumentException
 import java.lang.reflect.InvocationTargetException
@@ -126,10 +129,11 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 true
             }
             R.id.configuration_repeater -> {
-                WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(
-                        adapter.repeaterManager.configuration ?: return false,
-                        p2pMode = true
-                )).show(this, CONFIGURE_REPEATER)
+                lifecycleScope.launchWhenCreated {
+                    WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(withContext(Dispatchers.Default) {
+                        adapter.repeaterManager.configuration
+                    } ?: return@launchWhenCreated, p2pMode = true)).show(this@TetheringFragment, CONFIGURE_REPEATER)
+                }
                 true
             }
             R.id.configuration_temp_hotspot -> {
@@ -185,7 +189,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         val configuration by lazy { AlertDialogFragment.getRet<WifiApDialogFragment.Arg>(data!!).configuration }
         when (requestCode) {
             REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-            CONFIGURE_REPEATER -> if (resultCode == DialogInterface.BUTTON_POSITIVE) {
+            CONFIGURE_REPEATER -> if (resultCode == DialogInterface.BUTTON_POSITIVE) lifecycleScope.launchWhenCreated {
                 adapter.repeaterManager.updateConfiguration(configuration)
             }
             CONFIGURE_AP -> if (resultCode == DialogInterface.BUTTON_POSITIVE) try {

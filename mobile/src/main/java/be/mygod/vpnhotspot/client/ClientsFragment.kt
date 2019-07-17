@@ -19,6 +19,7 @@ import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -41,7 +42,10 @@ import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
@@ -149,11 +153,13 @@ class ClientsFragment : Fragment() {
                 }
                 R.id.stats -> {
                     binding.client?.let { client ->
-                        scope.launch {
-                            StatsDialogFragment().withArg(StatsArg(
-                                    client.title.value ?: return@launch,
-                                    AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
-                            )).show(this@ClientsFragment)
+                        lifecycleScope.launchWhenCreated {
+                            withContext(Dispatchers.Unconfined) {
+                                StatsDialogFragment().withArg(StatsArg(
+                                        client.title.value ?: return@withContext,
+                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
+                                )).show(this@ClientsFragment)
+                            }
                         }
                     }
                     true
@@ -204,7 +210,6 @@ class ClientsFragment : Fragment() {
         }
     }
 
-    private val scope = MainScope() + Dispatchers.Unconfined
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
     private var rates = HashMap<Pair<String, Long>, TrafficRate>()
@@ -235,10 +240,5 @@ class ClientsFragment : Fragment() {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
-    }
-
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
     }
 }
