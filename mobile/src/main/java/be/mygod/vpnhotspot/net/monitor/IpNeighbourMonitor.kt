@@ -6,14 +6,13 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.net.InetAddress
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
-        private val callbacks = Collections.newSetFromMap(ConcurrentHashMap<Callback, Boolean>())
+        private val callbacks = mutableSetOf<Callback>()
         var instance: IpNeighbourMonitor? = null
 
-        fun registerCallback(callback: Callback) = synchronized(this) {
+        fun registerCallback(callback: Callback) = synchronized(callbacks) {
             if (!callbacks.add(callback)) return@synchronized
             var monitor = instance
             if (monitor == null) {
@@ -24,7 +23,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 callback.onIpNeighbourAvailable(synchronized(monitor.neighbours) { monitor.neighbours.values.toList() })
             }
         }
-        fun unregisterCallback(callback: Callback) = synchronized(this) {
+        fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return@synchronized
             instance?.destroy()
             instance = null
@@ -68,7 +67,9 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 updatePosted = false
                 neighbours.values.toList()
             }
-            for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
+            synchronized(callbacks) {
+                for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
+            }
         }
         updatePosted = true
     }

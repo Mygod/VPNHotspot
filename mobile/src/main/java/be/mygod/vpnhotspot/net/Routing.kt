@@ -330,7 +330,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         stop()
         Timber.i("Stopped routing for $downstream by $caller")
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        clients.values.forEach { it.close() }
+        synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
         fallbackUpstream.subrouting?.transaction?.revert()
         upstream.subrouting?.transaction?.revert()
