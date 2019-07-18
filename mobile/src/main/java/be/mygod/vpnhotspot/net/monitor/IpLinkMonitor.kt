@@ -10,7 +10,7 @@ class IpLinkMonitor private constructor() : IpMonitor() {
         private val callbacks = HashMap<Any, Pair<String, (Boolean) -> Unit>>()
         private var instance: IpLinkMonitor? = null
 
-        fun registerCallback(owner: Any, iface: String, callback: (Boolean) -> Unit) {
+        fun registerCallback(owner: Any, iface: String, callback: (Boolean) -> Unit) = synchronized(this) {
             check(callbacks.put(owner, Pair(iface, callback)) == null)
             var monitor = instance
             if (monitor == null) {
@@ -19,8 +19,8 @@ class IpLinkMonitor private constructor() : IpMonitor() {
             }
             monitor.flush()
         }
-        fun unregisterCallback(owner: Any) {
-            if (callbacks.remove(owner) == null || callbacks.isNotEmpty()) return
+        fun unregisterCallback(owner: Any) = synchronized(this) {
+            if (callbacks.remove(owner) == null || callbacks.isNotEmpty()) return@synchronized
             instance?.destroy()
             instance = null
         }
@@ -32,12 +32,14 @@ class IpLinkMonitor private constructor() : IpMonitor() {
         val match = parser.find(line) ?: return
         val iface = match.groupValues[2]
         val present = match.groupValues[1].isEmpty()
-        for ((target, callback) in callbacks.values) if (target == iface) callback(present)
+        synchronized(IpLinkMonitor) {
+            for ((target, callback) in callbacks.values) if (target == iface) callback(present)
+        }
     }
 
     override fun processLines(lines: Sequence<String>) {
         val present = HashSet<String>()
         for (it in lines) present.add((parser.find(it) ?: continue).groupValues[2])
-        callbacks.values.forEach { (iface, callback) -> callback(present.contains(iface)) }
+        synchronized(IpLinkMonitor) { for ((iface, callback) in callbacks.values) callback(present.contains(iface)) }
     }
 }
