@@ -10,10 +10,12 @@ import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
@@ -87,6 +89,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             set(value) {
                 field = value
                 groupChanged(value)
+                if (Build.VERSION.SDK_INT >= 28) value?.clientList?.let {
+                    timeoutMonitor?.onClientsChanged(it.isEmpty())
+                }
             }
         val groupChanged = StickyEvent1 { group }
         @Deprecated("Not initialized and no use at all since API 29")
@@ -118,6 +123,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
     private val handler = Handler()
+    @RequiresApi(28)
+    private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
@@ -348,6 +355,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      * startService Step 3
      */
     private fun doStartLocked(group: WifiP2pGroup) {
+        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(this, handler, binder::shutdown)
         binder.group = group
         if (persistNextGroup) {
             networkName = group.networkName
@@ -389,6 +397,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
     private fun cleanLocked() {
         unregisterReceiver()
+        if (Build.VERSION.SDK_INT >= 28) {
+            timeoutMonitor?.close()
+            timeoutMonitor = null
+        }
         routingManager?.destroy()
         routingManager = null
         status = Status.IDLE

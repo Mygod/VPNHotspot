@@ -58,11 +58,7 @@ fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastR
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
 }
 
-fun intentFilter(vararg actions: String): IntentFilter {
-    val result = IntentFilter()
-    actions.forEach { result.addAction(it) }
-    return result
-}
+fun intentFilter(vararg actions: String) = IntentFilter().also { actions.forEach(it::addAction) }
 
 @BindingAdapter("android:src")
 fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
@@ -74,11 +70,11 @@ fun setVisibility(view: View, value: Boolean) {
 
 fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     // exclude all bogon IP addresses supported by Android APIs
-    if (app.hasTouch && !(ip.isMulticastAddress || ip.isAnyLocalAddress || ip.isLoopbackAddress ||
-                    ip.isLinkLocalAddress || ip.isSiteLocalAddress || ip.isMCGlobal || ip.isMCNodeLocal ||
-                    ip.isMCLinkLocal || ip.isMCSiteLocal || ip.isMCOrgLocal)) SpannableString(it).apply {
+    if (!app.hasTouch || ip.isMulticastAddress || ip.isAnyLocalAddress || ip.isLoopbackAddress ||
+            ip.isLinkLocalAddress || ip.isSiteLocalAddress || ip.isMCGlobal || ip.isMCNodeLocal ||
+            ip.isMCLinkLocal || ip.isMCSiteLocal || ip.isMCOrgLocal) it else SpannableString(it).apply {
         setSpan(CustomTabsUrlSpan("https://ipinfo.io/$it"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    } else it
+    }
 }
 fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
     setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
