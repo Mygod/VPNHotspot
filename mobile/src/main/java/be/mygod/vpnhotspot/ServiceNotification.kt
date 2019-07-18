@@ -22,6 +22,7 @@ object ServiceNotification {
     private fun buildNotification(context: Context): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL)
                 .setWhen(0)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
                 .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
                 .setContentTitle(context.getText(R.string.notification_tethering_title))
                 .setSmallIcon(R.drawable.ic_quick_settings_tile_on)
