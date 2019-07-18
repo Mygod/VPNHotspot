@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 

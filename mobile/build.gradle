@@ -19,8 +19,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 29
         resConfigs "ru", "zh-rCN"
-        versionCode 207
-        versionName '2.5.0'
+        versionCode 208
+        versionName '2.5.1'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {

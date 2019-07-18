@@ -16,8 +16,8 @@ import timber.log.Timber
 import java.lang.IllegalArgumentException
 
 @RequiresApi(28)
-class TetherTimeoutMonitor(private val context: Context, private val handler: Handler, private val onTimeout: () -> Unit):
-        ContentObserver(handler), AutoCloseable {
+class TetherTimeoutMonitor(private val context: Context, private val handler: Handler,
+                           private val onTimeout: () -> Unit) : ContentObserver(handler), AutoCloseable {
     /**
      * config_wifi_framework_soft_ap_timeout_delay was introduced in Android 9.
      *
@@ -40,7 +40,8 @@ class TetherTimeoutMonitor(private val context: Context, private val handler: Ha
             app.resources.getInteger(Resources.getSystem().getIdentifier(
                     "config_wifi_framework_soft_ap_timeout_delay", "integer", "android")).let { delay ->
                 if (delay < MIN_SOFT_AP_TIMEOUT_DELAY_MS) {
-                    Timber.w("Overriding timeout delay with minimum limit value: $delay < $MIN_SOFT_AP_TIMEOUT_DELAY_MS")
+                    Timber.w(
+                            "Overriding timeout delay with minimum limit value: $delay < $MIN_SOFT_AP_TIMEOUT_DELAY_MS")
                     MIN_SOFT_AP_TIMEOUT_DELAY_MS
                 } else delay
             }
