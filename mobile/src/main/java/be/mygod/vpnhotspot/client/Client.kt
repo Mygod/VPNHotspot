@@ -79,5 +79,5 @@ open class Client(val mac: Long, val iface: String) {
 
         return true
     }
-    override fun hashCode() = Objects.hash(iface, mac, ip, record.value)
+    override fun hashCode() = Objects.hash(iface, mac, ip)
 }
