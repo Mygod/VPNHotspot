@@ -73,7 +73,7 @@ Default settings are picked to suit general use cases and maximize compatibility
 ### Misc
 
 * Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
-   - Choose "System default" to save battery life;
+   - Choose "System default" (default since Android 10) to save battery life;
    - (prior to Android 10) Choose "On" (default) if repeater/hotspot turns itself off automatically or stops working after a while;
    - (prior to Android 10) Choose "High Performance Mode" to minimize packet loss and latency (will consume more power);
    - (since Android 10) Choose "Disable power save" to decrease packet latency.
@@ -154,10 +154,12 @@ Undocumented system configurations:
 * `@android:array/config_tether_wifi_regexs`
 * `@android:array/config_tether_wimax_regexs`
 * `@android:array/config_tether_bluetooth_regexs`
+* (since API 28) `@android:integer/config_wifi_framework_soft_ap_timeout_delay`
 
 Other:
 
 * (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order.
+* (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158307) is assumed to be `"soft_ap_timeout_enabled"`.
 * (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158331) is assumed to be `"tether_offload_disabled"`.
 * (since API 27) `com.android.server.connectivity.tethering.OffloadHardwareInterface.DEFAULT_TETHER_OFFLOAD_DISABLED` is assumed to be 0.
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
