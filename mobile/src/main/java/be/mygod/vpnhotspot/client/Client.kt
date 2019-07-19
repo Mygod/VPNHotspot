@@ -76,7 +76,6 @@ open class Client(val mac: Long, val iface: String) {
         if (iface != other.iface) return false
         if (mac != other.mac) return false
         if (ip != other.ip) return false
-        if (record.value != other.record.value) return false
 
         return true
     }
