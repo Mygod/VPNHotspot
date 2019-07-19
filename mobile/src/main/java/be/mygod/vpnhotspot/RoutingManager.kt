@@ -28,6 +28,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         private val active = mutableMapOf<String, RoutingManager>()
 
         fun clean(reinit: Boolean = true) {
+            if (!reinit && active.isEmpty()) return
             for (manager in active.values) manager.routing?.stop()
             try {
                 Routing.clean()
