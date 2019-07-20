@@ -10,6 +10,7 @@ import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
@@ -287,7 +288,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun doStart() {
         val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
-                startFailure(formatReason(R.string.repeater_create_group_failure, reason))
+                startFailure(formatReason(R.string.repeater_create_group_failure, reason),
+                        showWifiEnable = reason == WifiP2pManager.BUSY)
             }
             override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
         }
@@ -368,8 +370,13 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         status = Status.ACTIVE
         showNotification(group)
     }
-    private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null) {
-        SmartSnackbar.make(msg).show()
+    private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null, showWifiEnable: Boolean = false) {
+        SmartSnackbar.make(msg).apply {
+            if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
+                if (Build.VERSION.SDK_INT >= 29) it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
+                else @Suppress("DEPRECATION") app.wifi.isWifiEnabled = true
+            }
+        }.show()
         showNotification()
         if (group != null) removeGroup() else cleanLocked()
     }

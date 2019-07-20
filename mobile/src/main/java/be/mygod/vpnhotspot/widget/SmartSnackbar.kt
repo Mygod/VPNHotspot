@@ -46,11 +46,16 @@ sealed class SmartSnackbar {
     }
 
     abstract fun show()
+    open fun action(@StringRes id: Int, listener: (View) -> Unit) { }
     open fun shortToast() = this
 }
 
 private class SnackbarWrapper(private val snackbar: Snackbar) : SmartSnackbar() {
     override fun show() = snackbar.show()
+
+    override fun action(@StringRes id: Int, listener: (View) -> Unit) {
+        snackbar.setAction(id, listener)
+    }
 }
 
 private class ToastWrapper(private val toast: Toast) : SmartSnackbar() {
