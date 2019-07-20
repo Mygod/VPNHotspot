@@ -134,7 +134,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
 
     override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
-        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor?.onClientsChanged(neighbours.isEmpty())
+        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor?.onClientsChanged(neighbours.none {
+            it.state != IpNeighbour.State.FAILED
+        })
     }
 
     override fun onDestroy() {

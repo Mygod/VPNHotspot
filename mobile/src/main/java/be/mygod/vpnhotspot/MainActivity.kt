@@ -14,10 +14,12 @@ import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
+import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import java.net.Inet4Address
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
@@ -30,11 +32,14 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model = ViewModelProviders.of(this).get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
-        model.clients.observe(this) {
-            if (it.isNotEmpty()) binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
+        model.clients.observe(this) { clients ->
+            val count = clients.count {
+                it.ip.any { (ip, state) -> ip is Inet4Address && state != IpNeighbour.State.FAILED }
+            }
+            if (count > 0) binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
                 backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
                 badgeTextColor = ContextCompat.getColor(this@MainActivity, R.color.primary_text_default_material_light)
-                number = it.size
+                number = count
             } else binding.navigation.removeBadge(R.id.navigation_clients)
         }
         SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
