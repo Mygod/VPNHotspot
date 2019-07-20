@@ -255,28 +255,29 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
             showNotification()
         }
-        unregisterReceiver()
-        registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-        receiverRegistered = true
-        try {
-            p2pManager.requestGroupInfo(channel) {
-                when {
-                    it == null -> doStart()
-                    it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
-                    else -> {
-                        Timber.i("Removing old group ($it)")
-                        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                            override fun onSuccess() = doStart()
-                            override fun onFailure(reason: Int) =
-                                    startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                        })
+        launch {
+            registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                    WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+            receiverRegistered = true
+            try {
+                p2pManager.requestGroupInfo(channel) {
+                    when {
+                        it == null -> doStart()
+                        it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
+                        else -> {
+                            Timber.i("Removing old group ($it)")
+                            p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                                override fun onSuccess() = doStart()
+                                override fun onFailure(reason: Int) =
+                                        startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                            })
+                        }
                     }
                 }
+            } catch (e: SecurityException) {
+                Timber.w(e)
+                startFailure(e.readableMessage)
             }
-        } catch (e: SecurityException) {
-            Timber.w(e)
-            startFailure(e.readableMessage)
         }
         return START_NOT_STICKY
     }
@@ -389,14 +390,11 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
         })
     }
-    private fun unregisterReceiver() {
+    private fun cleanLocked() {
         if (receiverRegistered) {
             unregisterReceiver(receiver)
             receiverRegistered = false
         }
-    }
-    private fun cleanLocked() {
-        unregisterReceiver()
         if (Build.VERSION.SDK_INT >= 28) {
             timeoutMonitor?.close()
             timeoutMonitor = null

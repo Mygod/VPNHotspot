@@ -62,7 +62,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
     private fun postUpdateLocked() {
         if (updatePosted || instance != this) return
-        GlobalScope.launch(Dispatchers.Main) {
+        GlobalScope.launch {
             val neighbours = synchronized(neighbours) {
                 updatePosted = false
                 neighbours.values.toList()
