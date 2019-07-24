@@ -167,6 +167,8 @@
 
         <provider android:name="com.crashlytics.android.CrashlyticsInitProvider"
                   tools:node="remove"/>
+        <service android:name="com.google.firebase.components.ComponentDiscoveryService"
+                 android:directBootAware="true"/>
 
     </application>
 
