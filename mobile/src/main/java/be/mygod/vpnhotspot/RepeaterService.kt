@@ -378,7 +378,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
         }.show()
         showNotification()
-        if (group != null) removeGroup() else cleanLocked()
+        if (group != null) removeGroup() else launch { cleanLocked() }
     }
 
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
