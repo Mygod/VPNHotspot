@@ -2,6 +2,8 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.content.SharedPreferences
 import be.mygod.vpnhotspot.App.Companion.app
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor() {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -21,19 +23,21 @@ abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor()
         fun unregisterCallback(callback: Callback) = synchronized(this) { monitor.unregisterCallback(callback) }
 
         override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-            if (key == KEY) synchronized(this) {
-                val old = monitor
-                val callbacks = synchronized(old) {
-                    val callbacks = old.callbacks.toList()
-                    old.callbacks.clear()
-                    old.destroyLocked()
-                    callbacks
-                }
-                val new = generateMonitor()
-                monitor = new
-                for (callback in callbacks) {
-                    callback.onLost()
-                    new.registerCallback(callback)
+            if (key == KEY) GlobalScope.launch {    // prevent callback called in main
+                synchronized(this) {
+                    val old = monitor
+                    val callbacks = synchronized(old) {
+                        val callbacks = old.callbacks.toList()
+                        old.callbacks.clear()
+                        old.destroyLocked()
+                        callbacks
+                    }
+                    val new = generateMonitor()
+                    monitor = new
+                    for (callback in callbacks) {
+                        callback.onLost()
+                        new.registerCallback(callback)
+                    }
                 }
             }
         }
