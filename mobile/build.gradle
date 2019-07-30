@@ -84,7 +84,7 @@ dependencies {
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'com.android.billingclient:billing:2.0.2'
     implementation 'com.github.topjohnwu.libsu:core:2.5.0'
-    implementation 'com.google.android.material:material:1.1.0-alpha08'
+    implementation 'com.google.android.material:material:1.1.0-alpha09'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.0'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.0.0'
