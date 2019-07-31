@@ -46,7 +46,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
-    override val coroutineContext = newSingleThreadContext("LocalOnlyHotspotService") + Job()
+    private val dispatcher = newSingleThreadContext("LocalOnlyHotspotService")
+    override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private val handler = Handler()
     @RequiresApi(28)
@@ -158,7 +159,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         launch {
             routingManager?.destroy()
             routingManager = null
-            if (exit) cancel()
+            if (exit) {
+                cancel()
+                dispatcher.close()
+            }
         }
     }
 }
