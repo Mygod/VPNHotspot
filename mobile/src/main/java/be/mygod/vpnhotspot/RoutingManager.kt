@@ -59,10 +59,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         if (isWifi) WifiDoubleLock.acquire(this)
     }
 
-    fun start() = when (active.putIfAbsentCompat(downstream, this)) {
+    fun start() = when (val other = active.putIfAbsentCompat(downstream, this)) {
         null -> initRouting()
         this -> true    // already started
-        else -> throw IllegalStateException("Double routing detected from $caller")
+        else -> throw IllegalStateException("Double routing detected for $downstream from $caller != ${other.caller}")
     }
 
     private fun initRouting() = try {
