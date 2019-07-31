@@ -126,7 +126,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private val handler = Handler()
     @RequiresApi(28)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
-    private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
@@ -257,10 +256,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
             showNotification()
         }
+        registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
         launch {
-            registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                    WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-            receiverRegistered = true
             try {
                 p2pManager.requestGroupInfo(channel) {
                     when {
@@ -399,10 +397,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         })
     }
     private fun cleanLocked() {
-        if (receiverRegistered) {
-            unregisterReceiver(receiver)
-            receiverRegistered = false
-        }
+        ensureReceiverUnregistered(receiver)
         if (Build.VERSION.SDK_INT >= 28) {
             timeoutMonitor?.close()
             timeoutMonitor = null
@@ -417,6 +412,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
+        ensureReceiverUnregistered(receiver)
         launch {    // force clean to prevent leakage
             cleanLocked()
             cancel()

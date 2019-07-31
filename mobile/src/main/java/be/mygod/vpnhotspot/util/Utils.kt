@@ -19,6 +19,7 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import java.lang.IllegalArgumentException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -33,6 +34,12 @@ fun Long.toPluralInt(): Int {
     check(this >= 0)    // please don't mess with me
     if (this <= Int.MAX_VALUE) return toInt()
     return (this % 1000000000).toInt() + 1000000000
+}
+
+fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
+    try {
+        unregisterReceiver(receiver)
+    } catch (_: IllegalArgumentException) { }
 }
 
 @SuppressLint("Recycle")

@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -46,7 +47,6 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
-    private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         launch {
             val toRemove = downstreams.toMutableMap()   // make a copy
@@ -69,11 +69,8 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
-            if (!receiverRegistered) {
-                receiverRegistered = true
-                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                IpNeighbourMonitor.registerCallback(this)
-            }
+            registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+            IpNeighbourMonitor.registerCallback(this)
             updateNotification()
         }
         launch(Dispatchers.Main) { binder.routingsChanged() }
@@ -106,9 +103,9 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     override fun onDestroy() {
+        unregisterReceiver()
         launch {
             downstreams.values.forEach { it.destroy() } // force clean to prevent leakage
-            unregisterReceiver()
             cancel()
             dispatcher.close()
         }
@@ -116,10 +113,7 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     private fun unregisterReceiver() {
-        if (receiverRegistered) {
-            unregisterReceiver(receiver)
-            IpNeighbourMonitor.unregisterCallback(this)
-            receiverRegistered = false
-        }
+        ensureReceiverUnregistered(receiver)
+        IpNeighbourMonitor.unregisterCallback(this)
     }
 }
