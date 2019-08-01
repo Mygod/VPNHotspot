@@ -258,26 +258,24 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
         registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-        launch {
-            try {
-                p2pManager.requestGroupInfo(channel) {
-                    when {
-                        it == null -> doStart()
-                        it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
-                        else -> {
-                            Timber.i("Removing old group ($it)")
-                            p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                override fun onSuccess() = doStart()
-                                override fun onFailure(reason: Int) =
-                                        startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                            })
-                        }
+        try {
+            p2pManager.requestGroupInfo(channel) {
+                when {
+                    it == null -> doStart()
+                    it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
+                    else -> {
+                        Timber.i("Removing old group ($it)")
+                        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                            override fun onSuccess() = doStart()
+                            override fun onFailure(reason: Int) =
+                                    startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                        })
                     }
                 }
-            } catch (e: SecurityException) {
-                Timber.w(e)
-                startFailure(e.readableMessage)
             }
+        } catch (e: RuntimeException) {
+            Timber.w(e)
+            startFailure(e.readableMessage)
         }
         return START_NOT_STICKY
     }
