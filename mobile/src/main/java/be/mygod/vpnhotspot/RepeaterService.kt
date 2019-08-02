@@ -251,6 +251,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (status != Status.IDLE) return START_NOT_STICKY
+        val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         status = Status.STARTING
         // show invisible foreground notification on television to avoid being killed
         if (Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
@@ -273,7 +274,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     }
                 }
             }
-        } catch (e: RuntimeException) {
+        } catch (e: SecurityException) {
             Timber.w(e)
             startFailure(e.readableMessage)
         }
