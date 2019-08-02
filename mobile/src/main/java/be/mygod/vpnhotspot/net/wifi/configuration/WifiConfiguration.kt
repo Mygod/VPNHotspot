@@ -106,7 +106,7 @@ fun WifiConfiguration.toQRString() = StringBuilder("WIFI:").apply {
  * https://android.googlesource.com/platform/packages/apps/Settings/+/android-5.0.0_r1/src/com/android/settings/wifi/WifiApDialog.java#88
  * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/wifi/tether/WifiTetherSettings.java#162
  */
-fun newWifiApConfiguration(ssid: String, passphrase: String?) = try {
+fun newWifiApConfiguration(ssid: String?, passphrase: String?) = try {
     WifiApManager.configuration
 } catch (e: InvocationTargetException) {
     if (e.targetException !is SecurityException) Timber.w(e)
