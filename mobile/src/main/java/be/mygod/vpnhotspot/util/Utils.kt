@@ -19,7 +19,6 @@ import androidx.databinding.BindingAdapter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import java.lang.IllegalArgumentException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
