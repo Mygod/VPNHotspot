@@ -25,18 +25,11 @@ object VpnMonitor : UpstreamMonitor() {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
             synchronized(this@VpnMonitor) {
-                val old = currentNetwork
                 val oldProperties = available.put(network, properties)
-                if (old != network) {
-                    if (old != null) {
-                        DebugHelper.log(TAG, "Assuming old VPN interface ${available[old]} is dying")
-                        callbacks.forEach { it.onLost() }
-                    }
+                if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
+                    if (currentNetwork != null) callbacks.forEach { it.onLost() }
                     currentNetwork = network
-                } else {
-                    check(ifname == oldProperties!!.interfaceName)
-                    if (properties.dnsServers == oldProperties.dnsServers) return
-                }
+                } else if (properties.dnsServers == oldProperties.dnsServers) return
                 callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
             }
         }
