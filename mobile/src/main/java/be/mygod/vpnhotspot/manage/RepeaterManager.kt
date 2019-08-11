@@ -21,7 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.get
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
@@ -136,7 +136,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
     @Suppress("DEPRECATION")
-    private val holder = ViewModelProviders.of(parent).get<ConfigHolder>()
+    private val holder = ViewModelProvider(parent).get<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).binding.data = data

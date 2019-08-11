@@ -17,7 +17,6 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.databinding.BaseObservable
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
 import androidx.lifecycle.get
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.observe
@@ -28,6 +27,7 @@ import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.Empty
+import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
@@ -224,7 +224,7 @@ class ClientsFragment : Fragment() {
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }
-        ViewModelProviders.of(requireActivity()).get<ClientViewModel>().clients.observe(this) {
+        (activity as MainActivity).provider.get<ClientViewModel>().clients.observe(this) {
             adapter.submitList(it.toMutableList())
         }
         return binding.root

@@ -7,7 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProviders
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.get
 import androidx.lifecycle.observe
 import be.mygod.vpnhotspot.client.ClientViewModel
@@ -23,6 +23,7 @@ import java.net.Inet4Address
 
 class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
     private lateinit var binding: ActivityMainBinding
+    val provider by lazy { ViewModelProvider(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,7 +31,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         binding.lifecycleOwner = this
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
-        val model = ViewModelProviders.of(this).get<ClientViewModel>()
+        val model = provider.get<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
