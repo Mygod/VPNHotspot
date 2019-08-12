@@ -21,9 +21,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 monitor = IpNeighbourMonitor()
                 instance = monitor
                 monitor.flush()
-            } else {
-                callback.onIpNeighbourAvailable(synchronized(monitor.neighbours) { monitor.neighbours.values.toList() })
-            }
+            } else callback.onIpNeighbourAvailable(monitor.neighbours.values)
         }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return@synchronized
