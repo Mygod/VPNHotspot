@@ -133,7 +133,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         WifiP2pManager.WIFI_P2P_STATE_DISABLED) launch { cleanLocked() }    // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)!!,
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP)!!)
+                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP) ?: WifiP2pGroup())
         }
     }
     @Deprecated("No longer used since API 29")
