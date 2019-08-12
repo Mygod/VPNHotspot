@@ -1,11 +1,13 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.net.IpNeighbour
-import kotlinx.coroutines.Dispatchers
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.actor
+import kotlinx.coroutines.channels.sendBlocking
 import java.net.InetAddress
-import java.util.*
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
@@ -31,46 +33,34 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
     }
 
     interface Callback {
-        fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>)
+        fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>)
     }
 
-    private var updatePosted = false
-    private val neighbours = HashMap<InetAddress, IpNeighbour>()
+    private val aggregator = GlobalScope.actor<PersistentMap<InetAddress, IpNeighbour>>(capacity = Channel.CONFLATED) {
+        for (value in channel) {
+            val neighbours = value.values
+            synchronized(callbacks) { for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours) }
+        }
+    }
+    private var neighbours = persistentMapOf<InetAddress, IpNeighbour>()
 
     override val monitoredObject: String get() = "neigh"
 
     override fun processLine(line: String) {
-        synchronized(neighbours) {
-            if (IpNeighbour.parse(line).map { neighbour ->
-                if (neighbour.state == IpNeighbour.State.DELETING)
-                    neighbours.remove(neighbour.ip) != null
-                else neighbours.put(neighbour.ip, neighbour) != neighbour
-            }.any { it }) postUpdateLocked()
+        val old = neighbours
+        for (neighbour in IpNeighbour.parse(line)) neighbours = when (neighbour.state) {
+            IpNeighbour.State.DELETING -> neighbours.remove(neighbour.ip)
+            else -> neighbours.put(neighbour.ip, neighbour)
         }
+        if (neighbours != old) aggregator.sendBlocking(neighbours)
     }
 
     override fun processLines(lines: Sequence<String>) {
-        synchronized(neighbours) {
-            neighbours.clear()
-            neighbours.putAll(lines
-                    .flatMap { IpNeighbour.parse(it).asSequence() }
-                    .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
-                    .associateBy { it.ip })
-            postUpdateLocked()
-        }
-    }
-
-    private fun postUpdateLocked() {
-        if (updatePosted || instance != this) return
-        GlobalScope.launch {
-            val neighbours = synchronized(neighbours) {
-                updatePosted = false
-                neighbours.values.toList()
-            }
-            synchronized(callbacks) {
-                for (callback in callbacks) callback.onIpNeighbourAvailable(neighbours)
-            }
-        }
-        updatePosted = true
+        neighbours = lines
+                .flatMap { IpNeighbour.parse(it).asSequence() }
+                .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
+                .associateByTo(persistentMapOf<InetAddress, IpNeighbour>().builder()) { it.ip }
+                .build()
+        aggregator.sendBlocking(neighbours)
     }
 }

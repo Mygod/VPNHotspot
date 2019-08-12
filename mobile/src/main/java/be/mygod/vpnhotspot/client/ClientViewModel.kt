@@ -27,7 +27,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     private var repeater: RepeaterService.Binder? = null
     private var p2p: Collection<WifiP2pDevice> = emptyList()
-    private var neighbours = emptyList<IpNeighbour>()
+    private var neighbours: Collection<IpNeighbour> = emptyList()
     val clients = MutableLiveData<List<Client>>()
 
     private fun populateClients() {
@@ -81,7 +81,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
         binder.groupChanged -= this
     }
 
-    override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) {
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         this.neighbours = neighbours
         populateClients()
     }

@@ -218,7 +218,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val clients = HashMap<InetAddress, Client>()
-    override fun onIpNeighbourAvailable(neighbours: List<IpNeighbour>) = synchronized(this) {
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) = synchronized(this) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address || runBlocking {
