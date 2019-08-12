@@ -66,7 +66,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         } else launch {
             val routingManager = routingManager
             if (routingManager == null) {
-                this@LocalOnlyHotspotService.routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
+                this@LocalOnlyHotspotService.routingManager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService,
+                        iface).apply { start() }
                 IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
             } else check(iface == routingManager.downstream)
         }
