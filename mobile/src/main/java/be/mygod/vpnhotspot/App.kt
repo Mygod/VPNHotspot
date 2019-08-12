@@ -20,6 +20,8 @@ import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.RootSession
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.*
 
@@ -62,7 +64,7 @@ class App : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) RootSession.trimMemory()
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) GlobalScope.launch { RootSession.trimMemory() }
     }
 
     lateinit var deviceStorage: Application

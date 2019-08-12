@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.util
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import androidx.annotation.WorkerThread
 import androidx.core.os.postDelayed
 import com.topjohnwu.superuser.Shell
 import timber.log.Timber
@@ -50,6 +51,7 @@ class RootSession : AutoCloseable {
             return instance.Transaction()
         }
 
+        @WorkerThread
         fun trimMemory() = monitor.withLock {
             val instance = instance ?: return
             instance.haltTimeout()
