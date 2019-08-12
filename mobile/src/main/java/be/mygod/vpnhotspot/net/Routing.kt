@@ -13,10 +13,12 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.IOException
-import java.net.*
+import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.NetworkInterface
+import java.net.SocketException
 
 /**
  * A transaction wrapper that helps set up routing environment.
@@ -221,9 +223,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) = synchronized(this) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
-            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address || runBlocking {
-                        AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr)
-                    }.blocked) continue
+            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
+                    AppDatabase.instance.clientRecordDao.lookupOrDefaultBlocking(neighbour.lladdr).blocked) continue
             toRemove.remove(neighbour.ip)
             try {
                 clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }

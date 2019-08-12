@@ -13,6 +13,10 @@ data class ClientRecord(@PrimaryKey
     @androidx.room.Dao
     abstract class Dao {
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
+        protected abstract fun lookupBlocking(mac: Long): ClientRecord?
+        fun lookupOrDefaultBlocking(mac: Long) = lookupBlocking(mac) ?: ClientRecord(mac)
+
+        @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
         protected abstract suspend fun lookup(mac: Long): ClientRecord?
         suspend fun lookupOrDefault(mac: Long) = lookup(mac) ?: ClientRecord(mac)
 
