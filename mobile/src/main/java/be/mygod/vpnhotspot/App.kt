@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
@@ -78,8 +79,14 @@ class App : Application() {
 
     val hasTouch by lazy { packageManager.hasSystemFeature("android.hardware.faketouch") }
     val customTabsIntent by lazy {
-        CustomTabsIntent.Builder()
-                .setToolbarColor(ContextCompat.getColor(this, R.color.colorPrimary))
-                .build()
+        CustomTabsIntent.Builder().apply {
+            setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
+            setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_LIGHT, CustomTabColorSchemeParams.Builder().apply {
+                setToolbarColor(ContextCompat.getColor(app, R.color.light_colorPrimary))
+            }.build())
+            setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK, CustomTabColorSchemeParams.Builder().apply {
+                setToolbarColor(ContextCompat.getColor(app, R.color.dark_colorPrimary))
+            }.build())
+        }.build()
     }
 }

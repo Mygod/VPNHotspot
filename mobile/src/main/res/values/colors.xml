@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#4CAF50</color>
+    <color name="light_colorPrimary">#4CAF50</color>
+    <color name="dark_colorPrimary">#2e7d32</color>
+
+    <color name="colorPrimary">@color/light_colorPrimary</color>
     <color name="colorPrimaryDark">#087f23</color>
     <color name="colorSecondary">#AEEA00</color>
     <color name="navigationBarColor">@android:color/black</color>
