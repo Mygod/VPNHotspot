@@ -3,6 +3,4 @@
     <color name="colorPrimary">@color/dark_colorPrimary</color>
     <color name="colorPrimaryDark">#005005</color>
     <color name="colorSecondary">#AEEA00</color>
-    <!-- This actually takes precedence over v27: https://developer.android.com/guide/topics/resources/providing-resources.html#BestMatch -->
-    <color name="navigationBarColor">@android:color/black</color>
 </resources>
