@@ -46,6 +46,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
          */
         val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
+        val IP6TABLES = if (Build.VERSION.SDK_INT >= 26) "ip6tables -w 1" else "ip6tables -w"
 
         fun clean() {
             TrafficRecorder.clean()
@@ -59,6 +60,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 it.execQuiet("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
                 it.execQuiet("$IPTABLES -t nat -F vpnhotspot_masquerade")
                 it.execQuiet("$IPTABLES -t nat -X vpnhotspot_masquerade")
+                it.execQuiet("while $IP6TABLES -D INPUT -j vpnhotspot_filter; do done")
+                it.execQuiet("while $IP6TABLES -D FORWARD -j vpnhotspot_filter; do done")
+                it.execQuiet("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
+                it.execQuiet("$IP6TABLES -F vpnhotspot_filter")
+                it.execQuiet("$IP6TABLES -X vpnhotspot_filter")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_DNS; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
@@ -79,6 +85,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 iptables("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
         private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
+        private fun RootSession.Transaction.ip6tablesInsert(content: String) =
+                iptables("$IP6TABLES -I $content", "$IP6TABLES -D $content")
 
         private fun RootSession.Transaction.ndc(name: String, command: String, revert: String? = null) {
             val result = execQuiet(command, revert)
@@ -260,13 +268,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
     }
 
-    /**
-     * Alternative approach: ndc interface ipv6 $downstream <enable|disable>
-     *
-     * This approach does the same (up until now) and is easier for parsing error output.
-     */
-    fun disableIpv6() = transaction.exec("echo 1 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6",
-            "echo 0 >/proc/sys/net/ipv6/conf/$downstream/disable_ipv6")
+    fun disableIpv6() {
+        transaction.execQuiet("$IP6TABLES -N vpnhotspot_filter")
+        transaction.ip6tablesInsert("INPUT -j vpnhotspot_filter")
+        transaction.ip6tablesInsert("FORWARD -j vpnhotspot_filter")
+        transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_filter")
+        transaction.ip6tablesInsert("vpnhotspot_filter -i $downstream -j REJECT")
+        transaction.ip6tablesInsert("vpnhotspot_filter -o $downstream -j REJECT")
+    }
 
     fun forward() {
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")

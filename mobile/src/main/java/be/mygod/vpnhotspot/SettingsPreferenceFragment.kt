@@ -112,6 +112,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                             File(app.deviceStorage.cacheDir, "iptables-save").absolutePath.also {
                                 commands.appendln("ln -sf /system/bin/iptables $it")
                             }
+                        val ip6tablesSave = if (Build.VERSION.SDK_INT >= 24) "ip6tables-save" else
+                            File(app.deviceStorage.cacheDir, "ip6tables-save").absolutePath.also {
+                                commands.appendln("ln -sf /system/bin/ip6tables $it")
+                            }
                         commands.append("""
                             |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                             |dumpsys ${Context.WIFI_P2P_SERVICE}
@@ -124,6 +128,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                             |echo
                             |echo iptables -t nat
                             |$iptablesSave -t nat
+                            |echo
+                            |echo ip6tables-save
+                            |$ip6tablesSave
                             |echo
                             |echo ip rule
                             |ip rule
