@@ -272,7 +272,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
-        transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j DROP")   // ensure blocking works
+        transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
         // the real forwarding filters will be added in Subrouting when clients are connected
     }
 
