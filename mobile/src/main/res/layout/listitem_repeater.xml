@@ -24,6 +24,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
+                android:importantForAccessibility="no"
                 android:src="@drawable/ic_action_settings_input_antenna"
                 android:tint="?android:attr/textColorPrimary"/>
 
@@ -84,6 +85,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
+                android:importantForAccessibility="no"
                 android:src="@drawable/ic_wps"
                 android:tint="?android:attr/textColorPrimary"/>
 
