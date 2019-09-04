@@ -39,7 +39,8 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 ### Upstream
 
-* Upstream network interface: Main upstream used to reroute traffic. Leave blank for auto detect system VPN.
+* Upstream network interface: Main upstream used to reroute traffic.
+  Leave blank for auto detect system VPN (allow/do not bypass this app to use VPN for it to work).
   Put `none` (or other similarly invalid entries) to suppress tethering VPN.
   Put your interface name for tethering WireGuard.
 * Fallback upstream:
