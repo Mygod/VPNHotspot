@@ -175,11 +175,11 @@ DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:
 
-* (since API 24) `iptables-save`;
+* (since API 24) `iptables-save`, `ip6tables-save`;
 * `echo`;
 * `ip` (`link monitor neigh rule`);
 * `ndc` (`ipfwd` since API 23, `nat` since API 28);
-* `iptables` (with correct version corresponding to API level, `-nvx -L <chain>`);
+* `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
 * `su`.
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
