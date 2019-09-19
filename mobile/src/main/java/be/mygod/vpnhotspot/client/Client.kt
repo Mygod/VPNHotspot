@@ -59,7 +59,7 @@ open class Client(val mac: Long, val iface: String) {
                     IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
                     IpNeighbour.State.VALID -> R.string.connected_state_valid
                     IpNeighbour.State.FAILED -> R.string.connected_state_failed
-                    else -> throw IllegalStateException("Invalid IpNeighbour.State: $state")
+                    else -> error("Invalid IpNeighbour.State: $state")
                 }))
             }
         }.trimEnd()

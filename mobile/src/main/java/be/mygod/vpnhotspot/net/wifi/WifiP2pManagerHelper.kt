@@ -7,7 +7,6 @@ import android.net.wifi.p2p.WifiP2pManager
 import be.mygod.vpnhotspot.DebugHelper
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
-import java.lang.IllegalArgumentException
 import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
@@ -30,7 +29,7 @@ object WifiP2pManagerHelper {
                                           listener: WifiP2pManager.ActionListener) {
         try {
             setWifiP2pChannels.invoke(this, c, lc, oc, listener)
-        } catch (e: NoSuchMethodException) {
+        } catch (_: NoSuchMethodException) {
             DebugHelper.logEvent("NoSuchMethod_setWifiP2pChannels")
             listener.onFailure(UNSUPPORTED)
         }
@@ -46,7 +45,7 @@ object WifiP2pManagerHelper {
         try {
             WifiP2pManager::class.java.getDeclaredMethod("startWps",
                     WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
-        } catch (e: NoSuchMethodException) {
+        } catch (_: NoSuchMethodException) {
             DebugHelper.logEvent("NoSuchMethod_startWps")
             null
         }
@@ -69,7 +68,7 @@ object WifiP2pManagerHelper {
                                              listener: WifiP2pManager.ActionListener) {
         try {
             deletePersistentGroup.invoke(this, c, netId, listener)
-        } catch (e: NoSuchMethodException) {
+        } catch (_: NoSuchMethodException) {
             DebugHelper.logEvent("NoSuchMethod_deletePersistentGroup")
             listener.onFailure(UNSUPPORTED)
         }

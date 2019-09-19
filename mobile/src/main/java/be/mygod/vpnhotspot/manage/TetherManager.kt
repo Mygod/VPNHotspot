@@ -27,7 +27,7 @@ import java.lang.reflect.InvocationTargetException
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         TetheringManager.OnStartTetheringCallback {
-    class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
+    class ViewHolder(private val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
             itemView.updatePaddingRelative(start = itemView.resources.getDimensionPixelOffset(

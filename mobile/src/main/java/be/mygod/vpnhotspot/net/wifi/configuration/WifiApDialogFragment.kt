@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net.wifi.configuration
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.DialogInterface
@@ -90,6 +91,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
         val activity = requireActivity()
+        @SuppressLint("InflateParams")
         dialogView = activity.layoutInflater.inflate(R.layout.dialog_wifi_ap, null)
         setView(dialogView)
         if (!arg.readOnly) setPositiveButton(R.string.wifi_save, listener)
@@ -103,8 +105,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: AdapterView<*>?) =
-                        throw IllegalStateException("Must select something")
+                override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     dialogView.password_wrapper.isGone = position == WifiConfiguration.KeyMgmt.NONE
                 }

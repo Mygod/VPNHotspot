@@ -13,7 +13,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.intentFilter
 import timber.log.Timber
-import java.lang.IllegalArgumentException
 
 @RequiresApi(28)
 class TetherTimeoutMonitor(private val context: Context, private val handler: Handler,

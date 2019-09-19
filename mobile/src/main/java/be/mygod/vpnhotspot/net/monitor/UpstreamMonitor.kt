@@ -5,7 +5,6 @@ import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import java.lang.UnsupportedOperationException
 import java.net.InetAddress
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap

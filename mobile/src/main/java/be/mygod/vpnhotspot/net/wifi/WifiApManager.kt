@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.wifi
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import be.mygod.vpnhotspot.App.Companion.app
-import java.lang.IllegalArgumentException
 
 object WifiApManager {
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
@@ -13,8 +12,8 @@ object WifiApManager {
     var configuration: WifiConfiguration
         get() = getWifiApConfiguration.invoke(app.wifi) as? WifiConfiguration ?: WifiConfiguration()
         set(value) {
-            if (setWifiApConfiguration.invoke(app.wifi, value) as? Boolean != true) {
-                throw IllegalArgumentException("setWifiApConfiguration failed")
+            require(setWifiApConfiguration.invoke(app.wifi, value) as? Boolean == true) {
+                "setWifiApConfiguration failed"
             }
         }
 

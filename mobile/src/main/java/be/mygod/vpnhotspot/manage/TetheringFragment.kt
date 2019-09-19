@@ -35,7 +35,6 @@ import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.lang.IllegalArgumentException
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -195,6 +194,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             CONFIGURE_AP -> if (resultCode == DialogInterface.BUTTON_POSITIVE) try {
                 WifiApManager.configuration = configuration
             } catch (e: IllegalArgumentException) {
+                Timber.d(e)
                 SmartSnackbar.make(R.string.configuration_rejected).show()
             } catch (e: InvocationTargetException) {
                 SmartSnackbar.make(e.targetException).show()

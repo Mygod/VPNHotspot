@@ -7,7 +7,6 @@ import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.RootSession
 import java.io.File
-import java.lang.IllegalStateException
 
 /**
  * This parser is based on:
