@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -117,7 +118,7 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
 
     private fun unregisterReceiver() {
         if (receiverRegistered) {
-            unregisterReceiver(receiver)
+            ensureReceiverUnregistered(receiver)
             IpNeighbourMonitor.unregisterCallback(this)
             receiverRegistered = false
         }

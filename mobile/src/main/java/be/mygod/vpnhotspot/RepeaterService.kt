@@ -401,7 +401,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
     private fun cleanLocked() {
         if (receiverRegistered) {
-            unregisterReceiver(receiver)
+            ensureReceiverUnregistered(receiver)
             receiverRegistered = false
         }
         if (Build.VERSION.SDK_INT >= 28) {

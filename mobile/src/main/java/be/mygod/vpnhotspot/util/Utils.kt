@@ -35,6 +35,12 @@ fun Long.toPluralInt(): Int {
     return (this % 1000000000).toInt() + 1000000000
 }
 
+fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
+    try {
+        unregisterReceiver(receiver)
+    } catch (_: IllegalArgumentException) { }
+}
+
 @SuppressLint("Recycle")
 fun <T> useParcel(block: (Parcel) -> T) = Parcel.obtain().run {
     try {
