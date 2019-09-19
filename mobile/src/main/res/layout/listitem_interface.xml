@@ -57,7 +57,6 @@
             android:checked="@{data.active}"
             android:clickable="false"
             android:ellipsize="end"
-            android:enabled="@{data.enabled}"
             android:focusable="false"
             android:focusableInTouchMode="false"
             android:gravity="center_vertical"/>
