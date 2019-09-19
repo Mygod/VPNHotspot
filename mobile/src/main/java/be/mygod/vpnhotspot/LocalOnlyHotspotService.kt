@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.res.Configuration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
@@ -84,9 +83,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         if (binder.iface != null) return START_STICKY
         binder.iface = ""
         updateNotification()    // show invisible foreground notification to avoid being killed
-        // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
-        // have an outstanding request.
-        // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
         try {
             app.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
@@ -116,25 +112,21 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                         }
                         else -> getString(R.string.failure_reason_unknown, reason)
                     })).show()
-                    startFailure()
+                    stopService()
                 }
             }, null)
         } catch (e: IllegalStateException) {
-            Timber.w(e)
+            // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
+            // have an outstanding request.
+            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
+            WifiApManager.cancelLocalOnlyHotspotRequest()
             SmartSnackbar.make(e).show()
-            startFailure()
+            stopService()
         } catch (e: SecurityException) {
             SmartSnackbar.make(e).show()
-            startFailure()
+            stopService()
         }
         return START_STICKY
-    }
-
-    private fun startFailure() {
-        binder.iface = null
-        updateNotification()
-        ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
-        stopSelf()
     }
 
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
