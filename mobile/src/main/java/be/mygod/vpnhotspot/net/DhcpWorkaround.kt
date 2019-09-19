@@ -28,21 +28,23 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
     val shouldEnable get() = app.pref.getBoolean(KEY_ENABLED, false)
     fun enable(enabled: Boolean) = GlobalScope.launch {
         val action = if (enabled) "add" else "del"
-        RootSession.use {
-            try {
-                it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
-            } catch (e: RootSession.UnexpectedOutputException) {
-                if (e.result.out.isEmpty() && (e.result.code == 2 || e.result.code == 254) && if (enabled) {
-                            e.result.err.joinToString("\n") == "RTNETLINK answers: File exists"
-                        } else {
-                            e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
-                        }) return@use
-                Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
-                SmartSnackbar.make(e).show()
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
+        try {
+            RootSession.use {
+                try {
+                    it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
+                } catch (e: RootSession.UnexpectedOutputException) {
+                    if (e.result.out.isEmpty() && (e.result.code == 2 || e.result.code == 254) && if (enabled) {
+                                e.result.err.joinToString("\n") == "RTNETLINK answers: File exists"
+                            } else {
+                                e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
+                            }) return@use
+                    Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
+                    SmartSnackbar.make(e).show()
+                }
             }
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
         }
     }
 
