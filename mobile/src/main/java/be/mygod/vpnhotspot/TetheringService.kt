@@ -108,8 +108,8 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
 
     override fun onDestroy() {
         launch {
-            downstreams.values.forEach { it.destroy() } // force clean to prevent leakage
             unregisterReceiver()
+            downstreams.values.forEach { it.destroy() } // force clean to prevent leakage
             cancel()
             dispatcher.close()
         }
