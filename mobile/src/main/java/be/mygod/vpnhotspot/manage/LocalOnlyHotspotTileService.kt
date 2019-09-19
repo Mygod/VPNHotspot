@@ -31,10 +31,10 @@ class LocalOnlyHotspotTileService : KillableTileService() {
 
     override fun onClick() {
         val binder = binder
-        if (binder == null) tapPending = true
-        else when (binder.iface) {
-            null -> ContextCompat.startForegroundService(this, Intent(this, LocalOnlyHotspotService::class.java))
-            "" -> { }   // STARTING, ignored
+        when {
+            binder == null -> tapPending = true
+            binder.iface == null -> ContextCompat.startForegroundService(this,
+                    Intent(this, LocalOnlyHotspotService::class.java))
             else -> binder.stop()
         }
     }
@@ -44,19 +44,12 @@ class LocalOnlyHotspotTileService : KillableTileService() {
         service.ifaceChanged[this] = {
             qsTile?.run {
                 icon = tile
-                when (it) {
-                    null -> {
-                        state = Tile.STATE_INACTIVE
-                        label = getText(R.string.tethering_temp_hotspot)
-                    }
-                    "" -> {
-                        state = Tile.STATE_UNAVAILABLE
-                        label = getText(R.string.tethering_temp_hotspot)
-                    }
-                    else -> {
-                        state = Tile.STATE_ACTIVE
-                        label = service.configuration?.SSID ?: getText(R.string.tethering_temp_hotspot)
-                    }
+                if (it.isNullOrEmpty()) {
+                    state = Tile.STATE_INACTIVE
+                    label = getText(R.string.tethering_temp_hotspot)
+                } else {
+                    state = Tile.STATE_ACTIVE
+                    label = service.configuration?.SSID ?: getText(R.string.tethering_temp_hotspot)
                 }
                 updateTile()
             }

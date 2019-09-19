@@ -13,6 +13,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -38,7 +39,17 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
 
         val configuration get() = reservation?.wifiConfiguration
 
-        fun stop() = reservation?.close()
+        fun stop() = when (iface) {
+            null -> { } // stopped
+            "" -> {
+                WifiApManager.cancelLocalOnlyHotspotRequest()
+                reservation?.close()
+                updateNotification()
+                stopService()
+                iface = null
+            }
+            else -> reservation!!.close()
+        }
     }
 
     private val binder = Binder()
@@ -59,11 +70,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
         binder.iface = iface
-        if (iface.isNullOrEmpty()) {
-            unregisterReceiver()
-            ServiceNotification.stopForeground(this)
-            stopSelf()
-        } else launch {
+        if (iface.isNullOrEmpty()) stopService() else launch {
             val routingManager = routingManager
             if (routingManager == null) {
                 this@LocalOnlyHotspotService.routingManager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService,
@@ -72,7 +79,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             } else check(iface == routingManager.downstream)
         }
     }
-    override val activeIfaces get() = listOfNotNull(binder.iface)
+    override val activeIfaces get() = binder.iface.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
     override fun onBind(intent: Intent?) = binder
 
@@ -80,7 +87,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         if (binder.iface != null) return START_STICKY
         binder.iface = ""
         // show invisible foreground notification on television to avoid being killed
-        if (app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) updateNotification()
+        // or for bug with airplane mode on API 28-: https://issuetracker.google.com/issues/128350148
+        if (app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+                Build.VERSION.SDK_INT < 29) updateNotification()
         // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
         // have an outstanding request.
         // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
@@ -145,6 +154,12 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         binder.stop()
         unregisterReceiver(true)
         super.onDestroy()
+    }
+
+    private fun stopService() {
+        unregisterReceiver()
+        ServiceNotification.stopForeground(this)
+        stopSelf()
     }
 
     private fun unregisterReceiver(exit: Boolean = false) {

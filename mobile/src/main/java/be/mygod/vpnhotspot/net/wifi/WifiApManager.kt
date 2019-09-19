@@ -17,6 +17,11 @@ object WifiApManager {
             }
         }
 
+    private val cancelLocalOnlyHotspotRequest by lazy {
+        WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
+    }
+    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest.invoke(app.wifi)
+
     private val setWifiApEnabled by lazy {
         WifiManager::class.java.getDeclaredMethod("setWifiApEnabled",
                 WifiConfiguration::class.java, Boolean::class.java)

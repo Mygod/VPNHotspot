@@ -138,6 +138,7 @@ Non-public API list:
 * (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123410)
 * (since API 23) [`Landroid/net/wifi/WifiConfiguration;->apBand:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#131529)
 * (since API 23) [`Landroid/net/wifi/WifiConfiguration;->apChannel:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#131530)
+* (since API 26) [`Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132250)
 * [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132289)
 * [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132358)
 * (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`

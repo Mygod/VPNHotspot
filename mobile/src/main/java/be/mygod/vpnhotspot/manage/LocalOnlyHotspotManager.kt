@@ -79,7 +79,6 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
             return lookup[binder?.iface ?: return ""]?.formatAddresses() ?: ""
         }
         override val active get() = binder?.iface != null
-        override val enabled get() = binder?.iface != ""
         override val selectable get() = active
     }
 
