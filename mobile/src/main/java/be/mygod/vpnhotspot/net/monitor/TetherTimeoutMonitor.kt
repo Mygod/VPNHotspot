@@ -11,6 +11,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import be.mygod.vpnhotspot.util.intentFilter
 import timber.log.Timber
 
@@ -69,7 +70,7 @@ class TetherTimeoutMonitor(private val context: Context, private val handler: Ha
     }
 
     override fun close() {
-        context.unregisterReceiver(receiver)
+        context.ensureReceiverUnregistered(receiver)
         context.contentResolver.unregisterContentObserver(this)
     }
 
