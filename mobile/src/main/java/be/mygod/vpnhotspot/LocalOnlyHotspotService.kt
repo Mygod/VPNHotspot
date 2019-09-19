@@ -43,10 +43,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             null -> { } // stopped
             "" -> {
                 WifiApManager.cancelLocalOnlyHotspotRequest()
-                reservation?.close()
-                updateNotification()
-                stopService()
-                iface = null
+                reservation?.close() ?: stopService()
             }
             else -> reservation!!.close()
         }
@@ -86,10 +83,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (binder.iface != null) return START_STICKY
         binder.iface = ""
-        // show invisible foreground notification on television to avoid being killed
-        // or for bug with airplane mode on API 28-: https://issuetracker.google.com/issues/128350148
-        if (app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
-                Build.VERSION.SDK_INT < 29) updateNotification()
+        updateNotification()    // show invisible foreground notification to avoid being killed
         // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
         // have an outstanding request.
         // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
@@ -157,6 +151,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     private fun stopService() {
+        binder.iface = null
         unregisterReceiver()
         ServiceNotification.stopForeground(this)
         stopSelf()
