@@ -51,11 +51,13 @@ object ServiceNotification {
     }
 
     fun startForeground(service: Service, deviceCounts: Map<String, Int>, inactive: List<String> = emptyList()) {
-        deviceCountsMap[service] = deviceCounts
-        if (inactive.isEmpty()) inactiveMap.remove(service) else inactiveMap[service] = inactive
-        service.startForeground(CHANNEL_ID, buildNotification(service))
+        synchronized(this) {
+            deviceCountsMap[service] = deviceCounts
+            if (inactive.isEmpty()) inactiveMap.remove(service) else inactiveMap[service] = inactive
+            service.startForeground(CHANNEL_ID, buildNotification(service))
+        }
     }
-    fun stopForeground(service: Service) {
+    fun stopForeground(service: Service) = synchronized(this) {
         deviceCountsMap.remove(service)
         if (deviceCountsMap.isEmpty()) service.stopForeground(true) else {
             service.stopForeground(false)
