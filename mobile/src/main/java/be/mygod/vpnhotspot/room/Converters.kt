@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.room
 import android.text.TextUtils
 import androidx.room.TypeConverter
 import be.mygod.vpnhotspot.util.useParcel
+import timber.log.Timber
 import java.net.InetAddress
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -20,7 +21,12 @@ object Converters {
     fun unpersistCharSequence(data: ByteArray) = useParcel { p ->
         p.unmarshall(data, 0, data.size)
         p.setDataPosition(0)
-        TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
+        try {
+            TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
+        } catch (e: RuntimeException) {
+            Timber.w(e)
+            ""
+        }
     }
 
     @JvmStatic
