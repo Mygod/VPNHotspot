@@ -7,7 +7,6 @@ import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.KillableTileService
@@ -33,8 +32,7 @@ class LocalOnlyHotspotTileService : KillableTileService() {
         val binder = binder
         when {
             binder == null -> tapPending = true
-            binder.iface == null -> ContextCompat.startForegroundService(this,
-                    Intent(this, LocalOnlyHotspotService::class.java))
+            binder.iface == null -> startForegroundService(Intent(this, LocalOnlyHotspotService::class.java))
             else -> binder.stop()
         }
     }
