@@ -73,13 +73,16 @@
 
         <service
             android:name=".LocalOnlyHotspotService"
-            android:directBootAware="true"/>
+            android:directBootAware="true"
+            android:foregroundServiceType="location|connectedDevice"/>
         <service
             android:name=".RepeaterService"
-            android:directBootAware="true"/>
+            android:directBootAware="true"
+            android:foregroundServiceType="location|connectedDevice"/>
         <service
             android:name=".TetheringService"
-            android:directBootAware="true"/>
+            android:directBootAware="true"
+            android:foregroundServiceType="connectedDevice"/>
 
         <service
             android:name=".manage.RepeaterTileService"
