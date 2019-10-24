@@ -37,13 +37,12 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
 
         val configuration get() = reservation?.wifiConfiguration
 
-        fun stop() = when (iface) {
-            null -> { } // stopped
-            "" -> {
-                WifiApManager.cancelLocalOnlyHotspotRequest()
-                reservation?.close() ?: stopService()
+        fun stop() {
+            when (iface) {
+                null -> return  // stopped
+                "" -> WifiApManager.cancelLocalOnlyHotspotRequest()
             }
-            else -> reservation!!.close()
+            reservation?.close() ?: stopService()
         }
     }
 
