@@ -87,7 +87,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     val context = parent.requireContext()
                     if (Build.VERSION.SDK_INT >= 29 && context.checkSelfPermission(
                                     Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                        parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+                        parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_BACKGROUND_LOCATION),
                                 TetheringFragment.START_REPEATER)
                         return
                     }
