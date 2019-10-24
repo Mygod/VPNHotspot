@@ -115,7 +115,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val hostAddress = try {
         val addresses = NetworkInterface.getByName(downstream)!!.interfaceAddresses!!
                 .filter { it.address is Inet4Address }
-        if (addresses.size > 1) Timber.w(IllegalArgumentException("More than one addresses was found: $addresses"))
+        if (addresses.size > 1) error("More than one addresses was found: $addresses")
         addresses.first()
     } catch (e: Exception) {
         throw InterfaceNotFoundException(e)
