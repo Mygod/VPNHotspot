@@ -36,7 +36,7 @@ class RepeaterTileService : KillableTileService() {
         if (binder == null) tapPending = true else when (binder.service.status) {
             RepeaterService.Status.ACTIVE -> binder.shutdown()
             RepeaterService.Status.IDLE -> ContextCompat.startForegroundService(this,
-                    Intent(this, RepeaterService::class.java).putExtra(RepeaterService.EXTRA_POSSIBLY_BACKGROUND, true))
+                    Intent(this, RepeaterService::class.java))
             else -> { }
         }
     }

@@ -46,8 +46,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
          */
         private const val PLACEHOLDER_NETWORK_NAME = "DIRECT-00-VPNHotspot"
 
-        const val EXTRA_POSSIBLY_BACKGROUND = "possiblyBackground"
-
         /**
          * This is only a "ServiceConnection" to system service and its impact on system is minimal.
          */
@@ -256,10 +254,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (status != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         status = Status.STARTING
-        // show invisible foreground notification on television to avoid being killed
-        if (Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
-                // or bump self to foreground location service to use foreground location permission
-                Build.VERSION.SDK_INT >= 29 && intent?.getBooleanExtra(EXTRA_POSSIBLY_BACKGROUND, false) == true) {
+        // bump self to foreground location service to use foreground location permission later
+        if (Build.VERSION.SDK_INT >= 29 ||
+                // or show invisible foreground notification on television to avoid being killed
+                Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
             showNotification()
         }
         launch {
