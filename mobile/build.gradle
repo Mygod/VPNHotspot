@@ -28,8 +28,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 29
         resConfigs "ru", "zh-rCN"
-        versionCode 215
-        versionName '2.6.2'
+        versionCode 216
+        versionName '2.6.3'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments = [
                 "room.incremental": "true",
