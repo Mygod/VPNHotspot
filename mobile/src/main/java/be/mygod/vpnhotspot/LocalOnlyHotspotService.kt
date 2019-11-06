@@ -158,7 +158,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             receiverRegistered = false
         }
         launch {
-            routingManager?.destroy()
+            routingManager?.stop()
             routingManager = null
             if (exit) {
                 cancel()

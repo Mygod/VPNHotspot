@@ -55,9 +55,6 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     val started get() = active[downstream] === this
     private var routing: Routing? = null
-    init {
-        if (isWifi) WifiDoubleLock.acquire(this)
-    }
 
     fun start() = when (val other = active.putIfAbsentCompat(downstream, this)) {
         null -> initRouting()
@@ -66,6 +63,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     }
 
     private fun initRouting() = try {
+        if (isWifi) WifiDoubleLock.acquire(this)
         routing = Routing(caller, downstream).apply {
             try {
                 configure()
@@ -85,11 +83,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     protected abstract fun Routing.configure()
 
     fun stop() {
-        if (active.removeCompat(downstream, this)) routing?.revert()
-    }
-
-    fun destroy() {
-        if (isWifi) WifiDoubleLock.release(this)
-        stop()
+        if (active.removeCompat(downstream, this)) {
+            if (isWifi) WifiDoubleLock.release(this)
+            routing?.revert()
+        }
     }
 }

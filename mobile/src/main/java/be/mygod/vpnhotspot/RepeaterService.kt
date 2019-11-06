@@ -410,7 +410,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             timeoutMonitor?.close()
             timeoutMonitor = null
         }
-        routingManager?.destroy()
+        routingManager?.stop()
         routingManager = null
         status = Status.IDLE
         ServiceNotification.stopForeground(this)

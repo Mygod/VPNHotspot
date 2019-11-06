@@ -56,7 +56,8 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
                 if (downstream.monitor) downstream.start()
             }
             for ((iface, downstream) in toRemove) {
-                if (downstream.monitor) downstream.stop() else downstreams.remove(iface)?.destroy()
+                downstream.stop()
+                if (!downstream.monitor) check(downstreams.remove(iface, downstream))
             }
             onDownstreamsChangedLocked()
         }
@@ -87,7 +88,7 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
                     if (downstreams[iface] == null) Downstream(this@TetheringService, iface).apply {
-                        if (start()) check(downstreams.put(iface, this) == null) else destroy()
+                        if (start()) check(downstreams.put(iface, this) == null) else stop()
                     }
                 }
                 intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.also { iface ->
@@ -98,7 +99,7 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
                         downstreams[iface] = this
                     } else downstream.monitor = true
                 }
-                intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.destroy() }
+                intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
                 updateNotification()    // call this first just in case we are shutting down immediately
                 onDownstreamsChangedLocked()
             } else if (downstreams.isEmpty()) stopSelf(startId)
@@ -109,7 +110,7 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     override fun onDestroy() {
         launch {
             unregisterReceiver()
-            downstreams.values.forEach { it.destroy() } // force clean to prevent leakage
+            downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             cancel()
             dispatcher.close()
         }
