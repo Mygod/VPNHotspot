@@ -11,7 +11,7 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 def javaVersion = JavaVersion.VERSION_1_8
 def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
-        'com.google.firebase:firebase-analytics:17.2.0',
+        'com.google.firebase:firebase-analytics:17.2.1',
 ]
 def lifecycleVersion = '2.2.0-rc01'
 def roomVersion = '2.2.1'
