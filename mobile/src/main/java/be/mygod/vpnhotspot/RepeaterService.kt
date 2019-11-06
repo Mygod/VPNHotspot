@@ -322,8 +322,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     val long = p.readLong()
                     check(p.readString() == PLACEHOLDER_NETWORK_NAME)
                     check(p.readString() == passphrase)
-                    val int = p.readInt()
-                    check(p.dataPosition() == end)
+                    val extrasLength = end - p.dataPosition()
+                    check(extrasLength and 3 == 0)  // parcel should be padded
+                    if (extrasLength != 4) Timber.w(Exception("Unexpected extrasLength $extrasLength"))
+                    val extras = (0 until extrasLength / 4).map { p.readInt() }
                     p.setDataPosition(0)
                     p.writeString(creator)
                     p.writeString(deviceAddress)
@@ -331,7 +333,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     p.writeLong(long)
                     p.writeString(networkName)
                     p.writeString(passphrase)
-                    p.writeInt(int)
+                    extras.forEach(p::writeInt)
                     p.setDataPosition(0)
                     p.readParcelable<WifiP2pConfig>(javaClass.classLoader)
                 }
