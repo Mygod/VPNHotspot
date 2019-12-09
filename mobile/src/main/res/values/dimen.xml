@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <dimen name="listitem_manage_tether_padding_start">56dp</dimen>
-    <dimen name="qr_code_size">250dp</dimen>
+    <dimen name="qrcode_size">264dp</dimen>
 </resources>
