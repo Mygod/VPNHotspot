@@ -12,7 +12,7 @@
           android:title="@android:string/paste"
           app:showAsAction="ifRoom"/>
     <item android:id="@+id/share_qr"
-          android:icon="@drawable/ic_social_share"
+          android:icon="@drawable/ic_settings_qrcode"
           android:title="@string/configuration_share"
           app:showAsAction="ifRoom"/>
 </menu>
