@@ -6,6 +6,10 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
+/**
+ * WPA2 pre-shared key for use with soft access point
+ * (requires {@code preSharedKey} to be specified).
+ */
 val WPA2_PSK = WifiConfiguration.KeyMgmt.strings.indexOf("WPA2_PSK")
 
 /**
@@ -80,21 +84,26 @@ val WifiConfiguration.apKeyManagement get() = allowedKeyManagement.nextSetBit(0)
 private val qrSanitizer = Regex("([\\\\\":;,])")
 /**
  * Documentation: https://github.com/zxing/zxing/wiki/Barcode-Contents#wi-fi-network-config-android-ios-11
+ * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/4a5ff58/src/com/android/settings/wifi/dpp/WifiNetworkConfig.java#161
  */
 fun WifiConfiguration.toQRString() = StringBuilder("WIFI:").apply {
     fun String.sanitize() = qrSanitizer.replace(this) { "\\${it.groupValues[1]}" }
-    var password = true
+    var password: String? = preSharedKey
     when (apKeyManagement) {
-        WifiConfiguration.KeyMgmt.NONE -> password = false
+        WifiConfiguration.KeyMgmt.NONE -> if (wepKeys != null) {
+            password = wepKeys[0]
+            append("T:WEP;")
+        }
         WifiConfiguration.KeyMgmt.WPA_PSK, WifiConfiguration.KeyMgmt.WPA_EAP, WPA2_PSK -> append("T:WPA;")
+        WifiConfiguration.KeyMgmt.SAE -> append("T:SAE;")
         else -> throw IllegalArgumentException("Unsupported authentication type")
     }
     append("S:")
     append(SSID.sanitize())
     append(';')
-    if (password && preSharedKey != null) {
+    if (password != null) {
         append("P:")
-        append(preSharedKey.sanitize())
+        append(password.sanitize())
         append(';')
     }
     if (hiddenSSID) append("H:true;")
