@@ -169,7 +169,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
-            EBegFragment().show(fragmentManager ?: return@setOnPreferenceClickListener false, "EBegFragment")
+            EBegFragment().show(parentFragmentManager, "EBegFragment")
             true
         }
     }
@@ -193,7 +193,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         emptyArray<String>()
                     })
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
-                }.show(fragmentManager ?: return, preference.key)
+                }.show(parentFragmentManager, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)
         }
     }
