@@ -162,5 +162,5 @@
     <string name="donations__google_android_market_description">Google addebita una commissione del 30%</string>
     <string name="donations__google_android_market_donate_button">Dona!</string>
     <string name="donations__google_android_market_text">Quanto?</string>
-    <string name="donations__thanks_dialog">Grazie per la vostra donazione!\nLo apprezzo molto!</string>
+    <string name="donations__thanks_dialog">Grazie per la tua donazione!\nLo apprezzo molto!</string>
 </resources>
