@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
  Values copied from:
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/5697a7e/res/values/strings.xml
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/78d50e9/res/values-it/strings.xml
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
@@ -155,13 +154,13 @@
     <string name="wifi_ap_choose_5G">Banda 5.0 GHz</string>
     <string name="wifi_save">Salva</string>
 
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
+    <!-- Based on: https://github.com/SufficientlySecure/donations/blob/de39986/Donations/src/main/res/values-it/donations__strings.xml -->
     <string name="donations__button_close">Chiudi</string>
-    <string name="donations__description">Trovi questa applicazione utile?\nSupporta il suo sviluppo facendo una donazione allo sviluppatore!</string>
+    <string name="donations__description">Trovi che questa applicazione sia utile?\nSupportane lo sviluppo inviando una donazione al suo sviluppatore!</string>
     <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">Le donazioni In-App non sono supportate. Google Play Store è installato correttamente?</string>
+    <string name="donations__google_android_market_not_supported">Donazioni In-App non supportate. Google Play Store è installato correttamente?</string>
     <string name="donations__google_android_market_description">Google addebita una commissione del 30%</string>
     <string name="donations__google_android_market_donate_button">Dona!</string>
     <string name="donations__google_android_market_text">Quanto?</string>
-    <string name="donations__thanks_dialog">Grazie per la donazione!\nLo apprezzo veramente!</string>
+    <string name="donations__thanks_dialog">Grazie per la vostra donazione!\nLo apprezzo molto!</string>
 </resources>
