@@ -14,7 +14,7 @@ def aux = [
         'com.google.firebase:firebase-analytics:17.2.1',
 ]
 def lifecycleVersion = '2.2.0-rc03'
-def roomVersion = '2.2.2'
+def roomVersion = '2.2.3'
 
 android {
     compileSdkVersion 29
@@ -75,7 +75,7 @@ androidExtensions {
 dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'androidx.browser:browser:1.2.0-rc01'
+    implementation 'androidx.browser:browser:1.2.0'
     implementation 'androidx.core:core-ktx:1.1.0'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
@@ -88,7 +88,7 @@ dependencies {
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.0.0'
     implementation 'com.android.billingclient:billing-ktx:2.1.0'
     implementation 'com.github.topjohnwu.libsu:core:2.5.1'
-    implementation 'com.google.android.material:material:1.1.0-beta02'
+    implementation 'com.google.android.material:material:1.1.0-rc01'
     implementation 'com.google.zxing:core:3.4.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.1'
@@ -100,7 +100,7 @@ dependencies {
         freedomImplementation dep
         googleImplementation dep
     }
-    testImplementation 'junit:junit:4.12'
+    testImplementation 'junit:junit:4.13'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
     androidTestImplementation 'androidx.test:runner:1.2.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
