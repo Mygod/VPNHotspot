@@ -42,7 +42,7 @@ abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable> :
 
     fun show(target: Fragment, requestCode: Int = 0, tag: String = javaClass.simpleName) {
         setTargetFragment(target, requestCode)
-        show(target.fragmentManager ?: return, tag)
+        show(target.parentFragmentManager, tag)
     }
 }
 

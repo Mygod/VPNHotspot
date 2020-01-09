@@ -199,7 +199,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     SmartSnackbar.make(e).show()
                     return false
                 }
-                QRCodeDialog().withArg(qrString).show(fragmentManager ?: return false, "QRCodeDialog")
+                QRCodeDialog().withArg(qrString).show(parentFragmentManager, "QRCodeDialog")
                 true
             }
             else -> false
