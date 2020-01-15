@@ -56,8 +56,8 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
                 if (downstream.monitor) downstream.start()
             }
             for ((iface, downstream) in toRemove) {
-                downstream.stop()
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
+                downstream.stop()
             }
             onDownstreamsChangedLocked()
         }
