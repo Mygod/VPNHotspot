@@ -11,7 +11,7 @@ if (!getGradle().getStartParameter().getTaskRequests().toString().contains("Fdro
 def javaVersion = JavaVersion.VERSION_1_8
 def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
-        'com.google.firebase:firebase-analytics:17.2.1',
+        'com.google.firebase:firebase-analytics:17.2.2',
 ]
 def lifecycleVersion = '2.2.0-rc03'
 def roomVersion = '2.2.3'
@@ -19,6 +19,7 @@ def roomVersion = '2.2.3'
 android {
     compileSdkVersion 29
     compileOptions {
+        coreLibraryDesugaringEnabled true
         sourceCompatibility javaVersion
         targetCompatibility javaVersion
     }
@@ -37,6 +38,10 @@ android {
         ]
         buildConfigField "boolean", "DONATIONS", "true"
     }
+    buildFeatures {
+        dataBinding = true
+        viewBinding = true
+    }
     buildTypes {
         debug {
             pseudoLocalesEnabled true
@@ -47,7 +52,6 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
-    dataBinding.enabled = true
     flavorDimensions("freedom")
     packagingOptions.exclude '**/*.kotlin_*'
     productFlavors {
@@ -73,22 +77,23 @@ androidExtensions {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.0.4'
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.2.0'
     implementation 'androidx.core:core-ktx:1.1.0'
     implementation 'androidx.emoji:emoji:1.0.0'
+    implementation 'androidx.fragment:fragment-ktx:1.2.0-rc05'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion"
-    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0'
     implementation "androidx.room:room-ktx:$roomVersion"
     implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.0.0'
     implementation 'com.android.billingclient:billing-ktx:2.1.0'
     implementation 'com.github.topjohnwu.libsu:core:2.5.1'
-    implementation 'com.google.android.material:material:1.1.0-rc01'
+    implementation 'com.google.android.material:material:1.1.0-rc02'
     implementation 'com.google.zxing:core:3.4.0'
     implementation 'com.jakewharton.timber:timber:4.7.1'
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.1'

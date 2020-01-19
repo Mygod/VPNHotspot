@@ -12,7 +12,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
-import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -31,7 +30,6 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.android.synthetic.main.activity_main.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -107,8 +105,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
-        val activity = activity
-        val item = activity?.toolbar?.menu?.findItem(R.id.monitor) ?: return    // assuming no longer foreground
+        val activity = activity as? MainActivity
+        val item = activity?.binding?.toolbar?.menu?.findItem(R.id.monitor) ?: return   // assuming no longer foreground
         item.isNotGone = canMonitor.isNotEmpty()
         item.subMenu.apply {
             clear()
@@ -157,14 +155,13 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_tethering, container, false)
-        binding.lifecycleOwner = this
+        binding = FragmentTetheringBinding.inflate(inflater, container, false)
         binding.interfaces.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
         adapter.update(emptyList(), emptyList(), emptyList())
         ServiceForegroundConnector(this, this, TetheringService::class)
-        requireActivity().toolbar.apply {
+        (activity as MainActivity).binding.toolbar.apply {
             inflateMenu(R.menu.toolbar_tethering)
             setOnMenuItemClickListener(this@TetheringFragment)
         }
@@ -173,7 +170,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     override fun onDestroyView() {
         super.onDestroyView()
-        requireActivity().toolbar.apply {
+        (activity as MainActivity).binding.toolbar.apply {
             menu.clear()
             setOnMenuItemClickListener(null)
         }

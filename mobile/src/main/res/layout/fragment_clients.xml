@@ -1,19 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<layout
+<androidx.swiperefreshlayout.widget.SwipeRefreshLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/swipeRefresher"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
 
-    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-        android:id="@+id/swipeRefresher"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/clients"
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/clients"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:scrollbars="vertical"
-            tools:listitem="@layout/listitem_client"/>
-    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
-</layout>
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:scrollbars="vertical"
+        tools:listitem="@layout/listitem_client"/>
+</androidx.swiperefreshlayout.widget.SwipeRefreshLayout>

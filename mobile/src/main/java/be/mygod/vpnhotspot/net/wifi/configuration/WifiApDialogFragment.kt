@@ -21,12 +21,12 @@ import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.android.synthetic.main.dialog_wifi_ap.view.*
 import java.nio.charset.Charset
 
 /**
@@ -72,7 +72,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
     }
 
-    private lateinit var dialogView: View
+    private lateinit var dialogView: DialogWifiApBinding
     private lateinit var bandOptions: MutableList<BandOption>
     private var started = false
     private val selectedSecurity get() =
@@ -92,14 +92,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
         val activity = requireActivity()
         @SuppressLint("InflateParams")
-        dialogView = activity.layoutInflater.inflate(R.layout.dialog_wifi_ap, null)
-        setView(dialogView)
+        dialogView = DialogWifiApBinding.inflate(activity.layoutInflater)
+        setView(dialogView.root)
         if (!arg.readOnly) setPositiveButton(R.string.wifi_save, listener)
         setNegativeButton(R.string.donations__button_close, null)
         dialogView.toolbar.inflateMenu(R.menu.toolbar_configuration)
         dialogView.toolbar.setOnMenuItemClickListener(this@WifiApDialogFragment)
         if (!arg.readOnly) dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
-        if (arg.p2pMode) dialogView.security_wrapper.isGone = true else dialogView.security.apply {
+        if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
                     WifiConfiguration.KeyMgmt.strings).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -107,7 +107,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    dialogView.password_wrapper.isGone = position == WifiConfiguration.KeyMgmt.NONE
+                    dialogView.passwordWrapper.isGone = position == WifiConfiguration.KeyMgmt.NONE
                 }
             }
         }
@@ -133,7 +133,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             if (Build.VERSION.SDK_INT < 23) {
                 setSelection(bandOptions.indexOfFirst { it.apChannel == RepeaterService.operatingChannel })
             }
-        } else dialogView.band_wrapper.isGone = true
+        } else dialogView.bandWrapper.isGone = true
         populateFromConfiguration(arg.configuration)
     }
 
@@ -165,7 +165,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             WifiConfiguration.KeyMgmt.WPA_PSK, WPA2_PSK -> dialogView.password.length() >= 8
             else -> true    // do not try to validate
         }
-        dialogView.password_wrapper.error = if (passwordValid) null else {
+        dialogView.passwordWrapper.error = if (passwordValid) null else {
             requireContext().getString(R.string.credentials_password_too_short)
         }
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = ssidValid && passwordValid

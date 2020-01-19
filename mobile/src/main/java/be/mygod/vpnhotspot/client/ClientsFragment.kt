@@ -12,12 +12,11 @@ import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.databinding.BaseObservable
-import androidx.databinding.DataBindingUtil
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.get
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -38,7 +37,6 @@ import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.util.SpanFormatter
-import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
@@ -182,7 +180,7 @@ class ClientsFragment : Fragment() {
             val client = getItem(position)
             holder.binding.client = client
             holder.binding.rate =
-                    rates.computeIfAbsentCompat(Pair(client.iface, client.mac)) { TrafficRate() }
+                    rates.computeIfAbsent(Pair(client.iface, client.mac)) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 
@@ -197,7 +195,7 @@ class ClientsFragment : Fragment() {
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
                 } else {
-                    val rate = rates.computeIfAbsentCompat(Pair(newRecord.downstream, newRecord.mac)) { TrafficRate() }
+                    val rate = rates.computeIfAbsent(Pair(newRecord.downstream, newRecord.mac)) { TrafficRate() }
                     if (rate.send < 0 || rate.receive < 0) {
                         rate.send = 0
                         rate.receive = 0
@@ -215,8 +213,7 @@ class ClientsFragment : Fragment() {
     private var rates = HashMap<Pair<String, Long>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
-        binding = DataBindingUtil.inflate(inflater, R.layout.fragment_clients, container, false)
-        binding.lifecycleOwner = this
+        binding = FragmentClientsBinding.inflate(inflater, container, false)
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
@@ -224,7 +221,7 @@ class ClientsFragment : Fragment() {
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }
-        (activity as MainActivity).provider.get<ClientViewModel>().clients.observe(this) {
+        (activity as MainActivity).viewModels<ClientViewModel>().value.clients.observe(this) {
             adapter.submitList(it.toMutableList())
         }
         return binding.root

@@ -9,7 +9,6 @@ import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
-import be.mygod.vpnhotspot.util.putIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.net.InetAddress
@@ -29,7 +28,7 @@ object TrafficRecorder {
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
             DebugHelper.log(TAG, "Registering $ip%$downstream")
-            check(records.putIfAbsentCompat(Pair(ip, downstream), record) == null)
+            check(records.putIfAbsent(Pair(ip, downstream), record) == null)
             scheduleUpdateLocked()
         }
     }

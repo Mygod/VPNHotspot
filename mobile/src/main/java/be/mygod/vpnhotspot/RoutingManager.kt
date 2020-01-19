@@ -5,8 +5,6 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.util.putIfAbsentCompat
-import be.mygod.vpnhotspot.util.removeCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -56,7 +54,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     val started get() = active[downstream] === this
     private var routing: Routing? = null
 
-    fun start() = when (val other = active.putIfAbsentCompat(downstream, this)) {
+    fun start() = when (val other = active.putIfAbsent(downstream, this)) {
         null -> {
             if (isWifi) WifiDoubleLock.acquire(this)
             initRouting()
@@ -85,7 +83,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     protected abstract fun Routing.configure()
 
     fun stop() {
-        if (active.removeCompat(downstream, this)) {
+        if (active.remove(downstream, this)) {
             if (isWifi) WifiDoubleLock.release(this)
             routing?.revert()
         }

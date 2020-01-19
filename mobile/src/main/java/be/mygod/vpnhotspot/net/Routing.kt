@@ -11,7 +11,6 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.RootSession
-import be.mygod.vpnhotspot.util.computeIfAbsentCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.IOException
@@ -235,7 +234,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     AppDatabase.instance.clientRecordDao.lookupOrDefaultBlocking(neighbour.lladdr).blocked) continue
             toRemove.remove(neighbour.ip)
             try {
-                clients.computeIfAbsentCompat(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }
+                clients.computeIfAbsent(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
