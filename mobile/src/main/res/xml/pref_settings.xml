@@ -7,6 +7,10 @@
         app:summary="@string/settings_service_clean_summary"/>
     <PreferenceCategory
         app:title="@string/settings_upstream">
+        <be.mygod.vpnhotspot.preference.UpstreamsPreference
+            app:key="service.upstream.monitor"
+            app:icon="@drawable/ic_image_remove_red_eye"
+            app:title="@string/settings_service_upstream_monitor"/>
         <EditTextPreference
             app:key="service.upstream"
             app:icon="@drawable/ic_action_settings_ethernet"

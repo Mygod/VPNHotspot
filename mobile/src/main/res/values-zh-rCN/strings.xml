@@ -98,6 +98,8 @@
     <string name="settings_service_ip_monitor_monitor_root">Netlink 监听 (root)</string>
     <string name="settings_service_ip_monitor_poll">轮询</string>
     <string name="settings_service_ip_monitor_poll_root">轮询 (root)</string>
+    <string name="settings_service_upstream_monitor">当前上游接口</string>
+    <string name="settings_service_upstream_monitor_summary">%1$s；备用：%2$s</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
     <string name="settings_upstream_fallback">备用上游接口</string>

@@ -81,7 +81,7 @@ class ClientsFragment : Fragment() {
     data class StatsArg(val title: CharSequence, val stats: ClientStats) : Parcelable
     class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle(SpanFormatter.format(getString(R.string.clients_stats_title), arg.title))
+            setTitle(SpanFormatter.format(getText(R.string.clients_stats_title), arg.title))
             val context = context
             val resources = resources
             val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
