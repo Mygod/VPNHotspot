@@ -15,6 +15,8 @@ import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.parseNumericAddress
+import timber.log.Timber
+import java.lang.RuntimeException
 
 class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs),
         DefaultLifecycleObserver {
@@ -32,7 +34,14 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
         } ?: "∅"
 
         override fun onAvailable(ifname: String, properties: LinkProperties) {
-            currentInterface = Interface(ifname, properties.routes.any { it.matches(internetAddress) })
+            currentInterface = Interface(ifname, properties.routes.any {
+                try {
+                    it.matches(internetAddress)
+                } catch (e: RuntimeException) {
+                    Timber.w(e)
+                    false
+                }
+            })
             onUpdate()
         }
 
