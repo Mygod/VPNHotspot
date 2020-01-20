@@ -29,8 +29,8 @@ object VpnMonitor : UpstreamMonitor() {
                 if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
                     if (currentNetwork != null) callbacks.forEach { it.onLost() }
                     currentNetwork = network
-                } else if (properties.dnsServers == oldProperties.dnsServers) return
-                callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+                }
+                callbacks.forEach { it.onAvailable(ifname, properties) }
             }
         }
 
@@ -52,12 +52,10 @@ object VpnMonitor : UpstreamMonitor() {
                         Timber.w("interfaceName changed: $oldProperties -> $properties")
                         callbacks.forEach {
                             it.onLost()
-                            it.onAvailable(ifname, properties.dnsServers)
+                            it.onAvailable(ifname, properties)
                         }
                     }
-                    properties.dnsServers != oldProperties.dnsServers -> callbacks.forEach {
-                        it.onAvailable(ifname, properties.dnsServers)
-                    }
+                    else -> callbacks.forEach { it.onAvailable(ifname, properties) }
                 }
             }
         }
@@ -69,7 +67,7 @@ object VpnMonitor : UpstreamMonitor() {
                 val next = available.entries.first()
                 currentNetwork = next.key
                 DebugHelper.log(TAG, "Switching to ${next.value.interfaceName} as VPN interface")
-                callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value.dnsServers) }
+                callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value) }
             } else currentNetwork = null
         }
     }
@@ -78,7 +76,7 @@ object VpnMonitor : UpstreamMonitor() {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) {
-                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties.dnsServers)
+                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
             }
         } else {
             app.connectivity.registerNetworkCallback(request, networkCallback)

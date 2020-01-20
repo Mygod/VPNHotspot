@@ -28,9 +28,9 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
                     callbacks.forEach { it.onLost() }   // we are using the other default network now
                     currentNetwork = network
-                } else if (properties.dnsServers == oldProperties.dnsServers) return
+                }
                 currentLinkProperties = properties
-                callbacks.forEach { it.onAvailable(ifname, properties.dnsServers) }
+                callbacks.forEach { it.onAvailable(ifname, properties) }
             }
         }
 
@@ -53,12 +53,10 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                         Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
                         callbacks.forEach {
                             it.onLost()
-                            it.onAvailable(ifname, properties.dnsServers)
+                            it.onAvailable(ifname, properties)
                         }
                     }
-                    properties.dnsServers != oldProperties.dnsServers -> callbacks.forEach {
-                        it.onAvailable(ifname, properties.dnsServers)
-                    }
+                    else -> callbacks.forEach { it.onAvailable(ifname, properties) }
                 }
             }
         }
@@ -75,7 +73,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) {
-                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties.dnsServers)
+                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
             }
         } else {
             if (Build.VERSION.SDK_INT in 24..27) @TargetApi(24) {

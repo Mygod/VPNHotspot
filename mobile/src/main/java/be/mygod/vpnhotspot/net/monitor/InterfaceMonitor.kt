@@ -8,8 +8,8 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         if (present == old) return
         currentIface = if (present) iface else null
         if (present) {
-            val dns = currentDns
-            callbacks.forEach { it.onAvailable(iface, dns) }
+            val lp = currentLinkProperties ?: return@synchronized
+            callbacks.forEach { it.onAvailable(iface, lp) }
         } else callbacks.forEach { it.onLost() }
     }
 
@@ -24,7 +24,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         if (!registered) {
             IpLinkMonitor.registerCallback(this, iface, this::setPresent)
             registered = true
-        } else if (currentIface != null) callback.onAvailable(iface, currentDns)
+        } else if (currentIface != null) callback.onAvailable(iface, currentLinkProperties ?: return)
     }
 
     override fun destroyLocked() {

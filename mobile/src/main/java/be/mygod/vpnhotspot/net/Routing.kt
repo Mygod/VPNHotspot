@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net
 
 import android.annotation.TargetApi
+import android.net.LinkProperties
 import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -163,7 +164,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         var subrouting: Subrouting? = null
         var dns: List<InetAddress> = emptyList()
 
-        override fun onAvailable(ifname: String, dns: List<InetAddress>) = synchronized(this@Routing) {
+        override fun onAvailable(ifname: String, properties: LinkProperties) = synchronized(this@Routing) {
             val subrouting = subrouting
             when {
                 subrouting != null -> check(subrouting.upstream == ifname) { "${subrouting.upstream} != $ifname" }
@@ -176,7 +177,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     null
                 }
             }
-            this.dns = dns
+            dns = properties.dnsServers
             updateDnsRoute()
         }
 

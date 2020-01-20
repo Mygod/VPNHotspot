@@ -51,9 +51,9 @@ abstract class UpstreamMonitor {
     interface Callback {
         /**
          * Called if some interface is available. This might be called on different ifname without having called onLost.
-         * This might also be called on the same ifname but with updated DNS list.
+         * This might also be called on the same ifname but with updated link properties.
          */
-        fun onAvailable(ifname: String, dns: List<InetAddress>)
+        fun onAvailable(ifname: String, properties: LinkProperties)
         /**
          * Called if no interface is available.
          */
