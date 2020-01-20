@@ -20,7 +20,7 @@ This app is useful for:
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
 * Identifying, monitoring and blocking (unwanted) clients;
 * Bypassing tethering limits by:
-    - (recommended) Use this app with a real VPN/socksifier; (ad-blocker may not work)
+    - (recommended) Use this app with a real VPN/socksifier; ([ad-blocker may or may not work](https://github.com/Mygod/VPNHotspot/issues/139))
     - (might or might not work based on your carrier) Use this app with TTL editor like
       [TTL Master](https://github.com/TTLMaster/TTLMaster);
     - Try your luck and simply use this app.
