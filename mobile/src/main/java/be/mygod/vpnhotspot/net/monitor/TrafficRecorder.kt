@@ -20,7 +20,7 @@ object TrafficRecorder {
 
     private var scheduled = false
     private var lastUpdate = 0L
-    private val records = HashMap<Pair<InetAddress, String>, TrafficRecord>()
+    private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
     fun register(ip: InetAddress, downstream: String, mac: Long) {

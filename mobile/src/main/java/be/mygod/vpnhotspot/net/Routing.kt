@@ -227,7 +227,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.revert()
         }
     }
-    private val clients = HashMap<InetAddress, Client>()
+    private val clients = mutableMapOf<InetAddress, Client>()
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) = synchronized(this) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
