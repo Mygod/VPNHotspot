@@ -14,12 +14,12 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
--keepattributes *Annotation*
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
--dontwarn org.mockito.**
--dontwarn org.objenesis.instantiator.**
+-keepclasseswithmembers class * extends androidx.lifecycle.ViewModel {
+    <init>();
+}
