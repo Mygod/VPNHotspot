@@ -34,7 +34,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
-        if (Build.VERSION.SDK_INT >= 24) {
+        if (Build.VERSION.SDK_INT >= 24) @SuppressLint("RestrictedApi") {
             deviceStorage = DeviceStorageApp(this)
             // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
