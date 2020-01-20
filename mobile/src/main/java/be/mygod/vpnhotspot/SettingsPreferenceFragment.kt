@@ -30,8 +30,6 @@ import timber.log.Timber
 import java.io.File
 import java.io.IOException
 import java.io.PrintWriter
-import java.net.NetworkInterface
-import java.net.SocketException
 import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
@@ -178,20 +176,9 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         when (preference.key) {
             UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
                 AlwaysAutoCompleteEditTextPreferenceDialogFragment().apply {
-                    setArguments(preference.key, try {
-                        NetworkInterface.getNetworkInterfaces().asSequence()
-                                .filter {
-                                    try {
-                                        it.isUp && !it.isLoopback && it.interfaceAddresses.isNotEmpty()
-                                    } catch (_: SocketException) {
-                                        false
-                                    }
-                                }
-                                .map { it.name }.sorted().toList().toTypedArray()
-                    } catch (e: SocketException) {
-                        Timber.d(e)
-                        emptyArray<String>()
-                    })
+                    setArguments(preference.key, app.connectivity.allNetworks.mapNotNull {
+                        app.connectivity.getLinkProperties(it)?.interfaceName
+                    }.toTypedArray())
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
                 }.show(parentFragmentManager, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)
