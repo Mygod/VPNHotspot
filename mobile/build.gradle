@@ -29,8 +29,8 @@ android {
         minSdkVersion 21
         targetSdkVersion 29
         resConfigs 'it', 'ru', 'zh-rCN'
-        versionCode 218
-        versionName '2.6.5'
+        versionCode 219
+        versionName '2.7.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments = [
                 "room.incremental": "true",
@@ -81,7 +81,7 @@ dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.2.0'
-    implementation 'androidx.core:core-ktx:1.1.0'
+    implementation 'androidx.core:core-ktx:1.2.0-rc01'
     implementation 'androidx.emoji:emoji:1.0.0'
     implementation 'androidx.fragment:fragment-ktx:1.2.0-rc05'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
