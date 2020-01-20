@@ -22,9 +22,9 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
         private val internetAddress = parseNumericAddress("8.8.8.8")
     }
 
-    private data class Interface(val ifname: String, val internet: Boolean)
-    private inner class Monitor : UpstreamMonitor.Callback {
-        private var currentInterface: Interface? = null
+    private data class Interface(val ifname: String, val internet: Boolean = true)
+    private open inner class Monitor : UpstreamMonitor.Callback {
+        protected var currentInterface: Interface? = null
         val charSequence get() = currentInterface?.run {
             if (internet) SpannableStringBuilder(ifname).apply {
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
@@ -43,7 +43,12 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     }
 
     private val primary = Monitor()
-    private val fallback = Monitor()
+    private val fallback: Monitor = object : Monitor() {
+        override fun onFallback() {
+            currentInterface = Interface("<default>")
+            onUpdate()
+        }
+    }
 
     init {
         (context as LifecycleOwner).lifecycle.addObserver(this)
