@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
 import be.mygod.vpnhotspot.util.QRCodeDialog
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -199,7 +200,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     SmartSnackbar.make(e).show()
                     return false
                 }
-                QRCodeDialog().withArg(qrString).show(parentFragmentManager, "QRCodeDialog")
+                QRCodeDialog().withArg(qrString).showAllowingStateLoss(parentFragmentManager, "QRCodeDialog")
                 true
             }
             else -> false

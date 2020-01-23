@@ -20,6 +20,7 @@ import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Dispatchers
@@ -167,7 +168,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
-            EBegFragment().show(parentFragmentManager, "EBegFragment")
+            EBegFragment().showAllowingStateLoss(parentFragmentManager, "EBegFragment")
             true
         }
     }
@@ -180,7 +181,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         app.connectivity.getLinkProperties(it)?.interfaceName
                     }.toTypedArray())
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
-                }.show(parentFragmentManager, preference.key)
+                }.showAllowingStateLoss(parentFragmentManager, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)
         }
     }

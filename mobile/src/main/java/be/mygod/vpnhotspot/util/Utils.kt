@@ -16,6 +16,8 @@ import androidx.annotation.DrawableRes
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
+import androidx.fragment.app.DialogFragment
+import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -58,6 +60,10 @@ fun <T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
     p.unmarshall(this, 0, size)
     p.setDataPosition(0)
     p.readParcelable<T>(javaClass.classLoader)
+}
+
+fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
+    if (!manager.isStateSaved) show(manager, tag)
 }
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {

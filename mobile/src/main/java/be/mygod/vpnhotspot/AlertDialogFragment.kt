@@ -8,6 +8,7 @@ import android.os.Parcelable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
 import androidx.fragment.app.Fragment
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import kotlinx.android.parcel.Parcelize
 
 /**
@@ -42,7 +43,7 @@ abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable> :
 
     fun show(target: Fragment, requestCode: Int = 0, tag: String = javaClass.simpleName) {
         setTargetFragment(target, requestCode)
-        show(target.parentFragmentManager, tag)
+        showAllowingStateLoss(target.parentFragmentManager, tag)
     }
 }
 
