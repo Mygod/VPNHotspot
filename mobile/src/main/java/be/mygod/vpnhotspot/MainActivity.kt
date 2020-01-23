@@ -7,6 +7,7 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.replace
 import androidx.lifecycle.observe
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
@@ -27,7 +28,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         binding.navigation.setOnNavigationItemSelectedListener(this)
-        if (savedInstanceState == null) displayFragment(TetheringFragment())
+        if (savedInstanceState == null) displayFragment<TetheringFragment>()
         val model by viewModels<ClientViewModel>()
         if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
@@ -48,29 +49,29 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         R.id.navigation_clients -> {
             if (!item.isChecked) {
                 item.isChecked = true
-                displayFragment(ClientsFragment())
+                displayFragment<ClientsFragment>()
             }
             true
         }
         R.id.navigation_tethering -> {
             if (!item.isChecked) {
                 item.isChecked = true
-                displayFragment(TetheringFragment())
+                displayFragment<TetheringFragment>()
             }
             true
         }
         R.id.navigation_settings -> {
             if (!item.isChecked) {
                 item.isChecked = true
-                displayFragment(SettingsPreferenceFragment())
+                displayFragment<SettingsPreferenceFragment>()
             }
             true
         }
         else -> false
     }
 
-    private fun displayFragment(fragment: Fragment) =
-            supportFragmentManager.beginTransaction().replace(R.id.fragmentHolder, fragment).commitAllowingStateLoss()
+    private inline fun <reified F : Fragment> displayFragment() =
+            supportFragmentManager.beginTransaction().replace<F>(R.id.fragmentHolder).commitAllowingStateLoss()
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)

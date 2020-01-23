@@ -13,7 +13,7 @@ def aux = [
         'com.crashlytics.sdk.android:crashlytics:2.10.1',
         'com.google.firebase:firebase-analytics:17.2.2',
 ]
-def lifecycleVersion = '2.2.0-rc03'
+def lifecycleVersion = '2.2.0'
 def roomVersion = '2.2.3'
 
 android {
@@ -83,9 +83,8 @@ dependencies {
     implementation 'androidx.browser:browser:1.2.0'
     implementation 'androidx.core:core-ktx:1.2.0-rc01'
     implementation 'androidx.emoji:emoji:1.0.0'
-    implementation 'androidx.fragment:fragment-ktx:1.2.0-rc05'
+    implementation 'androidx.fragment:fragment-ktx:1.2.0'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
-    implementation "androidx.lifecycle:lifecycle-extensions:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion"
     implementation 'androidx.preference:preference:1.1.0'
