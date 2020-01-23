@@ -112,7 +112,9 @@ object WifiP2pManagerHelper {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
      */
-    private val getNetworkId by lazy { WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId") }
+    private val getNetworkId by lazy @SuppressLint("DiscouragedPrivateApi") {
+        WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId")
+    }
     @Deprecated("No longer used since API 29")
     val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
 }

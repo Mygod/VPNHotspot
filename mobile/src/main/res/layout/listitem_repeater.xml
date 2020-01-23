@@ -75,7 +75,7 @@
             android:background="?android:attr/selectableItemBackground"
             android:padding="16dp"
             android:onClick="@{_ -> data.wps()}"
-            android:visibility="@{data.serviceStarted &amp;&amp; WifiP2pManagerHelper.startWps != null}">
+            android:visibility="@{data.serviceStarted &amp;&amp; WifiP2pManagerHelper.getStartWps() != null}">
 
             <Space
                 android:layout_width="40dp"

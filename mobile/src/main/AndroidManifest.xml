@@ -169,9 +169,11 @@
         </provider>
 
         <provider android:name="com.crashlytics.android.CrashlyticsInitProvider"
+                  tools:ignore="MissingClass"
                   tools:node="remove"/>
         <service android:name="com.google.firebase.components.ComponentDiscoveryService"
-                 android:directBootAware="true"/>
+                 android:directBootAware="true"
+                 tools:ignore="MissingClass"/>
 
     </application>
 

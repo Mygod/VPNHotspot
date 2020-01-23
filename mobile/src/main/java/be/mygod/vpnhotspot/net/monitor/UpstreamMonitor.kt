@@ -5,7 +5,6 @@ import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import java.net.InetAddress
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
@@ -72,10 +71,6 @@ abstract class UpstreamMonitor {
     val callbacks = Collections.newSetFromMap(ConcurrentHashMap<Callback, Boolean>())
     protected abstract val currentLinkProperties: LinkProperties?
     open val currentIface: String? get() = currentLinkProperties?.interfaceName
-    /**
-     * There's no need for overriding currentDns for now.
-     */
-    val currentDns: List<InetAddress> get() = currentLinkProperties?.dnsServers ?: emptyList()
     protected abstract fun registerCallbackLocked(callback: Callback)
     abstract fun destroyLocked()
 
