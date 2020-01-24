@@ -2,12 +2,9 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.net.*
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.DebugHelper
 import timber.log.Timber
 
 object VpnMonitor : UpstreamMonitor() {
-    private const val TAG = "VpnMonitor"
-
     private val request = NetworkRequest.Builder()
             .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -66,7 +63,7 @@ object VpnMonitor : UpstreamMonitor() {
             if (available.isNotEmpty()) {
                 val next = available.entries.first()
                 currentNetwork = next.key
-                DebugHelper.log(TAG, "Switching to ${next.value.interfaceName} as VPN interface")
+                Timber.d("Switching to ${next.value.interfaceName} as VPN interface")
                 callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value) }
             } else currentNetwork = null
         }

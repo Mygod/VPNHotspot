@@ -16,7 +16,7 @@ import android.widget.Toast
 import androidx.core.content.getSystemService
 import androidx.core.os.bundleOf
 import androidx.recyclerview.widget.RecyclerView
-import be.mygod.vpnhotspot.DebugHelper
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -61,7 +61,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
                         context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                         Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
                     } catch (e: ActivityNotFoundException) {
-                        DebugHelper.logEvent("location_settings", bundleOf(Pair("message", e.message)))
+                        app.logEvent("location_settings", bundleOf("message" to e.message))
                         SmartSnackbar.make(R.string.tethering_temp_hotspot_location).show()
                     }
                     return

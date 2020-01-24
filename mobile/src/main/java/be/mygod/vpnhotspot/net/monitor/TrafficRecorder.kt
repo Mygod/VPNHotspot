@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.util.LongSparseArray
 import androidx.core.os.postDelayed
-import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -15,7 +14,6 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 object TrafficRecorder {
-    private const val TAG = "TrafficRecorder"
     private const val ANYWHERE = "0.0.0.0/0"
 
     private var scheduled = false
@@ -27,14 +25,14 @@ object TrafficRecorder {
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
-            DebugHelper.log(TAG, "Registering $ip%$downstream")
+            Timber.d("Registering $ip%$downstream")
             check(records.putIfAbsent(Pair(ip, downstream), record) == null)
             scheduleUpdateLocked()
         }
     }
     fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
         update()    // flush stats before removing
-        DebugHelper.log(TAG, "Unregistering $ip%$downstream")
+        Timber.d("Unregistering $ip%$downstream")
         if (records.remove(Pair(ip, downstream)) == null) Timber.w("Failed to find traffic record for $ip%$downstream.")
     }
 
@@ -142,7 +140,7 @@ object TrafficRecorder {
     fun clean() = synchronized(this) {
         update()
         unscheduleUpdateLocked()
-        DebugHelper.log(TAG, "Cleaning records")
+        Timber.d("Cleaning records")
         records.clear()
     }
 

@@ -168,8 +168,7 @@
                 android:resource="@xml/log_paths" />
         </provider>
 
-        <provider android:name="com.crashlytics.android.CrashlyticsInitProvider"
-                  tools:ignore="MissingClass"
+        <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>
         <service android:name="com.google.firebase.components.ComponentDiscoveryService"
                  android:directBootAware="true"

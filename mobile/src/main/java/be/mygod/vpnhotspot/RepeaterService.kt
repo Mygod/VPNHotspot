@@ -36,7 +36,6 @@ import java.lang.reflect.InvocationTargetException
 class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListener,
         SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
-        private const val TAG = "RepeaterService"
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
         private const val KEY_OPERATING_BAND = "service.repeater.band"
@@ -347,7 +346,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      * Used during step 2, also called when connection changed
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo, group: WifiP2pGroup?) = launch {
-        DebugHelper.log(TAG, "P2P connection changed: $info\n$group")
+        Timber.d("P2P connection changed: $info\n$group")
         when {
             !info.groupFormed || !info.isGroupOwner || group?.isGroupOwner != true -> {
                 if (routingManager != null) cleanLocked()

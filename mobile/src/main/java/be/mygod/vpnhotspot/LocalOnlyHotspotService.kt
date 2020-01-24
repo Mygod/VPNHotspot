@@ -17,13 +17,10 @@ import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
+import timber.log.Timber
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
-    companion object {
-        private const val TAG = "LocalOnlyHotspotService"
-    }
-
     inner class Binder : android.os.Binder() {
         /**
          * null represents IDLE, "" represents CONNECTING, "something" represents CONNECTED.
@@ -60,7 +57,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         val ifaces = intent.localOnlyTetheredIfaces ?: return@broadcastReceiver
-        DebugHelper.log(TAG, "onTetherStateChangedLocked: $ifaces")
+        Timber.d("onTetherStateChangedLocked: $ifaces")
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
         binder.iface = iface
@@ -96,7 +93,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                 }
 
                 override fun onStopped() {
-                    DebugHelper.log(TAG, "LOHCallback.onStopped")
+                    Timber.d("LOHCallback.onStopped")
                     reservation = null
                 }
 

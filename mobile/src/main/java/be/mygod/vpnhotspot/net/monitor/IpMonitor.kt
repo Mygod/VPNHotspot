@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.monitor
 import android.system.ErrnoException
 import android.system.OsConstants
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -64,7 +63,7 @@ abstract class IpMonitor : Runnable {
         }
         err.join()
         process.waitFor()
-        DebugHelper.log("IpMonitor", "Monitor process exited with ${process.exitValue()}")
+        Timber.d("Monitor process exited with ${process.exitValue()}")
     }
 
     init {
@@ -78,7 +77,7 @@ abstract class IpMonitor : Runnable {
                 }
                 handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
                 if (destroyed) return@thread
-                DebugHelper.logEvent("ip_monitor_failure")
+                app.logEvent("ip_monitor_failure")
             }
             val pool = Executors.newScheduledThreadPool(1)
             pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
@@ -113,7 +112,7 @@ abstract class IpMonitor : Runnable {
         if (currentMode != Mode.PollRoot) try {
             return poll()
         } catch (e: IOException) {
-            DebugHelper.logEvent("ip_poll_failure")
+            app.logEvent("ip_poll_failure")
             Timber.d(e)
         }
         try {
@@ -125,7 +124,7 @@ abstract class IpMonitor : Runnable {
                 processLines(result.out.asSequence())
             }
         } catch (e: RuntimeException) {
-            DebugHelper.logEvent("ip_su_poll_failure")
+            app.logEvent("ip_su_poll_failure")
             Timber.w(e)
         }
     }

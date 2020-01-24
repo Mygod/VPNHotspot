@@ -9,7 +9,6 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
-import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -110,7 +109,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
 
     override fun onTetheringStarted() = updateTile()
     override fun onTetheringFailed() {
-        DebugHelper.log(javaClass.simpleName, "onTetheringFailed")
+        Timber.d("onTetheringFailed")
         updateTile()
     }
 

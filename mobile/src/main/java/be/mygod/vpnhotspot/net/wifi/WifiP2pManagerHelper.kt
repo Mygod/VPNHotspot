@@ -4,7 +4,7 @@ import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pManager
-import be.mygod.vpnhotspot.DebugHelper
+import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
 import java.lang.reflect.Proxy
@@ -30,7 +30,7 @@ object WifiP2pManagerHelper {
         try {
             setWifiP2pChannels.invoke(this, c, lc, oc, listener)
         } catch (_: NoSuchMethodException) {
-            DebugHelper.logEvent("NoSuchMethod_setWifiP2pChannels")
+            app.logEvent("NoSuchMethod_setWifiP2pChannels")
             listener.onFailure(UNSUPPORTED)
         }
     }
@@ -46,7 +46,7 @@ object WifiP2pManagerHelper {
             WifiP2pManager::class.java.getDeclaredMethod("startWps",
                     WifiP2pManager.Channel::class.java, WpsInfo::class.java, WifiP2pManager.ActionListener::class.java)
         } catch (_: NoSuchMethodException) {
-            DebugHelper.logEvent("NoSuchMethod_startWps")
+            app.logEvent("NoSuchMethod_startWps")
             null
         }
     }
@@ -69,7 +69,7 @@ object WifiP2pManagerHelper {
         try {
             deletePersistentGroup.invoke(this, c, netId, listener)
         } catch (_: NoSuchMethodException) {
-            DebugHelper.logEvent("NoSuchMethod_deletePersistentGroup")
+            app.logEvent("NoSuchMethod_deletePersistentGroup")
             listener.onFailure(UNSUPPORTED)
         }
     }

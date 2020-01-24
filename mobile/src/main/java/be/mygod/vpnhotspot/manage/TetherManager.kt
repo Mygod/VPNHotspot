@@ -13,7 +13,6 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.DebugHelper
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -49,7 +48,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         "package:${mainActivity.packageName}".toUri()))
                 return
             } catch (e: RuntimeException) {
-                DebugHelper.logEvent("manage_write_settings", bundleOf(Pair("message", e.message)))
+                app.logEvent("manage_write_settings", bundleOf("message" to e.message))
             }
             val started = manager.isStarted
             try {
@@ -93,7 +92,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed() {
-        DebugHelper.log(javaClass.simpleName, "onTetheringFailed")
+        Timber.d(javaClass.simpleName, "onTetheringFailed")
         data.notifyChange()
     }
 
