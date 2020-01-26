@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -169,6 +170,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         }
         findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
             EBegFragment().showAllowingStateLoss(parentFragmentManager, "EBegFragment")
+            true
+        }
+        findPreference<Preference>("misc.licenses")!!.setOnPreferenceClickListener {
+            startActivity(Intent(context, OssLicensesMenuActivity::class.java))
             true
         }
     }

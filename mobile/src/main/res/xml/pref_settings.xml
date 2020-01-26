@@ -88,5 +88,10 @@
             app:icon="@drawable/ic_action_card_giftcard"
             app:title="@string/settings_misc_donate"
             app:summary="@string/settings_misc_donate_summary"/>
+        <Preference
+            app:key="misc.licenses"
+            app:icon="@drawable/ic_action_code"
+            app:title="@string/oss_license_title"
+            app:summary="@string/preferences_license_summary"/>
     </PreferenceCategory>
 </PreferenceScreen>
