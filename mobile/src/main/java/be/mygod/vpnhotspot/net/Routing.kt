@@ -38,6 +38,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private const val RULE_PRIORITY_DNS = 17700
         private const val RULE_PRIORITY_UPSTREAM = 17800
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
+        private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
 
         /**
          * -w <seconds> is not supported on 7.1-.
@@ -68,13 +69,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_DNS; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
                 it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
+                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
             }
         }
-
-        private fun RootSession.Transaction.ipRule(rule: String, downstream: String, upstream: String, priority: Int) =
-                exec("ip rule add $rule iif $downstream lookup $upstream priority $priority",
-                        // by the time stopScript is called, table entry for upstream may already get removed
-                        "ip rule del $rule iif $downstream priority $priority")
 
         private fun RootSession.Transaction.iptables(command: String, revert: String) {
             val result = execQuiet(command, revert)
@@ -95,6 +92,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             if (result.out.size > 1) Timber.i(log)
         }
     }
+
+    private fun RootSession.Transaction.ipRule(add: String, priority: Int, rule: String = "", del: String = add) =
+            exec("ip rule add $rule iif $downstream $add priority $priority",
+                    "ip rule del $rule iif $downstream $del priority $priority")
+    private fun RootSession.Transaction.ipRuleLookup(upstream: String, priority: Int, rule: String = "") =
+            // by the time stopScript is called, table entry for upstream may already get removed
+            ipRule("lookup $upstream", priority, rule, "")
 
     enum class MasqueradeMode {
         None,
@@ -132,14 +136,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          */
         inner class Subrouting(priority: Int, val upstream: String? = null) {
             val transaction = RootSession.beginTransaction().safeguard {
-                if (upstream != null) {
-                    ipRule("from all", downstream, upstream, priority)
-                    iptablesInsert("vpnhotspot_fwd -i $downstream -o $upstream -j vpnhotspot_acl")
-                    iptablesInsert("vpnhotspot_fwd -i $upstream -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
-                } else {
-                    iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
-                    iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
-                }
+                if (upstream != null) ipRuleLookup(upstream, priority)
                 @TargetApi(28) when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> {
@@ -192,7 +189,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
+        var fallbackInactive = true
         override fun onFallback() = synchronized(this@Routing) {
+            fallbackInactive = false
             check(subrouting == null)
             subrouting = try {
                 Subrouting(priority)
@@ -205,6 +204,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
+    private var disableSystem: RootSession.Transaction? = null
 
     private inner class Client(private val ip: Inet4Address, mac: Long) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
@@ -281,6 +281,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
+        transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
+        transaction.iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
         transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
         // the real forwarding filters will be added in Subrouting when clients are connected
     }
@@ -297,7 +299,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private inner class DnsRoute(val upstream: String, val dns: String) {
         val transaction = RootSession.beginTransaction().safeguard {
             val hostAddress = hostAddress.address.hostAddress
-            ipRule("from $hostSubnet to $dns", downstream, upstream, RULE_PRIORITY_DNS)
+            ipRuleLookup(upstream, RULE_PRIORITY_DNS, "to $dns")
             iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
             iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
         }
@@ -333,6 +335,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+        if (fallbackUpstream.fallbackInactive) disableSystem = RootSession.beginTransaction().safeguard {
+            ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
+        }
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this)
     }
@@ -342,6 +347,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
+        disableSystem?.revert()
         fallbackUpstream.subrouting?.transaction?.revert()
         upstream.subrouting?.transaction?.revert()
         transaction.revert()
