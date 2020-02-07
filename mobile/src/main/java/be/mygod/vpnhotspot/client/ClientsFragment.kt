@@ -178,8 +178,7 @@ class ClientsFragment : Fragment() {
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             val client = getItem(position)
             holder.binding.client = client
-            holder.binding.rate =
-                    rates.computeIfAbsent(Pair(client.iface, client.mac)) { TrafficRate() }
+            holder.binding.rate = rates.computeIfAbsent(Pair(client.iface, client.mac)) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 

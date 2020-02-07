@@ -22,7 +22,7 @@ android {
         targetSdkVersion 29
         resConfigs 'it', 'ru', 'zh-rCN'
         versionCode 221
-        versionName '2.7.2'
+        versionName '2.8.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments = [
                 "room.incremental": "true",
@@ -71,9 +71,9 @@ dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.2.0'
-    implementation 'androidx.core:core-ktx:1.2.0-rc01'
+    implementation 'androidx.core:core-ktx:1.2.0'
     implementation 'androidx.emoji:emoji:1.0.0'
-    implementation 'androidx.fragment:fragment-ktx:1.2.0'
+    implementation 'androidx.fragment:fragment-ktx:1.2.1'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion"
@@ -83,7 +83,7 @@ dependencies {
     implementation 'com.android.billingclient:billing-ktx:2.1.0'
     implementation 'com.github.topjohnwu.libsu:core:2.5.1'
     implementation 'com.google.android.gms:play-services-oss-licenses:17.0.0'
-    implementation 'com.google.android.material:material:1.1.0-rc02'
+    implementation 'com.google.android.material:material:1.1.0'
     implementation 'com.google.firebase:firebase-analytics:17.2.2'
     implementation 'com.google.firebase:firebase-crashlytics:17.0.0-beta01'
     implementation 'com.google.zxing:core:3.4.0'
