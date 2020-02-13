@@ -43,7 +43,6 @@ Default settings are picked to suit general use cases and maximize compatibility
 * Upstream network interface: Main upstream used to reroute traffic.
   Leave blank for auto detect system VPN (allow/do not bypass this app to use VPN for it to work).
   Put `none` (or other similarly invalid entries) to suppress tethering VPN.
-  Put your interface name for tethering WireGuard.
 * Fallback upstream:
   Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
   Leave blank for auto detect.
@@ -53,7 +52,7 @@ Default settings are picked to suit general use cases and maximize compatibility
   - None:
     Nothing will be done to remap address/port from downstream.
     I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
-    But you should never use this for real VPNs like OpenVPN, WireGuard, etc.
+    But you should never use this for real VPNs like OpenVPN, etc.
   - Simple: Source address/port from downstream packets will be remapped and that's about it.
   - (since Android 9) Android Netd Service:
     Let your system handle masquerade.
