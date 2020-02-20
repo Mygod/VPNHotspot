@@ -65,7 +65,7 @@ androidExtensions {
 }
 
 def lifecycleVersion = '2.2.0'
-def roomVersion = '2.2.3'
+def roomVersion = '2.2.4'
 dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.0.4'
     kapt "androidx.room:room-compiler:$roomVersion"
@@ -73,7 +73,7 @@ dependencies {
     implementation 'androidx.browser:browser:1.2.0'
     implementation 'androidx.core:core-ktx:1.2.0'
     implementation 'androidx.emoji:emoji:1.0.0'
-    implementation 'androidx.fragment:fragment-ktx:1.2.1'
+    implementation 'androidx.fragment:fragment-ktx:1.2.2'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion"
