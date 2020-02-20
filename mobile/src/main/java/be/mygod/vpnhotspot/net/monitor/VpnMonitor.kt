@@ -2,6 +2,8 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.net.*
 import be.mygod.vpnhotspot.App.Companion.app
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 object VpnMonitor : UpstreamMonitor() {
@@ -72,7 +74,7 @@ object VpnMonitor : UpstreamMonitor() {
     override fun registerCallbackLocked(callback: Callback) {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
-            if (currentLinkProperties != null) {
+            if (currentLinkProperties != null) GlobalScope.launch {
                 callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
             }
         } else {

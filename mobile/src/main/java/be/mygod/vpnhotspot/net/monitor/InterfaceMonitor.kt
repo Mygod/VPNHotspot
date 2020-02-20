@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.App.Companion.app
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 
 class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
     private fun setPresent(present: Boolean) = synchronized(this) {
@@ -24,7 +26,9 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         if (!registered) {
             IpLinkMonitor.registerCallback(this, iface, this::setPresent)
             registered = true
-        } else if (currentIface != null) callback.onAvailable(iface, currentLinkProperties ?: return)
+        } else if (currentIface != null) GlobalScope.launch {
+            callback.onAvailable(iface, currentLinkProperties ?: return@launch)
+        }
     }
 
     override fun destroyLocked() {
