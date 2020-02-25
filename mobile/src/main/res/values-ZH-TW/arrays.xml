@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string-array name="settings_service_masquerade" tools:ignore="InconsistentArrays">
+        <item>@string/settings_service_masquerade_none</item>
+        <item>@string/settings_service_masquerade_simple</item>
+    </string-array>
+    <string-array name="settings_service_masquerade_values" tools:ignore="InconsistentArrays">
+        <item>None</item>
+        <item>Simple</item>
+    </string-array>
+
+    <string-array name="settings_service_wifi_lock">
+        <item>@string/settings_service_wifi_lock_none</item>
+        <item>@string/settings_service_wifi_lock_full</item>
+        <item>@string/settings_service_wifi_lock_high_perf</item>
+    </string-array>
+    <string-array name="settings_service_wifi_lock_values">
+        <item>None</item>
+        <item>Full</item>
+        <item>HighPerf</item>
+    </string-array>
+
+    <string-array name="settings_service_ip_monitor">
+        <item>@string/settings_service_ip_monitor_monitor</item>
+        <item>@string/settings_service_ip_monitor_monitor_root</item>
+        <item>@string/settings_service_ip_monitor_poll</item>
+        <item>@string/settings_service_ip_monitor_poll_root</item>
+    </string-array>
+    <string-array name="settings_service_ip_monitor_values">
+        <item>Monitor</item>
+        <item>MonitorRoot</item>
+        <item>Poll</item>
+        <item>PollRoot</item>
+    </string-array>
+</resources>
