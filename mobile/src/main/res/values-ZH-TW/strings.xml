@@ -41,7 +41,7 @@
     <string name="tethering_temp_hotspot_location">開啟臨時熱點須打開定位</string>
     <string name="tethering_temp_hotspot_failure">啟動熱點失敗 (原因: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">沒有頻道</string>
-    <string name="tethering_temp_hotspot_failure_generic">一般錯誤/string>
+    <string name="tethering_temp_hotspot_failure_generic">一般錯誤</string>
     <string name="tethering_temp_hotspot_failure_incompatible_mode">不相容的模式</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">禁止共享網路</string>
 
