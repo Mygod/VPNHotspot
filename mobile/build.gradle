@@ -20,7 +20,7 @@ android {
         applicationId "be.mygod.vpnhotspot"
         minSdkVersion 21
         targetSdkVersion 29
-        resConfigs 'it', 'ru', 'zh-rCN'
+        resConfigs 'it', 'ru', 'zh-rCN', 'zh-rTW'
         versionCode 221
         versionName '2.8.0'
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
