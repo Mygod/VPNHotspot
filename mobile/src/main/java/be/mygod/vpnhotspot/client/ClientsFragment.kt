@@ -219,7 +219,9 @@ class ClientsFragment : Fragment() {
         binding.swipeRefresher.setOnRefreshListener {
             IpNeighbourMonitor.instance?.flush()
         }
-        activityViewModels<ClientViewModel>().value.clients.observe(this) { adapter.submitList(it.toMutableList()) }
+        activityViewModels<ClientViewModel>().value.clients.observe(viewLifecycleOwner) {
+            adapter.submitList(it.toMutableList())
+        }
         return binding.root
     }
 
