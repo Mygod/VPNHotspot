@@ -37,14 +37,17 @@ class TetherTimeoutMonitor(private val context: Context, private val handler: Ha
 
         private val enabled get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
         private val timeout by lazy {
-            app.resources.getInteger(Resources.getSystem().getIdentifier(
-                    "config_wifi_framework_soft_ap_timeout_delay", "integer", "android")).let { delay ->
-                if (delay < MIN_SOFT_AP_TIMEOUT_DELAY_MS) {
-                    Timber.w(
-                            "Overriding timeout delay with minimum limit value: $delay < $MIN_SOFT_AP_TIMEOUT_DELAY_MS")
-                    MIN_SOFT_AP_TIMEOUT_DELAY_MS
-                } else delay
+            val delay = try {
+                app.resources.getInteger(Resources.getSystem().getIdentifier(
+                        "config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))
+            } catch (e: Resources.NotFoundException) {
+                Timber.w(e)
+                MIN_SOFT_AP_TIMEOUT_DELAY_MS
             }
+            if (delay < MIN_SOFT_AP_TIMEOUT_DELAY_MS) {
+                Timber.w("Overriding timeout delay with minimum limit value: $delay < $MIN_SOFT_AP_TIMEOUT_DELAY_MS")
+                MIN_SOFT_AP_TIMEOUT_DELAY_MS
+            } else delay
         }
     }
 
