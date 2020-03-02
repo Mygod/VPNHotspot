@@ -1,30 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
  Values copied from:
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/5697a7e/res/values/strings.xml
-    * @string/usb_tethering_button_text
-    * @string/wifi_hotspot_checkbox_text
-    * @string/bluetooth_tether_checkbox_text
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/be651d3/res/values-zh-rTW/strings.xml
+      @string/usb_tethering_button_text
+      @string/wifi_hotspot_checkbox_text
+      @string/bluetooth_tether_checkbox_text
+      @string/tether_settings_title_usb_bluetooth
+    * https://android.googlesource.com/platform/frameworks/base/+/86ff339/packages/SettingsLib/res/values-zh-rTW/strings.xml
+      @string/tethering_hardware_offload
   -->
 <resources>
     <string name="app_name">VPN 熱點</string>
     <string name="title_repeater">中繼器</string>
-    <string name="title_tethering">網路共享</string>
+    <string name="title_tethering">網路共用</string>
     <string name="title_clients">客戶端</string>
     <string name="title_settings">設定</string>
 
     <string name="repeater_channel">中繼器 (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (不安全)</string>
-    <string name="repeater_wps_dialog_title">輸入 PIN碼</string>
+    <string name="repeater_wps_dialog_title">輸入 PIN 碼</string>
     <string name="repeater_wps_dialog_pbc">按下按鈕</string>
     <string name="repeater_wps_success_pbc">請在兩分鐘內在需要連接的裝置上，使用一鍵加密以連接到此中繼器</string>
     <string name="repeater_wps_success_keypad">PIN 已設定</string>
     <string name="repeater_wps_failure">開啟 WPS 失敗 (原因: %s)</string>
     <string name="repeater_configure_failure">找不到有效的配置，請先啟動中繼器</string>
-    <string name="repeater_clean_pog_failure">刪除多餘 P2P 群組失敗(原因: %s)</string>
+    <string name="repeater_clean_pog_failure">刪除多餘 P2P 群組失敗 (原因: %s)</string>
 
-    <string name="repeater_p2p_unavailable">Wi\u2011Fi direct 不可用，請啟用 Wi\u2011Fi</string>
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi Direct 不可用，請啟用 Wi\u2011Fi</string>
     <string name="repeater_p2p_unavailable_enable">開啟</string>
     <string name="repeater_create_group_failure">創建 P2P 群組失敗 (原因: %s)</string>
     <string name="repeater_remove_group_failure">移除 P2P 群組失敗 (原因: %s)</string>
@@ -32,7 +34,7 @@
     <string name="repeater_set_oc_failure">設定工作頻道失敗 (原因: %s)</string>
 
     <string name="repeater_failure_reason_error">內部錯誤</string>
-    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct 不支援</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi Direct 不支援</string>
     <string name="repeater_failure_reason_no_service_requests">未添加服務請求</string>
     <string name="repeater_failure_reason_unsupported_operation">不支援的操作</string>
     <string name="repeater_failure_disconnected">服務不可用，請稍後再試</string>
@@ -43,18 +45,17 @@
     <string name="tethering_temp_hotspot_failure_no_channel">沒有頻道</string>
     <string name="tethering_temp_hotspot_failure_generic">一般錯誤</string>
     <string name="tethering_temp_hotspot_failure_incompatible_mode">不相容的模式</string>
-    <string name="tethering_temp_hotspot_failure_tethering_disallowed">禁止共享網路</string>
+    <string name="tethering_temp_hotspot_failure_tethering_disallowed">禁止網路共用</string>
 
     <string name="tethering_monitor">檢測…</string>
     <string name="tethering_state_monitored">%s (受檢測)</string>
 
-    <string name="tethering_manage">系統共享管理…</string>
-    <string name="tethering_manage_offload_enabled">請在開發人員選項中關閉網絡共享硬體加速
-        如果VPN網絡共享不起作用</string>
-    <string name="tethering_manage_usb">USB 網路共享</string>
+    <string name="tethering_manage">系統網路共用管理…</string>
+    <string name="tethering_manage_offload_enabled">如果 VPN 網路共用不起作用請在開發人員選項中關閉數據連線硬體加速</string>
+    <string name="tethering_manage_usb">USB 網路共用</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi 熱點</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi 熱點 (舊式)</string>
-    <string name="tethering_manage_bluetooth">藍芽網路共享</string>
+    <string name="tethering_manage_bluetooth">藍牙網路共用</string>
 
     <string name="connected_state_incomplete">" (連接中)"</string>
     <string name="connected_state_valid">" (已連接)"</string>
@@ -65,7 +66,7 @@
     <string name="clients_popup_block_service_inactive">打開此服務以阻止裝置連線</string>
     <string name="clients_popup_unblock">解除黑名單</string>
     <string name="clients_popup_stats">狀態…</string>
-    <string name="clients_mac_lookup_unexpected_error">伺服器恢復錯誤 %1$s: %2$s</string>
+    <string name="clients_mac_lookup_unexpected_error">伺服器錯誤 %1$s: %2$s</string>
     <string name="clients_nickname_title">暱稱 %s</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 供應商</string>
     <string name="clients_stats_title">狀態 %s</string>
@@ -85,8 +86,8 @@
     <string name="settings_service_masquerade_none">無</string>
     <string name="settings_service_masquerade_simple">簡易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服務</string>
-    <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
-    <string name="settings_service_disable_ipv6_summary">防止 VPN 通過 IPV6 洩漏</string>
+    <string name="settings_service_disable_ipv6">禁用 IPv6 共用</string>
+    <string name="settings_service_disable_ipv6_summary">防止 VPN 通過 IPv6 洩漏</string>
     <string name="settings_service_repeater_start_on_boot">開機時自動啟動中繼器</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 開啟</string>
     <string name="settings_service_wifi_lock_none">系統預設</string>
@@ -96,27 +97,27 @@
     <string name="settings_service_wifi_lock_low_latency">低延遲模式</string>
     <string name="settings_service_ip_monitor">網路監聽模式</string>
     <string name="settings_service_ip_monitor_monitor">Netlink 監聽</string>
-    <string name="settings_service_ip_monitor_monitor_root">Netlink 監聽(root)</string>
+    <string name="settings_service_ip_monitor_monitor_root">Netlink 監聽 (root)</string>
     <string name="settings_service_ip_monitor_poll">輪詢</string>
-    <string name="settings_service_ip_monitor_poll_root">論詢(root)</string>
+    <string name="settings_service_ip_monitor_poll_root">論詢 (root)</string>
     <string name="settings_service_upstream_monitor">當前上游接口</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; 備用: %2$s</string>
     <string name="settings_service_upstream">上游網路接口</string>
     <string name="settings_service_upstream_auto">自動檢測系統 VPN 服務</string>
     <string name="settings_upstream_fallback">備用上游接口</string>
     <string name="settings_upstream_fallback_auto">自動檢測系統預設網路</string>
-    <string name="settings_service_dhcp_workaround">嘗試修復DHCP</string>
-    <string name="settings_service_dhcp_workaround_summary">如果無法取得IP地址，請打開此選項</string>
+    <string name="settings_service_dhcp_workaround">嘗試修復 DHCP</string>
+    <string name="settings_service_dhcp_workaround_summary">如果無法取得 IP 地址，請打開此選項</string>
     <string name="settings_service_clean">清理/重新 套用路由器規則</string>
     <string name="settings_service_clean_summary">將修改的設定套用到當前啟用的服務上。也可可用於修復偶爾會發生的靜態條件。</string>
-    <string name="settings_system_tether_offload">網路共用硬體加速</string>
+    <string name="settings_system_tether_offload">數據連線硬體加速</string>
     <string name="settings_system_tether_offload_summary">系統"開發人員選項"的快捷方式</string>
     <string name="settings_misc">雜項</string>
     <string name="settings_help">幫助</string>
     <string name="settings_misc_logcat">匯出 debug 資訊</string>
     <string name="settings_misc_logcat_summary">這種非常有用啊(^O^)／</string>
     <string name="settings_misc_source">產品主頁@GitHub</string>
-    <string name="settings_misc_source_summary">閱讀使用說明, star, 提交 issues,合作</string>
+    <string name="settings_misc_source_summary">閱讀使用說明, star, 提交 issues, 合作</string>
     <string name="settings_misc_donate">抖內</string>
     <string name="settings_misc_donate_summary">我喜歡錢</string>
     <string name="settings_misc_donate_more">PayPal, Flattr，等其他方式…</string>
@@ -135,28 +136,28 @@
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">錯誤: 找不到下游接口</string>
-    <string name="noisy_su_failure">發生異常，詳情請查看log。</string>
+    <string name="noisy_su_failure">發生異常，詳情請查看 log。</string>
 
     <string name="configuration_view">Wi\u2011Fi 設定</string>
-    <string name="configuration_share">分享透過 QR code</string>
-    <string name="configuration_rejected">Android 系统拒绝使用此設定。(詳情請參考log)</string>
+    <string name="configuration_share">透過 QR code 分享</string>
+    <string name="configuration_rejected">Android 系统拒绝使用此設定。(詳情請參考 log)</string>
     <string name="wifi_ssid">網路名稱</string>
     <string name="wifi_security">安全</string>
     <string name="wifi_password">密碼</string>
-    <string name="credentials_password_too_short">密碼至少需要8 個字</string>
-    <string name="wifi_hotspot_ap_band_title">AP 頻道</string>
+    <string name="credentials_password_too_short">密碼至少需要 8 個字</string>
+    <string name="wifi_hotspot_ap_band_title">AP 頻帶</string>
     <string name="wifi_ap_choose_auto">自動</string>
-    <string name="wifi_ap_choose_2G">2.4 GHz 頻道</string>
-    <string name="wifi_ap_choose_5G">5.0 GHz 頻道</string>
+    <string name="wifi_ap_choose_2G">2.4 GHz 頻帶</string>
+    <string name="wifi_ap_choose_5G">5.0 GHz 頻帶</string>
     <string name="wifi_save">儲存</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
     <string name="donations__button_close">關閉</string>
-    <string name="donations__description">你認為這個程式對你而言有用嗎？\n小額的抖內給開發者，以表達支持此應用程式的開發</string>
+    <string name="donations__description">這個程式有用嗎？\n小額的抖內給開發者以支持此應用程式的開發</string>
     <string name="donations__google_android_market">Google Play 商店</string>
-    <string name="donations__google_android_market_not_supported">不支援 In-App 抖內。Google Play 商店是否安裝正確?</string>
+    <string name="donations__google_android_market_not_supported">不支援應用程式內購。Google Play 商店是否安裝正確?</string>
     <string name="donations__google_android_market_description">Google 將收取 30% 的費用</string>
     <string name="donations__google_android_market_donate_button">抖內!</string>
     <string name="donations__google_android_market_text">抖內多少錢</string>
-    <string name="donations__thanks_dialog">感謝抖內!\n十分感謝你!</string>
+    <string name="donations__thanks_dialog">感謝抖內!\n十分感謝您!</string>
 </resources>
