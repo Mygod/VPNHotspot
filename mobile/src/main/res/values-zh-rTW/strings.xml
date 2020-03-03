@@ -99,7 +99,7 @@
     <string name="settings_service_ip_monitor_monitor">Netlink 監聽</string>
     <string name="settings_service_ip_monitor_monitor_root">Netlink 監聽 (root)</string>
     <string name="settings_service_ip_monitor_poll">輪詢</string>
-    <string name="settings_service_ip_monitor_poll_root">論詢 (root)</string>
+    <string name="settings_service_ip_monitor_poll_root">輪詢 (root)</string>
     <string name="settings_service_upstream_monitor">當前上游接口</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; 備用: %2$s</string>
     <string name="settings_service_upstream">上游網路接口</string>
@@ -109,7 +109,7 @@
     <string name="settings_service_dhcp_workaround">嘗試修復 DHCP</string>
     <string name="settings_service_dhcp_workaround_summary">如果無法取得 IP 地址，請打開此選項</string>
     <string name="settings_service_clean">清理/重新 套用路由器規則</string>
-    <string name="settings_service_clean_summary">將修改的設定套用到當前啟用的服務上。也可可用於修復偶爾會發生的靜態條件。</string>
+    <string name="settings_service_clean_summary">將修改的設定套用到當前啟用的服務上。也可用於修復偶爾會發生的靜態條件。</string>
     <string name="settings_system_tether_offload">數據連線硬體加速</string>
     <string name="settings_system_tether_offload_summary">系統"開發人員選項"的快捷方式</string>
     <string name="settings_misc">雜項</string>
@@ -120,7 +120,7 @@
     <string name="settings_misc_source_summary">閱讀使用說明, star, 提交 issues, 合作</string>
     <string name="settings_misc_donate">抖內</string>
     <string name="settings_misc_donate_summary">我喜歡錢</string>
-    <string name="settings_misc_donate_more">PayPal, Flattr，等其他方式…</string>
+    <string name="settings_misc_donate_more">PayPal, Flattr,等其他方式...</string>
     <string name="settings_restart_required">重啟應用程式以套用設定值</string>
     <string name="settings_exit_app">離開</string>
 
