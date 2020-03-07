@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.net
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.os.Build
@@ -84,7 +83,7 @@ object TetheringManager {
      */
     const val TETHERING_BLUETOOTH = 2
 
-    private val classOnStartTetheringCallback by lazy @SuppressLint("PrivateApi") {
+    private val classOnStartTetheringCallback by lazy {
         Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
     }
     private val startTethering by lazy {

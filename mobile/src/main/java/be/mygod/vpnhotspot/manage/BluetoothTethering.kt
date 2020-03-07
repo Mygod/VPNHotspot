@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.manage
 
-import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
@@ -27,7 +26,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
          * From BluetoothProfile.java.
          */
         private const val PAN = 5
-        private val isTetheringOn by lazy @SuppressLint("PrivateApi") {
+        private val isTetheringOn by lazy {
             Class.forName("android.bluetooth.BluetoothPan").getDeclaredMethod("isTetheringOn")
         }
 
