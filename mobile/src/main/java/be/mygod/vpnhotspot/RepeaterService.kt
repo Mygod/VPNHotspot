@@ -50,7 +50,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
          */
         private val p2pManager: WifiP2pManager? by lazy {
             try {
-                app.getSystemService()
+                app.getSystemService<WifiP2pManager>()
             } catch (e: RuntimeException) {
                 Timber.w(e)
                 null

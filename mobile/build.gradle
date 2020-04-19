@@ -71,8 +71,8 @@ dependencies {
     kapt "androidx.room:room-compiler:$roomVersion"
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'androidx.browser:browser:1.2.0'
-    implementation 'androidx.core:core-ktx:1.2.0'
-    implementation 'androidx.emoji:emoji:1.0.0'
+    implementation 'androidx.core:core-ktx:1.3.0-rc01'
+    implementation 'androidx.emoji:emoji:1.1.0-beta01'
     implementation 'androidx.fragment:fragment-ktx:1.2.4'
     implementation "androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion"
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion"
@@ -91,7 +91,7 @@ dependencies {
     implementation 'com.linkedin.dexmaker:dexmaker:2.25.1'
     implementation 'com.takisoft.preferencex:preferencex-simplemenu:1.1.0'
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion"
-    implementation 'org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3'
+    implementation 'org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.2'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.5'
     testImplementation 'junit:junit:4.13'
     androidTestImplementation "androidx.room:room-testing:$roomVersion"
