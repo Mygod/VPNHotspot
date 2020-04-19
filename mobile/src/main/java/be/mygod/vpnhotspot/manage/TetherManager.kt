@@ -48,7 +48,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         "package:${mainActivity.packageName}".toUri()))
                 return
             } catch (e: RuntimeException) {
-                app.logEvent("manage_write_settings", bundleOf("message" to e.message))
+                app.logEvent("manage_write_settings") { param("message", e.message.toString()) }
             }
             val started = manager.isStarted
             try {

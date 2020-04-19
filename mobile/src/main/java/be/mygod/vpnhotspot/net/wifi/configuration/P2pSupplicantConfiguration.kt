@@ -5,6 +5,7 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.RootSession
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.io.File
 
 /**
@@ -108,9 +109,11 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                 }
                 Triple(result, target!!, shell.err.isNotEmpty())
             } catch (e: RuntimeException) {
-                app.crashlytics.setCustomKey(TAG, parser.lines.joinToString("\n"))
-                app.crashlytics.setCustomKey("$TAG.ownerAddress", ownerAddress.toString())
-                app.crashlytics.setCustomKey("$TAG.p2pGroup", group.toString())
+                FirebaseCrashlytics.getInstance().apply {
+                    setCustomKey(TAG, parser.lines.joinToString("\n"))
+                    setCustomKey("$TAG.ownerAddress", ownerAddress.toString())
+                    setCustomKey("$TAG.p2pGroup", group.toString())
+                }
                 throw e
             }
         }

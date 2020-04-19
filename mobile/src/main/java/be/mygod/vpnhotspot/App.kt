@@ -8,7 +8,6 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Bundle
 import android.util.Log
 import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
@@ -23,9 +22,11 @@ import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.RootSession
-import com.google.firebase.FirebaseApp
-import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.analytics.ktx.ParametersBuilder
+import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.ktx.initialize
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -46,15 +47,15 @@ class App : Application() {
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
-        FirebaseApp.initializeApp(deviceStorage)
+        Firebase.initialize(deviceStorage)
         Timber.plant(object : Timber.DebugTree() {
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
                 if (t == null) {
                     if (priority != Log.DEBUG || BuildConfig.DEBUG) Log.println(priority, tag, message)
-                    crashlytics.log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
+                    FirebaseCrashlytics.getInstance().log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
                 } else {
                     if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
-                    if (priority >= Log.INFO) crashlytics.recordException(t)
+                    if (priority >= Log.INFO) FirebaseCrashlytics.getInstance().recordException(t)
                 }
             }
         })
@@ -88,14 +89,14 @@ class App : Application() {
      * This method is used to log "expected" and well-handled errors, i.e. we care less about logs, etc.
      * logException is inappropriate sometimes because it flushes all logs that could be used to investigate other bugs.
      */
-    fun logEvent(@Size(min = 1L, max = 40L) event: String, extras: Bundle? = null) {
-        Timber.i(if (extras == null) event else "$event, extras: $extras")
-        analytics.logEvent(event, extras)
+    fun logEvent(@Size(min = 1L, max = 40L) event: String, block: ParametersBuilder.() -> Unit = { }) {
+        val builder = ParametersBuilder()
+        builder.block()
+        Timber.i(if (builder.bundle.isEmpty) event else "$event, extras: ${builder.bundle}")
+        Firebase.analytics.logEvent(event, builder.bundle)
     }
 
     lateinit var deviceStorage: Application
-    private val analytics by lazy { FirebaseAnalytics.getInstance(app.deviceStorage) }
-    val crashlytics by lazy { FirebaseCrashlytics.getInstance() }
     val english by lazy {
         createConfigurationContext(Configuration(resources.configuration).apply {
             setLocale(Locale.ENGLISH)
