@@ -37,11 +37,11 @@ object ManageBar : Manager() {
         } catch (e1: RuntimeException) {
             try {
                 context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_2))
-                app.logEvent(TAG) { param(SETTINGS_1, e1.message.toString()) }
+                app.logEvent(TAG) { param(SETTINGS_1, e1.toString()) }
             } catch (e2: RuntimeException) {
                 app.logEvent(TAG) {
-                    param(SETTINGS_1, e1.message.toString())
-                    param(SETTINGS_2, e2.message.toString())
+                    param(SETTINGS_1, e1.toString())
+                    param(SETTINGS_2, e2.toString())
                 }
             }
         }
