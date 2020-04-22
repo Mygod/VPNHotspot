@@ -62,6 +62,12 @@
             app:key="service.repeater.startOnBoot"
             app:icon="@drawable/ic_action_autorenew"
             app:title="@string/settings_service_repeater_start_on_boot"/>
+        <SwitchPreference
+            app:key="service.repeater.safeMode"
+            app:icon="@drawable/ic_alert_warning"
+            app:title="@string/settings_service_repeater_safe_mode"
+            app:summary="@string/settings_service_repeater_safe_mode_summary"
+            app:defaultValue="true"/>
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.ipMonitor"
             app:icon="@drawable/ic_hardware_device_hub"

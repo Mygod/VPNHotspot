@@ -28,7 +28,6 @@ import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import java.nio.charset.Charset
 
 /**
  * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
@@ -117,7 +116,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             bandOptions = mutableListOf<BandOption>().apply {
                 if (arg.p2pMode) {
                     add(BandOption.BandAny)
-                    if (Build.VERSION.SDK_INT >= 29) {
+                    if (RepeaterService.safeMode) {
                         add(BandOption.Band2GHz)
                         add(BandOption.Band5GHz)
                     }
@@ -160,8 +159,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
      */
     private fun validate() {
         if (!started) return
-        val ssidValid = dialogView.ssid.length() != 0 &&
-                Charset.forName("UTF-8").encode(dialogView.ssid.text.toString()).limit() <= 32
+        val ssidLength = dialogView.ssid.text.toString().toByteArray().size
+        dialogView.ssidWrapper.error = if (RepeaterService.safeModeConfigurable && ssidLength < 9) {
+            requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
+        } else null
         val passwordValid = when (selectedSecurity) {
             WifiConfiguration.KeyMgmt.WPA_PSK, WPA2_PSK -> dialogView.password.length() >= 8
             else -> true    // do not try to validate
@@ -169,7 +170,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else {
             requireContext().getString(R.string.credentials_password_too_short)
         }
-        (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = ssidValid && passwordValid
+        (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
+                ssidLength in 1..32 && passwordValid
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }

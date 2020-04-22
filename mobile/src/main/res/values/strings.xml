@@ -92,6 +92,10 @@
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
     <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
+    <string name="settings_service_repeater_safe_mode">Repeater safe mode</string>
+    <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
+        not work with short SSIDs.</string>
+    <string name="settings_service_repeater_safe_mode_warning">Short SSIDs might require turning off safe mode.</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On</string>

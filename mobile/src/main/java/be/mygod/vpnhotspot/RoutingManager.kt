@@ -7,6 +7,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.net.NetworkInterface
 
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val isWifi: Boolean) {
     companion object {
@@ -42,7 +43,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     /**
      * Both repeater and local-only hotspot are Wi-Fi based.
      */
-    class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
+    open class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
         override fun Routing.configure() {
             ipForward() // local only interfaces need to enable ip_forward
             forward()
@@ -63,8 +64,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         else -> error("Double routing detected for $downstream from $caller != ${other.caller}")
     }
 
+    open fun ifaceHandler(iface: NetworkInterface) { }
+
     private fun initRouting() = try {
-        routing = Routing(caller, downstream).apply {
+        routing = Routing(caller, downstream, this::ifaceHandler).apply {
             try {
                 configure()
             } catch (e: Exception) {

@@ -74,6 +74,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             }
             boot.isChecked = BootReceiver.enabled
         } else boot.parent!!.removePreference(boot)
+        if (!RepeaterService.supported || !RepeaterService.safeModeConfigurable) {
+            val safeMode = findPreference<Preference>(RepeaterService.KEY_SAFE_MODE)!!
+            safeMode.parent!!.removePreference(safeMode)
+        }
         findPreference<Preference>("service.clean")!!.setOnPreferenceClickListener {
             GlobalScope.launch { RoutingManager.clean() }
             true

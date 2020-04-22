@@ -25,7 +25,8 @@ import java.net.SocketException
  *
  * Once revert is called, this object no longer serves any purpose.
  */
-class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
+class Routing(private val caller: Any, private val downstream: String,
+              ifaceHandler: (NetworkInterface) -> Unit) : IpNeighbourMonitor.Callback {
     companion object {
         /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
@@ -117,8 +118,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     private val hostAddress = try {
-        val addresses = NetworkInterface.getByName(downstream)!!.interfaceAddresses!!
-                .filter { it.address is Inet4Address }
+        val iface = NetworkInterface.getByName(downstream)!!
+        ifaceHandler(iface)
+        val addresses = iface.interfaceAddresses!!.filter { it.address is Inet4Address }
         if (addresses.size > 1) error("More than one addresses was found: $addresses")
         addresses.first()
     } catch (e: Exception) {

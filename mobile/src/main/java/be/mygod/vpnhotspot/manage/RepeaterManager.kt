@@ -56,7 +56,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
         val title: CharSequence @Bindable get() {
             if (Build.VERSION.SDK_INT >= 29) binder?.group?.frequency?.let {
-                return parent.getString(R.string.repeater_channel, it, frequencyToChannel(it))
+                if (it != 0) return parent.getString(R.string.repeater_channel, it, frequencyToChannel(it))
             }
             return parent.getString(R.string.title_repeater)
         }
@@ -120,8 +120,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    @Deprecated("No longer used since API 29")
-    @Suppress("DEPRECATION")
     class ConfigHolder : ViewModel() {
         var config: P2pSupplicantConfiguration? = null
     }
@@ -134,7 +132,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     private val data = Data()
     internal var binder: RepeaterService.Binder? = null
     private var p2pInterface: String? = null
-    @Suppress("DEPRECATION")
     private val holder by parent.viewModels<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
@@ -164,7 +161,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     }
 
     val configuration: WifiConfiguration? get() {
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (RepeaterService.safeMode) {
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
             if (networkName != null && passphrase != null) {
@@ -179,7 +176,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     apChannel = RepeaterService.operatingChannel
                 }
             }
-        } else @Suppress("DEPRECATION") {
+        } else {
             val group = binder?.group
             if (group != null) try {
                 val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
@@ -199,7 +196,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         return null
     }
     suspend fun updateConfiguration(config: WifiConfiguration) {
-        if (Build.VERSION.SDK_INT >= 29) {
+        if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.SSID
             RepeaterService.passphrase = config.preSharedKey
             RepeaterService.operatingBand = when (config.apBand) {
@@ -208,7 +205,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 AP_BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                 else -> throw IllegalArgumentException("Unknown apBand")
             }
-        } else @Suppress("DEPRECATION") holder.config?.let { master ->
+        } else holder.config?.let { master ->
             if (binder?.group?.networkName != config.SSID || master.psk != config.preSharedKey) try {
                 withContext(Dispatchers.Default) { master.update(config.SSID, config.preSharedKey) }
                 binder!!.group = null

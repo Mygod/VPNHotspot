@@ -13,7 +13,6 @@ import java.io.File
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/6fa46df/wpa_supplicant/config_file.c#182
  */
-@Deprecated("No longer used since API 29")
 class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
     companion object {
         private const val TAG = "P2pSupplicantConfiguration"
@@ -29,7 +28,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
         var pskLine: Int? = null
         var psk: String? = null
         var groupOwner = false
-        var bssidMatches = false
+        var bssid: String? = null
 
         override fun toString() = joinToString("\n")
     }
@@ -53,9 +52,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
-                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress)
+                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress, RepeaterService.lastMac)
                         .distinct()
-                        .filter { it != "00:00:00:00:00:00" }
+                        .filter { it != "00:00:00:00:00:00" && it != "02:00:00:00:00:00" }
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
@@ -73,21 +72,20 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
                                             block.psk = match.groupValues[5].apply { check(length in 8..63) }
                                         }
                                         block.pskLine = block.size
-                                    } else if (bssids.any { matchedBssid.equals(it, true) }) block.bssidMatches = true
+                                    } else if (bssids.any { matchedBssid.equals(it, true) }) block.bssid = matchedBssid
                                 }
                             }
                             block.add(parser.line)
                         }
                         block.add(parser.line)
                         result.add(block)
-                        if (block.bssidMatches && block.groupOwner && target == null) { // keep first only
+                        if (block.bssid != null && block.groupOwner && target == null) {    // keep first only
                             check(block.ssidLine != null && block.pskLine != null)
                             target = block
                         }
                     } else result.add(parser.line)
                 }
                 if (target == null && !RepeaterService.persistentSupported) {
-                    val bssid = bssids.single()
                     result.add("")
                     result.add(NetworkBlock().apply {
                         // generate a basic network block, it is likely that vendor is going to add more stuff here
