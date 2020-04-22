@@ -9,8 +9,11 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         val old = currentIface != null
         if (present == old) return
         currentIface = if (present) iface else null
-        if (present) {
-            val lp = currentLinkProperties ?: return@synchronized
+        if (present) Pair(iface, currentLinkProperties) else null
+    }.let { pair ->
+        if (pair != null) {
+            val (iface, lp) = pair
+            lp ?: return
             callbacks.forEach { it.onAvailable(iface, lp) }
         } else callbacks.forEach { it.onLost() }
     }

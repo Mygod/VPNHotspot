@@ -85,7 +85,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             } catch (e: SecurityException) {
                 // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
                 if (Build.VERSION.SDK_INT != 23) throw e
-                callback.onFallback()
+                GlobalScope.launch { callback.onFallback() }
                 return
             }
             registered = true

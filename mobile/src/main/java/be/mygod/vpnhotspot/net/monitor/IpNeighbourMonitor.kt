@@ -15,14 +15,15 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         var instance: IpNeighbourMonitor? = null
 
         fun registerCallback(callback: Callback) = synchronized(callbacks) {
-            if (!callbacks.add(callback)) return@synchronized
+            if (!callbacks.add(callback)) return@synchronized null
             var monitor = instance
             if (monitor == null) {
                 monitor = IpNeighbourMonitor()
                 instance = monitor
                 monitor.flush()
-            } else callback.onIpNeighbourAvailable(monitor.neighbours.values)
-        }
+                null
+            } else monitor.neighbours.values
+        }?.let { callback.onIpNeighbourAvailable(it) }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return@synchronized
             instance?.destroy()
