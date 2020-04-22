@@ -89,6 +89,10 @@ Default settings are picked to suit general use cases and maximize compatibility
      Requires support from the hardware.
      Note: Requires this app running in foreground with screen on.
 * Start repeater on boot: Self explanatory.
+* Repeater safe mode: (Android 10, March 2020 security patch or newer)
+  You might be required to turn this mode off if you want to use short SSID (at most 8 bytes long).
+  Unsafe mode might not work for your device, and there is a small chance you will soft brick your device (recoverable).
+  See [#153](https://github.com/Mygod/VPNHotspot/issues/153) for more information.
 * Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
   (when custom upstream is used).
   Requires restarting the app to take effects. (best way is to go to app info and force stop)
@@ -141,11 +145,11 @@ Non-public API list:
 * [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132289)
 * [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132358)
 * (deprecated since API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
-* (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134440)
-* (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134487)
-* (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134703)
-* (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134728)
-* (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134737)
+* [`Landroid/net/wifi/p2p/WifiP2pGroup;->getNetworkId()I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134440)
+* [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/Collection;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134487)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134703)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134728)
+* [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134737)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134738)
 * (prior to API 29) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#335306)
 
@@ -159,14 +163,14 @@ Undocumented system configurations:
 
 Other:
 
-* (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order, except for possible extra fields at the end.
+* (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order, except for possible extra fields at the end. (used only for safe mode)
 * (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158307) is assumed to be `"soft_ap_timeout_enabled"`.
 * (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158331) is assumed to be `"tether_offload_disabled"`.
 * (since API 27) `com.android.server.connectivity.tethering.OffloadHardwareInterface.DEFAULT_TETHER_OFFLOAD_DISABLED` is assumed to be 0.
 * Several constants in `ConnectivityManager` is assumed to be defined as in `TetheringManager.kt`;
 * Following broadcasts are assumed to be sticky:
   - [`Landroid/net/ConnectivityManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123163) is assumed to be `android.net.conn.TETHER_STATE_CHANGED`.
-  - (prior to API 29) [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686) is assumed to be `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED`;
+  - [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686) is assumed to be `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED`;
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000 respectively;
@@ -184,7 +188,7 @@ Undocumented system binaries are all bundled and executable:
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
 
-(prior to API 29) Wi-Fi driver `wpa_supplicant`:
+Wi-Fi driver `wpa_supplicant`:
 
 * P2P configuration file is assumed to be saved to [`/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/0b4856b6dc451e290f1f64f6af17e010be78c073/wpa_supplicant/hidl/1.1/supplicant.cpp#26) and have reasonable format;
 * Android system is expected to restart `wpa_supplicant` after it crashes.
