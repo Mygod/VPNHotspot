@@ -17,7 +17,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
      * Unfortunately registerDefaultNetworkCallback is going to return VPN interface since Android P DP1:
      * https://android.googlesource.com/platform/frameworks/base/+/dda156ab0c5d66ad82bdcf76cda07cbc0a9c8a2e
      */
-    private val networkRequest = NetworkRequest.Builder()
+    private val networkRequest = networkRequestBuilder()
             .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
             .build()

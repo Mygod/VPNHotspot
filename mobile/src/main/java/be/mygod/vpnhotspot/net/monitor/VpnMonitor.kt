@@ -7,7 +7,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 object VpnMonitor : UpstreamMonitor() {
-    private val request = NetworkRequest.Builder()
+    private val request = networkRequestBuilder()
             .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
             .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
             .build()
