@@ -11,7 +11,7 @@ jobs:
       - run: git submodule sync
       - run: git submodule update --init --recursive
       - restore_cache:
-          key: jars-{{ checksum "build.gradle" }}
+          key: jars-{{ checksum "build.gradle.kts" }}
       - run:
           name: Run Build and Tests
           command: ./gradlew assembleDebug check
@@ -19,7 +19,7 @@ jobs:
           paths:
             - ~/.gradle
             - ~/.android/build-cache
-          key: jars-{{ checksum "build.gradle" }}
+          key: jars-{{ checksum "build.gradle.kts" }}
       - store_artifacts:
           path: mobile/build/outputs/apk
           destination: apk
