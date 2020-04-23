@@ -19,9 +19,8 @@ This app is useful for:
 * Connecting to your mobile hotspot but you're not bothered to set up VPN on your device;
 * Identifying, monitoring and blocking (unwanted) clients;
 * Bypassing tethering limits by:
-    - (recommended) Use this app with a real VPN/socksifier; ([ad-blocker may or may not work](https://github.com/Mygod/VPNHotspot/issues/139))
-    - (might or might not work based on your carrier) Use this app with TTL editor like
-      [TTL Master](https://github.com/TTLMaster/TTLMaster);
+    - (recommended) Use this app with a real VPN/socksifier;
+    - Use this app with some adblock/DNS apps that uses system VPN service APIs, i.e. fake VPNs; ([troubleshooting/a list of apps that work](https://github.com/Mygod/VPNHotspot/issues/139))
     - Try your luck and simply use this app.
 
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
