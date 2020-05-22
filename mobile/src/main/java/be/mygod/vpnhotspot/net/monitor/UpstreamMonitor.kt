@@ -8,8 +8,6 @@ import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import java.util.*
-import java.util.concurrent.ConcurrentHashMap
 
 abstract class UpstreamMonitor {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
@@ -40,11 +38,10 @@ abstract class UpstreamMonitor {
                 synchronized(this) {
                     val old = monitor
                     val (active, callbacks) = synchronized(old) {
-                        val active = old.currentIface != null
-                        val callbacks = old.callbacks.toList()
-                        old.callbacks.clear()
-                        old.destroyLocked()
-                        Pair(active, callbacks)
+                        (old.currentIface != null) to old.callbacks.toList().also {
+                            old.callbacks.clear()
+                            old.destroyLocked()
+                        }
                     }
                     val new = generateMonitor()
                     monitor = new
@@ -78,7 +75,7 @@ abstract class UpstreamMonitor {
         }
     }
 
-    val callbacks = Collections.newSetFromMap(ConcurrentHashMap<Callback, Boolean>())
+    val callbacks = mutableSetOf<Callback>()
     protected abstract val currentLinkProperties: LinkProperties?
     open val currentIface: String? get() = currentLinkProperties?.interfaceName
     protected abstract fun registerCallbackLocked(callback: Callback)

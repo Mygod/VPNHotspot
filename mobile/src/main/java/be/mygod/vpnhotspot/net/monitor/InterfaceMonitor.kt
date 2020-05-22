@@ -1,21 +1,27 @@
 package be.mygod.vpnhotspot.net.monitor
 
+import android.net.LinkProperties
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
 class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
-    private fun setPresent(present: Boolean) = synchronized(this) {
-        val old = currentIface != null
-        if (present == old) return
-        currentIface = if (present) iface else null
-        if (present) Pair(iface, currentLinkProperties) else null
-    }.let { pair ->
-        if (pair != null) {
-            val (iface, lp) = pair
-            lp ?: return
-            callbacks.forEach { it.onAvailable(iface, lp) }
-        } else callbacks.forEach { it.onLost() }
+    private fun setPresent(present: Boolean) {
+        var available: Pair<String, LinkProperties>? = null
+        synchronized(this) {
+            val old = currentIface != null
+            if (present == old) return
+            currentIface = if (present) iface else null
+            if (present) available = iface to (currentLinkProperties ?: return)
+            callbacks.toList()
+        }.forEach {
+            @Suppress("NAME_SHADOWING")
+            val available = available
+            if (available != null) {
+                val (iface, lp) = available
+                it.onAvailable(iface, lp)
+            } else it.onLost()
+        }
     }
 
     private var registered = false

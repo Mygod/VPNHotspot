@@ -23,17 +23,23 @@ object VpnMonitor : UpstreamMonitor() {
         override fun onAvailable(network: Network) {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
+            var switching = false
             synchronized(this@VpnMonitor) {
                 val oldProperties = available.put(network, properties)
                 if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
-                    if (currentNetwork != null) callbacks.forEach { it.onLost() }
+                    if (currentNetwork != null) switching = true
                     currentNetwork = network
                 }
-                callbacks.forEach { it.onAvailable(ifname, properties) }
+                callbacks.toList()
+            }.forEach {
+                if (switching) it.onLost()
+                it.onAvailable(ifname, properties)
             }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+            var losing = true
+            var ifname: String?
             synchronized(this@VpnMonitor) {
                 if (currentNetwork == null) {
                     onAvailable(network)
@@ -41,33 +47,37 @@ object VpnMonitor : UpstreamMonitor() {
                 }
                 if (currentNetwork != network) return
                 val oldProperties = available.put(network, properties)!!
-                val ifname = properties.interfaceName
-                when {
-                    ifname == null -> {
-                        Timber.w("interfaceName became null: $oldProperties -> $properties")
-                        onLost(network)
-                    }
-                    ifname != oldProperties.interfaceName -> {
-                        Timber.w("interfaceName changed: $oldProperties -> $properties")
-                        callbacks.forEach {
-                            it.onLost()
-                            it.onAvailable(ifname, properties)
-                        }
-                    }
-                    else -> callbacks.forEach { it.onAvailable(ifname, properties) }
+                ifname = properties.interfaceName
+                when (ifname) {
+                    null -> Timber.w("interfaceName became null: $oldProperties -> $properties")
+                    oldProperties.interfaceName -> losing = false
+                    else -> Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
                 }
+                callbacks.toList()
+            }.forEach {
+                if (losing) {
+                    if (ifname == null) return onLost(network)
+                    it.onLost()
+                }
+                ifname?.let { ifname -> it.onAvailable(ifname, properties) }
             }
         }
 
-        override fun onLost(network: Network) = synchronized(this@VpnMonitor) {
-            if (available.remove(network) == null || currentNetwork != network) return
-            callbacks.forEach { it.onLost() }
-            if (available.isNotEmpty()) {
-                val next = available.entries.first()
-                currentNetwork = next.key
-                Timber.d("Switching to ${next.value.interfaceName} as VPN interface")
-                callbacks.forEach { it.onAvailable(next.value.interfaceName!!, next.value) }
-            } else currentNetwork = null
+        override fun onLost(network: Network) {
+            var newProperties: LinkProperties? = null
+            synchronized(this@VpnMonitor) {
+                if (available.remove(network) == null || currentNetwork != network) return
+                if (available.isNotEmpty()) {
+                    val next = available.entries.first()
+                    currentNetwork = next.key
+                    Timber.d("Switching to ${next.value.interfaceName} as VPN interface")
+                    newProperties = next.value
+                } else currentNetwork = null
+                callbacks.toList()
+            }.forEach {
+                it.onLost()
+                newProperties?.let { prop -> it.onAvailable(prop.interfaceName!!, prop) }
+            }
         }
     }
 

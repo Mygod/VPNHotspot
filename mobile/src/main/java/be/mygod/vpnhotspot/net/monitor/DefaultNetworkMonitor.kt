@@ -25,18 +25,24 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         override fun onAvailable(network: Network) {
             val properties = app.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
+            var switching = false
             synchronized(this@DefaultNetworkMonitor) {
                 val oldProperties = currentLinkProperties
                 if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
-                    callbacks.forEach { it.onLost() }   // we are using the other default network now
+                    switching = true    // we are using the other default network now
                     currentNetwork = network
                 }
                 currentLinkProperties = properties
-                callbacks.forEach { it.onAvailable(ifname, properties) }
+                callbacks.toList()
+            }.forEach {
+                if (switching) it.onLost()
+                it.onAvailable(ifname, properties)
             }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+            var losing = true
+            var ifname: String?
             synchronized(this@DefaultNetworkMonitor) {
                 if (currentNetwork == null) {
                     onAvailable(network)
@@ -45,30 +51,28 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 if (currentNetwork != network) return
                 val oldProperties = currentLinkProperties!!
                 currentLinkProperties = properties
-                val ifname = properties.interfaceName
-                when {
-                    ifname == null -> {
-                        Timber.w("interfaceName became null: $oldProperties -> $properties")
-                        onLost(network)
-                    }
-                    ifname != oldProperties.interfaceName -> {
-                        Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
-                        callbacks.forEach {
-                            it.onLost()
-                            it.onAvailable(ifname, properties)
-                        }
-                    }
-                    else -> callbacks.forEach { it.onAvailable(ifname, properties) }
+                ifname = properties.interfaceName
+                when (ifname) {
+                    null -> Timber.w("interfaceName became null: $oldProperties -> $properties")
+                    oldProperties.interfaceName -> losing = false
+                    else -> Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
                 }
+                callbacks.toList()
+            }.forEach {
+                if (losing) {
+                    if (ifname == null) return onLost(network)
+                    it.onLost()
+                }
+                ifname?.let { ifname -> it.onAvailable(ifname, properties) }
             }
         }
 
         override fun onLost(network: Network) = synchronized(this@DefaultNetworkMonitor) {
             if (currentNetwork != network) return
-            callbacks.forEach { it.onLost() }
             currentNetwork = null
             currentLinkProperties = null
-        }
+            callbacks.toList()
+        }.forEach { it.onLost() }
     }
 
     override fun registerCallbackLocked(callback: Callback) {

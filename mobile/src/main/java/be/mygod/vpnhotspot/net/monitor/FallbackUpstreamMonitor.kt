@@ -27,10 +27,10 @@ abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor()
                 synchronized(this) {
                     val old = monitor
                     val callbacks = synchronized(old) {
-                        val callbacks = old.callbacks.toList()
-                        old.callbacks.clear()
-                        old.destroyLocked()
-                        callbacks
+                        old.callbacks.toList().also {
+                            old.callbacks.clear()
+                            old.destroyLocked()
+                        }
                     }
                     val new = generateMonitor()
                     monitor = new
