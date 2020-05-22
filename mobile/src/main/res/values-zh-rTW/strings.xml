@@ -2,7 +2,7 @@
 <!--
  Values copied from:
     * https://android.googlesource.com/platform/packages/apps/Settings/+/be651d3/res/values-zh-rTW/strings.xml
-      @string/usb_tethering_button_text
+      @string/usb_tethering_buttboottext
       @string/wifi_hotspot_checkbox_text
       @string/bluetooth_tether_checkbox_text
       @string/tether_settings_title_usb_bluetooth
@@ -86,9 +86,12 @@
     <string name="settings_service_masquerade_none">無</string>
     <string name="settings_service_masquerade_simple">簡易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服務</string>
-    <string name="settings_service_disable_ipv6">禁用 IPv6 共用</string>
+    <string name="settings_service_disable_ipv6">停用 IPv6 共用</string>
     <string name="settings_service_disable_ipv6_summary">防止 VPN 通過 IPv6 洩漏</string>
     <string name="settings_service_repeater_start_on_boot">開機時自動啟動中繼器</string>
+    <string name="settings_service_repeater_safe_mode">中繼安全模式</string>
+    <string name="settings_service_repeater_safe_mode_summary">不對系統設定值進行修改，但是可能需要較長的 SSID 。</string>
+    <string name="settings_service_repeater_safe_mode_warning">使用短 SSID 可能需要關閉安全模式。</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 開啟</string>
     <string name="settings_service_wifi_lock_none">系統預設</string>
     <string name="settings_service_wifi_lock_full">開啟</string>
@@ -100,7 +103,7 @@
     <string name="settings_service_ip_monitor_monitor_root">Netlink 監聽 (root)</string>
     <string name="settings_service_ip_monitor_poll">輪詢</string>
     <string name="settings_service_ip_monitor_poll_root">輪詢 (root)</string>
-    <string name="settings_service_upstream_monitor">當前上游接口</string>
+    <string name="settings_service_upstream_monitor">目前上游接口</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; 備用: %2$s</string>
     <string name="settings_service_upstream">上游網路接口</string>
     <string name="settings_service_upstream_auto">自動檢測系統 VPN 服務</string>
@@ -109,7 +112,7 @@
     <string name="settings_service_dhcp_workaround">嘗試修復 DHCP</string>
     <string name="settings_service_dhcp_workaround_summary">如果無法取得 IP 地址，請打開此選項</string>
     <string name="settings_service_clean">清理/重新 套用路由器規則</string>
-    <string name="settings_service_clean_summary">將修改的設定套用到當前啟用的服務上。也可用於修復偶爾會發生的競態條件。</string>
+    <string name="settings_service_clean_summary">將修改的設定套用到目前啟用的服務上。也可用於修復偶爾會發生的競態條件。</string>
     <string name="settings_system_tether_offload">數據連線硬體加速</string>
     <string name="settings_system_tether_offload_summary">系統"開發人員選項"的快捷方式</string>
     <string name="settings_misc">雜項</string>
