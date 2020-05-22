@@ -2,7 +2,7 @@
 <!--
  Values copied from:
     * https://android.googlesource.com/platform/packages/apps/Settings/+/be651d3/res/values-zh-rTW/strings.xml
-      @string/usb_tethering_buttboottext
+      @string/usb_tethering_button_text
       @string/wifi_hotspot_checkbox_text
       @string/bluetooth_tether_checkbox_text
       @string/tether_settings_title_usb_bluetooth
