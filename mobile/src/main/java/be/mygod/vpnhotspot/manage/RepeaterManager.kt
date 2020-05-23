@@ -16,6 +16,7 @@ import android.os.Parcelable
 import android.text.method.LinkMovementMethod
 import android.view.WindowManager
 import android.widget.EditText
+import androidx.annotation.MainThread
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.databinding.BaseObservable
@@ -160,7 +161,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    val configuration: WifiConfiguration? get() {
+    @MainThread
+    suspend fun getConfiguration(): WifiConfiguration? {
         if (RepeaterService.safeMode) {
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
@@ -179,7 +181,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         } else {
             val group = binder?.group
             if (group != null) try {
-                val config = P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                val config = withContext(Dispatchers.Default) {
+                    P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                }
+                if (parent.isDetached) return null  // if we took too long
                 holder.config = config
                 return newWifiApConfiguration(group.networkName, config.psk).apply {
                     allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used

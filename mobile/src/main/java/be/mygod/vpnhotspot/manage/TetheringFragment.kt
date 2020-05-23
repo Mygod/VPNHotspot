@@ -127,9 +127,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             }
             R.id.configuration_repeater -> {
                 lifecycleScope.launchWhenCreated {
-                    WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(withContext(Dispatchers.Default) {
-                        adapter.repeaterManager.configuration
-                    } ?: return@launchWhenCreated, p2pMode = true)).show(this@TetheringFragment, CONFIGURE_REPEATER)
+                    adapter.repeaterManager.getConfiguration()?.let { config ->
+                        WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(config, p2pMode = true)).show(
+                                this@TetheringFragment, CONFIGURE_REPEATER)
+                    }
                 }
                 true
             }
