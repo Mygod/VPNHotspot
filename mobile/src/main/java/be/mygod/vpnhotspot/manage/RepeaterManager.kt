@@ -184,7 +184,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 val config = withContext(Dispatchers.Default) {
                     P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
                 }
-                if (parent.isDetached) return null  // if we took too long
                 holder.config = config
                 return newWifiApConfiguration(group.networkName, config.psk).apply {
                     allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK) // is not actually used
