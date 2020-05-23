@@ -30,8 +30,6 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
