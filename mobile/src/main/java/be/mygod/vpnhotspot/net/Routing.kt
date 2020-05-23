@@ -118,7 +118,7 @@ class Routing(private val caller: Any, private val downstream: String,
     }
 
     private val hostAddress = try {
-        val iface = NetworkInterface.getByName(downstream)!!
+        val iface = NetworkInterface.getByName(downstream) ?: error("iface not found")
         ifaceHandler(iface)
         val addresses = iface.interfaceAddresses!!.filter { it.address is Inet4Address }
         if (addresses.size > 1) error("More than one addresses was found: $addresses")
