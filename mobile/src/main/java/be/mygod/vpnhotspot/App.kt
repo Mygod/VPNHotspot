@@ -48,6 +48,13 @@ class App : Application() {
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
         Firebase.initialize(deviceStorage)
+        when (val codename = Build.VERSION.CODENAME) {
+            "REL" -> { }
+            else -> FirebaseCrashlytics.getInstance().apply {
+                setCustomKey("codename", codename)
+                if (Build.VERSION.SDK_INT >= 23) setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
+            }
+        }
         Timber.plant(object : Timber.DebugTree() {
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
                 if (t == null) {
