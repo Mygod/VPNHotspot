@@ -211,9 +211,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 else -> throw IllegalArgumentException("Unknown apBand")
             }
         } else holder.config?.let { master ->
+            val binder = binder
             if (binder?.group?.networkName != config.SSID || master.psk != config.preSharedKey) try {
                 withContext(Dispatchers.Default) { master.update(config.SSID, config.preSharedKey) }
-                binder!!.group = null
+                (this.binder ?: binder)?.group = null
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
