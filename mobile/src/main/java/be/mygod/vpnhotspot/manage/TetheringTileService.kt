@@ -21,7 +21,7 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : TetherListeningTileService(), TetheringManager.OnStartTetheringCallback {
+sealed class TetheringTileService : TetherListeningTileService(), TetheringManager.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -108,8 +108,9 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
     }
 
     override fun onTetheringStarted() = updateTile()
-    override fun onTetheringFailed() {
-        Timber.d("onTetheringFailed")
+    override fun onTetheringFailed(error: Int?) {
+        Timber.d("onTetheringFailed: $error")
+        error?.let { Toast.makeText(this, TetheringManager.tetherErrorMessage(it), Toast.LENGTH_LONG).show() }
         updateTile()
     }
 

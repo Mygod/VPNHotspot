@@ -35,7 +35,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         private val Intent.bluetoothState get() = getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
 
-        private var pendingCallback: TetheringManager.OnStartTetheringCallback? = null
+        private var pendingCallback: TetheringManager.StartTetheringCallback? = null
 
         /**
          * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#215
@@ -72,7 +72,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
          * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
          */
         @RequiresApi(24)
-        fun start(callback: TetheringManager.OnStartTetheringCallback) {
+        fun start(callback: TetheringManager.StartTetheringCallback) {
             if (pendingCallback != null) return
             val adapter = BluetoothAdapter.getDefaultAdapter()
             if (adapter?.state == BluetoothAdapter.STATE_OFF) {
