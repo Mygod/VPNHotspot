@@ -142,8 +142,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_WIFI)
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI)
     }
     @RequiresApi(24)
     class Usb(parent: TetheringFragment) : TetherManager(parent) {
@@ -151,8 +151,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.USB
         override val type get() = VIEW_TYPE_USB
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_USB)
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB)
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
@@ -173,7 +173,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {
-            TetheringManager.stop(TetheringManager.TETHERING_BLUETOOTH)
+            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH)
             Thread.sleep(1)         // give others a room to breathe
             onTetheringStarted()    // force flush state
         }

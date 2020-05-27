@@ -19,7 +19,7 @@ import java.lang.ref.WeakReference
  */
 object TetheringManager {
     /**
-     * Callback for use with [.startTethering] to find out whether tethering succeeded.
+     * Callback for use with [startTethering] to find out whether tethering succeeded.
      */
     interface OnStartTetheringCallback {
         /**
@@ -134,7 +134,8 @@ object TetheringManager {
      * @param handler {@link Handler} to specify the thread upon which the callback will be invoked.
      */
     @RequiresApi(24)
-    fun start(type: Int, showProvisioningUi: Boolean, callback: OnStartTetheringCallback, handler: Handler? = null) {
+    fun startTethering(type: Int, showProvisioningUi: Boolean, callback: OnStartTetheringCallback,
+                       handler: Handler? = null) {
         val reference = WeakReference(callback)
         val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback)
                 .dexCache(app.deviceStorage.cacheDir)
@@ -170,7 +171,7 @@ object TetheringManager {
      *         {@link ConnectivityManager.TETHERING_BLUETOOTH}.
      */
     @RequiresApi(24)
-    fun stop(type: Int) {
+    fun stopTethering(type: Int) {
         stopTethering.invoke(app.connectivity, type)
     }
 

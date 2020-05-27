@@ -118,15 +118,15 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         override val tetherType get() = TetherType.WIFI
         override val icon get() = R.drawable.ic_device_wifi_tethering
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_WIFI)
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI)
     }
     class Usb : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_usb
         override val tetherType get() = TetherType.USB
 
-        override fun start() = TetheringManager.start(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stop(TetheringManager.TETHERING_USB)
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB)
     }
     class Bluetooth : TetheringTileService() {
         private var tethering: BluetoothTethering? = null
@@ -136,7 +136,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {
-            TetheringManager.stop(TetheringManager.TETHERING_BLUETOOTH)
+            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH)
             Thread.sleep(1)         // give others a room to breathe
             onTetheringStarted()    // force flush state
         }

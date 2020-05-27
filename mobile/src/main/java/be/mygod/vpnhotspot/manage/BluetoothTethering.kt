@@ -44,7 +44,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.bluetoothState) {
                 BluetoothAdapter.STATE_ON -> try {
-                    TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, pendingCallback!!)
+                    TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, pendingCallback!!)
                 } catch (e: IOException) {
                     Timber.w(e)
                     Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
@@ -79,7 +79,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
                 registerBluetoothStateListener(this)
                 pendingCallback = callback
                 adapter.enable()
-            } else TetheringManager.start(TetheringManager.TETHERING_BLUETOOTH, true, callback)
+            } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
         }
     }
 
