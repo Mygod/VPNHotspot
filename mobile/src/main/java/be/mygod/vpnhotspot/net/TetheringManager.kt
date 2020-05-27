@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
@@ -39,13 +40,15 @@ object TetheringManager {
      * https://android.googlesource.com/platform/frameworks/base.git/+/2a091d7aa0c174986387e5d56bf97a87fe075bdb%5E%21/services/java/com/android/server/connectivity/Tethering.java
      */
     const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
+    @RequiresApi(26)
+    private const val EXTRA_ACTIVE_LOCAL_ONLY_LEGACY = "localOnlyArray"
     private const val EXTRA_ACTIVE_TETHER_LEGACY = "activeArray"
     /**
      * gives a String[] listing all the interfaces currently in local-only
      * mode (ie, has DHCPv4+IPv6-ULA support and no packet forwarding)
      */
-    @RequiresApi(26)
-    private const val EXTRA_ACTIVE_LOCAL_ONLY = "localOnlyArray"
+    @RequiresApi(30)
+    private const val EXTRA_ACTIVE_LOCAL_ONLY = "android.net.extra.ACTIVE_LOCAL_ONLY"
     /**
      * gives a String[] listing all the interfaces currently tethered
      * (ie, has DHCPv4 support and packets potentially forwarded/NATed)
@@ -168,6 +171,8 @@ object TetheringManager {
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(
             if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
-    val Intent.localOnlyTetheredIfaces get() =
-            if (Build.VERSION.SDK_INT >= 26) getStringArrayListExtra(EXTRA_ACTIVE_LOCAL_ONLY) else emptyList<String>()
+    val Intent.localOnlyTetheredIfaces get() = if (Build.VERSION.SDK_INT >= 26) {
+        getStringArrayListExtra(
+                if (BuildCompat.isAtLeastR()) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
+    } else emptyList<String>()
 }
