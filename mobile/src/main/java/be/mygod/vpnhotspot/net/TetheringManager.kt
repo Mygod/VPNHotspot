@@ -84,7 +84,7 @@ object TetheringManager {
      */
     const val TETHERING_USB = 1
     /**
-     * Requires BLUETOOTH permission.
+     * Requires BLUETOOTH permission, or BLUETOOTH_PRIVILEGED on API 30+.
      */
     const val TETHERING_BLUETOOTH = 2
 
