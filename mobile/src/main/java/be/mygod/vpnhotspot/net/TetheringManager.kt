@@ -15,6 +15,7 @@ import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
 
 /**
@@ -73,22 +74,32 @@ object TetheringManager {
     private const val EXTRA_ACTIVE_TETHER = "tetherArray"
     /**
      * gives a String[] listing all the interfaces we tried to tether and
-     * failed.  Use {@link #getLastTetherError} to find the error code
+     * failed.  Use [getLastTetherError] to find the error code
      * for any interfaces listed here.
      */
     const val EXTRA_ERRORED_TETHER = "erroredArray"
 
+    /**
+     * Wifi tethering type.
+     * @see [startTethering].
+     */
     @RequiresApi(24)
     const val TETHERING_WIFI = 0
     /**
+     * USB tethering type.
+     *
      * Requires MANAGE_USB permission, unfortunately.
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/7ca5d3a/services/usb/java/com/android/server/usb/UsbService.java#389
+     * @see [startTethering].
      */
     @RequiresApi(24)
     const val TETHERING_USB = 1
     /**
+     * Bluetooth tethering type.
+     *
      * Requires BLUETOOTH permission, or BLUETOOTH_PRIVILEGED on API 30+.
+     * @see [startTethering].
      */
     @RequiresApi(24)
     const val TETHERING_BLUETOOTH = 2
@@ -111,7 +122,6 @@ object TetheringManager {
     private val stopTetheringLegacy by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("stopTethering", Int::class.java)
     }
-    @get:RequiresApi(24)
     private val getLastTetherError by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("getLastTetherError", String::class.java)
     }
@@ -139,13 +149,13 @@ object TetheringManager {
     private val build by lazy { classTetheringRequestBuilder.getDeclaredMethod("build") }
 
     @get:RequiresApi(30)
-    private val classStartTetheringCallback by lazy {
+    private val interfaceStartTetheringCallback by lazy {
         Class.forName("android.net.TetheringManager\$StartTetheringCallback")
     }
     @get:RequiresApi(30)
     private val startTethering by lazy {
         clazz.getDeclaredMethod("startTethering", Class.forName("android.net.TetheringManager\$TetheringRequest"),
-                Executor::class.java, classStartTetheringCallback)
+                Executor::class.java, interfaceStartTetheringCallback)
     }
     @get:RequiresApi(30)
     private val stopTethering by lazy { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
@@ -194,28 +204,26 @@ object TetheringManager {
                 build.invoke(this)
             }
             val executor = Executor { if (handler == null) it.run() else handler.post(it) }
-            val proxy = ProxyBuilder.forClass(classStartTetheringCallback).apply {
-                dexCache(app.deviceStorage.cacheDir)
-                handler { proxy, method, args ->
-                    @Suppress("NAME_SHADOWING") val callback = reference.get()
-                    when (val name = method.name) {
-                        "onTetheringStarted" -> {
-                            if (args.isNotEmpty()) Timber.w("Unexpected args for $name: $args")
-                            callback?.onTetheringStarted()
-                            null
-                        }
-                        "onTetheringFailed" -> {
-                            if (args.size != 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onTetheringFailed(args.getOrNull(0) as? Int?)
-                            null
-                        }
-                        else -> {
-                            Timber.w("Unexpected method, calling super: $method")
-                            ProxyBuilder.callSuper(proxy, method, args)
-                        }
+            val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
+                    arrayOf(interfaceStartTetheringCallback)) { proxy, method, args ->
+                @Suppress("NAME_SHADOWING") val callback = reference.get()
+                when (val name = method.name) {
+                    "onTetheringStarted" -> {
+                        if (args.isNotEmpty()) Timber.w("Unexpected args for $name: $args")
+                        callback?.onTetheringStarted()
+                        null
+                    }
+                    "onTetheringFailed" -> {
+                        if (args.size != 1) Timber.w("Unexpected args for $name: $args")
+                        callback?.onTetheringFailed(args.getOrNull(0) as? Int?)
+                        null
+                    }
+                    else -> {
+                        Timber.w("Unexpected method, calling super: $method")
+                        ProxyBuilder.callSuper(proxy, method, args)
                     }
                 }
-            }.build()
+            }
             startTethering.invoke(instance, request, executor, proxy)
             return
         } catch (e: InvocationTargetException) {
