@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
+import androidx.core.os.BuildCompat
 import androidx.core.view.updatePaddingRelative
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -99,31 +100,39 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         (viewHolder as ViewHolder).manager = this
     }
 
-    fun updateErrorMessage(errored: List<String>) {
-        data.text = errored.filter { TetherType.ofInterface(it) == tetherType }.joinToString("\n") {
-            "$it: " + try {
-                when (val error = TetheringManager.getLastTetherError(it)) {
-                    TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
-                    TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
-                    TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
-                    TetheringManager.TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
-                    TetheringManager.TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
-                    TetheringManager.TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
-                    TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
-                    TetheringManager.TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
-                    TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
-                    TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
-                    TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
-                    TetheringManager.TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
-                    TetheringManager.TETHER_ERROR_DHCPSERVER_ERROR -> "TETHER_ERROR_DHCPSERVER_ERROR"
-                    TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN -> "TETHER_ERROR_ENTITLEMENT_UNKNOWN"
-                    else -> app.getString(R.string.failure_reason_unknown, error)
-                }
-            } catch (e: InvocationTargetException) {
-                if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
-                e.readableMessage
-            }
+    private fun getErrorMessage(iface: String): String {
+        val error = try {
+            TetheringManager.getLastTetherError(iface)
+        } catch (e: InvocationTargetException) {
+            if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
+            return e.readableMessage
         }
+        if (BuildCompat.isAtLeastR()) try {
+            TetheringManager.tetherErrors.get(error)?.let { return it }
+        } catch (e: ReflectiveOperationException) {
+            Timber.w(e)
+        }
+        return when (error) {
+            TetheringManager.TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
+            TetheringManager.TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
+            TetheringManager.TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
+            TetheringManager.TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
+            TetheringManager.TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
+            TetheringManager.TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
+            TetheringManager.TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
+            TetheringManager.TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
+            TetheringManager.TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
+            TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
+            TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
+            TetheringManager.TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
+            TetheringManager.TETHER_ERROR_DHCPSERVER_ERROR -> "TETHER_ERROR_DHCPSERVER_ERROR"
+            TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN -> "TETHER_ERROR_ENTITLEMENT_UNKNOWN"
+            else -> app.getString(R.string.failure_reason_unknown, error)
+        }
+    }
+    fun updateErrorMessage(errored: List<String>) {
+        data.text = errored.filter { TetherType.ofInterface(it) == tetherType }
+                .joinToString("\n") { "$it: ${getErrorMessage(it)}" }
         data.notifyChange()
     }
 

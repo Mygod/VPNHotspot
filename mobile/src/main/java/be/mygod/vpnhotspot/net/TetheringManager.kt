@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
+import androidx.collection.SparseArrayCompat
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import com.android.dx.stock.ProxyBuilder
@@ -87,6 +88,18 @@ object TetheringManager {
      * Requires BLUETOOTH permission, or BLUETOOTH_PRIVILEGED on API 30+.
      */
     const val TETHERING_BLUETOOTH = 2
+
+    @get:RequiresApi(30)
+    val tetherErrors by lazy {
+        SparseArrayCompat<String>().apply {
+            for (field in Class.forName("android.net.TetheringManager").declaredFields) try {
+                // all TETHER_ERROR_* are system-api since API 30
+                if (field.name.startsWith("TETHER_ERROR_")) put(field.get(null) as Int, field.name)
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
+        }
+    }
 
     private val classOnStartTetheringCallback by lazy {
         Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
