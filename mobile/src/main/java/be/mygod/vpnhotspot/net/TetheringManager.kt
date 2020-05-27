@@ -61,18 +61,20 @@ object TetheringManager {
      * for any interfaces listed here.
      */
     const val EXTRA_ERRORED_TETHER = "erroredArray"
-    const val TETHER_ERROR_NO_ERROR           = 0
-    const val TETHER_ERROR_UNKNOWN_IFACE      = 1
-    const val TETHER_ERROR_SERVICE_UNAVAIL    = 2
-    const val TETHER_ERROR_UNSUPPORTED        = 3
-    const val TETHER_ERROR_UNAVAIL_IFACE      = 4
-    const val TETHER_ERROR_MASTER_ERROR       = 5
-    const val TETHER_ERROR_TETHER_IFACE_ERROR = 6
+    const val TETHER_ERROR_NO_ERROR             = 0
+    const val TETHER_ERROR_UNKNOWN_IFACE        = 1
+    const val TETHER_ERROR_SERVICE_UNAVAIL      = 2
+    const val TETHER_ERROR_UNSUPPORTED          = 3
+    const val TETHER_ERROR_UNAVAIL_IFACE        = 4
+    const val TETHER_ERROR_MASTER_ERROR         = 5
+    const val TETHER_ERROR_TETHER_IFACE_ERROR   = 6
     const val TETHER_ERROR_UNTETHER_IFACE_ERROR = 7
     const val TETHER_ERROR_ENABLE_NAT_ERROR     = 8
     const val TETHER_ERROR_DISABLE_NAT_ERROR    = 9
     const val TETHER_ERROR_IFACE_CFG_ERROR      = 10
     const val TETHER_ERROR_PROVISION_FAILED     = 11
+    const val TETHER_ERROR_DHCPSERVER_ERROR     = 12
+    const val TETHER_ERROR_ENTITLEMENT_UNKNOWN  = 13
 
     const val TETHERING_WIFI = 0
     /**

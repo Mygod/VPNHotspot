@@ -115,6 +115,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     TetheringManager.TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
                     TetheringManager.TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
                     TetheringManager.TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
+                    TetheringManager.TETHER_ERROR_DHCPSERVER_ERROR -> "TETHER_ERROR_DHCPSERVER_ERROR"
+                    TetheringManager.TETHER_ERROR_ENTITLEMENT_UNKNOWN -> "TETHER_ERROR_ENTITLEMENT_UNKNOWN"
                     else -> app.getString(R.string.failure_reason_unknown, error)
                 }
             } catch (e: InvocationTargetException) {
