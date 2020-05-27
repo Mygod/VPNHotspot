@@ -78,22 +78,6 @@ object TetheringManager {
      */
     const val EXTRA_ERRORED_TETHER = "erroredArray"
 
-    // tether errors defined in ConnectivityManager up to Android 10
-    private const val TETHER_ERROR_NO_ERROR             = 0
-    private const val TETHER_ERROR_UNKNOWN_IFACE        = 1
-    private const val TETHER_ERROR_SERVICE_UNAVAIL      = 2
-    private const val TETHER_ERROR_UNSUPPORTED          = 3
-    private const val TETHER_ERROR_UNAVAIL_IFACE        = 4
-    private const val TETHER_ERROR_MASTER_ERROR         = 5
-    private const val TETHER_ERROR_TETHER_IFACE_ERROR   = 6
-    private const val TETHER_ERROR_UNTETHER_IFACE_ERROR = 7
-    private const val TETHER_ERROR_ENABLE_NAT_ERROR     = 8
-    private const val TETHER_ERROR_DISABLE_NAT_ERROR    = 9
-    private const val TETHER_ERROR_IFACE_CFG_ERROR      = 10
-    private const val TETHER_ERROR_PROVISION_FAILED     = 11
-    private const val TETHER_ERROR_DHCPSERVER_ERROR     = 12
-    private const val TETHER_ERROR_ENTITLEMENT_UNKNOWN  = 13
-
     @RequiresApi(24)
     const val TETHERING_WIFI = 0
     /**
@@ -290,6 +274,12 @@ object TetheringManager {
      */
     fun getLastTetherError(iface: String): Int = getLastTetherError.invoke(app.connectivity, iface) as Int
 
+    // tether errors defined in ConnectivityManager up to Android 10
+    private val tetherErrors29 = arrayOf("TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE",
+            "TETHER_ERROR_SERVICE_UNAVAIL", "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE",
+            "TETHER_ERROR_MASTER_ERROR", "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR",
+            "TETHER_ERROR_ENABLE_NAT_ERROR", "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR",
+            "TETHER_ERROR_PROVISION_FAILED", "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN")
     @get:RequiresApi(30)
     private val tetherErrors by lazy {
         SparseArrayCompat<String>().apply {
@@ -307,23 +297,7 @@ object TetheringManager {
         } catch (e: ReflectiveOperationException) {
             Timber.w(e)
         }
-        return when (error) {
-            TETHER_ERROR_NO_ERROR -> "TETHER_ERROR_NO_ERROR"
-            TETHER_ERROR_UNKNOWN_IFACE -> "TETHER_ERROR_UNKNOWN_IFACE"
-            TETHER_ERROR_SERVICE_UNAVAIL -> "TETHER_ERROR_SERVICE_UNAVAIL"
-            TETHER_ERROR_UNSUPPORTED -> "TETHER_ERROR_UNSUPPORTED"
-            TETHER_ERROR_UNAVAIL_IFACE -> "TETHER_ERROR_UNAVAIL_IFACE"
-            TETHER_ERROR_MASTER_ERROR -> "TETHER_ERROR_MASTER_ERROR"
-            TETHER_ERROR_TETHER_IFACE_ERROR -> "TETHER_ERROR_TETHER_IFACE_ERROR"
-            TETHER_ERROR_UNTETHER_IFACE_ERROR -> "TETHER_ERROR_UNTETHER_IFACE_ERROR"
-            TETHER_ERROR_ENABLE_NAT_ERROR -> "TETHER_ERROR_ENABLE_NAT_ERROR"
-            TETHER_ERROR_DISABLE_NAT_ERROR -> "TETHER_ERROR_DISABLE_NAT_ERROR"
-            TETHER_ERROR_IFACE_CFG_ERROR -> "TETHER_ERROR_IFACE_CFG_ERROR"
-            TETHER_ERROR_PROVISION_FAILED -> "TETHER_ERROR_PROVISION_FAILED"
-            TETHER_ERROR_DHCPSERVER_ERROR -> "TETHER_ERROR_DHCPSERVER_ERROR"
-            TETHER_ERROR_ENTITLEMENT_UNKNOWN -> "TETHER_ERROR_ENTITLEMENT_UNKNOWN"
-            else -> app.getString(R.string.failure_reason_unknown, error)
-        }
+        return tetherErrors29.getOrNull(error) ?: app.getString(R.string.failure_reason_unknown, error)
     }
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(
