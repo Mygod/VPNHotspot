@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.LinkAddress
-import android.net.MacAddress
 import android.net.Network
 import android.os.Build
 import android.os.Handler
@@ -298,19 +297,6 @@ object TetheringManager {
         stopTetheringLegacy.invoke(app.connectivity, type)
     }
 
-    data class TetheredClient(private val underlying: Any) {
-        @get:RequiresApi(30)
-        val macAddress get() = getMacAddress.invoke(underlying) as MacAddress
-        @get:RequiresApi(30)
-        val addresses get() = (getAddresses.invoke(underlying) as Iterable<*>).map { inner ->
-            getAddress.invoke(inner) as LinkAddress to getHostname.invoke(inner) as String?
-        }
-        @get:RequiresApi(30)
-        val tetheringType get() = getTetheringType.invoke(underlying) as Int
-
-        override fun toString() = underlying.toString()
-    }
-
     /**
      * Callback for use with [registerTetheringEventCallback] to find out tethering
      * upstream status.
@@ -402,8 +388,8 @@ object TetheringManager {
          * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
          * @param clients The new set of tethered clients; the collection is not ordered.
          */
-        fun onClientsChanged(clients: List<TetheredClient?>) {
-            Timber.d("onClientsChanged: ${clients.joinToString()}")
+        fun onClientsChanged(clients: Iterable<*>) {
+            Timber.i("onClientsChanged: ${clients.joinToString()}")
         }
 
         /**
@@ -414,22 +400,6 @@ object TetheringManager {
          */
         fun onOffloadStatusChanged(status: Int) {}
     }
-
-    @get:RequiresApi(30)
-    private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
-    @get:RequiresApi(30)
-    private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
-    @get:RequiresApi(30)
-    private val getAddresses by lazy { classTetheredClient.getDeclaredMethod("getAddresses") }
-    @get:RequiresApi(30)
-    private val getTetheringType by lazy { classTetheredClient.getDeclaredMethod("getTetheringType") }
-
-    @get:RequiresApi(30)
-    private val classAddressInfo by lazy { Class.forName("android.net.TetheredClient\$AddressInfo") }
-    @get:RequiresApi(30)
-    private val getAddress by lazy { classAddressInfo.getDeclaredMethod("getAddress") }
-    @get:RequiresApi(30)
-    private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
 
     @get:RequiresApi(30)
     private val classTetheringInterfaceRegexps by lazy {
@@ -522,9 +492,7 @@ object TetheringManager {
                         }
                         "onClientsChanged" -> {
                             if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onClientsChanged((args[0] as Iterable<*>).map {
-                                it?.run { TetheredClient(this) }
-                            })
+                            callback?.onClientsChanged(args[0] as Iterable<*>)
                             null
                         }
                         "onOffloadStatusChanged" -> {
