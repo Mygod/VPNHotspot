@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
 import androidx.core.os.BuildCompat
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import java.util.regex.Pattern
 
@@ -38,10 +37,9 @@ enum class TetherType {
          * Source: https://android.googlesource.com/platform/frameworks/base/+/32e772f/packages/Tethering/src/com/android/networkstack/tethering/TetheringConfiguration.java#93
          */
         init {
-            val appRes = app.resources
-            val sysRes = Resources.getSystem()
-            fun getRegexs(name: String) = appRes.getStringArray(sysRes
-                    .getIdentifier(name, "array", "android"))
+            val system = Resources.getSystem()
+            fun getRegexs(name: String) = system
+                    .getStringArray(system.getIdentifier(name, "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
             usbRegexs = getRegexs("config_tether_usb_regexs")
@@ -51,7 +49,7 @@ enum class TetherType {
             bluetoothRegexs = getRegexs("config_tether_bluetooth_regexs")
             ncmRegexs = if (BuildCompat.isAtLeastR()) getRegexs("config_tether_ncm_regexs") else emptyList()
             ethernetRegex = if (BuildCompat.isAtLeastR()) {
-                appRes.getString(sysRes.getIdentifier("config_ethernet_iface_regex", "string", "android")).run {
+                system.getString(system.getIdentifier("config_ethernet_iface_regex", "string", "android")).run {
                     if (isEmpty()) null else toPattern()
                 }
             } else null

@@ -12,7 +12,7 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:4.0.0-rc01")
+        classpath("com.android.tools.build:gradle:4.0.0")
         classpath("com.github.ben-manes:gradle-versions-plugin:0.28.0")
         classpath("com.google.firebase:firebase-crashlytics-gradle:2.1.1")
         classpath("com.google.android.gms:oss-licenses-plugin:0.10.2")
