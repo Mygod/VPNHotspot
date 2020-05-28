@@ -86,7 +86,7 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_wps"
+                android:src="@drawable/ic_action_wifi_protected_setup"
                 android:tint="?android:attr/textColorPrimary"/>
 
             <Space
