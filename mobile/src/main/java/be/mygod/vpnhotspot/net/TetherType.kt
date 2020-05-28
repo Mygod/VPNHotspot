@@ -48,11 +48,9 @@ enum class TetherType {
             wimaxRegexs = getRegexs("config_tether_wimax_regexs")
             bluetoothRegexs = getRegexs("config_tether_bluetooth_regexs")
             ncmRegexs = if (BuildCompat.isAtLeastR()) getRegexs("config_tether_ncm_regexs") else emptyList()
-            ethernetRegex = if (BuildCompat.isAtLeastR()) {
-                system.getString(system.getIdentifier("config_ethernet_iface_regex", "string", "android")).run {
-                    if (isEmpty()) null else toPattern()
-                }
-            } else null
+            // available since Android 4.0: https://android.googlesource.com/platform/frameworks/base/+/c96a667162fab44a250503caccb770109a9cb69a
+            ethernetRegex = system.getString(system.getIdentifier("config_ethernet_iface_regex", "string",
+                    "android")).run { if (isEmpty()) null else toPattern() }
         }
 
         /**
