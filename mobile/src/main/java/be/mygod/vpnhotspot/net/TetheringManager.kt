@@ -333,18 +333,9 @@ object TetheringManager {
          * multiple times later upon changes.
          *
          * *@param reg The new regular expressions.
-         * @param tetherableBluetoothRegexs an array of 0 or more regular expression Strings defining
-         *        what interfaces are considered tetherable bluetooth interfaces.
-         * @param tetherableUsbRegexs an array of 0 or more regular expression Strings defining
-         *        what interfaces are considered tetherable usb interfaces.
-         * @param tetherableWifiRegexs an array of 0 or more regular expression Strings defining
-         *        what interfaces are considered tetherable wifi interfaces.
-         *
          * @hide
          */
-        fun onTetherableInterfaceRegexpsChanged(tetherableBluetoothRegexs: List<String?>,
-                                                tetherableUsbRegexs: List<String?>,
-                                                tetherableWifiRegexs: List<String?>) {}
+        fun onTetherableInterfaceRegexpsChanged() {}
 
         /**
          * Called when there was a change in the list of tetherable interfaces. Tetherable
@@ -402,23 +393,6 @@ object TetheringManager {
     }
 
     @get:RequiresApi(30)
-    private val classTetheringInterfaceRegexps by lazy {
-        Class.forName("android.net.TetheringManager\$TetheringInterfaceRegexps")
-    }
-    @get:RequiresApi(30)
-    private val getTetherableBluetoothRegexs by lazy {
-        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableBluetoothRegexs")
-    }
-    @get:RequiresApi(30)
-    private val getTetherableUsbRegexs by lazy {
-        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableUsbRegexs")
-    }
-    @get:RequiresApi(30)
-    private val getTetherableWifiRegexs by lazy {
-        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableWifiRegexs")
-    }
-
-    @get:RequiresApi(30)
     private val interfaceTetheringEventCallback by lazy {
         Class.forName("android.net.TetheringManager\$TetheringEventCallback")
     }
@@ -464,13 +438,7 @@ object TetheringManager {
                             null
                         }
                         "onTetherableInterfaceRegexpsChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            val reg = args[0]
-                            @Suppress("UNCHECKED_CAST")
-                            callback?.onTetherableInterfaceRegexpsChanged(
-                                    getTetherableBluetoothRegexs.invoke(reg) as List<String?>,
-                                    getTetherableUsbRegexs.invoke(reg) as List<String?>,
-                                    getTetherableWifiRegexs.invoke(reg) as List<String?>)
+                            callback?.onTetherableInterfaceRegexpsChanged()
                             null
                         }
                         "onTetherableInterfacesChanged" -> {
