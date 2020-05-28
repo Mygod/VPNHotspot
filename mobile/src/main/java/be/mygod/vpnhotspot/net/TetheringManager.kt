@@ -249,7 +249,7 @@ object TetheringManager {
                     val (localIPv4Address, clientAddress) = address
                     setStaticIpv4Addresses(builder, localIPv4Address, clientAddress)
                 }
-                build.invoke(this)
+                build.invoke(builder)
             }
             val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
                     arrayOf(interfaceStartTetheringCallback)) { proxy, method, args ->
