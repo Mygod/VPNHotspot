@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.system.ErrnoException
 import android.system.OsConstants
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
@@ -19,11 +20,17 @@ abstract class IpMonitor : Runnable {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
         private val errorMatcher = "Dump (was interrupted and may be inconsistent.|terminated)$".toRegex()
-        private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, Mode.Poll.toString()) ?: "")
+        private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, (if (BuildCompat.isAtLeastR())
+            Mode.MonitorRoot else @Suppress("DEPRECATION") Mode.Poll).toString()) ?: "")
     }
 
     enum class Mode(val isMonitor: Boolean = false) {
-        Monitor(true), MonitorRoot(true), Poll, PollRoot
+        @Deprecated("No longer usable on API 30+")
+        Monitor(true),
+        MonitorRoot(true),
+        @Deprecated("No longer usable on API 30+")
+        Poll,
+        PollRoot,
     }
 
     private class FlushFailure : RuntimeException()
