@@ -79,6 +79,7 @@ object TetheringManager {
      */
     const val EXTRA_ERRORED_TETHER = "erroredArray"
 
+    // tethering types supported by enableTetheringInternal: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#549
     /**
      * Wifi tethering type.
      * @see [startTethering].
@@ -103,6 +104,22 @@ object TetheringManager {
      */
     @RequiresApi(24)
     const val TETHERING_BLUETOOTH = 2
+    /**
+     * Ncm local tethering type.
+     *
+     * Requires NETWORK_SETTINGS permission, which is sadly not obtainable.
+     * @see [startTethering]
+     */
+    @RequiresApi(30)
+    const val TETHERING_NCM = 4
+    /**
+     * Ethernet tethering type.
+     *
+     * Requires MANAGE_USB permission, also.
+     * @see [startTethering]
+     */
+    @RequiresApi(30)
+    const val TETHERING_ETHERNET = 5
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }

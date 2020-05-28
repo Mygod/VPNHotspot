@@ -191,6 +191,22 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
             }
         }
     }
+    @RequiresApi(30)
+    class Ethernet : TetheringTileService() {
+        override val labelString get() = R.string.tethering_manage_ethernet
+        override val tetherType get() = TetherType.ETHERNET
+
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET)
+    }
+    @RequiresApi(30)
+    class Ncm : TetheringTileService() {
+        override val labelString get() = R.string.tethering_manage_ncm
+        override val tetherType get() = TetherType.NCM
+
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM)
+    }
 
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 25")

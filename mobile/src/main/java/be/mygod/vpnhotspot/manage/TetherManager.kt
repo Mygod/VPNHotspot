@@ -157,6 +157,24 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             onTetheringStarted()    // force flush state
         }
     }
+    @RequiresApi(30)
+    class Ethernet(parent: TetheringFragment) : TetherManager(parent) {
+        override val title get() = parent.getString(R.string.tethering_manage_ethernet)
+        override val tetherType get() = TetherType.ETHERNET
+        override val type get() = VIEW_TYPE_ETHERNET
+
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET)
+    }
+    @RequiresApi(30)
+    class Ncm(parent: TetheringFragment) : TetherManager(parent) {
+        override val title get() = parent.getString(R.string.tethering_manage_ncm)
+        override val tetherType get() = TetherType.NCM
+        override val type get() = VIEW_TYPE_NCM
+
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM)
+    }
 
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")

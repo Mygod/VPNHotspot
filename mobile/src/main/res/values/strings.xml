@@ -6,6 +6,7 @@
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
+    * @string/ethernet_tether_checkbox_text
   -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
@@ -56,6 +57,8 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
+    <string name="tethering_manage_ethernet">Ethernet tethering</string>
+    <string name="tethering_manage_ncm">USB tethering (NCM)</string>
 
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>

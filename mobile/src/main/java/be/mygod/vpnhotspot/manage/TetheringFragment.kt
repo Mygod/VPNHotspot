@@ -10,8 +10,10 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
+import androidx.core.os.BuildCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -46,11 +48,17 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
+        @get:RequiresApi(26)
         internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
+        @get:RequiresApi(24)
         private val tetherManagers by lazy @TargetApi(24) {
             listOf(TetherManager.Wifi(this@TetheringFragment),
                     TetherManager.Usb(this@TetheringFragment),
                     TetherManager.Bluetooth(this@TetheringFragment))
+        }
+        @get:RequiresApi(30)
+        private val tetherManagers30 by lazy @TargetApi(30) {
+            listOf(TetherManager.Ethernet(this@TetheringFragment), TetherManager.Ncm(this@TetheringFragment))
         }
         private val wifiManagerLegacy by lazy @Suppress("Deprecation") {
             TetherManager.WifiLegacy(this@TetheringFragment)
@@ -77,6 +85,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (Build.VERSION.SDK_INT >= 24) {
                 list.addAll(tetherManagers)
                 tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
+            }
+            if (BuildCompat.isAtLeastR()) {
+                list.addAll(tetherManagers30)
+                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces) }
             }
             if (Build.VERSION.SDK_INT < 26) {
                 list.add(wifiManagerLegacy)

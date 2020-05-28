@@ -163,6 +163,8 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * `Landroid/net/TetheringManager;->EXTRA_ACTIVE_TETHER:Ljava/lang/String;,system-api,test-api,whitelist`
 * `Landroid/net/TetheringManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,system-api,test-api,whitelist`
 * (since API 24) `Landroid/net/TetheringManager;->TETHERING_BLUETOOTH:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_NCM:I,system-api,test-api,whitelist`
 * (since API 24) `Landroid/net/TetheringManager;->TETHERING_USB:I,system-api,test-api,whitelist`
 * (since API 24) `Landroid/net/TetheringManager;->TETHERING_WIFI:I,system-api,test-api,whitelist`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,system-api,test-api,whitelist`
@@ -181,8 +183,10 @@ Undocumented system configurations:
 
 * `@android:array/config_tether_usb_regexs`
 * `@android:array/config_tether_wifi_regexs`
+* `@android:array/config_tether_wifi_p2p_regexs`
 * `@android:array/config_tether_wimax_regexs`
 * `@android:array/config_tether_bluetooth_regexs`
+* `@android:array/config_tether_ncm_regexs`
 * (since API 28) `@android:integer/config_wifi_framework_soft_ap_timeout_delay`
 
 Other:

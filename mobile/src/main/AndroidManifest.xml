@@ -34,6 +34,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.MANAGE_USB"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.NETWORK_SETTINGS"
+                     tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG"
                      tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -140,6 +142,30 @@
             android:label="@string/tethering_manage_bluetooth"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             tools:targetApi="24">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.TetheringTileService$Ethernet"
+            android:directBootAware="true"
+            android:enabled="@bool/api_ge_30"
+            android:icon="@drawable/ic_content_inbox"
+            android:label="@string/tethering_manage_ethernet"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="30">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".manage.TetheringTileService$Ncm"
+            android:directBootAware="true"
+            android:enabled="@bool/api_ge_30"
+            android:icon="@drawable/ic_action_settings_ethernet"
+            android:label="@string/tethering_manage_ncm"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="30">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
