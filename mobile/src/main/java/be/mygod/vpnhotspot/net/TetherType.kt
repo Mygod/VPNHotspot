@@ -11,7 +11,8 @@ enum class TetherType {
     val icon get() = when (this) {
         USB -> R.drawable.ic_device_usb
         WIFI_P2P -> R.drawable.ic_action_settings_input_antenna
-        WIFI, WIMAX -> R.drawable.ic_device_network_wifi
+        WIFI -> R.drawable.ic_device_network_wifi
+        WIMAX -> R.drawable.ic_action_contactless
         BLUETOOTH -> R.drawable.ic_device_bluetooth
         else -> R.drawable.ic_device_wifi_tethering
     }
