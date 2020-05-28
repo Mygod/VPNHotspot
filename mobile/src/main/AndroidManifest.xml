@@ -181,8 +181,7 @@
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>
         <service android:name="com.google.firebase.components.ComponentDiscoveryService"
-                 android:directBootAware="true"
-                 tools:ignore="MissingClass"/>
+                 android:directBootAware="true"/>
 
     </application>
 
