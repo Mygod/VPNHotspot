@@ -158,6 +158,13 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (since API 24) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123410)
 * (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringFailed(I)V,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringStarted()V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Ljava/lang/String;I)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onOffloadStatusChanged(I)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfacesChanged(Ljava/util/List;)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetheredInterfacesChanged(Ljava/util/List;)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetheringSupported(Z)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onUpstreamChanged(Landroid/net/Network;)V,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;-><init>(I)V,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->build()Landroid/net/TetheringManager$TetheringRequest;,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setExemptFromEntitlementCheck(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`
@@ -173,8 +180,13 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (since API 24) `Landroid/net/TetheringManager;->TETHERING_USB:I,system-api,test-api,whitelist`
 * (since API 24) `Landroid/net/TetheringManager;->TETHERING_WIFI:I,system-api,test-api,whitelist`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_FAILED:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STARTED:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STOPPED:I,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->registerTetheringEventCallback(Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$TetheringEventCallback;)V,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager;->startTethering(Landroid/net/TetheringManager$TetheringRequest;Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$StartTetheringCallback;)V,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager;->stopTethering(I)V,system-api,test-api,whitelist`
+* (since API 30) `Landroid/net/TetheringManager;->unregisterTetheringEventCallback(Landroid/net/TetheringManager$TetheringEventCallback;)V,system-api,test-api,whitelist`
 * [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132289)
 * [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132358)
 * `Landroid/net/wifi/p2p/WifiP2pConfig;->getNetworkId()I,public-api,system-api,test-api,whitelist`
