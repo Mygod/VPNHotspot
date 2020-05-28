@@ -4,6 +4,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.LinkAddress
+import android.net.MacAddress
+import android.net.Network
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
@@ -78,6 +80,13 @@ object TetheringManager {
      * for any interfaces listed here.
      */
     const val EXTRA_ERRORED_TETHER = "erroredArray"
+
+    /** Tethering offload status is stopped.  */
+    const val TETHER_HARDWARE_OFFLOAD_STOPPED = 0
+    /** Tethering offload status is started.  */
+    const val TETHER_HARDWARE_OFFLOAD_STARTED = 1
+    /** Fail to start tethering offload.  */
+    const val TETHER_HARDWARE_OFFLOAD_FAILED = 2
 
     // tethering types supported by enableTetheringInternal: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#549
     /**
@@ -287,6 +296,256 @@ object TetheringManager {
             Timber.w(e, "Unable to invoke TetheringManager.stopTethering, falling back to ConnectivityManager")
         }
         stopTetheringLegacy.invoke(app.connectivity, type)
+    }
+
+    data class TetheredClient(val underlying: Any) {
+        @get:RequiresApi(30)
+        val macAddress get() = getMacAddress.invoke(underlying) as MacAddress
+        @get:RequiresApi(30)
+        val addresses get() = (getAddresses.invoke(underlying) as Iterable<*>).map { inner ->
+            getAddress.invoke(inner) as LinkAddress to getHostname.invoke(inner) as String?
+        }
+        @get:RequiresApi(30)
+        val tetheringType get() = getTetheringType.invoke(underlying) as Int
+    }
+
+    /**
+     * Callback for use with [registerTetheringEventCallback] to find out tethering
+     * upstream status.
+     */
+    interface TetheringEventCallback {
+        /**
+         * Called when tethering supported status changed.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         *
+         * Tethering may be disabled via system properties, device configuration, or device
+         * policy restrictions.
+         *
+         * @param supported The new supported status
+         */
+        fun onTetheringSupported(supported: Boolean) {}
+
+        /**
+         * Called when tethering upstream changed.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         *
+         * @param network the [Network] of tethering upstream. Null means tethering doesn't
+         * have any upstream.
+         */
+        fun onUpstreamChanged(network: Network?) {}
+
+        /**
+         * Called when there was a change in tethering interface regular expressions.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         *
+         * *@param reg The new regular expressions.
+         * @param tetherableBluetoothRegexs an array of 0 or more regular expression Strings defining
+         *        what interfaces are considered tetherable bluetooth interfaces.
+         * @param tetherableUsbRegexs an array of 0 or more regular expression Strings defining
+         *        what interfaces are considered tetherable usb interfaces.
+         * @param tetherableWifiRegexs an array of 0 or more regular expression Strings defining
+         *        what interfaces are considered tetherable wifi interfaces.
+         *
+         * @hide
+         */
+        fun onTetherableInterfaceRegexpsChanged(tetherableBluetoothRegexs: List<String?>,
+                                                tetherableUsbRegexs: List<String?>,
+                                                tetherableWifiRegexs: List<String?>) {}
+
+        /**
+         * Called when there was a change in the list of tetherable interfaces. Tetherable
+         * interface means this interface is available and can be used for tethering.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         * @param interfaces The list of tetherable interface names.
+         */
+        fun onTetherableInterfacesChanged(interfaces: List<String?>) {}
+
+        /**
+         * Called when there was a change in the list of tethered interfaces.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         * @param interfaces The list of 0 or more String of currently tethered interface names.
+         */
+        fun onTetheredInterfacesChanged(interfaces: List<String?>) {}
+
+        /**
+         * Called when an error occurred configuring tethering.
+         *
+         * This will be called immediately after the callback is registered if the latest status
+         * on the interface is an error, and may be called multiple times later upon changes.
+         * @param ifName Name of the interface.
+         * @param error One of `TetheringManager#TETHER_ERROR_*`.
+         */
+        fun onError(ifName: String, error: Int) {}
+
+        /**
+         * Called when the list of tethered clients changes.
+         *
+         * This callback provides best-effort information on connected clients based on state
+         * known to the system, however the list cannot be completely accurate (and should not be
+         * used for security purposes). For example, clients behind a bridge and using static IP
+         * assignments are not visible to the tethering device; or even when using DHCP, such
+         * clients may still be reported by this callback after disconnection as the system cannot
+         * determine if they are still connected.
+         * @param clients The new set of tethered clients; the collection is not ordered.
+         */
+        fun onClientsChanged(clients: List<TetheredClient?>) {}
+
+        /**
+         * Called when tethering offload status changes.
+         *
+         * This will be called immediately after the callback is registered.
+         * @param status The offload status.
+         */
+        fun onOffloadStatusChanged(status: Int) {}
+    }
+
+    @get:RequiresApi(30)
+    private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
+    @get:RequiresApi(30)
+    private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
+    @get:RequiresApi(30)
+    private val getAddresses by lazy { classTetheredClient.getDeclaredMethod("getAddresses") }
+    @get:RequiresApi(30)
+    private val getTetheringType by lazy { classTetheredClient.getDeclaredMethod("getTetheringType") }
+
+    @get:RequiresApi(30)
+    private val classTetheringInterfaceRegexps by lazy {
+        Class.forName("android.net.TetheredClient\$TetheringInterfaceRegexps")
+    }
+    @get:RequiresApi(30)
+    private val getTetherableBluetoothRegexs by lazy {
+        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableBluetoothRegexs")
+    }
+    @get:RequiresApi(30)
+    private val getTetherableUsbRegexs by lazy {
+        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableUsbRegexs")
+    }
+    @get:RequiresApi(30)
+    private val getTetherableWifiRegexs by lazy {
+        classTetheringInterfaceRegexps.getDeclaredMethod("getTetherableWifiRegexs")
+    }
+
+    @get:RequiresApi(30)
+    private val classAddressInfo by lazy { Class.forName("android.net.TetheredClient\$AddressInfo") }
+    @get:RequiresApi(30)
+    private val getAddress by lazy { classAddressInfo.getDeclaredMethod("getAddress") }
+    @get:RequiresApi(30)
+    private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
+
+    @get:RequiresApi(30)
+    private val interfaceTetheringEventCallback by lazy {
+        Class.forName("android.net.TetheredClient\$TetheringEventCallback")
+    }
+    @get:RequiresApi(30)
+    private val registerTetheringEventCallback by lazy {
+        clazz.getDeclaredMethod("registerTetheringEventCallback", Executor::class.java, interfaceTetheringEventCallback)
+    }
+    @get:RequiresApi(30)
+    private val unregisterTetheringEventCallback by lazy {
+        clazz.getDeclaredMethod("unregisterTetheringEventCallback", interfaceTetheringEventCallback)
+    }
+
+    private val callbackMap = mutableMapOf<TetheringEventCallback, Any>()
+    /**
+     * Start listening to tethering change events. Any new added callback will receive the last
+     * tethering status right away. If callback is registered,
+     * [TetheringEventCallback.onUpstreamChanged] will immediately be called. If tethering
+     * has no upstream or disabled, the argument of callback will be null. The same callback object
+     * cannot be registered twice.
+     *
+     * Requires TETHER_PRIVILEGED or ACCESS_NETWORK_STATE.
+     *
+     * @param executor the executor on which callback will be invoked.
+     * @param callback the callback to be called when tethering has change events.
+     */
+    @RequiresApi(30)
+    fun registerTetheringEventCallback(executor: Executor, callback: TetheringEventCallback) {
+        val reference = WeakReference(callback)
+        val proxy = synchronized(callbackMap) {
+            callbackMap.computeIfAbsent(callback) {
+                Proxy.newProxyInstance(interfaceTetheringEventCallback.classLoader,
+                        arrayOf(interfaceTetheringEventCallback)) { proxy, method, args ->
+                    @Suppress("NAME_SHADOWING") val callback = reference.get()
+                    when (val name = method.name) {
+                        "onTetheringSupported" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            callback?.onTetheringSupported(args[0] as Boolean)
+                            null
+                        }
+                        "onUpstreamChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            callback?.onUpstreamChanged(args[0] as Network?)
+                            null
+                        }
+                        "onTetherableInterfaceRegexpsChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            val reg = args[0]
+                            @Suppress("UNCHECKED_CAST")
+                            callback?.onTetherableInterfaceRegexpsChanged(
+                                    getTetherableBluetoothRegexs.invoke(reg) as List<String?>,
+                                    getTetherableUsbRegexs.invoke(reg) as List<String?>,
+                                    getTetherableWifiRegexs.invoke(reg) as List<String?>)
+                            null
+                        }
+                        "onTetherableInterfacesChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            @Suppress("UNCHECKED_CAST")
+                            callback?.onTetherableInterfacesChanged(args[0] as List<String?>)
+                            null
+                        }
+                        "onTetheredInterfacesChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            @Suppress("UNCHECKED_CAST")
+                            callback?.onTetheredInterfacesChanged(args[0] as List<String?>)
+                            null
+                        }
+                        "onError" -> {
+                            if (args.size > 2) Timber.w("Unexpected args for $name: $args")
+                            callback?.onError(args[0] as String, args[1] as Int)
+                            null
+                        }
+                        "onClientsChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            callback?.onClientsChanged((args[0] as Iterable<*>).map { TetheredClient(it!!) })
+                            null
+                        }
+                        "onOffloadStatusChanged" -> {
+                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                            callback?.onOffloadStatusChanged(args[0] as Int)
+                            null
+                        }
+                        else -> {
+                            Timber.w("Unexpected method, calling super: $method")
+                            ProxyBuilder.callSuper(proxy, method, args)
+                        }
+                    }
+                }
+            }
+        }
+        registerTetheringEventCallback.invoke(instance, executor, proxy)
+    }
+    /**
+     * Remove tethering event callback previously registered with
+     * [registerTetheringEventCallback].
+     *
+     * Requires TETHER_PRIVILEGED or ACCESS_NETWORK_STATE.
+     *
+     * @param callback previously registered callback.
+     */
+    @RequiresApi(30)
+    fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
+        val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
+        unregisterTetheringEventCallback.invoke(instance, proxy)
     }
 
     /**
