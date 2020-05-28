@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
 import androidx.core.os.BuildCompat
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import java.util.regex.Pattern
 
@@ -33,24 +34,35 @@ enum class TetherType {
         private val ncmRegexs: List<Pattern>
         private val ethernetRegex: Pattern?
 
+        private fun Pair<String?, Resources>.getRegexs(name: String) = second
+                .getStringArray(second.getIdentifier(name, "array", first))
+                .filterNotNull()
+                .map { it.toPattern() }
+
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/32e772f/packages/Tethering/src/com/android/networkstack/tethering/TetheringConfiguration.java#93
          */
         init {
-            val system = Resources.getSystem()
-            fun getRegexs(name: String) = system
-                    .getStringArray(system.getIdentifier(name, "array", "android"))
-                    .filterNotNull()
-                    .map { it.toPattern() }
-            usbRegexs = getRegexs("config_tether_usb_regexs")
-            wifiRegexs = getRegexs("config_tether_wifi_regexs")
-            wifiP2pRegexs = if (BuildCompat.isAtLeastR()) getRegexs("config_tether_wifi_p2p_regexs") else emptyList()
-            wimaxRegexs = getRegexs("config_tether_wimax_regexs")
-            bluetoothRegexs = getRegexs("config_tether_bluetooth_regexs")
-            ncmRegexs = if (BuildCompat.isAtLeastR()) getRegexs("config_tether_ncm_regexs") else emptyList()
+            val system = "android" to Resources.getSystem()
+            if (BuildCompat.isAtLeastR()) {
+                val tethering = TetheringManager.PACKAGE to app.packageManager.getResourcesForApplication(
+                        TetheringManager.resolvedService.serviceInfo.applicationInfo)
+                usbRegexs = tethering.getRegexs("config_tether_usb_regexs")
+                wifiRegexs = tethering.getRegexs("config_tether_wifi_regexs")
+                wifiP2pRegexs = tethering.getRegexs("config_tether_wifi_p2p_regexs")
+                bluetoothRegexs = tethering.getRegexs("config_tether_bluetooth_regexs")
+                ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs")
+            } else {
+                usbRegexs = system.getRegexs("config_tether_usb_regexs")
+                wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
+                wifiP2pRegexs = emptyList()
+                bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
+                ncmRegexs = emptyList()
+            }
+            wimaxRegexs = system.getRegexs("config_tether_wimax_regexs")
             // available since Android 4.0: https://android.googlesource.com/platform/frameworks/base/+/c96a667162fab44a250503caccb770109a9cb69a
-            ethernetRegex = system.getString(system.getIdentifier("config_ethernet_iface_regex", "string",
-                    "android")).run { if (isEmpty()) null else toPattern() }
+            ethernetRegex = system.second.getString(system.second.getIdentifier(
+                    "config_ethernet_iface_regex", "string", system.first)).run { if (isEmpty()) null else toPattern() }
         }
 
         /**

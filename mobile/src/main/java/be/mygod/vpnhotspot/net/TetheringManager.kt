@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import android.annotation.TargetApi
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -55,7 +56,14 @@ object TetheringManager {
      * @hide
      * @see android.net.TetheringManager
      */
+    @RequiresApi(30)
     const val TETHERING_SERVICE = "tethering"
+
+    @RequiresApi(30)
+    const val PACKAGE = "com.android.networkstack.tethering"
+
+    @RequiresApi(30)
+    private const val TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector"
 
     /**
      * This is a sticky broadcast since almost forever.
@@ -140,7 +148,12 @@ object TetheringManager {
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
     @get:RequiresApi(30)
-    private val instance by lazy { app.getSystemService(TETHERING_SERVICE) }
+    private val instance by lazy @TargetApi(30) { app.getSystemService(TETHERING_SERVICE) }
+    @get:RequiresApi(30)
+    val resolvedService by lazy @TargetApi(30) {
+        app.packageManager.queryIntentServices(Intent(TETHERING_CONNECTOR_CLASS),
+                PackageManager.MATCH_SYSTEM_ONLY).single()
+    }
 
     @get:RequiresApi(24)
     private val classOnStartTetheringCallback by lazy {
