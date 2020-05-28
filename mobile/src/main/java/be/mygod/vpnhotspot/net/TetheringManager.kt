@@ -298,7 +298,7 @@ object TetheringManager {
         stopTetheringLegacy.invoke(app.connectivity, type)
     }
 
-    data class TetheredClient(val underlying: Any) {
+    data class TetheredClient(private val underlying: Any) {
         @get:RequiresApi(30)
         val macAddress get() = getMacAddress.invoke(underlying) as MacAddress
         @get:RequiresApi(30)
@@ -307,6 +307,8 @@ object TetheringManager {
         }
         @get:RequiresApi(30)
         val tetheringType get() = getTetheringType.invoke(underlying) as Int
+
+        override fun toString() = underlying.toString()
     }
 
     /**
@@ -396,9 +398,13 @@ object TetheringManager {
          * assignments are not visible to the tethering device; or even when using DHCP, such
          * clients may still be reported by this callback after disconnection as the system cannot
          * determine if they are still connected.
+         *
+         * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
          * @param clients The new set of tethered clients; the collection is not ordered.
          */
-        fun onClientsChanged(clients: List<TetheredClient?>) {}
+        fun onClientsChanged(clients: List<TetheredClient?>) {
+            Timber.d("onClientsChanged: ${clients.joinToString()}")
+        }
 
         /**
          * Called when tethering offload status changes.
@@ -419,8 +425,15 @@ object TetheringManager {
     private val getTetheringType by lazy { classTetheredClient.getDeclaredMethod("getTetheringType") }
 
     @get:RequiresApi(30)
+    private val classAddressInfo by lazy { Class.forName("android.net.TetheredClient\$AddressInfo") }
+    @get:RequiresApi(30)
+    private val getAddress by lazy { classAddressInfo.getDeclaredMethod("getAddress") }
+    @get:RequiresApi(30)
+    private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
+
+    @get:RequiresApi(30)
     private val classTetheringInterfaceRegexps by lazy {
-        Class.forName("android.net.TetheredClient\$TetheringInterfaceRegexps")
+        Class.forName("android.net.TetheringManager\$TetheringInterfaceRegexps")
     }
     @get:RequiresApi(30)
     private val getTetherableBluetoothRegexs by lazy {
@@ -436,15 +449,8 @@ object TetheringManager {
     }
 
     @get:RequiresApi(30)
-    private val classAddressInfo by lazy { Class.forName("android.net.TetheredClient\$AddressInfo") }
-    @get:RequiresApi(30)
-    private val getAddress by lazy { classAddressInfo.getDeclaredMethod("getAddress") }
-    @get:RequiresApi(30)
-    private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
-
-    @get:RequiresApi(30)
     private val interfaceTetheringEventCallback by lazy {
-        Class.forName("android.net.TetheredClient\$TetheringEventCallback")
+        Class.forName("android.net.TetheringManager\$TetheringEventCallback")
     }
     @get:RequiresApi(30)
     private val registerTetheringEventCallback by lazy {
@@ -516,7 +522,9 @@ object TetheringManager {
                         }
                         "onClientsChanged" -> {
                             if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onClientsChanged((args[0] as Iterable<*>).map { TetheredClient(it!!) })
+                            callback?.onClientsChanged((args[0] as Iterable<*>).map {
+                                it?.run { TetheredClient(this) }
+                            })
                             null
                         }
                         "onOffloadStatusChanged" -> {
