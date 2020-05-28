@@ -1,20 +1,16 @@
 package be.mygod.vpnhotspot
 
 import android.content.Intent
-import android.content.IntentFilter
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
-import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import kotlinx.coroutines.*
 import java.util.concurrent.ConcurrentHashMap
 
-class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
+class TetheringService : IpNeighbourMonitoringService(), TetheringManager.TetheringEventCallback, CoroutineScope {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
@@ -47,11 +43,14 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
-    private var receiverRegistered = false
-    private val receiver = broadcastReceiver { _, intent ->
+    private var callbackRegistered = false
+    override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
+    override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
+
+    override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
         launch {
             val toRemove = downstreams.toMutableMap()   // make a copy
-            for (iface in intent.tetheredIfaces ?: return@launch) {
+            for (iface in interfaces) {
                 val downstream = toRemove.remove(iface) ?: continue
                 if (downstream.monitor) downstream.start()
             }
@@ -62,8 +61,6 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
             onDownstreamsChangedLocked()
         }
     }
-    override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
-    override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
 
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
@@ -71,9 +68,9 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
-            if (!receiverRegistered) {
-                receiverRegistered = true
-                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+            if (!callbackRegistered) {
+                callbackRegistered = true
+                TetheringManager.registerTetheringEventCallbackCompat(this, this)
                 IpNeighbourMonitor.registerCallback(this)
             }
             updateNotification()
@@ -118,10 +115,10 @@ class TetheringService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     private fun unregisterReceiver() {
-        if (receiverRegistered) {
-            ensureReceiverUnregistered(receiver)
+        if (callbackRegistered) {
+            TetheringManager.unregisterTetheringEventCallbackCompat(this, this)
             IpNeighbourMonitor.unregisterCallback(this)
-            receiverRegistered = false
+            callbackRegistered = false
         }
     }
 }

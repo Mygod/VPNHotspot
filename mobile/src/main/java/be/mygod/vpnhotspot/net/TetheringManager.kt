@@ -1,6 +1,9 @@
 package be.mygod.vpnhotspot.net
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.LinkAddress
@@ -12,6 +15,8 @@ import androidx.collection.SparseArrayCompat
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
 import java.lang.ref.WeakReference
@@ -185,6 +190,8 @@ object TetheringManager {
     @get:RequiresApi(30)
     private val stopTethering by lazy { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
 
+    private fun Handler?.makeExecutor() = Executor { if (this == null) it.run() else post(it) }
+
     /**
      * Runs tether provisioning for the given type if needed and then starts tethering if
      * the check succeeds. If no carrier provisioning is required for tethering, tethering is
@@ -228,7 +235,6 @@ object TetheringManager {
                 }
                 build.invoke(this)
             }
-            val executor = Executor { if (handler == null) it.run() else handler.post(it) }
             val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
                     arrayOf(interfaceStartTetheringCallback)) { proxy, method, args ->
                 @Suppress("NAME_SHADOWING") val callback = reference.get()
@@ -249,7 +255,7 @@ object TetheringManager {
                     }
                 }
             }
-            startTethering.invoke(instance, request, executor, proxy)
+            startTethering.invoke(instance, request, handler.makeExecutor(), proxy)
             return
         } catch (e: InvocationTargetException) {
             Timber.w(e, "Unable to invoke TetheringManager.startTethering, falling back to ConnectivityManager")
@@ -490,6 +496,31 @@ object TetheringManager {
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
         unregisterTetheringEventCallback.invoke(instance, proxy)
+    }
+
+    /**
+     * [registerTetheringEventCallback] in a backwards compatible way.
+     *
+     * Only [TetheringEventCallback.onTetheredInterfacesChanged] is supported on API 29-.
+     */
+    fun registerTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
+        if (BuildCompat.isAtLeastR()) {
+            registerTetheringEventCallback(null.makeExecutor(), callback)
+        } else synchronized(callbackMap) {
+            callbackMap.computeIfAbsent(callback) {
+                broadcastReceiver { _, intent ->
+                    callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
+                }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
+            }
+        }
+    }
+    fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
+        if (BuildCompat.isAtLeastR()) {
+            unregisterTetheringEventCallback(callback)
+        } else {
+            val receiver = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
+            context.ensureReceiverUnregistered(receiver as BroadcastReceiver)
+        }
     }
 
     /**
