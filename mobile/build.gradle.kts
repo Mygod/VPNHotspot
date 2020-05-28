@@ -15,12 +15,12 @@ android {
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdkVersion(29)
+    compileSdkVersion("android-R")
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdkVersion(21)
-        targetSdkVersion(29)
+        targetSdkVersion("R")
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 224
         versionName = "2.9.1"

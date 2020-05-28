@@ -20,7 +20,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
-import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.netId
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
@@ -235,11 +234,11 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             p2pManager.requestPersistentGroupInfo(channel) {
                 if (it.isNotEmpty()) persistentSupported = true
                 val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
-                val main = ownedGroups.minBy { it.netId }
+                val main = ownedGroups.minBy { it.networkId }
                 // do not replace current group if it's better
                 if (binder.group?.passphrase == null) binder.group = main
-                if (main != null) ownedGroups.filter { it.netId != main.netId }.forEach {
-                    p2pManager.deletePersistentGroup(channel, it.netId, object : WifiP2pManager.ActionListener {
+                if (main != null) ownedGroups.filter { it.networkId != main.networkId }.forEach {
+                    p2pManager.deletePersistentGroup(channel, it.networkId, object : WifiP2pManager.ActionListener {
                         override fun onSuccess() = Timber.i("Removed redundant owned group: $it")
                         override fun onFailure(reason: Int) = SmartSnackbar.make(
                                 formatReason(R.string.repeater_clean_pog_failure, reason)).show()

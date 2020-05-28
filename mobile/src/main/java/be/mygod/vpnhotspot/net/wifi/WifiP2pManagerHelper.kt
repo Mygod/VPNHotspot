@@ -102,14 +102,4 @@ object WifiP2pManagerHelper {
                 }
         requestPersistentGroupInfo.invoke(this, c, proxy)
     }
-
-    /**
-     * Available since Android 4.2.
-     *
-     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pGroup.java#253
-     */
-    private val getNetworkId by lazy @SuppressLint("DiscouragedPrivateApi") {
-        WifiP2pGroup::class.java.getDeclaredMethod("getNetworkId")
-    }
-    val WifiP2pGroup.netId get() = getNetworkId.invoke(this) as Int
 }
