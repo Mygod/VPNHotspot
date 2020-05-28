@@ -86,10 +86,13 @@ object TetheringManager {
     const val EXTRA_ERRORED_TETHER = "erroredArray"
 
     /** Tethering offload status is stopped.  */
+    @RequiresApi(30)
     const val TETHER_HARDWARE_OFFLOAD_STOPPED = 0
     /** Tethering offload status is started.  */
+    @RequiresApi(30)
     const val TETHER_HARDWARE_OFFLOAD_STARTED = 1
     /** Fail to start tethering offload.  */
+    @RequiresApi(30)
     const val TETHER_HARDWARE_OFFLOAD_FAILED = 2
 
     // tethering types supported by enableTetheringInternal: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#549

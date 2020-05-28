@@ -1,13 +1,17 @@
 package be.mygod.vpnhotspot
 
 import android.content.Intent
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
+import timber.log.Timber
+import java.lang.IllegalStateException
 import java.util.concurrent.ConcurrentHashMap
 
 class TetheringService : IpNeighbourMonitoringService(), TetheringManager.TetheringEventCallback, CoroutineScope {
@@ -60,6 +64,16 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             }
             onDownstreamsChangedLocked()
         }
+    }
+
+    @RequiresApi(30)
+    override fun onOffloadStatusChanged(status: Int) = when (status) {
+        TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED, TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED -> { }
+        TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED -> {
+            Timber.w("TETHER_HARDWARE_OFFLOAD_STARTED")
+            SmartSnackbar.make(R.string.tethering_manage_offload_enabled).show()
+        }
+        else -> Timber.w(IllegalStateException("Unknown onOffloadStatusChanged $status"))
     }
 
     private fun onDownstreamsChangedLocked() {
