@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import java.util.regex.Pattern
 
@@ -31,21 +30,20 @@ enum class TetherType {
          * Source: https://android.googlesource.com/platform/frameworks/base/+/61fa313/core/res/res/values/config.xml#328
          */
         init {
-            val appRes = app.resources
-            val sysRes = Resources.getSystem()
-            usbRegexs = appRes.getStringArray(sysRes
+            val system = Resources.getSystem()
+            usbRegexs = system.getStringArray(system
                     .getIdentifier("config_tether_usb_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            wifiRegexs = appRes.getStringArray(sysRes
+            wifiRegexs = system.getStringArray(system
                     .getIdentifier("config_tether_wifi_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            wimaxRegexs = appRes.getStringArray(sysRes
+            wimaxRegexs = system.getStringArray(system
                     .getIdentifier("config_tether_wimax_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
-            bluetoothRegexs = appRes.getStringArray(sysRes
+            bluetoothRegexs = system.getStringArray(system
                     .getIdentifier("config_tether_bluetooth_regexs", "array", "android"))
                     .filterNotNull()
                     .map { it.toPattern() }
