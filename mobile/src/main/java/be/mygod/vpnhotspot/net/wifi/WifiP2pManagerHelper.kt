@@ -93,6 +93,7 @@ object WifiP2pManagerHelper {
                 arrayOf(interfacePersistentGroupInfoListener)) { proxy, method, args ->
                     if (method.name == "onPersistentGroupInfoAvailable") {
                         if (args.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
+                        @Suppress("UNCHECKED_CAST")
                         listener(getGroupList.invoke(args[0]) as Collection<WifiP2pGroup>)
                         null
                     } else {
