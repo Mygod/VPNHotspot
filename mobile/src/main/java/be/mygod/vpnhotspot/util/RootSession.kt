@@ -1,11 +1,9 @@
 package be.mygod.vpnhotspot.util
 
-import android.os.Handler
-import android.os.HandlerThread
 import android.os.Looper
 import androidx.annotation.WorkerThread
-import androidx.core.os.postDelayed
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.*
 import timber.log.Timber
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -15,13 +13,9 @@ import kotlin.concurrent.withLock
 
 class RootSession : AutoCloseable {
     companion object {
-        private const val TAG = "RootSession"
-
-        val handler = Handler(HandlerThread("$TAG-HandlerThread").apply { start() }.looper)
-
         private val monitor = ReentrantLock()
         private fun onUnlock() {
-            if (monitor.holdCount == 1) instance?.startTimeout()
+            if (monitor.holdCount == 1) instance?.startTimeoutLocked()
         }
         private fun unlock() {
             onUnlock()
@@ -36,7 +30,7 @@ class RootSession : AutoCloseable {
         }
         fun <T> use(operation: (RootSession) -> T) = monitor.withLock {
             val instance = ensureInstance()
-            instance.haltTimeout()
+            instance.haltTimeoutLocked()
             operation(instance).also { onUnlock() }
         }
         fun beginTransaction(): Transaction {
@@ -47,14 +41,14 @@ class RootSession : AutoCloseable {
                 unlock()
                 throw e
             }
-            instance.haltTimeout()
+            instance.haltTimeoutLocked()
             return instance.Transaction()
         }
 
         @WorkerThread
         fun trimMemory() = monitor.withLock {
             val instance = instance ?: return
-            instance.haltTimeout()
+            instance.haltTimeoutLocked()
             instance.close()
         }
 
@@ -85,10 +79,22 @@ class RootSession : AutoCloseable {
         shell.close()
         if (instance == this) instance = null
     }
-    private fun startTimeout() = handler.postDelayed(TimeUnit.MINUTES.toMillis(5), this) {
-        monitor.withLock { close() }
+
+    private var timeoutJob: Job? = null
+    private fun startTimeoutLocked() {
+        check(timeoutJob == null)
+        timeoutJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            delay(TimeUnit.MINUTES.toMillis(5))
+            monitor.withLock {
+                close()
+                timeoutJob = null
+            }
+        }
     }
-    private fun haltTimeout() = handler.removeCallbacksAndMessages(this)
+    private fun haltTimeoutLocked() {
+        timeoutJob?.cancel()
+        timeoutJob = null
+    }
 
     /**
      * Don't care about the results, but still sync.
@@ -141,7 +147,7 @@ class RootSession : AutoCloseable {
                     locked = true
                     ensureInstance()
                 }
-                shell.haltTimeout()
+                shell.haltTimeoutLocked()
                 revertCommands.forEach { shell.submit(it) }
             } catch (e: RuntimeException) { // if revert fails, it should fail silently
                 Timber.d(e)

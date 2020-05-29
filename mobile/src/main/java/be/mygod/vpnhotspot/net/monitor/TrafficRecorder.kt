@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.util.LongSparseArray
-import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -9,6 +8,7 @@ import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.*
 import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
@@ -16,7 +16,6 @@ import java.util.concurrent.TimeUnit
 object TrafficRecorder {
     private const val ANYWHERE = "0.0.0.0/0"
 
-    private var scheduled = false
     private var lastUpdate = 0L
     private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
@@ -36,18 +35,21 @@ object TrafficRecorder {
         if (records.remove(Pair(ip, downstream)) == null) Timber.w("Failed to find traffic record for $ip%$downstream.")
     }
 
+    private var updateJob: Job? = null
     private fun unscheduleUpdateLocked() {
-        RootSession.handler.removeCallbacksAndMessages(this)
-        scheduled = false
+        updateJob?.cancel()
+        updateJob = null
     }
     private fun scheduleUpdateLocked() {
-        if (scheduled) return
+        if (updateJob != null) return
         val now = System.currentTimeMillis()
         val minute = TimeUnit.MINUTES.toMillis(1)
         var timeout = minute - now % minute
         if (foregroundListeners.isNotEmpty() && timeout > 1000) timeout = 1000
-        RootSession.handler.postDelayed(timeout, this) { update(true) }
-        scheduled = true
+        updateJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            delay(timeout)
+            update(true)
+        }
     }
 
     fun rescheduleUpdate() = synchronized(this) {
@@ -122,7 +124,6 @@ object TrafficRecorder {
     }
     fun update(timeout: Boolean = false) {
         synchronized(this) {
-            if (timeout) scheduled = false
             if (records.isEmpty()) return
             val timestamp = System.currentTimeMillis()
             if (!timeout && timestamp - lastUpdate <= 100) return
@@ -133,6 +134,7 @@ object TrafficRecorder {
                 SmartSnackbar.make(e).show()
             }
             lastUpdate = timestamp
+            updateJob = null
             scheduleUpdateLocked()
         }
     }
