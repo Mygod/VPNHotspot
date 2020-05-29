@@ -191,7 +191,6 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (since API 30) `Landroid/net/TetheringManager;->unregisterTetheringEventCallback(Landroid/net/TetheringManager$TetheringEventCallback;)V,system-api,test-api,whitelist`
 * [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132289)
 * [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132358)
-* `Landroid/net/wifi/p2p/WifiP2pConfig;->getNetworkId()I,public-api,system-api,test-api,whitelist`
 * `Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/List;,system-api,whitelist`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,system-api,whitelist`
