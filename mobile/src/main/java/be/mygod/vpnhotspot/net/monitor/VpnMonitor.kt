@@ -51,7 +51,7 @@ object VpnMonitor : UpstreamMonitor() {
                 when (ifname) {
                     null -> Timber.w("interfaceName became null: $oldProperties -> $properties")
                     oldProperties.interfaceName -> losing = false
-                    else -> Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
+                    else -> Timber.w("interfaceName changed: $oldProperties -> $properties")
                 }
                 callbacks.toList()
             }.forEach {
