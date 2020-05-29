@@ -9,7 +9,6 @@ import android.content.res.Configuration
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
-import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
@@ -137,7 +136,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private val p2pManager get() = RepeaterService.p2pManager!!
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
-    private val handler = Handler()
     @RequiresApi(28)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
@@ -219,7 +217,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             if (!safeMode) setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
-            handler.postDelayed(this::onChannelDisconnected, 1000)
+            launch(Dispatchers.Main) {
+                delay(1000)
+                onChannelDisconnected()
+            }
         }
     }
 
@@ -370,7 +371,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      * startService Step 3
      */
     private fun doStartLocked(group: WifiP2pGroup) {
-        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(this, handler, binder::shutdown)
+        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(this, binder::shutdown)
         binder.group = group
         if (persistNextGroup) {
             networkName = group.networkName
@@ -389,8 +390,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null, showWifiEnable: Boolean = false) {
         SmartSnackbar.make(msg).apply {
             if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
-                if (Build.VERSION.SDK_INT >= 29) it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
-                else @Suppress("DEPRECATION") app.wifi.isWifiEnabled = true
+                if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
+                    app.wifi.isWifiEnabled = true
+                } else it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
             }
         }.show()
         showNotification()
@@ -430,7 +432,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
 
     override fun onDestroy() {
-        handler.removeCallbacksAndMessages(null)
         if (status != Status.IDLE) binder.shutdown()
         launch {    // force clean to prevent leakage
             cleanLocked()

@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.database.ContentObserver
 import android.os.BatteryManager
 import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.os.postDelayed
@@ -16,8 +17,9 @@ import be.mygod.vpnhotspot.util.intentFilter
 import timber.log.Timber
 
 @RequiresApi(28)
-class TetherTimeoutMonitor(private val context: Context, private val handler: Handler,
-                           private val onTimeout: () -> Unit) : ContentObserver(handler), AutoCloseable {
+class TetherTimeoutMonitor(private val context: Context, private val onTimeout: () -> Unit,
+                           private val handler: Handler = Handler(Looper.getMainLooper())) :
+        ContentObserver(handler), AutoCloseable {
     /**
      * config_wifi_framework_soft_ap_timeout_delay was introduced in Android 9.
      *

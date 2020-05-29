@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Handler
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
@@ -51,7 +50,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val dispatcher = newSingleThreadContext("LocalOnlyHotspotService")
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
-    private val handler = Handler()
     @RequiresApi(28)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
@@ -85,7 +83,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                         this@LocalOnlyHotspotService.reservation = reservation
                         if (!receiverRegistered) {
                             if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(
-                                    this@LocalOnlyHotspotService, handler, reservation::close)
+                                    this@LocalOnlyHotspotService, reservation::close)
                             registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                             receiverRegistered = true
                         }
