@@ -109,9 +109,11 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             return e.readableMessage
         })
     }
+    protected open fun makeErrorMessage(errored: List<String>): CharSequence = errored
+            .filter { TetherType.ofInterface(it) == tetherType }
+            .joinToString("\n") { "$it: ${getErrorMessage(it)}" }
     fun updateErrorMessage(errored: List<String>) {
-        data.text = errored.filter { TetherType.ofInterface(it) == tetherType }
-                .joinToString("\n") { "$it: ${getErrorMessage(it)}" }
+        data.text = makeErrorMessage(errored)
         data.notifyChange()
     }
 
@@ -149,6 +151,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val isStarted get() = tethering.active == true
 
         override fun onException() = ManageBar.start(parent.context ?: app)
+        override fun makeErrorMessage(errored: List<String>) = listOfNotNull(
+                if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
+                super.makeErrorMessage(errored).let { if (it.isEmpty()) null else it }).joinToString("\n")
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {

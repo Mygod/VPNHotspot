@@ -84,14 +84,17 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
     }
 
     private var pan: BluetoothProfile? = null
+    var activeFailureCause: Throwable? = null
     /**
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
      */
     val active: Boolean? get() {
+        activeFailureCause = null
         val pan = pan ?: return null
         return BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && try {
             isTetheringOn.invoke(pan) as Boolean
         } catch (e: InvocationTargetException) {
+            activeFailureCause = e
             if (e.cause is SecurityException && BuildCompat.isAtLeastR()) Timber.d(e) else Timber.w(e)
             return null
         }
