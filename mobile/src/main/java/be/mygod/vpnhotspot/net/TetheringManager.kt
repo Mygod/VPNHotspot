@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -148,7 +149,11 @@ object TetheringManager {
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
     @get:RequiresApi(30)
-    private val instance by lazy @TargetApi(30) { app.getSystemService(TETHERING_SERVICE) }
+    private val instance by lazy @TargetApi(30) {
+        @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
+        val service = app.getSystemService(TETHERING_SERVICE)
+        service
+    }
     @get:RequiresApi(30)
     val resolvedService by lazy @TargetApi(30) {
         app.packageManager.queryIntentServices(Intent(TETHERING_CONNECTOR_CLASS),
