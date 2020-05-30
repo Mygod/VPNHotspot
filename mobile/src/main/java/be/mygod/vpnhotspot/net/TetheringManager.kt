@@ -18,6 +18,7 @@ import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.callSuper
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
@@ -259,25 +260,22 @@ object TetheringManager {
                 build.invoke(builder)
             }
             val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
-                    arrayOf(interfaceStartTetheringCallback)) { proxy, method, args ->
-                @Suppress("NAME_SHADOWING") val callback = reference.get()
-                when (val name = method.name) {
-                    "onTetheringStarted" -> {
-                        if (!args.isNullOrEmpty()) Timber.w("Unexpected args for $name: $args")
-                        callback?.onTetheringStarted()
-                        null
-                    }
-                    "onTetheringFailed" -> {
-                        if (args?.size != 1) Timber.w("Unexpected args for $name: $args")
-                        callback?.onTetheringFailed(args?.getOrNull(0) as? Int?)
-                        null
-                    }
-                    else -> {
-                        Timber.w("Unexpected method, calling super: $method")
-                        ProxyBuilder.callSuper(proxy, method, args)
+                    arrayOf(interfaceStartTetheringCallback), object : InvocationHandler {
+                override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
+                    @Suppress("NAME_SHADOWING") val callback = reference.get()
+                    return when (val name = method.name) {
+                        "onTetheringStarted" -> {
+                            if (!args.isNullOrEmpty()) Timber.w("Unexpected args for $name: $args")
+                            callback?.onTetheringStarted()
+                        }
+                        "onTetheringFailed" -> {
+                            if (args?.size != 1) Timber.w("Unexpected args for $name: $args")
+                            callback?.onTetheringFailed(args?.getOrNull(0) as? Int?)
+                        }
+                        else -> callSuper(interfaceStartTetheringCallback, proxy, method, args)
                     }
                 }
-            }
+            })
             startTethering.invoke(instance, request, handler.makeExecutor(), proxy)
             return
         } catch (e: InvocationTargetException) {
@@ -297,10 +295,7 @@ object TetheringManager {
                         callback?.onTetheringFailed()
                         null
                     }
-                    else -> {
-                        Timber.w("Unexpected method, calling super: $method")
-                        ProxyBuilder.callSuper(proxy, method, args)
-                    }
+                    else -> ProxyBuilder.callSuper(proxy, method, args)
                 }
             }
         }.build()
@@ -460,7 +455,7 @@ object TetheringManager {
                     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                         @Suppress("NAME_SHADOWING") val callback = reference.get()
                         val noArgs = args?.size ?: 0
-                        when (val name = method.name) {
+                        return when (val name = method.name) {
                             "onTetheringSupported" -> {
                                 if (noArgs != 1) Timber.w("Unexpected args for $name: $args")
                                 callback?.onTetheringSupported(args!![0] as Boolean)
@@ -495,12 +490,8 @@ object TetheringManager {
                                 if (noArgs != 1) Timber.w("Unexpected args for $name: $args")
                                 callback?.onOffloadStatusChanged(args!![0] as Int)
                             }
-                            else -> {
-                                Timber.w("Unexpected method, calling super: $method")
-                                return ProxyBuilder.callSuper(proxy, method, args)
-                            }
+                            else -> callSuper(interfaceTetheringEventCallback, proxy, method, args)
                         }
-                        return null
                     }
                 })
             }

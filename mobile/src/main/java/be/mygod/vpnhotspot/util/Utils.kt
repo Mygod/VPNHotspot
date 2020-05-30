@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.content.*
 import android.net.InetAddresses
 import android.os.Build
@@ -13,6 +14,7 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
@@ -21,6 +23,9 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import java.lang.invoke.MethodHandles
+import java.lang.reflect.InvocationHandler
+import java.lang.reflect.Method
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -129,3 +134,25 @@ var MenuItem.isNotGone: Boolean
         isVisible = value
         isEnabled = value
     }
+
+@get:RequiresApi(26)
+private val newLookup by lazy @TargetApi(26) {
+    MethodHandles.Lookup::class.java.getDeclaredConstructor(Class::class.java, Int::class.java).apply {
+        isAccessible = true
+    }
+}
+
+/**
+ * Call interface super method.
+ *
+ * See also: https://stackoverflow.com/a/49532463/2245107
+ */
+fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?) = when {
+    Build.VERSION.SDK_INT >= 26 -> newLookup.newInstance(interfaceClass, 0xf)     // ALL_MODES
+            .`in`(interfaceClass).unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
+                if (args == null) invokeWithArguments() else invokeWithArguments(*args)
+            }
+    // only Java 8+ has default interface methods; otherwise, we just redispatch it to InvocationHandler
+    args == null -> method(this)
+    else -> method(this, *args)
+}
