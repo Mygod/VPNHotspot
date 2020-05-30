@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.manage
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.service.quicksettings.Tile
@@ -13,7 +14,10 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.KillableTileService
+import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import timber.log.Timber
@@ -21,27 +25,37 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : TetherListeningTileService(), TetheringManager.StartTetheringCallback {
+sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
     protected abstract val labelString: Int
     protected abstract val tetherType: TetherType
     protected open val icon get() = tetherType.icon
+    protected var tethered: List<String>? = null
     protected val interested get() = tethered?.filter { TetherType.ofInterface(it) == tetherType }
     protected var binder: TetheringService.Binder? = null
+
+    private val receiver = broadcastReceiver { _, intent ->
+        tethered = intent.tetheredIfaces ?: return@broadcastReceiver
+        updateTile()
+    }
 
     protected abstract fun start()
     protected abstract fun stop()
 
     override fun onStartListening() {
-        bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
         super.onStartListening()
+        bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
+        tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+                ?.tetheredIfaces
+        updateTile()
     }
 
     override fun onStopListening() {
-        super.onStopListening()
+        unregisterReceiver(receiver)
         stopAndUnbind(this)
+        super.onStopListening()
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -55,7 +69,7 @@ sealed class TetheringTileService : TetherListeningTileService(), TetheringManag
         binder = null
     }
 
-    override fun updateTile() {
+    protected open fun updateTile() {
         qsTile?.run {
             val interested = interested
             when {
