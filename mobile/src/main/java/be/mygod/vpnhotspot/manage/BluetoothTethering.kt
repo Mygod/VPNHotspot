@@ -94,7 +94,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         return BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && try {
             isTetheringOn.invoke(pan) as Boolean
         } catch (e: InvocationTargetException) {
-            activeFailureCause = e
+            activeFailureCause = e.cause ?: e
             if (e.cause is SecurityException && BuildCompat.isAtLeastR()) Timber.d(e) else Timber.w(e)
             return null
         }

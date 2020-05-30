@@ -1,8 +1,13 @@
 package be.mygod.vpnhotspot.net
 
+import android.net.MacAddress
+import androidx.annotation.RequiresApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+/**
+ * Compat support class for [MacAddress].
+ */
 inline class MacAddressCompat(val addr: Long) {
     companion object {
         private const val ETHER_ADDR_LEN = 6
@@ -23,7 +28,6 @@ inline class MacAddressCompat(val addr: Long) {
             return addr.joinToString(":") { "%02x".format(it) }
         }
 
-        @Throws(IllegalArgumentException::class)
         fun fromString(addr: String) = MacAddressCompat(ByteBuffer.allocate(8).run {
             order(ByteOrder.LITTLE_ENDIAN)
             mark()
@@ -37,9 +41,14 @@ inline class MacAddressCompat(val addr: Long) {
         })
     }
 
-    override fun toString() = ByteBuffer.allocate(8).run {
+    fun toList() = ByteBuffer.allocate(8).run {
         order(ByteOrder.LITTLE_ENDIAN)
         putLong(addr)
-        bytesToString(array().take(6))
+        array().take(6)
     }
+
+    @RequiresApi(28)
+    fun toPlatform() = MacAddress.fromBytes(toList().toByteArray())
+
+    override fun toString() = bytesToString(toList())
 }
