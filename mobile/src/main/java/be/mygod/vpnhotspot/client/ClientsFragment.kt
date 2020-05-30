@@ -41,10 +41,7 @@ import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
@@ -169,10 +166,12 @@ class ClientsFragment : Fragment() {
     }
 
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
-        var size = 0
+        var size = CompletableDeferred(0)
 
         override fun submitList(list: MutableList<Client>?) {
-            super.submitList(list) { size = list?.size ?: 0 }
+            val deferred = CompletableDeferred<Int>()
+            size = deferred
+            super.submitList(list) { deferred.complete(list?.size ?: 0) }
             binding.swipeRefresher.isRefreshing = false
         }
 
@@ -231,7 +230,9 @@ class ClientsFragment : Fragment() {
 
     override fun onStart() {
         // icon might be changed due to TetherType changes
-        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = { adapter.notifyItemRangeChanged(0, adapter.size) }
+        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = {
+            lifecycleScope.launchWhenStarted { adapter.notifyItemRangeChanged(0, adapter.size.await()) }
+        }
         super.onStart()
         // we just put these two thing together as this is the only place we need to use this event for now
         TrafficRecorder.foregroundListeners[this] = adapter::updateTraffic

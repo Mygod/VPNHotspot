@@ -66,7 +66,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
 
         private var enabledIfaces = emptyList<String>()
-        private var listDeferred = CompletableDeferred<List<Manager>>().apply { complete(emptyList()) }
+        private var listDeferred = CompletableDeferred<List<Manager>>(emptyList())
         private fun updateEnabledTypes() {
             this@TetheringFragment.enabledTypes = enabledIfaces.map { TetherType.ofInterface(it) }.toSet()
         }
