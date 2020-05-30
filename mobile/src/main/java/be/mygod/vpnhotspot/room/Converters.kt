@@ -5,8 +5,6 @@ import androidx.room.TypeConverter
 import be.mygod.vpnhotspot.util.useParcel
 import timber.log.Timber
 import java.net.InetAddress
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 object Converters {
     @JvmStatic
@@ -36,19 +34,4 @@ object Converters {
     @JvmStatic
     @TypeConverter
     fun unpersistInetAddress(data: ByteArray): InetAddress = InetAddress.getByAddress(data)
-}
-
-fun String.macToLong(): Long = ByteBuffer.allocate(8).run {
-    order(ByteOrder.LITTLE_ENDIAN)
-    mark()
-    put(split(':').map { Integer.parseInt(it, 16).toByte() }.toByteArray())
-    reset()
-    long
-}
-
-fun Iterable<Byte>.macToString() = joinToString(":") { "%02x".format(it) }
-fun Long.macToString(): String = ByteBuffer.allocate(8).run {
-    order(ByteOrder.LITTLE_ENDIAN)
-    putLong(this@macToString)
-    array().take(6).macToString()
 }

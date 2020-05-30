@@ -30,13 +30,13 @@ import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.room.macToString
 import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -46,11 +46,11 @@ import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
     @Parcelize
-    data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
+    data class NicknameArg(val mac: MacAddressCompat, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, arg.mac.macToString()))
+            setTitle(getString(R.string.clients_nickname_title, arg.mac.toString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
             setNeutralButton(emojize(getText(R.string.clients_nickname_set_to_vendor)), listener)
@@ -153,7 +153,7 @@ class ClientsFragment : Fragment() {
                             withContext(Dispatchers.Unconfined) {
                                 StatsDialogFragment().withArg(StatsArg(
                                         client.title.value ?: return@withContext,
-                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
+                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac.addr)
                                 )).show(this@ClientsFragment)
                             }
                         }
@@ -181,7 +181,7 @@ class ClientsFragment : Fragment() {
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             val client = getItem(position)
             holder.binding.client = client
-            holder.binding.rate = rates.computeIfAbsent(Pair(client.iface, client.mac)) { TrafficRate() }
+            holder.binding.rate = rates.computeIfAbsent(client.iface to client.mac) { TrafficRate() }
             holder.binding.executePendingBindings()
         }
 
@@ -196,7 +196,9 @@ class ClientsFragment : Fragment() {
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
                 } else {
-                    val rate = rates.computeIfAbsent(Pair(newRecord.downstream, newRecord.mac)) { TrafficRate() }
+                    val rate = rates.computeIfAbsent(newRecord.downstream to MacAddressCompat(newRecord.mac)) {
+                        TrafficRate()
+                    }
                     if (rate.send < 0 || rate.receive < 0) {
                         rate.send = 0
                         rate.receive = 0
@@ -211,7 +213,7 @@ class ClientsFragment : Fragment() {
 
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
-    private var rates = mutableMapOf<Pair<String, Long>, TrafficRate>()
+    private var rates = mutableMapOf<Pair<String, MacAddressCompat>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         binding = FragmentClientsBinding.inflate(inflater, container, false)

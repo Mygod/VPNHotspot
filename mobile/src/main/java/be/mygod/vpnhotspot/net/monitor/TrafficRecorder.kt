@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.util.LongSparseArray
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -20,8 +21,8 @@ object TrafficRecorder {
     private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
-    fun register(ip: InetAddress, downstream: String, mac: Long) {
-        val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
+    fun register(ip: InetAddress, downstream: String, mac: MacAddressCompat) {
+        val record = TrafficRecord(mac = mac.addr, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
             Timber.d("Registering $ip%$downstream")
@@ -149,5 +150,5 @@ object TrafficRecorder {
     /**
      * Possibly inefficient. Don't call this too often.
      */
-    fun isWorking(mac: Long) = records.values.any { it.mac == mac }
+    fun isWorking(mac: MacAddressCompat) = records.values.any { it.mac == mac.addr }
 }

@@ -19,7 +19,7 @@ import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.room.macToString
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -94,7 +94,7 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
     try {
-        hardwareAddress?.apply { appendln(makeMacSpan(asIterable().macToString())) }
+        hardwareAddress?.let { appendln(makeMacSpan(MacAddressCompat.bytesToString(it))) }
     } catch (_: SocketException) { }
     if (!macOnly) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))

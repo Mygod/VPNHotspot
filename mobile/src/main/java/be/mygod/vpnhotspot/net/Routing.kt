@@ -208,7 +208,7 @@ class Routing(private val caller: Any, private val downstream: String,
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
     private var disableSystem: RootSession.Transaction? = null
 
-    private inner class Client(private val ip: Inet4Address, mac: Long) : AutoCloseable {
+    private inner class Client(private val ip: Inet4Address, mac: MacAddressCompat) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
             val address = ip.hostAddress
             iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")

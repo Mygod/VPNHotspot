@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import android.system.ErrnoException
 import android.system.OsConstants
-import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 import java.io.File
@@ -13,7 +12,7 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
-data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, val state: State) {
+data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddressCompat, val state: State) {
     enum class State {
         INCOMPLETE, VALID, FAILED, DELETING
     }
@@ -56,12 +55,12 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: Long, v
                         else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
                     }
                 val mac = try {
-                    lladdr.macToLong()
-                } catch (e: NumberFormatException) {
+                    MacAddressCompat.fromString(lladdr)
+                } catch (e: IllegalArgumentException) {
                     if (match.groups[4] == null) return emptyList()
                     // for DELETING, we only care about IP address and do not care if MAC is not present
                     if (state != State.DELETING) Timber.w(IOException("Failed to find MAC address for $line"))
-                    0L
+                    MacAddressCompat.ALL_ZEROS_ADDRESS
                 }
                 val result = IpNeighbour(ip, dev, mac, state)
                 val devParser = devFallback.matchEntire(dev)

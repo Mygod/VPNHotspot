@@ -10,11 +10,11 @@ import androidx.lifecycle.ViewModel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
-import be.mygod.vpnhotspot.room.macToLong
 import be.mygod.vpnhotspot.util.broadcastReceiver
 
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
@@ -31,15 +31,15 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     val clients = MutableLiveData<List<Client>>()
 
     private fun populateClients() {
-        val clients = HashMap<Pair<String, Long>, Client>()
+        val clients = HashMap<Pair<String, MacAddressCompat>, Client>()
         val group = repeater?.group
         val p2pInterface = group?.`interface`
         if (p2pInterface != null) {
-            for (client in p2p) clients[Pair(p2pInterface, client.deviceAddress.macToLong())] =
+            for (client in p2p) clients[p2pInterface to MacAddressCompat.fromString(client.deviceAddress)] =
                     WifiP2pClient(p2pInterface, client)
         }
         for (neighbour in neighbours) {
-            val key = Pair(neighbour.dev, neighbour.lladdr)
+            val key = neighbour.dev to neighbour.lladdr
             var client = clients[key]
             if (client == null) {
                 if (!tetheredInterfaces.contains(neighbour.dev)) continue
