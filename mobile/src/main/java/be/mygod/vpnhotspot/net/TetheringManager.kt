@@ -22,7 +22,9 @@ import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import com.android.dx.stock.ProxyBuilder
 import timber.log.Timber
 import java.lang.ref.WeakReference
+import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
 
@@ -359,6 +361,8 @@ object TetheringManager {
          * This will be called immediately after the callback is registered, and may be called
          * multiple times later upon changes.
          *
+         * CHANGED: This method will NOT be immediately called after registration.
+         *
          * *@param reg The new regular expressions.
          * @hide
          */
@@ -446,64 +450,61 @@ object TetheringManager {
      * @param callback the callback to be called when tethering has change events.
      */
     @RequiresApi(30)
-    fun registerTetheringEventCallback(executor: Executor, callback: TetheringEventCallback) {
+    fun registerTetheringEventCallback(executor: Executor?, callback: TetheringEventCallback) {
         val reference = WeakReference(callback)
         val proxy = synchronized(callbackMap) {
             callbackMap.computeIfAbsent(callback) {
                 Proxy.newProxyInstance(interfaceTetheringEventCallback.classLoader,
-                        arrayOf(interfaceTetheringEventCallback)) { proxy, method, args ->
-                    @Suppress("NAME_SHADOWING") val callback = reference.get()
-                    when (val name = method.name) {
-                        "onTetheringSupported" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onTetheringSupported(args[0] as Boolean)
-                            null
+                        arrayOf(interfaceTetheringEventCallback), object : InvocationHandler {
+                    private var regexpsSent = false
+                    override fun invoke(proxy: Any, method: Method, args: Array<out Any?>): Any? {
+                        @Suppress("NAME_SHADOWING") val callback = reference.get()
+                        when (val name = method.name) {
+                            "onTetheringSupported" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                callback?.onTetheringSupported(args[0] as Boolean)
+                            }
+                            "onUpstreamChanged" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                callback?.onUpstreamChanged(args[0] as Network?)
+                            }
+                            "onTetherableInterfaceRegexpsChanged" -> {
+                                if (regexpsSent) callback?.onTetherableInterfaceRegexpsChanged()
+                                regexpsSent = true
+                            }
+                            "onTetherableInterfacesChanged" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onTetherableInterfacesChanged(args[0] as List<String?>)
+                            }
+                            "onTetheredInterfacesChanged" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onTetheredInterfacesChanged(args[0] as List<String?>)
+                            }
+                            "onError" -> {
+                                if (args.size > 2) Timber.w("Unexpected args for $name: $args")
+                                callback?.onError(args[0] as String, args[1] as Int)
+                            }
+                            "onClientsChanged" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                callback?.onClientsChanged(args[0] as Iterable<*>)
+                            }
+                            "onOffloadStatusChanged" -> {
+                                if (args.size > 1) Timber.w("Unexpected args for $name: $args")
+                                callback?.onOffloadStatusChanged(args[0] as Int)
+                            }
+                            else -> {
+                                Timber.w("Unexpected method, calling super: $method")
+                                return ProxyBuilder.callSuper(proxy, method, args)
+                            }
                         }
-                        "onUpstreamChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onUpstreamChanged(args[0] as Network?)
-                            null
-                        }
-                        "onTetherableInterfaceRegexpsChanged" -> {
-                            callback?.onTetherableInterfaceRegexpsChanged()
-                            null
-                        }
-                        "onTetherableInterfacesChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            @Suppress("UNCHECKED_CAST")
-                            callback?.onTetherableInterfacesChanged(args[0] as List<String?>)
-                            null
-                        }
-                        "onTetheredInterfacesChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            @Suppress("UNCHECKED_CAST")
-                            callback?.onTetheredInterfacesChanged(args[0] as List<String?>)
-                            null
-                        }
-                        "onError" -> {
-                            if (args.size > 2) Timber.w("Unexpected args for $name: $args")
-                            callback?.onError(args[0] as String, args[1] as Int)
-                            null
-                        }
-                        "onClientsChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onClientsChanged(args[0] as Iterable<*>)
-                            null
-                        }
-                        "onOffloadStatusChanged" -> {
-                            if (args.size > 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onOffloadStatusChanged(args[0] as Int)
-                            null
-                        }
-                        else -> {
-                            Timber.w("Unexpected method, calling super: $method")
-                            ProxyBuilder.callSuper(proxy, method, args)
-                        }
+                        return null
                     }
-                }
+                })
             }
         }
-        registerTetheringEventCallback.invoke(instance, executor, proxy)
+        registerTetheringEventCallback.invoke(instance, executor ?: null.makeExecutor(), proxy)
     }
     /**
      * Remove tethering event callback previously registered with

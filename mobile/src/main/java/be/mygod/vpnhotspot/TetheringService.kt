@@ -4,14 +4,12 @@ import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
-import java.lang.IllegalStateException
 import java.util.concurrent.ConcurrentHashMap
 
 class TetheringService : IpNeighbourMonitoringService(), TetheringManager.TetheringEventCallback, CoroutineScope {
@@ -31,7 +29,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     }
 
     private inner class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
-            RoutingManager(caller, downstream, TetherType.ofInterface(downstream).isWifi) {
+            RoutingManager(caller, downstream) {
         override fun Routing.configure() {
             forward()
             masquerade(masqueradeMode)

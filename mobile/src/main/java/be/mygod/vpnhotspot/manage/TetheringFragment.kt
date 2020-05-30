@@ -32,12 +32,13 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 import java.net.SocketException
 
-class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
+class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, TetheringManager.TetheringEventCallback {
     companion object {
         const val START_REPEATER = 4
         const val START_LOCAL_ONLY_HOTSPOT = 1
@@ -64,15 +65,36 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             TetherManager.WifiLegacy(this@TetheringFragment)
         }
 
+        private var enabledIfaces = emptyList<String>()
+        private var listDeferred = CompletableDeferred<List<Manager>>().apply { complete(emptyList()) }
+        private fun updateEnabledTypes() {
+            this@TetheringFragment.enabledTypes = enabledIfaces.map { TetherType.ofInterface(it) }.toSet()
+        }
+
+        suspend fun notifyInterfaceChanged(lastList: List<Manager>? = null) {
+            @Suppress("NAME_SHADOWING") val lastList = lastList ?: listDeferred.await()
+            val first = lastList.indexOfFirst { it is InterfaceManager }
+            if (first >= 0) notifyItemRangeChanged(first, lastList.indexOfLast { it is InterfaceManager } - first + 1)
+        }
+        suspend fun notifyTetherTypeChanged() {
+            updateEnabledTypes()
+            val lastList = listDeferred.await()
+            notifyInterfaceChanged(lastList)
+            val first = lastList.indexOfLast { it !is TetherManager } + 1
+            notifyItemRangeChanged(first, lastList.size - first)
+        }
+
         fun update(activeIfaces: List<String>, localOnlyIfaces: List<String>, erroredIfaces: List<String>) {
+            val deferred = CompletableDeferred<List<Manager>>()
+            listDeferred = deferred
             ifaceLookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
             } catch (e: SocketException) {
                 Timber.d(e)
                 emptyMap()
             }
-            this@TetheringFragment.enabledTypes =
-                    (activeIfaces + localOnlyIfaces).map { TetherType.ofInterface(it) }.toSet()
+            enabledIfaces = activeIfaces + localOnlyIfaces
+            updateEnabledTypes()
 
             val list = ArrayList<Manager>()
             if (RepeaterService.supported) list.add(repeaterManager)
@@ -94,7 +116,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 list.add(wifiManagerLegacy)
                 wifiManagerLegacy.onTetheringStarted()
             }
-            submitList(list)
+            submitList(list) { deferred.complete(list) }
         }
 
         override fun getItemViewType(position: Int) = getItem(position).type
@@ -230,18 +252,20 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
         service.routingsChanged[this] = {
-            requireContext().apply {
-                // flush tethered interfaces
-                unregisterReceiver(receiver)
-                registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-            }
+            lifecycleScope.launchWhenStarted { adapter.notifyInterfaceChanged() }
         }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
         (binder ?: return).routingsChanged -= this
         binder = null
+        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
         requireContext().unregisterReceiver(receiver)
+    }
+
+    override fun onTetherableInterfaceRegexpsChanged() {
+        lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
     }
 }

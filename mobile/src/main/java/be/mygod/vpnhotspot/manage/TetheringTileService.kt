@@ -10,6 +10,7 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -25,7 +26,8 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback {
+sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback,
+        TetheringManager.TetheringEventCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -47,12 +49,15 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
     override fun onStartListening() {
         super.onStartListening()
         bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
+        // we need to initialize tethered ASAP for onClick, which is not achievable using registerTetheringEventCallback
         tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 ?.tetheredIfaces
+        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
         updateTile()
     }
 
     override fun onStopListening() {
+        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
         unregisterReceiver(receiver)
         stopAndUnbind(this)
         super.onStopListening()
@@ -60,7 +65,7 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
-        service.routingsChanged[this] = { updateTile() }
+        service.routingsChanged[this] = this::updateTile
         super.onServiceConnected(name, service)
     }
 
@@ -127,6 +132,7 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
         error?.let { Toast.makeText(this, TetheringManager.tetherErrorMessage(it), Toast.LENGTH_LONG).show() }
         updateTile()
     }
+    override fun onTetherableInterfaceRegexpsChanged() = updateTile()
 
     class Wifi : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_wifi

@@ -14,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
+import androidx.core.os.BuildCompat
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -29,6 +30,7 @@ import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -45,7 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment() {
+class ClientsFragment : Fragment(), TetheringManager.TetheringEventCallback {
     @Parcelize
     data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
@@ -167,8 +169,10 @@ class ClientsFragment : Fragment() {
     }
 
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
+        var size = 0
+
         override fun submitList(list: MutableList<Client>?) {
-            super.submitList(list)
+            super.submitList(list) { size = list?.size ?: 0 }
             binding.swipeRefresher.isRefreshing = false
         }
 
@@ -226,6 +230,7 @@ class ClientsFragment : Fragment() {
     }
 
     override fun onStart() {
+        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
         super.onStart()
         // we just put these two thing together as this is the only place we need to use this event for now
         TrafficRecorder.foregroundListeners[this] = adapter::updateTraffic
@@ -239,5 +244,11 @@ class ClientsFragment : Fragment() {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
+        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
+    }
+
+    override fun onTetherableInterfaceRegexpsChanged() {
+        // icon might be changed due to TetherType changes
+        adapter.notifyItemRangeChanged(0, adapter.size)
     }
 }

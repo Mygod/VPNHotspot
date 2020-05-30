@@ -2,14 +2,18 @@ package be.mygod.vpnhotspot
 
 import android.annotation.TargetApi
 import android.os.Build
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.net.NetworkInterface
 
-abstract class RoutingManager(private val caller: Any, val downstream: String, private val isWifi: Boolean) {
+abstract class RoutingManager(private val caller: Any, val downstream: String,
+                              private val forceWifi: Boolean = false) : TetheringManager.TetheringEventCallback {
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
         var masqueradeMode: Routing.MasqueradeMode
@@ -54,10 +58,12 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     val started get() = active[downstream] === this
     private var routing: Routing? = null
+    private var isWifi = forceWifi || TetherType.ofInterface(downstream).isWifi
 
     fun start() = when (val other = active.putIfAbsent(downstream, this)) {
         null -> {
             if (isWifi) WifiDoubleLock.acquire(this)
+            if (!forceWifi && BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
             initRouting()
         }
         this -> true    // already started
@@ -65,6 +71,13 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     }
 
     open fun ifaceHandler(iface: NetworkInterface) { }
+
+    override fun onTetherableInterfaceRegexpsChanged() {
+        val isWifiNow = TetherType.ofInterface(downstream).isWifi
+        if (isWifi == isWifiNow) return
+        if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
+        isWifi = isWifiNow
+    }
 
     private fun initRouting() = try {
         routing = Routing(caller, downstream, this::ifaceHandler).apply {
@@ -87,6 +100,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     fun stop() {
         if (active.remove(downstream, this)) {
+            if (!forceWifi && BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
             if (isWifi) WifiDoubleLock.release(this)
             routing?.revert()
         }
