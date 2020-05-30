@@ -5,6 +5,7 @@ import androidx.annotation.RequiresApi
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.util.Event0
 import java.util.regex.Pattern
 
 enum class TetherType {
@@ -36,6 +37,9 @@ enum class TetherType {
         private val ethernetRegex: Pattern?
         private var requiresUpdate = true
 
+        @RequiresApi(30)    // unused on lower APIs
+        val listener = Event0()
+
         private fun Pair<String?, Resources>.getRegexs(name: String) = second
                 .getStringArray(second.getIdentifier(name, "array", first))
                 .filterNotNull()
@@ -56,6 +60,7 @@ enum class TetherType {
         @RequiresApi(30)
         override fun onTetherableInterfaceRegexpsChanged() {
             requiresUpdate = true
+            listener()
         }
 
         /**

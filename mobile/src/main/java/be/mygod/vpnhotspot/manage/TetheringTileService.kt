@@ -26,8 +26,7 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback,
-        TetheringManager.TetheringEventCallback {
+sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -52,12 +51,12 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
         // we need to initialize tethered ASAP for onClick, which is not achievable using registerTetheringEventCallback
         tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 ?.tetheredIfaces
-        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
+        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = this::updateTile
         updateTile()
     }
 
     override fun onStopListening() {
-        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
+        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
         unregisterReceiver(receiver)
         stopAndUnbind(this)
         super.onStopListening()
@@ -132,7 +131,6 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
         error?.let { Toast.makeText(this, TetheringManager.tetherErrorMessage(it), Toast.LENGTH_LONG).show() }
         updateTile()
     }
-    override fun onTetherableInterfaceRegexpsChanged() = updateTile()
 
     class Wifi : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_wifi

@@ -30,7 +30,7 @@ import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -47,7 +47,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.NumberFormat
 
-class ClientsFragment : Fragment(), TetheringManager.TetheringEventCallback {
+class ClientsFragment : Fragment() {
     @Parcelize
     data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
@@ -230,7 +230,8 @@ class ClientsFragment : Fragment(), TetheringManager.TetheringEventCallback {
     }
 
     override fun onStart() {
-        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
+        // icon might be changed due to TetherType changes
+        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = { adapter.notifyItemRangeChanged(0, adapter.size) }
         super.onStart()
         // we just put these two thing together as this is the only place we need to use this event for now
         TrafficRecorder.foregroundListeners[this] = adapter::updateTraffic
@@ -244,11 +245,6 @@ class ClientsFragment : Fragment(), TetheringManager.TetheringEventCallback {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
-        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
-    }
-
-    override fun onTetherableInterfaceRegexpsChanged() {
-        // icon might be changed due to TetherType changes
-        adapter.notifyItemRangeChanged(0, adapter.size)
+        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
     }
 }

@@ -38,7 +38,7 @@ import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 import java.net.SocketException
 
-class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener, TetheringManager.TetheringEventCallback {
+class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     companion object {
         const val START_REPEATER = 4
         const val START_LOCAL_ONLY_HOTSPOT = 1
@@ -255,17 +255,15 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             lifecycleScope.launchWhenStarted { adapter.notifyInterfaceChanged() }
         }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        if (BuildCompat.isAtLeastR()) TetheringManager.registerTetheringEventCallback(null, this)
+        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = {
+            lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
+        }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
         (binder ?: return).routingsChanged -= this
         binder = null
-        if (BuildCompat.isAtLeastR()) TetheringManager.unregisterTetheringEventCallback(this)
+        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
         requireContext().unregisterReceiver(receiver)
-    }
-
-    override fun onTetherableInterfaceRegexpsChanged() {
-        lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
     }
 }
