@@ -28,7 +28,7 @@ object WifiP2pManagerHelper {
     fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
                                           listener: WifiP2pManager.ActionListener) {
         try {
-            setWifiP2pChannels.invoke(this, c, lc, oc, listener)
+            setWifiP2pChannels(this, c, lc, oc, listener)
         } catch (_: NoSuchMethodException) {
             app.logEvent("NoSuchMethod_setWifiP2pChannels")
             listener.onFailure(UNSUPPORTED)
@@ -51,7 +51,7 @@ object WifiP2pManagerHelper {
         }
     }
     fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo, listener: WifiP2pManager.ActionListener) {
-        startWps!!.invoke(this, c, wps, listener)
+        startWps!!(this, c, wps, listener)
     }
 
     /**
@@ -66,7 +66,7 @@ object WifiP2pManagerHelper {
     fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
                                              listener: WifiP2pManager.ActionListener) {
         try {
-            deletePersistentGroup.invoke(this, c, netId, listener)
+            deletePersistentGroup(this, c, netId, listener)
         } catch (_: NoSuchMethodException) {
             app.logEvent("NoSuchMethod_deletePersistentGroup")
             listener.onFailure(UNSUPPORTED)
@@ -96,11 +96,11 @@ object WifiP2pManagerHelper {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when (method.name) {
                 "onPersistentGroupInfoAvailable" -> {
                     if (args?.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
-                    @Suppress("UNCHECKED_CAST") listener(getGroupList.invoke(args!![0]) as Collection<WifiP2pGroup>)
+                    @Suppress("UNCHECKED_CAST") listener(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }
                 else -> callSuper(interfacePersistentGroupInfoListener, proxy, method, args)
             }
         })
-        requestPersistentGroupInfo.invoke(this, c, proxy)
+        requestPersistentGroupInfo(this, c, proxy)
     }
 }

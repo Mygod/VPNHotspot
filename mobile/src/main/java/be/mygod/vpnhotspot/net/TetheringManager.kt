@@ -248,13 +248,13 @@ object TetheringManager {
             val request = newTetheringRequestBuilder.newInstance(type).let { builder ->
                 // setting exemption requires TETHER_PRIVILEGED permission
                 if (app.checkSelfPermission("android.permission.TETHER_PRIVILEGED") ==
-                        PackageManager.PERMISSION_GRANTED) setExemptFromEntitlementCheck.invoke(builder, true)
-                setShouldShowEntitlementUi.invoke(builder, showProvisioningUi)
+                        PackageManager.PERMISSION_GRANTED) setExemptFromEntitlementCheck(builder, true)
+                setShouldShowEntitlementUi(builder, showProvisioningUi)
                 if (address != null) {
                     val (localIPv4Address, clientAddress) = address
                     setStaticIpv4Addresses(builder, localIPv4Address, clientAddress)
                 }
-                build.invoke(builder)
+                build(builder)
             }
             val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
                     arrayOf(interfaceStartTetheringCallback), object : InvocationHandler {
@@ -273,7 +273,7 @@ object TetheringManager {
                     }
                 }
             })
-            startTethering.invoke(instance, request, handler.makeExecutor(), proxy)
+            startTethering(instance, request, handler.makeExecutor(), proxy)
             return
         } catch (e: InvocationTargetException) {
             Timber.w(e, "Unable to invoke TetheringManager.startTethering, falling back to ConnectivityManager")
@@ -290,7 +290,7 @@ object TetheringManager {
                 }
             }
         }.build()
-        startTetheringLegacy.invoke(app.connectivity, type, showProvisioningUi, proxy, handler)
+        startTetheringLegacy(app.connectivity, type, showProvisioningUi, proxy, handler)
     }
 
     /**
@@ -305,11 +305,11 @@ object TetheringManager {
     @RequiresApi(24)
     fun stopTethering(type: Int) {
         if (BuildCompat.isAtLeastR()) try {
-            stopTethering.invoke(instance, type)
+            stopTethering(instance, type)
         } catch (e: InvocationTargetException) {
             Timber.w(e, "Unable to invoke TetheringManager.stopTethering, falling back to ConnectivityManager")
         }
-        stopTetheringLegacy.invoke(app.connectivity, type)
+        stopTetheringLegacy(app.connectivity, type)
     }
 
     /**
@@ -487,7 +487,7 @@ object TetheringManager {
                 })
             }
         }
-        registerTetheringEventCallback.invoke(instance, executor ?: null.makeExecutor(), proxy)
+        registerTetheringEventCallback(instance, executor ?: null.makeExecutor(), proxy)
     }
     /**
      * Remove tethering event callback previously registered with
@@ -500,7 +500,7 @@ object TetheringManager {
     @RequiresApi(30)
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
-        unregisterTetheringEventCallback.invoke(instance, proxy)
+        unregisterTetheringEventCallback(instance, proxy)
     }
 
     /**
@@ -536,7 +536,7 @@ object TetheringManager {
      * @return error The error code of the last error tethering or untethering the named
      *               interface
      */
-    fun getLastTetherError(iface: String): Int = getLastTetherError.invoke(app.connectivity, iface) as Int
+    fun getLastTetherError(iface: String): Int = getLastTetherError(app.connectivity, iface) as Int
 
     // tether errors defined in ConnectivityManager up to Android 10
     private val tetherErrors29 = arrayOf("TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE",

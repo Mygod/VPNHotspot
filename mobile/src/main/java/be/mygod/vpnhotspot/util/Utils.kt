@@ -112,8 +112,9 @@ private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
         isAccessible = true
     }
 }
-fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29)
-    InetAddresses.parseNumericAddress(address) else parseNumericAddress.invoke(null, address) as InetAddress
+fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
+    InetAddresses.parseNumericAddress(address)
+} else parseNumericAddress(null, address) as InetAddress
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

@@ -10,17 +10,15 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration", WifiConfiguration::class.java)
     }
     var configuration: WifiConfiguration
-        get() = getWifiApConfiguration.invoke(app.wifi) as? WifiConfiguration ?: WifiConfiguration()
-        set(value) {
-            require(setWifiApConfiguration.invoke(app.wifi, value) as? Boolean == true) {
-                "setWifiApConfiguration failed"
-            }
+        get() = getWifiApConfiguration(app.wifi) as? WifiConfiguration ?: WifiConfiguration()
+        set(value) = require(setWifiApConfiguration(app.wifi, value) as? Boolean == true) {
+            "setWifiApConfiguration failed"
         }
 
     private val cancelLocalOnlyHotspotRequest by lazy {
         WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
     }
-    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest.invoke(app.wifi)
+    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(app.wifi)
 
     private val setWifiApEnabled by lazy {
         WifiManager::class.java.getDeclaredMethod("setWifiApEnabled",
@@ -37,7 +35,7 @@ object WifiApManager {
      * @return {@code true} if the operation succeeds, {@code false} otherwise
      */
     private fun WifiManager.setWifiApEnabled(wifiConfig: WifiConfiguration?, enabled: Boolean) =
-            setWifiApEnabled.invoke(this, wifiConfig, enabled) as Boolean
+            setWifiApEnabled(this, wifiConfig, enabled) as Boolean
 
     /**
      * Although the functionalities were removed in API 26, it is already not functioning correctly on API 25.
