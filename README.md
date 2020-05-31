@@ -139,14 +139,15 @@ Greylisted APIs or internal constants: (some constants are hardcoded or implicit
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134738)
 * (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158307)
-* `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`
-* `Lcom/android/internal/R$array;->config_tether_usb_regexs:I,greylist-max-q`
-* (since API 30) `Lcom/android/internal/R$array;->config_tether_wifi_p2p_regexs:I,blacklist`
-* `Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,greylist-max-q`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_usb_regexs:I,greylist-max-q`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,greylist-max-q`
 * (since API 28) [`Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#245007)
 * [`Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#245611)
 * (since API 27) `Lcom/android/server/connectivity/tethering/OffloadHardwareInterface;->DEFAULT_TETHER_OFFLOAD_DISABLED:I`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
+* (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#333141)
+* (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#333142)
 * (prior to API 29) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#335306)
 
 Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)
@@ -200,7 +201,11 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 Nonexported system resources:
 
 * `@android:array/config_tether_wimax_regexs`
-* (since API 30) `@android:array/config_tether_ncm_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_bluetooth_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_ncm_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_usb_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_p2p_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
 
 Other:
 

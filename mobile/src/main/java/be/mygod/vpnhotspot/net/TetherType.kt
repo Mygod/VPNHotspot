@@ -48,7 +48,7 @@ enum class TetherType {
         @RequiresApi(30)
         private fun updateRegexs() {
             requiresUpdate = false
-            val tethering = TetheringManager.PACKAGE to app.packageManager.getResourcesForApplication(
+            val tethering = "com.android.networkstack.tethering" to app.packageManager.getResourcesForApplication(
                     TetheringManager.resolvedService.serviceInfo.applicationInfo)
             usbRegexs = tethering.getRegexs("config_tether_usb_regexs")
             wifiRegexs = tethering.getRegexs("config_tether_wifi_regexs")

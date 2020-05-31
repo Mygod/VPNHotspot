@@ -64,9 +64,6 @@ object TetheringManager {
     const val TETHERING_SERVICE = "tethering"
 
     @RequiresApi(30)
-    const val PACKAGE = "com.android.networkstack.tethering"
-
-    @RequiresApi(30)
     private const val TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector"
 
     /**
@@ -287,14 +284,8 @@ object TetheringManager {
                 if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
                 @Suppress("NAME_SHADOWING") val callback = reference.get()
                 when (method.name) {
-                    "onTetheringStarted" -> {
-                        callback?.onTetheringStarted()
-                        null
-                    }
-                    "onTetheringFailed" -> {
-                        callback?.onTetheringFailed()
-                        null
-                    }
+                    "onTetheringStarted" -> callback?.onTetheringStarted()
+                    "onTetheringFailed" -> callback?.onTetheringFailed()
                     else -> ProxyBuilder.callSuper(proxy, method, args)
                 }
             }
