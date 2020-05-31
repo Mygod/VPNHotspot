@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
+import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -8,20 +9,18 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Event0
 import java.util.regex.Pattern
 
-enum class TetherType {
-    NONE, WIFI_P2P, USB, WIFI, WIMAX, BLUETOOTH, NCM, ETHERNET;
+enum class TetherType(@DrawableRes val icon: Int) {
+    NONE(R.drawable.ic_device_wifi_tethering),
+    WIFI_P2P(R.drawable.ic_action_settings_input_antenna),
+    USB(R.drawable.ic_device_usb),
+    WIFI(R.drawable.ic_device_network_wifi),
+    WIMAX(R.drawable.ic_action_contactless),
+    BLUETOOTH(R.drawable.ic_device_bluetooth),
+    // if you have an issue with these Ethernet icon namings, blame Google
+    NCM(R.drawable.ic_action_settings_ethernet),
+    ETHERNET(R.drawable.ic_content_inbox),
+    ;
 
-    val icon get() = when (this) {
-        USB -> R.drawable.ic_device_usb
-        WIFI_P2P -> R.drawable.ic_action_settings_input_antenna
-        WIFI -> R.drawable.ic_device_network_wifi
-        WIMAX -> R.drawable.ic_action_contactless
-        BLUETOOTH -> R.drawable.ic_device_bluetooth
-        // if you have an issue with these Ethernet icon namings, blame Google
-        NCM -> R.drawable.ic_action_settings_ethernet
-        ETHERNET -> R.drawable.ic_content_inbox
-        else -> R.drawable.ic_device_wifi_tethering
-    }
     val isWifi get() = when (this) {
         WIFI_P2P, WIFI, WIMAX -> true
         else -> false
