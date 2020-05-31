@@ -8,7 +8,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
-import android.net.LinkAddress
 import android.net.Network
 import android.os.Build
 import android.os.Handler
@@ -183,11 +182,11 @@ object TetheringManager {
     }
     @get:RequiresApi(30)
     private val newTetheringRequestBuilder by lazy { classTetheringRequestBuilder.getConstructor(Int::class.java) }
-    @get:RequiresApi(30)
-    private val setStaticIpv4Addresses by lazy {
-        classTetheringRequestBuilder.getDeclaredMethod("setStaticIpv4Addresses",
-                LinkAddress::class.java, LinkAddress::class.java)
-    }
+//    @get:RequiresApi(30)
+//    private val setStaticIpv4Addresses by lazy {
+//        classTetheringRequestBuilder.getDeclaredMethod("setStaticIpv4Addresses",
+//                LinkAddress::class.java, LinkAddress::class.java)
+//    }
     @get:RequiresApi(30)
     private val setExemptFromEntitlementCheck by lazy {
         classTetheringRequestBuilder.getDeclaredMethod("setExemptFromEntitlementCheck", Boolean::class.java)
@@ -230,19 +229,13 @@ object TetheringManager {
      * @param callback an {@link OnStartTetheringCallback} which will be called to notify the caller
      *         of the result of trying to tether.
      * @param handler {@link Handler} to specify the thread upon which the callback will be invoked
-     * @param address A pair (localIPv4Address, clientAddress) for API 30+. If present, it
-     *         configures tethering with static IPv4 assignment.
-     *
-     *         A DHCP server will be started, but will only be able to offer the client address.
-     *         The two addresses must be in the same prefix.
-     *
-     *         localIPv4Address: The preferred local IPv4 link address to use.
-     *         clientAddress: The static client address.
-     * @see setStaticIpv4Addresses
+     * *@param localIPv4Address for API 30+ (not implemented for now due to blacklist). If present, it
+     *         configures tethering with the preferred local IPv4 link address to use.
+     * *@see setStaticIpv4Addresses
      */
     @RequiresApi(24)
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
-                       handler: Handler? = null, address: Pair<LinkAddress, LinkAddress>? = null) {
+                       handler: Handler? = null) {
         val reference = WeakReference(callback)
         if (BuildCompat.isAtLeastR()) try {
             val request = newTetheringRequestBuilder.newInstance(type).let { builder ->
@@ -250,10 +243,6 @@ object TetheringManager {
                 if (app.checkSelfPermission("android.permission.TETHER_PRIVILEGED") ==
                         PackageManager.PERMISSION_GRANTED) setExemptFromEntitlementCheck(builder, true)
                 setShouldShowEntitlementUi(builder, showProvisioningUi)
-                if (address != null) {
-                    val (localIPv4Address, clientAddress) = address
-                    setStaticIpv4Addresses(builder, localIPv4Address, clientAddress)
-                }
                 build(builder)
             }
             val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
