@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
 import android.content.*
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
@@ -10,6 +9,7 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
@@ -43,8 +43,6 @@ import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     companion object {
-        const val START_REPEATER = 4
-        const val START_LOCAL_ONLY_HOTSPOT = 1
         const val REPEATER_WPS = 3
         const val CONFIGURE_REPEATER = 2
         const val CONFIGURE_AP = 4
@@ -126,6 +124,15 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
                 Manager.createViewHolder(LayoutInflater.from(parent.context), parent, viewType)
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) = getItem(position).bindTo(holder)
+    }
+
+    @RequiresApi(29)
+    val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) requireContext().apply { startForegroundService(Intent(this, RepeaterService::class.java)) }
+    }
+    @RequiresApi(26)
+    val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) adapter.localOnlyHotspotManager.start(requireContext())
     }
 
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()
@@ -235,22 +242,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 SmartSnackbar.make(e.targetException).show()
             }
             else -> super.onActivityResult(requestCode, resultCode, data)
-        }
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
-        when (requestCode) {
-            START_REPEATER -> if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) @TargetApi(29) {
-                val context = requireContext()
-                context.startForegroundService(Intent(context, RepeaterService::class.java))
-            }
-            START_LOCAL_ONLY_HOTSPOT -> {
-                if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) @TargetApi(26) {
-                    val context = requireContext()
-                    context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
-                }
-            }
-            else -> super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         }
     }
 

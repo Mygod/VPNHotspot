@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.net.wifi.WifiConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
@@ -83,16 +82,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         fun toggle() {
             val binder = binder
             when (binder?.service?.status) {
-                RepeaterService.Status.IDLE -> {
-                    val context = parent.requireContext()
-                    if (Build.VERSION.SDK_INT >= 29 && context.checkSelfPermission(
-                                    Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                        parent.requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                                TetheringFragment.START_REPEATER)
-                        return
-                    }
+                RepeaterService.Status.IDLE -> if (Build.VERSION.SDK_INT < 29) parent.requireContext().let { context ->
                     ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
-                }
+                } else parent.startRepeater.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                 RepeaterService.Status.ACTIVE -> binder.shutdown()
                 else -> { }
             }

@@ -2,11 +2,7 @@ package be.mygod.vpnhotspot.manage
 
 import android.Manifest
 import android.annotation.TargetApi
-import android.content.ActivityNotFoundException
-import android.content.ComponentName
-import android.content.Intent
-import android.content.ServiceConnection
-import android.content.pm.PackageManager
+import android.content.*
 import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
@@ -41,32 +37,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
         override fun onClick(view: View) {
             val binder = manager.binder
-            if (binder?.iface != null) binder.stop() else {
-                val context = manager.parent.requireContext()
-                if (context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                    manager.parent.requestPermissions(arrayOf(permission), TetheringFragment.START_LOCAL_ONLY_HOTSPOT)
-                    return
-                }
-                /**
-                 * LOH also requires location to be turned on. Source:
-                 * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
-                 * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
-                 */
-                if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
-                            Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
-                                    Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
-                        } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) {
-                    try {
-                        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-                        Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
-                    } catch (e: ActivityNotFoundException) {
-                        app.logEvent("location_settings") { param("message", e.toString()) }
-                        SmartSnackbar.make(R.string.tethering_temp_hotspot_location).show()
-                    }
-                    return
-                }
-                context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
-            }
+            if (binder?.iface == null) manager.parent.startLocalOnlyHotspot.launch(permission) else binder.stop()
         }
     }
     private inner class Data : be.mygod.vpnhotspot.manage.Data() {
@@ -83,6 +54,24 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     init {
         ServiceForegroundConnector(parent, this, LocalOnlyHotspotService::class)
+    }
+
+    /**
+     * LOH also requires location to be turned on. Source:
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
+     */
+    fun start(context: Context) {
+        if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
+                    Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
+                            Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
+                } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) try {
+            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
+        } catch (e: ActivityNotFoundException) {
+            app.logEvent("location_settings") { param("message", e.toString()) }
+            SmartSnackbar.make(R.string.tethering_temp_hotspot_location).show()
+        } else context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
     }
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
