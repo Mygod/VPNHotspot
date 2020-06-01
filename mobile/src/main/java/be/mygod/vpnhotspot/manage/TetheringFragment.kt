@@ -31,23 +31,15 @@ import be.mygod.vpnhotspot.net.wifi.configuration.WifiApDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
-    companion object {
-        const val REPEATER_WPS = 3
-        const val CONFIGURE_REPEATER = 2
-        const val CONFIGURE_AP = 4
-    }
-
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         @get:RequiresApi(26)
@@ -168,25 +160,22 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 true
             }
             R.id.configuration_repeater -> {
-                viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-                    adapter.repeaterManager.getConfiguration()?.let { config ->
-                        WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(config, p2pMode = true)).show(
-                                this@TetheringFragment, CONFIGURE_REPEATER)
-                    }
-                }
+                adapter.repeaterManager.configure()
                 true
             }
             R.id.configuration_temp_hotspot -> {
-                WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(
-                        adapter.localOnlyHotspotManager.binder?.configuration ?: return false,
-                        readOnly = true
-                )).show(this, 0)    // read-only, no callback needed
+                WifiApDialogFragment().apply {
+                    arg(WifiApDialogFragment.Arg(adapter.localOnlyHotspotManager.binder?.configuration ?: return false,
+                            readOnly = true))
+                    // no need for callback
+                }.showAllowingStateLoss(parentFragmentManager)
                 true
             }
             R.id.configuration_ap -> try {
-                WifiApDialogFragment().withArg(WifiApDialogFragment.Arg(
-                        WifiApManager.configuration
-                )).show(this, CONFIGURE_AP)
+                WifiApDialogFragment().apply {
+                    arg(WifiApDialogFragment.Arg(WifiApManager.configuration))
+                    key()
+                }.showAllowingStateLoss(parentFragmentManager)
                 true
             } catch (e: InvocationTargetException) {
                 if (e.targetException !is SecurityException) Timber.w(e)
@@ -198,6 +187,16 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+        AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
+            if (which == DialogInterface.BUTTON_POSITIVE) try {
+                WifiApManager.configuration = ret!!.configuration
+            } catch (e: IllegalArgumentException) {
+                Timber.d(e)
+                SmartSnackbar.make(R.string.configuration_rejected).show()
+            } catch (e: InvocationTargetException) {
+                SmartSnackbar.make(e.targetException).show()
+            }
+        }
         binding = FragmentTetheringBinding.inflate(inflater, container, false)
         binding.interfaces.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
@@ -222,27 +221,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onResume() {
         super.onResume()
         if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val configuration by lazy { AlertDialogFragment.getRet<WifiApDialogFragment.Arg>(data!!).configuration }
-        when (requestCode) {
-            REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-            CONFIGURE_REPEATER -> if (resultCode == DialogInterface.BUTTON_POSITIVE) {
-                GlobalScope.launch(Dispatchers.Main.immediate) {
-                    adapter.repeaterManager.updateConfiguration(configuration)
-                }
-            }
-            CONFIGURE_AP -> if (resultCode == DialogInterface.BUTTON_POSITIVE) try {
-                WifiApManager.configuration = configuration
-            } catch (e: IllegalArgumentException) {
-                Timber.d(e)
-                SmartSnackbar.make(R.string.configuration_rejected).show()
-            } catch (e: InvocationTargetException) {
-                SmartSnackbar.make(e.targetException).show()
-            }
-            else -> super.onActivityResult(requestCode, resultCode, data)
-        }
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

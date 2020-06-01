@@ -22,15 +22,19 @@ import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
 import be.mygod.vpnhotspot.net.wifi.configuration.*
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.NetworkInterface
@@ -91,7 +95,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
 
         fun wps() {
-            if (binder?.active == true) WpsDialogFragment().show(parent, TetheringFragment.REPEATER_WPS)
+            if (binder?.active == true) WpsDialogFragment().apply {
+                key()
+            }.showAllowingStateLoss(parent.parentFragmentManager)
         }
     }
 
@@ -119,6 +125,26 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
     init {
         ServiceForegroundConnector(parent, this, RepeaterService::class)
+        AlertDialogFragment.setResultListener<WifiApDialogFragment.Arg>(parent, javaClass.name) { which, ret ->
+            if (which == DialogInterface.BUTTON_POSITIVE) GlobalScope.launch(Dispatchers.Main.immediate) {
+                updateConfiguration(ret!!.configuration)
+            }
+        }
+        AlertDialogFragment.setResultListener<WpsDialogFragment, WpsRet>(parent) { which, ret ->
+            when (which) {
+                DialogInterface.BUTTON_POSITIVE -> binder!!.startWps(ret!!.pin)
+                DialogInterface.BUTTON_NEUTRAL -> binder!!.startWps(null)
+            }
+        }
+    }
+
+    fun configure() = parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+        getConfiguration()?.let { config ->
+            WifiApDialogFragment().apply {
+                arg(WifiApDialogFragment.Arg(config, p2pMode = true))
+                key(this@RepeaterManager.javaClass.name)
+            }.showAllowingStateLoss(parent.parentFragmentManager)
+        }
     }
 
     override val type get() = VIEW_TYPE_REPEATER
@@ -146,15 +172,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         data.onStatusChanged()
     }
 
-    fun onWpsResult(which: Int, data: Intent?) {
-        when (which) {
-            DialogInterface.BUTTON_POSITIVE -> binder!!.startWps(AlertDialogFragment.getRet<WpsRet>(data!!).pin)
-            DialogInterface.BUTTON_NEUTRAL -> binder!!.startWps(null)
-        }
-    }
-
     @MainThread
-    suspend fun getConfiguration(): WifiConfiguration? {
+    private suspend fun getConfiguration(): WifiConfiguration? {
         if (RepeaterService.safeMode) {
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
@@ -191,7 +210,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         SmartSnackbar.make(R.string.repeater_configure_failure).show()
         return null
     }
-    suspend fun updateConfiguration(config: WifiConfiguration) {
+    private suspend fun updateConfiguration(config: WifiConfiguration) {
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.SSID
             RepeaterService.passphrase = config.preSharedKey

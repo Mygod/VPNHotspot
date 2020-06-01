@@ -39,6 +39,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.util.SpanFormatter
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
@@ -129,8 +130,9 @@ class ClientsFragment : Fragment() {
             return when (item?.itemId) {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
-                    NicknameDialogFragment().withArg(NicknameArg(client.mac, client.nickname))
-                            .show(this@ClientsFragment)
+                    NicknameDialogFragment().apply {
+                        arg(NicknameArg(client.mac, client.nickname))
+                    }.showAllowingStateLoss(parentFragmentManager)
                     true
                 }
                 R.id.block, R.id.unblock -> {
@@ -152,10 +154,10 @@ class ClientsFragment : Fragment() {
                     binding.client?.let { client ->
                         viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                             withContext(Dispatchers.Unconfined) {
-                                StatsDialogFragment().withArg(StatsArg(
-                                        client.title.value ?: return@withContext,
-                                        AppDatabase.instance.trafficRecordDao.queryStats(client.mac.addr)
-                                )).show(this@ClientsFragment)
+                                StatsDialogFragment().apply {
+                                    arg(StatsArg(client.title.value ?: return@withContext,
+                                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac.addr)))
+                                }.showAllowingStateLoss(parentFragmentManager)
                             }
                         }
                     }
