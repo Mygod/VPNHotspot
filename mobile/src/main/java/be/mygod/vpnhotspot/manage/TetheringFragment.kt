@@ -33,6 +33,9 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.isNotGone
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
@@ -218,8 +221,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         val configuration by lazy { AlertDialogFragment.getRet<WifiApDialogFragment.Arg>(data!!).configuration }
         when (requestCode) {
             REPEATER_WPS -> adapter.repeaterManager.onWpsResult(resultCode, data)
-            CONFIGURE_REPEATER -> if (resultCode == DialogInterface.BUTTON_POSITIVE) lifecycleScope.launchWhenCreated {
-                adapter.repeaterManager.updateConfiguration(configuration)
+            CONFIGURE_REPEATER -> if (resultCode == DialogInterface.BUTTON_POSITIVE) {
+                GlobalScope.launch(Dispatchers.Main.immediate) {
+                    adapter.repeaterManager.updateConfiguration(configuration)
+                }
             }
             CONFIGURE_AP -> if (resultCode == DialogInterface.BUTTON_POSITIVE) try {
                 WifiApManager.configuration = configuration
