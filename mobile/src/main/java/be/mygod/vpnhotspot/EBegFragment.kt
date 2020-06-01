@@ -83,7 +83,7 @@ class EBegFragment : AppCompatDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         dialog!!.setTitle(R.string.settings_misc_donate)
-        lifecycleScope.launchWhenCreated {
+        viewLifecycleOwner.lifecycleScope.launchWhenCreated {
             billingClient.querySkuDetails(SkuDetailsParams.newBuilder().apply {
                 setSkusList(listOf("donate001", "donate002", "donate005", "donate010", "donate020", "donate050",
                         "donate100", "donate200", "donatemax"))

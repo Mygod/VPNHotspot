@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
                 number = count
             } else binding.navigation.removeBadge(R.id.navigation_clients)
         }
-        SmartSnackbar.Register(lifecycle, binding.fragmentHolder)
+        SmartSnackbar.Register(binding.fragmentHolder)
         WifiDoubleLock.ActivityListener(this)
     }
 

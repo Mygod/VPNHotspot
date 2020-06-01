@@ -18,6 +18,7 @@ import androidx.core.os.BuildCompat
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -110,7 +111,7 @@ class ClientsFragment : Fragment() {
     private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
-            binding.lifecycleOwner = this@ClientsFragment
+            binding.lifecycleOwner = binding.root.findViewTreeLifecycleOwner()
             binding.root.setOnClickListener(this)
             binding.description.movementMethod = LinkMovementMethod.getInstance()
         }
@@ -149,7 +150,7 @@ class ClientsFragment : Fragment() {
                 }
                 R.id.stats -> {
                     binding.client?.let { client ->
-                        lifecycleScope.launchWhenCreated {
+                        viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                             withContext(Dispatchers.Unconfined) {
                                 StatsDialogFragment().withArg(StatsArg(
                                         client.title.value ?: return@withContext,

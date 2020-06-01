@@ -6,8 +6,8 @@ import android.view.View
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.findViewTreeLifecycleOwner
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.readableMessage
 import com.google.android.material.snackbar.Snackbar
@@ -32,9 +32,9 @@ sealed class SmartSnackbar {
         }.readableMessage)
     }
 
-    class Register(lifecycle: Lifecycle, private val view: View) : DefaultLifecycleObserver {
+    class Register(private val view: View) : DefaultLifecycleObserver {
         init {
-            lifecycle.addObserver(this)
+            view.findViewTreeLifecycleOwner()!!.lifecycle.addObserver(this)
         }
 
         override fun onResume(owner: LifecycleOwner) {

@@ -67,7 +67,7 @@ android {
 androidExtensions.isExperimental = true
 
 dependencies {
-    val lifecycleVersion = "2.2.0"
+    val lifecycleVersion = "2.3.0-alpha03"
     val roomVersion = "2.2.5"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.5")
@@ -76,7 +76,7 @@ dependencies {
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.core:core-ktx:1.3.0-rc01")
     implementation("androidx.emoji:emoji:1.1.0-rc01")
-    implementation("androidx.fragment:fragment-ktx:1.2.4")
+    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha05")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")

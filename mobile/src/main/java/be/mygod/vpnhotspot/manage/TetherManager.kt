@@ -140,7 +140,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         private val tethering = BluetoothTethering(parent.requireContext()) { onTetheringStarted() }
 
         init {
-            parent.lifecycle.addObserver(this)
+            parent.viewLifecycleOwner.lifecycle.addObserver(this)
         }
 
         override fun onDestroy(owner: LifecycleOwner) = tethering.close()
