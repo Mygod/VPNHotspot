@@ -34,7 +34,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private lateinit var bluetoothRegexs: List<Pattern>
         private var ncmRegexs = emptyList<Pattern>()
         private val ethernetRegex: Pattern?
-        private var requiresUpdate = true
+        private var requiresUpdate = false
 
         @RequiresApi(30)    // unused on lower APIs
         val listener = Event0()
@@ -68,8 +68,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
         init {
             val system = "android" to Resources.getSystem()
             if (BuildCompat.isAtLeastR()) {
+                requiresUpdate = true
                 TetheringManager.registerTetheringEventCallback(null, this)
-                updateRegexs()
             } else {
                 usbRegexs = system.getRegexs("config_tether_usb_regexs")
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
