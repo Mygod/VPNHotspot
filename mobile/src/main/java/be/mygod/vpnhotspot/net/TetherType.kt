@@ -7,6 +7,7 @@ import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Event0
+import timber.log.Timber
 import java.util.regex.Pattern
 
 enum class TetherType(@DrawableRes val icon: Int) {
@@ -47,6 +48,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
         @RequiresApi(30)
         private fun updateRegexs() {
             requiresUpdate = false
+            TetheringManager.registerTetheringEventCallback(null, this)
             val tethering = "com.android.networkstack.tethering" to app.packageManager.getResourcesForApplication(
                     TetheringManager.resolvedService.serviceInfo.applicationInfo)
             usbRegexs = tethering.getRegexs("config_tether_usb_regexs")
@@ -58,6 +60,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
         @RequiresApi(30)
         override fun onTetherableInterfaceRegexpsChanged() {
+            Timber.i("onTetherableInterfaceRegexpsChanged")
+            TetheringManager.unregisterTetheringEventCallback(this)
             requiresUpdate = true
             listener()
         }
@@ -67,10 +71,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
          */
         init {
             val system = "android" to Resources.getSystem()
-            if (BuildCompat.isAtLeastR()) {
-                requiresUpdate = true
-                TetheringManager.registerTetheringEventCallback(null, this)
-            } else {
+            if (BuildCompat.isAtLeastR()) requiresUpdate = true else {
                 usbRegexs = system.getRegexs("config_tether_usb_regexs")
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
