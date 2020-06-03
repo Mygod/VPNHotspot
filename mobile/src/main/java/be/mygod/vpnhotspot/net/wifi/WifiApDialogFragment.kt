@@ -1,10 +1,9 @@
-package be.mygod.vpnhotspot.net.wifi.configuration
+package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.DialogInterface
-import android.net.wifi.WifiConfiguration
+import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
 import android.text.Editable
@@ -14,8 +13,10 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
@@ -43,7 +44,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     }
 
     @Parcelize
-    data class Arg(val configuration: WifiConfiguration,
+    data class Arg(val configuration: SoftApConfigurationCompat,
                    val readOnly: Boolean = false,
                    /**
                     * KeyMgmt is enforced to WPA_PSK.
@@ -51,41 +52,43 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     */
                    val p2pMode: Boolean = false) : Parcelable
 
-    @TargetApi(23)
+    @RequiresApi(23)
     private sealed class BandOption {
-        open val apBand get() = AP_BAND_2GHZ
-        open val apChannel get() = 0
+        open val band get() = SoftApConfigurationCompat.BAND_ANY
+        open val channel get() = SoftApConfigurationCompat.CH_INVALID
 
         object BandAny : BandOption() {
-            override val apBand get() = AP_BAND_ANY
             override fun toString() = app.getString(R.string.wifi_ap_choose_auto)
         }
         object Band2GHz : BandOption() {
+            override val band get() = SoftApConfigurationCompat.BAND_2GHZ
             override fun toString() = app.getString(R.string.wifi_ap_choose_2G)
         }
         object Band5GHz : BandOption() {
-            override val apBand get() = AP_BAND_5GHZ
+            override val band get() = SoftApConfigurationCompat.BAND_5GHZ
             override fun toString() = app.getString(R.string.wifi_ap_choose_5G)
         }
-        class Channel(override val apChannel: Int) : BandOption() {
-            override fun toString() = "${channelToFrequency(apChannel)} MHz ($apChannel)"
+        @RequiresApi(30)
+        object Band6GHz : BandOption() {
+            override val band get() = SoftApConfigurationCompat.BAND_6GHZ
+            override fun toString() = app.getString(R.string.wifi_ap_choose_6G)
+        }
+        class Channel(override val channel: Int) : BandOption() {
+            override fun toString() = "${SoftApConfigurationCompat.channelToFrequency(channel)} MHz ($channel)"
         }
     }
 
     private lateinit var dialogView: DialogWifiApBinding
     private lateinit var bandOptions: MutableList<BandOption>
     private var started = false
-    private val selectedSecurity get() =
-        if (arg.p2pMode) WifiConfiguration.KeyMgmt.WPA_PSK else dialogView.security.selectedItemPosition
-    override val ret get() = Arg(WifiConfiguration().apply {
-        SSID = dialogView.ssid.text.toString()
-        allowedKeyManagement.set(selectedSecurity)
-        allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN)
-        if (dialogView.password.length() != 0) preSharedKey = dialogView.password.text.toString()
+    override val ret get() = Arg(arg.configuration.copy(
+            ssid = dialogView.ssid.text.toString(),
+            passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
+        if (!arg.p2pMode) securityType = dialogView.security.selectedItemPosition
         if (Build.VERSION.SDK_INT >= 23) {
             val bandOption = dialogView.band.selectedItem as BandOption
-            apBand = bandOption.apBand
-            apChannel = bandOption.apChannel
+            band = bandOption.band
+            channel = bandOption.channel
         }
     })
 
@@ -101,13 +104,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.readOnly) dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
-                    WifiConfiguration.KeyMgmt.strings).apply {
+                    SoftApConfigurationCompat.securityTypes).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    dialogView.passwordWrapper.isGone = position == WifiConfiguration.KeyMgmt.NONE
+                    dialogView.passwordWrapper.isGone = position == SoftApConfiguration.SECURITY_TYPE_OPEN
                 }
             }
         }
@@ -124,6 +127,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
+                    if (BuildCompat.isAtLeastR()) add (BandOption.Band6GHz)
                 }
                 addAll(channels)
             }
@@ -131,21 +135,22 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
             if (Build.VERSION.SDK_INT < 23) {
-                setSelection(bandOptions.indexOfFirst { it.apChannel == RepeaterService.operatingChannel })
+                setSelection(bandOptions.indexOfFirst { it.channel == RepeaterService.operatingChannel })
             }
         } else dialogView.bandWrapper.isGone = true
         populateFromConfiguration(arg.configuration)
     }
 
-    private fun populateFromConfiguration(configuration: WifiConfiguration) {
-        dialogView.ssid.setText(configuration.SSID)
-        if (!arg.p2pMode) dialogView.security.setSelection(configuration.apKeyManagement)
-        dialogView.password.setText(configuration.preSharedKey)
+    private fun populateFromConfiguration(configuration: SoftApConfigurationCompat) {
+        dialogView.ssid.setText(configuration.ssid)
+        if (!arg.p2pMode) dialogView.security.setSelection(configuration.securityType)
+        dialogView.password.setText(configuration.passphrase)
         if (Build.VERSION.SDK_INT >= 23) {
-            dialogView.band.setSelection(if (configuration.apChannel in 1..165) {
-                bandOptions.indexOfFirst { it.apChannel == configuration.apChannel }
-            } else bandOptions.indexOfFirst { it.apBand == configuration.apBand })
+            dialogView.band.setSelection(if (configuration.channel in 1..165) {
+                bandOptions.indexOfFirst { it.channel == configuration.channel }
+            } else bandOptions.indexOfFirst { it.band == configuration.band })
         }
+        // TODO support more fields from SACC
     }
 
     override fun onStart() {
@@ -163,8 +168,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.ssidWrapper.error = if (RepeaterService.safeModeConfigurable && ssidLength < 9) {
             requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
         } else null
+        val selectedSecurity = if (arg.p2pMode) {
+            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+        } else dialogView.security.selectedItemPosition
         val passwordValid = when (selectedSecurity) {
-            WifiConfiguration.KeyMgmt.WPA_PSK, WPA2_PSK -> dialogView.password.length() >= 8
+            // TODO
+            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> dialogView.password.length() >= 8
             else -> true    // do not try to validate
         }
         dialogView.passwordWrapper.error = if (passwordValid) null else {
@@ -187,7 +196,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             android.R.id.paste -> try {
                 app.clipboard.primaryClip?.getItemAt(0)?.text?.apply {
-                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<WifiConfiguration>()
+                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>()
                             ?.let { populateFromConfiguration(it) }
                 }
                 true
@@ -197,7 +206,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             R.id.share_qr -> {
                 val qrString = try {
-                    ret.configuration.toQRString()
+                    ret.configuration.toQrCode()
                 } catch (e: IllegalArgumentException) {
                     SmartSnackbar.make(e).show()
                     return false
@@ -212,7 +221,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override fun onClick(dialog: DialogInterface?, which: Int) {
         super.onClick(dialog, which)
         if (Build.VERSION.SDK_INT < 23 && arg.p2pMode && which == DialogInterface.BUTTON_POSITIVE) {
-            RepeaterService.operatingChannel = (dialogView.band.selectedItem as BandOption).apChannel
+            RepeaterService.operatingChannel = (dialogView.band.selectedItem as BandOption).channel
         }
     }
 }

@@ -35,10 +35,17 @@ class TetherTimeoutMonitor(private val context: Context, private val onTimeout: 
         /**
          * Minimum limit to use for timeout delay if the value from overlay setting is too small.
          */
-        private const val MIN_SOFT_AP_TIMEOUT_DELAY_MS = 600_000    // 10 minutes
+        @RequiresApi(21)
+        const val MIN_SOFT_AP_TIMEOUT_DELAY_MS = 600_000    // 10 minutes
 
-        private val enabled get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
-        private val timeout by lazy {
+        @Deprecated("Use SoftApConfigurationCompat instead")
+        var enabled
+            get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
+            set(value) {
+                check(Settings.Global.putInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, if (value) 1 else 0))
+            }
+        @Deprecated("Use SoftApConfigurationCompat instead")
+        val timeout by lazy {
             val delay = try {
                 app.resources.getInteger(Resources.getSystem().getIdentifier(
                         "config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))

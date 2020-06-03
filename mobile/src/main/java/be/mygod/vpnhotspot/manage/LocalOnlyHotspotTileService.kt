@@ -47,7 +47,7 @@ class LocalOnlyHotspotTileService : KillableTileService() {
                     label = getText(R.string.tethering_temp_hotspot)
                 } else {
                     state = Tile.STATE_ACTIVE
-                    label = service.configuration?.SSID ?: getText(R.string.tethering_temp_hotspot)
+                    label = service.configuration?.ssid ?: getText(R.string.tethering_temp_hotspot)
                 }
                 updateTile()
             }

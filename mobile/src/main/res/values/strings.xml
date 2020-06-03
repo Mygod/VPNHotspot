@@ -162,6 +162,7 @@
     <string name="wifi_ap_choose_auto">Auto</string>
     <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
     <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
+    <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

@@ -1,18 +1,38 @@
 package be.mygod.vpnhotspot.net.wifi
 
-import android.net.wifi.WifiConfiguration
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
+import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 
 object WifiApManager {
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
+    @Suppress("DEPRECATION")
     private val setWifiApConfiguration by lazy {
-        WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration", WifiConfiguration::class.java)
+        WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration",
+                android.net.wifi.WifiConfiguration::class.java)
     }
-    var configuration: WifiConfiguration
-        get() = getWifiApConfiguration(app.wifi) as? WifiConfiguration ?: WifiConfiguration()
-        set(value) = require(setWifiApConfiguration(app.wifi, value) as? Boolean == true) {
-            "setWifiApConfiguration failed"
+    @get:RequiresApi(30)
+    private val getSoftApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getSoftApConfiguration") }
+    @get:RequiresApi(30)
+    private val setSoftApConfiguration by lazy {
+        WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
+    }
+
+    var configuration: SoftApConfigurationCompat
+        get() = if (BuildCompat.isAtLeastR()) {
+            (getSoftApConfiguration(app.wifi) as SoftApConfiguration).toCompat()
+        } else @Suppress("DEPRECATION") {
+            (getWifiApConfiguration(app.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
+                    ?: SoftApConfigurationCompat.empty()
+        }
+        set(value) = if (BuildCompat.isAtLeastR()) {
+            require(setSoftApConfiguration(app.wifi, value.toPlatform()) as Boolean) { "setSoftApConfiguration failed" }
+        } else @Suppress("DEPRECATION") {
+            require(setWifiApConfiguration(app.wifi,
+                    value.toWifiConfiguration()) as Boolean) { "setWifiApConfiguration failed" }
         }
 
     private val cancelLocalOnlyHotspotRequest by lazy {
@@ -20,9 +40,10 @@ object WifiApManager {
     }
     fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(app.wifi)
 
+    @Suppress("DEPRECATION")
     private val setWifiApEnabled by lazy {
         WifiManager::class.java.getDeclaredMethod("setWifiApEnabled",
-                WifiConfiguration::class.java, Boolean::class.java)
+                android.net.wifi.WifiConfiguration::class.java, Boolean::class.java)
     }
     /**
      * Start AccessPoint mode with the specified
@@ -34,7 +55,8 @@ object WifiApManager {
      *        part of WifiConfiguration
      * @return {@code true} if the operation succeeds, {@code false} otherwise
      */
-    private fun WifiManager.setWifiApEnabled(wifiConfig: WifiConfiguration?, enabled: Boolean) =
+    @Suppress("DEPRECATION")
+    private fun WifiManager.setWifiApEnabled(wifiConfig: android.net.wifi.WifiConfiguration?, enabled: Boolean) =
             setWifiApEnabled(this, wifiConfig, enabled) as Boolean
 
     /**
@@ -44,7 +66,7 @@ object WifiApManager {
      */
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")
-    fun start(wifiConfig: WifiConfiguration? = null) {
+    fun start(wifiConfig: android.net.wifi.WifiConfiguration? = null) {
         app.wifi.isWifiEnabled = false
         app.wifi.setWifiApEnabled(wifiConfig, true)
     }

@@ -18,12 +18,12 @@ import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
-import be.mygod.vpnhotspot.net.wifi.configuration.channelToFrequency
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
@@ -315,7 +315,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     setPassphrase(passphrase)
                     operatingChannel.let { oc ->
                         if (oc == 0) setGroupOperatingBand(operatingBand)
-                        else setGroupOperatingFrequency(channelToFrequency(oc))
+                        else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(oc))
                     }
                 }.build().run {
                     useParcel { p ->

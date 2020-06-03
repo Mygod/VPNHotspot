@@ -5,12 +5,14 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -31,7 +33,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             }
         val ifaceChanged = StickyEvent1 { iface }
 
-        val configuration get() = reservation?.wifiConfiguration
+        val configuration get() = if (BuildCompat.isAtLeastR()) {
+            reservation?.softApConfiguration?.toCompat()
+        } else @Suppress("DEPRECATION") {
+            reservation?.wifiConfiguration?.toCompat()
+        }
 
         fun stop() {
             when (iface) {
