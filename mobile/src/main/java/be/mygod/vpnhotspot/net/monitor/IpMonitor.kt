@@ -19,7 +19,8 @@ abstract class IpMonitor : Runnable {
     companion object {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
-        private val errorMatcher = "Dump (was interrupted and may be inconsistent.|terminated)$".toRegex()
+        private val errorMatcher = "(^Cannot bind netlink socket: |Dump (was interrupted and may be inconsistent.|terminated)$)"
+                .toRegex()
         private val currentMode get() = Mode.valueOf(app.pref.getString(KEY, (if (BuildCompat.isAtLeastR())
             Mode.MonitorRoot else @Suppress("DEPRECATION") Mode.Poll).toString()) ?: "")
     }
