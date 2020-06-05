@@ -10,8 +10,7 @@ import java.nio.ByteOrder
 /**
  * Compat support class for [MacAddress].
  */
-@Parcelize
-inline class MacAddressCompat(val addr: Long) : Parcelable {
+inline class MacAddressCompat(val addr: Long) {
     companion object {
         private const val ETHER_ADDR_LEN = 6
         /**

@@ -81,8 +81,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     override val ret get() = Arg(arg.configuration.copy(
             ssid = dialogView.ssid.text.toString(),
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null,
-            bssid = if (dialogView.bssid.length() != 0) {
-                MacAddressCompat.fromString(dialogView.bssid.toString())
+            bssidAddr = if (dialogView.bssid.length() != 0) {
+                MacAddressCompat.fromString(dialogView.bssid.toString()).addr
             } else null).apply {
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition

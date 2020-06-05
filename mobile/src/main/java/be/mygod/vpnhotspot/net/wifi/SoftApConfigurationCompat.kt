@@ -20,7 +20,8 @@ data class SoftApConfigurationCompat(
         var band: Int,
         @RequiresApi(23)
         var channel: Int,
-        var bssid: MacAddressCompat?,
+        @Deprecated("Workaround for using inline class with Parcelize, use bssid")
+        var bssidAddr: Long?,
         var maxNumberOfClients: Int,
         @RequiresApi(28)
         var shutdownTimeoutMillis: Long,
@@ -184,7 +185,7 @@ data class SoftApConfigurationCompat(
                 preSharedKey,
                 if (Build.VERSION.SDK_INT >= 23) apBand.getInt(this) else BAND_ANY,         // TODO
                 if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else CH_INVALID,    // TODO
-                BSSID?.let { MacAddressCompat.fromString(it) },
+                BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
                 0,  // TODO: unsupported field should have @RequiresApi?
                 if (Build.VERSION.SDK_INT >= 28) {
                     TetherTimeoutMonitor.timeout.toLong()
@@ -204,7 +205,7 @@ data class SoftApConfigurationCompat(
                 passphrase,
                 getBand(this) as Int,
                 getChannel(this) as Int,
-                bssid?.toCompat(),
+                bssid?.toCompat()?.addr,
                 getMaxNumberOfClients(this) as Int,
                 getShutdownTimeoutMillis(this) as Long,
                 isAutoShutdownEnabled(this) as Boolean,
@@ -221,6 +222,13 @@ data class SoftApConfigurationCompat(
                 } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong(),
                 if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false, false, false, null, null)
     }
+
+    @Suppress("DEPRECATION")
+    var bssid: MacAddressCompat?
+        get() = bssidAddr?.let { MacAddressCompat(it) }
+        set(value) {
+            bssidAddr = value?.addr
+        }
 
     /**
      * Based on:
