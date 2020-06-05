@@ -58,11 +58,13 @@ inline class MacAddressCompat(val addr: Long) {
          */
         fun fromString(addr: String) = ByteBuffer.allocate(Long.SIZE_BYTES).run {
             order(ByteOrder.LITTLE_ENDIAN)
-            try {
-                put(addr.split(':').map { Integer.parseInt(it, 16).toByte() }.toByteArray())
+            val bytes = try {
+                addr.split(':').map { Integer.parseInt(it, 16).toByte() }.toByteArray()
             } catch (e: NumberFormatException) {
                 throw IllegalArgumentException(e)
             }
+            require(bytes.size == ETHER_ADDR_LEN)
+            put(bytes)
             rewind()
             MacAddressCompat(long)
         }
