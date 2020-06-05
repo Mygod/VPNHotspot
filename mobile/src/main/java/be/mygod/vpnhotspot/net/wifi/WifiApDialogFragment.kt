@@ -23,10 +23,8 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
-import be.mygod.vpnhotspot.util.QRCodeDialog
-import be.mygod.vpnhotspot.util.showAllowingStateLoss
-import be.mygod.vpnhotspot.util.toByteArray
-import be.mygod.vpnhotspot.util.toParcelable
+import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 
@@ -83,7 +81,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private var started = false
     override val ret get() = Arg(arg.configuration.copy(
             ssid = dialogView.ssid.text.toString(),
-            passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
+            passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null,
+            bssid = if (dialogView.bssid.length() != 0) {
+                MacAddressCompat.fromString(dialogView.bssid.toString())
+            } else null).apply {
         if (!arg.p2pMode) securityType = dialogView.security.selectedItemPosition
         if (Build.VERSION.SDK_INT >= 23) {
             val bandOption = dialogView.band.selectedItem as BandOption
@@ -138,6 +139,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 setSelection(bandOptions.indexOfFirst { it.channel == RepeaterService.operatingChannel })
             }
         } else dialogView.bandWrapper.isGone = true
+        if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         populateFromConfiguration(arg.configuration)
     }
 
@@ -150,6 +152,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 bandOptions.indexOfFirst { it.channel == configuration.channel }
             } else bandOptions.indexOfFirst { it.band == configuration.band })
         }
+        dialogView.bssid.setText(configuration.bssid?.toString())
         // TODO support more fields from SACC
     }
 
@@ -179,8 +182,16 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else {
             requireContext().getString(R.string.credentials_password_too_short)
         }
+        val bssidValid = dialogView.bssid.length() == 0 || try {
+            MacAddressCompat.fromString(dialogView.bssid.text.toString())
+            dialogView.bssidWrapper.error = null
+            true
+        } catch (e: IllegalArgumentException) {
+            dialogView.bssidWrapper.error = e.readableMessage
+            false
+        }
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLength in 1..32 && passwordValid
+                ssidLength in 1..32 && passwordValid && bssidValid
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }
@@ -211,7 +222,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     SmartSnackbar.make(e).show()
                     return false
                 }
-                QRCodeDialog().withArg(qrString).showAllowingStateLoss(parentFragmentManager, "QRCodeDialog")
+                QRCodeDialog().withArg(qrString).showAllowingStateLoss(parentFragmentManager)
                 true
             }
             else -> false

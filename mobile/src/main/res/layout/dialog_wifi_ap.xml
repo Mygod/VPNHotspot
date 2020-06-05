@@ -107,6 +107,20 @@
                     style="@style/wifi_item_content"
                     android:prompt="@string/wifi_hotspot_ap_band_title" />
             </LinearLayout>
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/bssid_wrapper"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:hint="BSSID">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/bssid"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_edit_content"
+                    android:inputType="textNoSuggestions"
+                    android:maxLength="17" />
+            </com.google.android.material.textfield.TextInputLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
