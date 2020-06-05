@@ -50,7 +50,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     */
                    val p2pMode: Boolean = false) : Parcelable
 
-    @RequiresApi(23)
     private sealed class BandOption {
         open val band get() = SoftApConfigurationCompat.BAND_ANY
         open val channel get() = SoftApConfigurationCompat.CH_INVALID
@@ -89,11 +88,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
         }
-        if (Build.VERSION.SDK_INT >= 23) {
-            val bandOption = dialogView.band.selectedItem as BandOption
-            band = bandOption.band
-            channel = bandOption.channel
-        }
+        val bandOption = dialogView.band.selectedItem as BandOption
+        band = bandOption.band
+        channel = bandOption.channel
     })
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
@@ -131,15 +128,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
-                    if (BuildCompat.isAtLeastR()) add (BandOption.Band6GHz)
+                    if (BuildCompat.isAtLeastR()) add(BandOption.Band6GHz)
                 }
                 addAll(channels)
             }
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, bandOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            }
-            if (Build.VERSION.SDK_INT < 23) {
-                setSelection(bandOptions.indexOfFirst { it.channel == RepeaterService.operatingChannel })
             }
         } else dialogView.bandWrapper.isGone = true
         if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
@@ -151,11 +145,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.ssid.setText(configuration.ssid)
         if (!arg.p2pMode) dialogView.security.setSelection(configuration.securityType)
         dialogView.password.setText(configuration.passphrase)
-        if (Build.VERSION.SDK_INT >= 23) {
-            dialogView.band.setSelection(if (configuration.channel in 1..165) {
-                bandOptions.indexOfFirst { it.channel == configuration.channel }
-            } else bandOptions.indexOfFirst { it.band == configuration.band })
-        }
+        dialogView.band.setSelection(if (configuration.channel in 1..165) {
+            bandOptions.indexOfFirst { it.channel == configuration.channel }
+        } else bandOptions.indexOfFirst { it.band == configuration.band })
         dialogView.bssid.setText(configuration.bssid?.toString())
         dialogView.hiddenSsid.isChecked = configuration.isHiddenSsid
         // TODO support more fields from SACC
@@ -231,13 +223,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 true
             }
             else -> false
-        }
-    }
-
-    override fun onClick(dialog: DialogInterface?, which: Int) {
-        super.onClick(dialog, which)
-        if (Build.VERSION.SDK_INT < 23 && arg.p2pMode && which == DialogInterface.BUTTON_POSITIVE) {
-            RepeaterService.operatingChannel = (dialogView.band.selectedItem as BandOption).channel
         }
     }
 }

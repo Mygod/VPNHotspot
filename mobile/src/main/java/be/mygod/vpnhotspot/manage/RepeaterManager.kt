@@ -207,10 +207,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     ssid = group.networkName
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
                     passphrase = config.psk
-                    if (Build.VERSION.SDK_INT >= 23) {
-                        band = SoftApConfigurationCompat.BAND_ANY
-                        channel = RepeaterService.operatingChannel
-                    }
+                    band = SoftApConfigurationCompat.BAND_ANY
+                    channel = RepeaterService.operatingChannel
                     bssid = RepeaterService.deviceAddress
                 }
             } catch (e: RuntimeException) {
@@ -241,7 +239,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             holder.config = null
         }
-        if (Build.VERSION.SDK_INT >= 23) RepeaterService.operatingChannel = config.channel
+        RepeaterService.operatingChannel = config.channel
         RepeaterService.deviceAddress = config.bssid
     }
 }
