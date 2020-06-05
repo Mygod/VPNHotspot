@@ -28,6 +28,7 @@ import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
+import java.lang.IllegalArgumentException
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 
@@ -44,6 +45,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
         private const val KEY_OPERATING_BAND = "service.repeater.band"
         private const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+        private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"
         /**
          * Placeholder for bypassing networkName check.
          */
@@ -90,6 +92,17 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 return if (result in 1..165) result else 0
             }
             set(value) = app.pref.edit { putString(KEY_OPERATING_CHANNEL, value.toString()) }
+        var deviceAddress: MacAddressCompat?
+            get() = try {
+                MacAddressCompat(app.pref.getLong(KEY_DEVICE_ADDRESS, MacAddressCompat.ANY_ADDRESS.addr)).run {
+                    validate()
+                    if (this == MacAddressCompat.ANY_ADDRESS) null else this
+                }
+            } catch (e: IllegalArgumentException) {
+                Timber.w(e)
+                null
+            }
+            set(value) = app.pref.edit { putLong(KEY_DEVICE_ADDRESS, (value ?: MacAddressCompat.ANY_ADDRESS).addr) }
     }
 
     enum class Status {
@@ -317,6 +330,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         if (oc == 0) setGroupOperatingBand(operatingBand)
                         else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(oc))
                     }
+                    setDeviceAddress(deviceAddress?.toPlatform())
                 }.build().run {
                     useParcel { p ->
                         p.writeParcelable(this, 0)

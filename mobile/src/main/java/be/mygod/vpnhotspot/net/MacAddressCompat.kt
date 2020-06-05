@@ -72,6 +72,8 @@ inline class MacAddressCompat(val addr: Long) : Parcelable {
         fun MacAddress.toCompat() = fromBytes(toByteArray())
     }
 
+    fun validate() = require(addr and ((1L shl 48) - 1).inv() == 0L)
+
     fun toList() = ByteBuffer.allocate(8).run {
         order(ByteOrder.LITTLE_ENDIAN)
         putLong(addr)

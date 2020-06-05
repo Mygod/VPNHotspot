@@ -192,13 +192,15 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         else -> throw IllegalArgumentException("Unknown operatingBand")
                     }
                     channel = RepeaterService.operatingChannel
+                    bssid = RepeaterService.deviceAddress
                 }
             }
         } else {
             val group = binder?.group
             if (group != null) try {
                 val config = withContext(Dispatchers.Default) {
-                    P2pSupplicantConfiguration(group, binder?.thisDevice?.deviceAddress)
+                    P2pSupplicantConfiguration(group,
+                            binder?.thisDevice?.deviceAddress, RepeaterService.deviceAddress?.toString())
                 }
                 holder.config = config
                 return SoftApConfigurationCompat.empty().apply {
@@ -209,6 +211,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         band = SoftApConfigurationCompat.BAND_ANY
                         channel = RepeaterService.operatingChannel
                     }
+                    bssid = RepeaterService.deviceAddress
                 }
             } catch (e: RuntimeException) {
                 Timber.w(e)
@@ -239,5 +242,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             holder.config = null
         }
         if (Build.VERSION.SDK_INT >= 23) RepeaterService.operatingChannel = config.channel
+        RepeaterService.deviceAddress = config.bssid
     }
 }

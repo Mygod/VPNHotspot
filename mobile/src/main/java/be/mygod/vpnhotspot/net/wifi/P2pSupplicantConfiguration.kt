@@ -14,7 +14,7 @@ import java.io.File
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/6fa46df/wpa_supplicant/config_file.c#182
  */
-class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: String?) {
+class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAddresses: String?) {
     companion object {
         private const val TAG = "P2pSupplicantConfiguration"
         private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
@@ -53,7 +53,8 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
-                val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress, RepeaterService.lastMac)
+                val bssids = (listOf(group.owner.deviceAddress, RepeaterService.lastMac) + ownerAddresses)
+                        .filterNotNull()
                         .distinct()
                         .filter {
                             try {
