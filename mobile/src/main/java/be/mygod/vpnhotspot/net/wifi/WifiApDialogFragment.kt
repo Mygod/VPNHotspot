@@ -165,7 +165,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private fun validate() {
         if (!started) return
         val ssidLength = dialogView.ssid.text.toString().toByteArray().size
-        dialogView.ssidWrapper.error = if (RepeaterService.safeModeConfigurable && ssidLength < 9) {
+        dialogView.ssidWrapper.error = if (arg.p2pMode && RepeaterService.safeMode && ssidLength < 9) {
             requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
         } else null
         val selectedSecurity = if (arg.p2pMode) {
