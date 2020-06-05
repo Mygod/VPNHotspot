@@ -88,38 +88,40 @@ data class SoftApConfigurationCompat(
         }
 
         @get:RequiresApi(30)
-        private val getAllowedClientList by lazy {
+        private val getAllowedClientList by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getAllowedClientList")
         }
         @get:RequiresApi(30)
-        private val getBand by lazy { SoftApConfiguration::class.java.getDeclaredMethod("getBand") }
+        private val getBand by lazy @TargetApi(30) { SoftApConfiguration::class.java.getDeclaredMethod("getBand") }
         @get:RequiresApi(30)
-        private val getBlockedClientList by lazy {
+        private val getBlockedClientList by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getBlockedClientList")
         }
         @get:RequiresApi(30)
-        private val getChannel by lazy { SoftApConfiguration::class.java.getDeclaredMethod("getChannel") }
+        private val getChannel by lazy @TargetApi(30) {
+            SoftApConfiguration::class.java.getDeclaredMethod("getChannel")
+        }
         @get:RequiresApi(30)
-        private val getMaxNumberOfClients by lazy {
+        private val getMaxNumberOfClients by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getMaxNumberOfClients")
         }
         @get:RequiresApi(30)
-        private val getShutdownTimeoutMillis by lazy {
+        private val getShutdownTimeoutMillis by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getShutdownTimeoutMillis")
         }
         @get:RequiresApi(30)
-        private val isAutoShutdownEnabled by lazy {
+        private val isAutoShutdownEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isAutoShutdownEnabled")
         }
         @get:RequiresApi(30)
-        private val isClientControlByUserEnabled by lazy {
+        private val isClientControlByUserEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isClientControlByUserEnabled")
         }
 
         @get:RequiresApi(30)
         private val classBuilder by lazy { Class.forName("android.net.wifi.SoftApConfiguration\$Builder") }
         @get:RequiresApi(30)
-        private val newBuilder by lazy { classBuilder.getConstructor(SoftApConfiguration::class.java) }
+        private val newBuilder by lazy @TargetApi(30) { classBuilder.getConstructor(SoftApConfiguration::class.java) }
         @get:RequiresApi(30)
         private val build by lazy { classBuilder.getDeclaredMethod("build") }
         @get:RequiresApi(30)
