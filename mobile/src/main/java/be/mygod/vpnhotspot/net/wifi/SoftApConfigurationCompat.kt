@@ -224,7 +224,7 @@ data class SoftApConfigurationCompat(
     }
 
     @Suppress("DEPRECATION")
-    var bssid: MacAddressCompat?
+    inline var bssid: MacAddressCompat?
         get() = bssidAddr?.let { MacAddressCompat(it) }
         set(value) {
             bssidAddr = value?.addr

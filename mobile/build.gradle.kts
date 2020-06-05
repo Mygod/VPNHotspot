@@ -64,8 +64,6 @@ android {
     }
 }
 
-androidExtensions.isExperimental = true
-
 dependencies {
     val lifecycleVersion = "2.3.0-alpha03"
     val roomVersion = "2.2.5"
