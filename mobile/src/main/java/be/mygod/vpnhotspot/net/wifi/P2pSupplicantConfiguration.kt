@@ -118,7 +118,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
             } catch (e: RuntimeException) {
                 FirebaseCrashlytics.getInstance().apply {
                     setCustomKey(TAG, parser.lines.joinToString("\n"))
-                    setCustomKey("$TAG.ownerAddress", ownerAddress.toString())
+                    setCustomKey("$TAG.ownerAddresses", ownerAddresses.joinToString())
                     setCustomKey("$TAG.p2pGroup", group.toString())
                 }
                 throw e
