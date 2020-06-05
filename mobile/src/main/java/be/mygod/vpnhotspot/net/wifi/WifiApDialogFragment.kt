@@ -85,7 +85,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.toString())
             } else null).apply {
-        if (!arg.p2pMode) securityType = dialogView.security.selectedItemPosition
+        if (!arg.p2pMode) {
+            securityType = dialogView.security.selectedItemPosition
+            isHiddenSsid = dialogView.hiddenSsid.isChecked
+        }
         if (Build.VERSION.SDK_INT >= 23) {
             val bandOption = dialogView.band.selectedItem as BandOption
             band = bandOption.band
@@ -140,6 +143,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         } else dialogView.bandWrapper.isGone = true
         if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
+        if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         populateFromConfiguration(arg.configuration)
     }
 
@@ -153,6 +157,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             } else bandOptions.indexOfFirst { it.band == configuration.band })
         }
         dialogView.bssid.setText(configuration.bssid?.toString())
+        dialogView.hiddenSsid.isChecked = configuration.isHiddenSsid
         // TODO support more fields from SACC
     }
 

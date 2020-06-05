@@ -121,6 +121,13 @@
                     android:inputType="textNoSuggestions"
                     android:maxLength="17" />
             </com.google.android.material.textfield.TextInputLayout>
+            <Switch
+                android:id="@+id/hidden_ssid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                style="@style/wifi_item_label"
+                android:text="Hidden network"/>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
