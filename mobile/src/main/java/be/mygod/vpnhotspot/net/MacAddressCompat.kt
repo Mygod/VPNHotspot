@@ -21,6 +21,7 @@ inline class MacAddressCompat(val addr: Long) : Parcelable {
          * @hide
          */
         val ALL_ZEROS_ADDRESS = MacAddressCompat(0)
+        val ANY_ADDRESS = MacAddressCompat(2L shl 40)
 
         fun bytesToString(addr: ByteArray): String {
             require(addr.size == ETHER_ADDR_LEN) { addr.contentToString() + " was not a valid MAC address" }

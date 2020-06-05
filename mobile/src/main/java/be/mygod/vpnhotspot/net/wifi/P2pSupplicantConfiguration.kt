@@ -4,6 +4,7 @@ import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.util.RootSession
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import java.io.File
@@ -54,7 +55,14 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, ownerAddress: 
             try {
                 val bssids = listOfNotNull(group.owner.deviceAddress, ownerAddress, RepeaterService.lastMac)
                         .distinct()
-                        .filter { it != "00:00:00:00:00:00" && it != "02:00:00:00:00:00" }
+                        .filter {
+                            try {
+                                val mac = MacAddressCompat.fromString(it)
+                                mac != MacAddressCompat.ALL_ZEROS_ADDRESS && mac != MacAddressCompat.ANY_ADDRESS
+                            } catch (_: IllegalArgumentException) {
+                                false
+                            }
+                        }
                 while (parser.next()) {
                     if (parser.trimmed.startsWith("network={")) {
                         val block = NetworkBlock()
