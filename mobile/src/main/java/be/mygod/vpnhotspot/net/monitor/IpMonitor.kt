@@ -19,8 +19,8 @@ abstract class IpMonitor : Runnable {
     companion object {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
-        private val errorMatcher = "(^Cannot bind netlink socket: |Dump (was interrupted and may be inconsistent.|terminated)$)"
-                .toRegex()
+        private val errorMatcher = ("(^Cannot bind netlink socket: |" +
+                "Dump (was interrupted and may be inconsistent.|terminated)$)").toRegex()
         private val currentMode: Mode get() {
             val defaultMode = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                 Mode.Poll

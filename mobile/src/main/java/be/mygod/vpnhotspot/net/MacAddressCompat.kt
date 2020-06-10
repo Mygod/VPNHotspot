@@ -1,9 +1,7 @@
 package be.mygod.vpnhotspot.net
 
 import android.net.MacAddress
-import android.os.Parcelable
 import androidx.annotation.RequiresApi
-import kotlinx.android.parcel.Parcelize
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
