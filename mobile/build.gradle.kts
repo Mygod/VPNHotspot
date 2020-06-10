@@ -10,6 +10,7 @@ plugins {
 
 android {
     val javaVersion = JavaVersion.VERSION_1_8
+    val targetSdk = 29
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
@@ -23,7 +24,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdkVersion(21)
-        targetSdkVersion(30)
+        targetSdkVersion(targetSdk)
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 224
         versionName = "2.9.1"
@@ -32,6 +33,7 @@ android {
                 "room.incremental" to "true",
                 "room.schemaLocation" to "$projectDir/schemas"))
         buildConfigField("boolean", "DONATIONS", "true")
+        buildConfigField("int", "TARGET_SDK", targetSdk.toString())
     }
     buildFeatures {
         dataBinding = true

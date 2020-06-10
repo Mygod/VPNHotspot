@@ -5,6 +5,7 @@ import android.system.ErrnoException
 import android.system.OsConstants
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -24,7 +25,8 @@ abstract class IpMonitor : Runnable {
                 "Dump (was interrupted and may be inconsistent.|terminated)$)").toRegex()
         var currentMode: Mode
             get() {
-                val defaultMode = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                val isLegacy = Build.VERSION.SDK_INT < 30 || BuildConfig.TARGET_SDK < 30
+                val defaultMode = if (isLegacy) @Suppress("DEPRECATION") {
                     Mode.Poll
                 } else Mode.MonitorRoot
                 return Mode.valueOf(app.pref.getString(KEY, defaultMode.toString()) ?: "")
