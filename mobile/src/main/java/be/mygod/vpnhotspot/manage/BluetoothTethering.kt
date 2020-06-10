@@ -19,12 +19,11 @@ import timber.log.Timber
 import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
-class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
+class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
     companion object : BroadcastReceiver() {
         /**
          * PAN Profile
-         * From BluetoothProfile.java.
          */
         private const val PAN = 5
         private val isTetheringOn by lazy {
@@ -33,7 +32,6 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
 
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
-        private val Intent.bluetoothState get() = getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)
 
         private var pendingCallback: TetheringManager.StartTetheringCallback? = null
 
@@ -42,7 +40,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
          */
         @TargetApi(24)
         override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.bluetoothState) {
+            when (intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
                 BluetoothAdapter.STATE_ON -> try {
                     TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, pendingCallback!!)
                 } catch (e: IOException) {
@@ -100,7 +98,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
         }
     }
 
-    private val receiver = broadcastReceiver { _, intent -> stateListener(intent.bluetoothState) }
+    private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     init {
         try {
@@ -117,6 +115,7 @@ class BluetoothTethering(context: Context, val stateListener: (Int) -> Unit) :
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
         pan = proxy
+        stateListener()
     }
     override fun close() {
         app.unregisterReceiver(receiver)

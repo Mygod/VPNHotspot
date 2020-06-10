@@ -137,7 +137,10 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
-        private val tethering = BluetoothTethering(parent.requireContext()) { onTetheringStarted() }
+        private val tethering = BluetoothTethering(parent.requireContext()) {
+            data.text = makeErrorMessage()
+            data.notifyChange()
+        }
 
         init {
             parent.viewLifecycleOwner.lifecycle.addObserver(this)
@@ -151,9 +154,15 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val isStarted get() = tethering.active == true
 
         override fun onException() = ManageBar.start(parent.context ?: app)
-        override fun makeErrorMessage(errored: List<String>) = listOfNotNull(
+
+        private var baseError: CharSequence? = null
+        private fun makeErrorMessage(): CharSequence = listOfNotNull(
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
-                super.makeErrorMessage(errored).let { if (it.isEmpty()) null else it }).joinToString("\n")
+                baseError).joinToString("\n")
+        override fun makeErrorMessage(errored: List<String>): CharSequence {
+            baseError = super.makeErrorMessage(errored).let { if (it.isEmpty()) null else it }
+            return makeErrorMessage()
+        }
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {

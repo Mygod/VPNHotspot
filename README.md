@@ -160,6 +160,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)
 
 * (since API 24) `Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,system-api,whitelist`
+* (since API 24) `Landroid/bluetooth/BluetoothProfile;->PAN:I,system-api,whitelist`
 * (since API 30) `Landroid/content/Context;->TETHERING_SERVICE:Ljava/lang/String;,system-api,whitelist`
 * (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123103)
 * (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123104)
