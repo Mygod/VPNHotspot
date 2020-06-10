@@ -26,8 +26,8 @@ android {
         minSdkVersion(21)
         targetSdkVersion(targetSdk)
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 224
-        versionName = "2.9.1"
+        versionCode = 230
+        versionName = "2.10.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments(mapOf(
                 "room.incremental" to "true",
@@ -53,10 +53,10 @@ android {
     flavorDimensions("freedom")
     productFlavors {
         create("freedom") {
-            setDimension("freedom")
+            dimension("freedom")
         }
         create("google") {
-            setDimension("freedom")
+            dimension("freedom")
             buildConfigField("boolean", "DONATIONS", "false")
         }
     }
