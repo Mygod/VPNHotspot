@@ -16,7 +16,6 @@ import android.widget.ArrayAdapter
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
@@ -128,7 +127,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
-                    if (BuildCompat.isAtLeastR()) add(BandOption.Band6GHz)
+                    if (Build.VERSION.SDK_INT >= 30) add(BandOption.Band6GHz)
                 }
                 addAll(channels)
             }

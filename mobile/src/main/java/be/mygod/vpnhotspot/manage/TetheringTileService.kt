@@ -5,12 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.Icon
+import android.os.Build
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -51,12 +51,12 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
         // we need to initialize tethered ASAP for onClick, which is not achievable using registerTetheringEventCallback
         tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                 ?.tetheredIfaces
-        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = this::updateTile
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = this::updateTile
         updateTile()
     }
 
     override fun onStopListening() {
-        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
         unregisterReceiver(receiver)
         stopAndUnbind(this)
         super.onStopListening()

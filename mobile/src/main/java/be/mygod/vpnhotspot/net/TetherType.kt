@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
+import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Event0
@@ -71,7 +71,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
          */
         init {
             val system = "android" to Resources.getSystem()
-            if (BuildCompat.isAtLeastR()) requiresUpdate = true else {
+            if (Build.VERSION.SDK_INT >= 30) requiresUpdate = true else {
                 usbRegexs = system.getRegexs("config_tether_usb_regexs")
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
@@ -92,7 +92,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
             requiresUpdate -> {
-                if (BuildCompat.isAtLeastR()) updateRegexs() else error("unexpected requiresUpdate")
+                if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
                 ofInterface(iface, p2pDev)
             }
             wifiRegexs.any { it.matcher(iface).matches() } -> WIFI

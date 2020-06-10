@@ -5,7 +5,6 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetheringManager
@@ -33,11 +32,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             }
         val ifaceChanged = StickyEvent1 { iface }
 
-        val configuration get() = if (BuildCompat.isAtLeastR()) {
-            reservation?.softApConfiguration?.toCompat()
-        } else @Suppress("DEPRECATION") {
+        val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             reservation?.wifiConfiguration?.toCompat()
-        }
+        } else reservation?.softApConfiguration?.toCompat()
 
         fun stop() {
             when (iface) {

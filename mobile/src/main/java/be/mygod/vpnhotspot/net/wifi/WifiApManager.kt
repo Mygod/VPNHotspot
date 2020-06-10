@@ -3,8 +3,8 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.TargetApi
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
+import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 
@@ -23,17 +23,15 @@ object WifiApManager {
     }
 
     var configuration: SoftApConfigurationCompat
-        get() = if (BuildCompat.isAtLeastR()) {
-            (getSoftApConfiguration(app.wifi) as SoftApConfiguration).toCompat()
-        } else @Suppress("DEPRECATION") {
+        get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             (getWifiApConfiguration(app.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
                     ?: SoftApConfigurationCompat.empty()
-        }
-        set(value) = if (BuildCompat.isAtLeastR()) {
-            require(setSoftApConfiguration(app.wifi, value.toPlatform()) as Boolean) { "setSoftApConfiguration failed" }
-        } else @Suppress("DEPRECATION") {
+        } else (getSoftApConfiguration(app.wifi) as SoftApConfiguration).toCompat()
+        set(value) = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             require(setWifiApConfiguration(app.wifi,
                     value.toWifiConfiguration()) as Boolean) { "setWifiApConfiguration failed" }
+        } else require(setSoftApConfiguration(app.wifi, value.toPlatform()) as Boolean) {
+            "setSoftApConfiguration failed"
         }
 
     private val cancelLocalOnlyHotspotRequest by lazy {

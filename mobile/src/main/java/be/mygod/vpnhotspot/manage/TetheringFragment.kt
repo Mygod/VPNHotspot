@@ -13,7 +13,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
-import androidx.core.os.BuildCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -101,7 +100,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 list.addAll(tetherManagers)
                 tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
             }
-            if (BuildCompat.isAtLeastR()) {
+            if (Build.VERSION.SDK_INT >= 30) {
                 list.addAll(tetherManagers30)
                 tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces) }
             }
@@ -229,7 +228,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             lifecycleScope.launchWhenStarted { adapter.notifyInterfaceChanged() }
         }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = {
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
             lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
         }
     }
@@ -237,7 +236,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onServiceDisconnected(name: ComponentName?) {
         (binder ?: return).routingsChanged -= this
         binder = null
-        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
         requireContext().unregisterReceiver(receiver)
     }
 }

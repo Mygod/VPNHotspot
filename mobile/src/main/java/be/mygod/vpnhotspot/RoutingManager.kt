@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.annotation.TargetApi
 import android.os.Build
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
@@ -61,7 +60,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     fun start() = when (val other = active.putIfAbsent(downstream, this)) {
         null -> {
             if (isWifi) WifiDoubleLock.acquire(this)
-            if (!forceWifi && BuildCompat.isAtLeastR()) TetherType.listener[this] = {
+            if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
                 val isWifiNow = TetherType.ofInterface(downstream).isWifi
                 if (isWifi != isWifiNow) {
                     if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
@@ -97,7 +96,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     fun stop() {
         if (active.remove(downstream, this)) {
-            if (!forceWifi && BuildCompat.isAtLeastR()) TetherType.listener -= this
+            if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
             if (isWifi) WifiDoubleLock.release(this)
             routing?.revert()
         }

@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.client
 
 import android.content.DialogInterface
+import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
 import android.text.format.DateUtils
@@ -14,7 +15,6 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
-import androidx.core.os.BuildCompat
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -235,7 +235,7 @@ class ClientsFragment : Fragment() {
 
     override fun onStart() {
         // icon might be changed due to TetherType changes
-        if (BuildCompat.isAtLeastR()) TetherType.listener[this] = {
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
             lifecycleScope.launchWhenStarted { adapter.notifyItemRangeChanged(0, adapter.size.await()) }
         }
         super.onStart()
@@ -251,6 +251,6 @@ class ClientsFragment : Fragment() {
     override fun onStop() {
         TrafficRecorder.foregroundListeners -= this
         super.onStop()
-        if (BuildCompat.isAtLeastR()) TetherType.listener -= this
+        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
     }
 }

@@ -13,7 +13,6 @@ import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
 import androidx.collection.SparseArrayCompat
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -237,7 +236,7 @@ object TetheringManager {
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
                        handler: Handler? = null) {
         val reference = WeakReference(callback)
-        if (BuildCompat.isAtLeastR()) try {
+        if (Build.VERSION.SDK_INT >= 30) {
             val request = newTetheringRequestBuilder.newInstance(type).let { builder ->
                 // setting exemption requires TETHER_PRIVILEGED permission
                 if (app.checkSelfPermission("android.permission.TETHER_PRIVILEGED") ==
@@ -263,23 +262,21 @@ object TetheringManager {
                 }
             })
             startTethering(instance, request, handler.makeExecutor(), proxy)
-            return
-        } catch (e: InvocationTargetException) {
-            Timber.w(e, "Unable to invoke TetheringManager.startTethering, falling back to ConnectivityManager")
-        }
-        val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback).apply {
-            dexCache(app.deviceStorage.cacheDir)
-            handler { proxy, method, args ->
-                if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
-                @Suppress("NAME_SHADOWING") val callback = reference.get()
-                when (method.name) {
-                    "onTetheringStarted" -> callback?.onTetheringStarted()
-                    "onTetheringFailed" -> callback?.onTetheringFailed()
-                    else -> ProxyBuilder.callSuper(proxy, method, args)
+        } else {
+            val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback).apply {
+                dexCache(app.deviceStorage.cacheDir)
+                handler { proxy, method, args ->
+                    if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
+                    @Suppress("NAME_SHADOWING") val callback = reference.get()
+                    when (method.name) {
+                        "onTetheringStarted" -> callback?.onTetheringStarted()
+                        "onTetheringFailed" -> callback?.onTetheringFailed()
+                        else -> ProxyBuilder.callSuper(proxy, method, args)
+                    }
                 }
-            }
-        }.build()
-        startTetheringLegacy(app.connectivity, type, showProvisioningUi, proxy, handler)
+            }.build()
+            startTetheringLegacy(app.connectivity, type, showProvisioningUi, proxy, handler)
+        }
     }
 
     /**
@@ -293,12 +290,7 @@ object TetheringManager {
      */
     @RequiresApi(24)
     fun stopTethering(type: Int) {
-        if (BuildCompat.isAtLeastR()) try {
-            stopTethering(instance, type)
-        } catch (e: InvocationTargetException) {
-            Timber.w(e, "Unable to invoke TetheringManager.stopTethering, falling back to ConnectivityManager")
-        }
-        stopTetheringLegacy(app.connectivity, type)
+        if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type) else stopTetheringLegacy(app.connectivity, type)
     }
 
     /**
@@ -498,7 +490,7 @@ object TetheringManager {
      * Only [TetheringEventCallback.onTetheredInterfacesChanged] is supported on API 29-.
      */
     fun registerTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (BuildCompat.isAtLeastR()) {
+        if (Build.VERSION.SDK_INT >= 30) {
             registerTetheringEventCallback(null.makeExecutor(), callback)
         } else synchronized(callbackMap) {
             callbackMap.computeIfAbsent(callback) {
@@ -509,7 +501,7 @@ object TetheringManager {
         }
     }
     fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (BuildCompat.isAtLeastR()) {
+        if (Build.VERSION.SDK_INT >= 30) {
             unregisterTetheringEventCallback(callback)
         } else {
             val receiver = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
@@ -545,7 +537,7 @@ object TetheringManager {
         }
     }
     fun tetherErrorMessage(error: Int): String {
-        if (BuildCompat.isAtLeastR()) try {
+        if (Build.VERSION.SDK_INT >= 30) try {
             tetherErrors.get(error)?.let { return it }
         } catch (e: ReflectiveOperationException) {
             Timber.w(e)
@@ -557,6 +549,6 @@ object TetheringManager {
             if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
     val Intent.localOnlyTetheredIfaces get() = if (Build.VERSION.SDK_INT >= 26) {
         getStringArrayListExtra(
-                if (BuildCompat.isAtLeastR()) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
+                if (Build.VERSION.SDK_INT >= 30) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
     } else emptyList<String>()
 }
