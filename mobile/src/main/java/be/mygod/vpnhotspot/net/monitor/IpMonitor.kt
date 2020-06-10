@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.monitor
 import android.os.Build
 import android.system.ErrnoException
 import android.system.OsConstants
+import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
@@ -21,12 +22,14 @@ abstract class IpMonitor : Runnable {
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
         private val errorMatcher = ("(^Cannot bind netlink socket: |" +
                 "Dump (was interrupted and may be inconsistent.|terminated)$)").toRegex()
-        private val currentMode: Mode get() {
-            val defaultMode = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-                Mode.Poll
-            } else Mode.MonitorRoot
-            return Mode.valueOf(app.pref.getString(KEY, defaultMode.toString()) ?: "")
-        }
+        var currentMode: Mode
+            get() {
+                val defaultMode = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                    Mode.Poll
+                } else Mode.MonitorRoot
+                return Mode.valueOf(app.pref.getString(KEY, defaultMode.toString()) ?: "")
+            }
+            set(value) = app.pref.edit { putString(KEY, value.toString()) }
     }
 
     enum class Mode(val isMonitor: Boolean = false) {

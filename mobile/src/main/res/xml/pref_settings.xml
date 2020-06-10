@@ -73,7 +73,6 @@
             app:icon="@drawable/ic_hardware_device_hub"
             app:entries="@array/settings_service_ip_monitor"
             app:entryValues="@array/settings_service_ip_monitor_values"
-            app:defaultValue="Poll"
             app:title="@string/settings_service_ip_monitor"
             app:useSimpleSummaryProvider="true"/>
     </PreferenceCategory>
