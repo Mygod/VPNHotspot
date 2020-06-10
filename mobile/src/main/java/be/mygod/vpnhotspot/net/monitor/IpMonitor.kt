@@ -53,7 +53,7 @@ abstract class IpMonitor : Runnable {
         }
         try {
             process.inputStream.bufferedReader().forEachLine {
-                if (errorMatcher.matches(it)) {
+                if (errorMatcher.containsMatchIn(it)) {
                     Timber.w(it)
                     process.destroy()   // move on to next mode
                 } else processLine(it)
@@ -102,7 +102,7 @@ abstract class IpMonitor : Runnable {
         }
         process.inputStream.bufferedReader().useLines {
             processLines(it.map { line ->
-                if (errorMatcher.matches(line)) throw IOException(line)
+                if (errorMatcher.containsMatchIn(line)) throw IOException(line)
                 line
             })
         }
@@ -117,15 +117,17 @@ abstract class IpMonitor : Runnable {
         }
         try {
             val command = "ip $monitoredObject"
-            RootSession.use {
-                val result = it.execQuiet(command)
+            RootSession.use { shell ->
+                val result = shell.execQuiet(command)
                 RootSession.checkOutput(command, result, false)
-                if (result.out.any { errorMatcher.matches(it) }) throw IOException(result.out.joinToString("\n"))
+                if (result.out.any { errorMatcher.containsMatchIn(it) }) {
+                    throw IOException(result.out.joinToString("\n"))
+                }
                 processLines(result.out.asSequence())
             }
         } catch (e: RuntimeException) {
-            app.logEvent("ip_su_poll_failure")
-            Timber.w(e)
+            app.logEvent("ip_su_poll_failure") { param("cause", e.message.toString()) }
+            Timber.d(e)
         }
     }
 
