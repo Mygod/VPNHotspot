@@ -11,11 +11,11 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     compileOptions {
-        coreLibraryDesugaringEnabled = true
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdkVersion("android-R")
+    compileSdkVersion(30)
     kotlinOptions {
         freeCompilerArgs = listOf("-XXLanguage:+InlineClasses")
         jvmTarget = javaVersion.toString()
@@ -23,15 +23,14 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdkVersion(21)
-        targetSdkVersion("R")
+        targetSdkVersion(30)
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 224
         versionName = "2.9.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        javaCompileOptions.annotationProcessorOptions.arguments = mapOf(
+        javaCompileOptions.annotationProcessorOptions.arguments(mapOf(
                 "room.incremental" to "true",
-                "room.schemaLocation" to "$projectDir/schemas"
-        )
+                "room.schemaLocation" to "$projectDir/schemas"))
         buildConfigField("boolean", "DONATIONS", "true")
     }
     buildFeatures {
@@ -75,7 +74,7 @@ dependencies {
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.core:core-ktx:1.3.0-rc01")
     implementation("androidx.emoji:emoji:1.1.0-rc01")
-    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha05")
+    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha06")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
@@ -86,8 +85,8 @@ dependencies {
     implementation("com.github.topjohnwu.libsu:core:2.5.1")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.2.0-beta01")
-    implementation("com.google.firebase:firebase-analytics-ktx:17.4.2")
-    implementation("com.google.firebase:firebase-crashlytics:17.0.0")
+    implementation("com.google.firebase:firebase-analytics-ktx:17.4.3")
+    implementation("com.google.firebase:firebase-crashlytics:17.0.1")
     implementation("com.google.zxing:core:3.4.0")
     implementation("com.jakewharton.timber:timber:4.7.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.25.1")
