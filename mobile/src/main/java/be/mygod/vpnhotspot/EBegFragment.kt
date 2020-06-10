@@ -31,14 +31,14 @@ class EBegFragment : AppCompatDialogFragment() {
             }.setListener(this).build().also { it.startConnection(this) }
         }
 
-        override fun onBillingSetupFinished(billingResult: BillingResult?) {
-            if (billingResult?.responseCode == BillingClient.BillingResponseCode.OK) {
+        override fun onBillingSetupFinished(billingResult: BillingResult) {
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 billingClient.queryPurchases(BillingClient.SkuType.INAPP).apply {
                     if (responseCode == BillingClient.BillingResponseCode.OK) {
                         onPurchasesUpdated(this.billingResult, purchasesList)
                     }
                 }
-            } else Timber.e("onBillingSetupFinished: ${billingResult?.responseCode}")
+            } else Timber.e("onBillingSetupFinished: ${billingResult.responseCode}")
         }
 
         override fun onBillingServiceDisconnected() {
@@ -46,11 +46,11 @@ class EBegFragment : AppCompatDialogFragment() {
             billingClient.startConnection(this)
         }
 
-        override fun onPurchasesUpdated(billingResult: BillingResult?, purchases: MutableList<Purchase>?) {
-            if (billingResult?.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+        override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                 // directly consume in-app purchase, so that people can donate multiple times
                 purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.map(this::consumePurchase)
-            } else Timber.e("onPurchasesUpdated: ${billingResult?.responseCode}")
+            } else Timber.e("onPurchasesUpdated: ${billingResult.responseCode}")
         }
 
         private fun consumePurchase(purchase: Purchase) = GlobalScope.launch(Dispatchers.Main.immediate) {

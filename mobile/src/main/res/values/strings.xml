@@ -2,11 +2,15 @@
 <!--
  Values copied from:
     * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/5697a7e/res/values/strings.xml
+    * https://android.googlesource.com/platform/packages/apps/Settings/+/37c9c5b/res/values/strings.xml
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
     * @string/ethernet_tether_checkbox_text
+    * @string/wifi_ap_choose_auto
+    * @string/wifi_ap_choose_2G
+    * @string/wifi_ap_choose_5G
+    * @string/wifi_hidden_network
   -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
@@ -163,6 +167,7 @@
     <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
     <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
     <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
+    <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

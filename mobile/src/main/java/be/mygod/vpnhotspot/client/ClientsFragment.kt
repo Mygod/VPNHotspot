@@ -109,10 +109,11 @@ class ClientsFragment : Fragment() {
                 "▲ ${Formatter.formatFileSize(app, send)}/s\t\t▼ ${Formatter.formatFileSize(app, receive)}/s"
     }
 
-    private inner class ClientViewHolder(val binding: ListitemClientBinding) : RecyclerView.ViewHolder(binding.root),
-            View.OnClickListener, PopupMenu.OnMenuItemClickListener {
+    private inner class ClientViewHolder(parent: ViewGroup, val binding: ListitemClientBinding =
+            ListitemClientBinding.inflate(LayoutInflater.from(parent.context), parent, false)) :
+            RecyclerView.ViewHolder(binding.root), View.OnClickListener, PopupMenu.OnMenuItemClickListener {
         init {
-            binding.lifecycleOwner = binding.root.findViewTreeLifecycleOwner()
+            binding.lifecycleOwner = parent.findViewTreeLifecycleOwner()!!
             binding.root.setOnClickListener(this)
             binding.description.movementMethod = LinkMovementMethod.getInstance()
         }
@@ -178,9 +179,7 @@ class ClientsFragment : Fragment() {
             binding.swipeRefresher.isRefreshing = false
         }
 
-        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-                ClientViewHolder(ListitemClientBinding.inflate(LayoutInflater.from(parent.context), parent, false))
-
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ClientViewHolder(parent)
         override fun onBindViewHolder(holder: ClientViewHolder, position: Int) {
             val client = getItem(position)
             holder.binding.client = client

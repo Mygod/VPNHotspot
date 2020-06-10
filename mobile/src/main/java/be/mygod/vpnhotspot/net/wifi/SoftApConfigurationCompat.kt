@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net.wifi
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
@@ -237,6 +238,7 @@ data class SoftApConfigurationCompat(
      * https://android.googlesource.com/platform/packages/apps/Settings/+/android-5.0.0_r1/src/com/android/settings/wifi/WifiApDialog.java#88
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/wifi/tether/WifiTetherSettings.java#162
      */
+    @SuppressLint("NewApi") // https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#1385
     @Deprecated("Class deprecated in framework")
     @Suppress("DEPRECATION")
     fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {

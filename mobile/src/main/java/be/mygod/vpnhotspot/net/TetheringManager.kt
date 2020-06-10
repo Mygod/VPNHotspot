@@ -333,7 +333,7 @@ object TetheringManager {
          * *@param reg The new regular expressions.
          * @hide
          */
-        fun onTetherableInterfaceRegexpsChanged() {}
+        fun onTetherableInterfaceRegexpsChanged(args: Array<out Any?>?) {}
 
         /**
          * Called when there was a change in the list of tetherable interfaces. Tetherable
@@ -437,7 +437,7 @@ object TetheringManager {
                                 callback?.onUpstreamChanged(args!![0] as Network?)
                             }
                             "onTetherableInterfaceRegexpsChanged" -> {
-                                if (regexpsSent) callback?.onTetherableInterfaceRegexpsChanged()
+                                if (regexpsSent) callback?.onTetherableInterfaceRegexpsChanged(args)
                                 regexpsSent = true
                             }
                             "onTetherableInterfacesChanged" -> {

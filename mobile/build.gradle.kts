@@ -64,7 +64,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.3.0-alpha03"
+    val lifecycleVersion = "2.3.0-alpha04"
     val roomVersion = "2.2.5"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.5")
@@ -81,7 +81,7 @@ dependencies {
     implementation("androidx.preference:preference:1.1.1")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0-rc01")
-    implementation("com.android.billingclient:billing-ktx:2.2.1")
+    implementation("com.android.billingclient:billing-ktx:3.0.0")
     implementation("com.github.topjohnwu.libsu:core:2.5.1")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.2.0-beta01")
@@ -89,7 +89,7 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics:17.0.1")
     implementation("com.google.zxing:core:3.4.0")
     implementation("com.jakewharton.timber:timber:4.7.1")
-    implementation("com.linkedin.dexmaker:dexmaker:2.25.1")
+    implementation("com.linkedin.dexmaker:dexmaker:2.28.0")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.7")

@@ -241,6 +241,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (!safeMode && key == KEY_OPERATING_CHANNEL) setOperatingChannel()
     }
 
+    @SuppressLint("NewApi") // networkId is available since Android 4.2
     private fun onPersistentGroupsChanged() {
         val channel = channel ?: return
         val device = binder.thisDevice ?: return

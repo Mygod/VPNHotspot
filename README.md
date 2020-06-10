@@ -129,7 +129,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index. You can read more in the source code.
 
-Greylisted APIs or internal constants: (some constants are hardcoded or implicitly used)
+Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
 * [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123309)
 * [`Landroid/net/MacAddress;->ALL_ZEROS_ADDRESS:Landroid/net/MacAddress;,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#125559)
@@ -144,6 +144,7 @@ Greylisted APIs or internal constants: (some constants are hardcoded or implicit
 * [`Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134299)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134738)
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blacklist`
 * (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158307)
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_usb_regexs:I,greylist-max-q`
@@ -178,7 +179,6 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->build()Landroid/net/TetheringManager$TetheringRequest;,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setExemptFromEntitlementCheck(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`
 * (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setShouldShowEntitlementUi(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`
-* (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setStaticIpv4Addresses(Landroid/net/LinkAddress;Landroid/net/LinkAddress;)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`
 * `Landroid/net/TetheringManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,system-api,test-api,whitelist`
 * (since API 26) `Landroid/net/TetheringManager;->EXTRA_ACTIVE_LOCAL_ONLY:Ljava/lang/String;,system-api,test-api,whitelist`
 * `Landroid/net/TetheringManager;->EXTRA_ACTIVE_TETHER:Ljava/lang/String;,system-api,test-api,whitelist`
