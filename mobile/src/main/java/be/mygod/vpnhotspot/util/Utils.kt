@@ -61,10 +61,10 @@ fun Parcelable.toByteArray(parcelableFlags: Int = 0) = useParcel { p ->
     p.writeParcelable(this, parcelableFlags)
     p.marshall()
 }
-fun <T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
+inline fun <reified T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
     p.unmarshall(this, 0, size)
     p.setDataPosition(0)
-    p.readParcelable<T>(javaClass.classLoader)
+    p.readParcelable<T>(T::class.java.classLoader)
 }
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
