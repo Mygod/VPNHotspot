@@ -379,7 +379,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             persistNextGroup = false
         }
         check(routingManager == null)
-        routingManager = object : RoutingManager.LocalOnly(this, group.`interface`!!) {
+        routingManager = object : RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!) {
             override fun ifaceHandler(iface: NetworkInterface) {
                 iface.hardwareAddress?.asIterable()?.macToString()?.let { lastMac = it }
             }
