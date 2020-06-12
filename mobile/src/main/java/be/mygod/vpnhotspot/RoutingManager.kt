@@ -25,10 +25,13 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             }
             set(value) = app.pref.edit().putString(KEY_MASQUERADE_MODE, value.name).apply()
 
+        /**
+         * Thread safety: needs protection by companion object!
+         */
         private val active = mutableMapOf<String, RoutingManager>()
 
-        fun clean(reinit: Boolean = true) {
-            if (!reinit && active.isEmpty()) return
+        fun clean(reinit: Boolean = true) = synchronized(this) {
+            if (!reinit && active.isEmpty()) return@synchronized
             for (manager in active.values) manager.routing?.stop()
             try {
                 Routing.clean()
@@ -37,7 +40,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 SmartSnackbar.make(e).show()
                 return
             }
-            if (reinit) for (manager in active.values) manager.initRouting()
+            if (reinit) for (manager in active.values) manager.initRoutingLocked()
         }
     }
 
@@ -53,29 +56,36 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    val started get() = active[downstream] === this
+    var started = false
+        private set
+    /**
+     * Thread safety: needs protection by companion object!
+     */
     private var routing: Routing? = null
     private var isWifi = forceWifi || TetherType.ofInterface(downstream).isWifi
 
-    fun start() = when (val other = active.putIfAbsent(downstream, this)) {
-        null -> {
-            if (isWifi) WifiDoubleLock.acquire(this)
-            if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-                val isWifiNow = TetherType.ofInterface(downstream).isWifi
-                if (isWifi != isWifiNow) {
-                    if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
-                    isWifi = isWifiNow
+    fun start() = synchronized(RoutingManager) {
+        started = true
+        when (val other = active.putIfAbsent(downstream, this)) {
+            null -> {
+                if (isWifi) WifiDoubleLock.acquire(this)
+                if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
+                    val isWifiNow = TetherType.ofInterface(downstream).isWifi
+                    if (isWifi != isWifiNow) {
+                        if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
+                        isWifi = isWifiNow
+                    }
                 }
+                initRoutingLocked()
             }
-            initRouting()
+            this -> true    // already started
+            else -> error("Double routing detected for $downstream from $caller != ${other.caller}")
         }
-        this -> true    // already started
-        else -> error("Double routing detected for $downstream from $caller != ${other.caller}")
     }
 
     open fun ifaceHandler(iface: NetworkInterface) { }
 
-    private fun initRouting() = try {
+    private fun initRoutingLocked() = try {
         routing = Routing(caller, downstream, this::ifaceHandler).apply {
             try {
                 configure()
@@ -94,7 +104,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     protected abstract fun Routing.configure()
 
-    fun stop() {
+    fun stop() = synchronized(RoutingManager) {
+        started = false
         if (active.remove(downstream, this)) {
             if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
             if (isWifi) WifiDoubleLock.release(this)

@@ -129,6 +129,8 @@ class Routing(private val caller: Any, private val downstream: String,
     private val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     private val transaction = RootSession.beginTransaction()
 
+    @Volatile
+    private var stopped = false
     private var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
@@ -164,6 +166,7 @@ class Routing(private val caller: Any, private val downstream: String,
         var dns: List<InetAddress> = emptyList()
 
         override fun onAvailable(ifname: String, properties: LinkProperties) = synchronized(this@Routing) {
+            if (stopped) return
             val subrouting = subrouting
             when {
                 subrouting != null -> check(subrouting.upstream == ifname) { "${subrouting.upstream} != $ifname" }
@@ -181,6 +184,7 @@ class Routing(private val caller: Any, private val downstream: String,
         }
 
         override fun onLost() = synchronized(this@Routing) {
+            if (stopped) return
             val subrouting = subrouting ?: return
             // we could be removing fallback subrouting which no collision could ever happen, check before removing
             subrouting.upstream?.let { check(upstreams.remove(it)) }
@@ -193,6 +197,7 @@ class Routing(private val caller: Any, private val downstream: String,
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
         var fallbackInactive = true
         override fun onFallback() = synchronized(this@Routing) {
+            if (stopped) return
             fallbackInactive = false
             check(subrouting == null)
             subrouting = try {
@@ -231,6 +236,7 @@ class Routing(private val caller: Any, private val downstream: String,
     }
     private val clients = mutableMapOf<InetAddress, Client>()
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) = synchronized(this) {
+        if (stopped) return
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
@@ -328,9 +334,11 @@ class Routing(private val caller: Any, private val downstream: String,
     }
 
     fun stop() {
+        stopped = true
         IpNeighbourMonitor.unregisterCallback(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
+        Timber.i("Stopped routing for $downstream by $caller")
     }
 
     fun commit() {
@@ -345,7 +353,6 @@ class Routing(private val caller: Any, private val downstream: String,
     }
     fun revert() {
         stop()
-        Timber.i("Stopped routing for $downstream by $caller")
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
