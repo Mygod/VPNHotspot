@@ -144,9 +144,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.ssid.setText(configuration.ssid)
         if (!arg.p2pMode) dialogView.security.setSelection(configuration.securityType)
         dialogView.password.setText(configuration.passphrase)
-        dialogView.band.setSelection(if (configuration.channel in 1..165) {
-            bandOptions.indexOfFirst { it.channel == configuration.channel }
-        } else bandOptions.indexOfFirst { it.band == configuration.band })
+        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
+            dialogView.band.setSelection(if (configuration.channel in 1..165) {
+                bandOptions.indexOfFirst { it.channel == configuration.channel }
+            } else bandOptions.indexOfFirst { it.band == configuration.band })
+        }
         dialogView.bssid.setText(configuration.bssid?.toString())
         dialogView.hiddenSsid.isChecked = configuration.isHiddenSsid
         // TODO support more fields from SACC
