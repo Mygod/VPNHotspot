@@ -331,6 +331,7 @@ class Routing(private val caller: Any, private val downstream: String,
         IpNeighbourMonitor.unregisterCallback(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
+        Timber.i("Stopped routing for $downstream by $caller")
     }
 
     fun commit() {
@@ -345,7 +346,6 @@ class Routing(private val caller: Any, private val downstream: String,
     }
     fun revert() {
         stop()
-        Timber.i("Stopped routing for $downstream by $caller")
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
