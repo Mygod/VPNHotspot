@@ -144,13 +144,15 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup?, vararg ownerA
     val psk = group?.passphrase ?: content.target.psk!!
     val bssid = MacAddressCompat.fromString(content.target.bssid!!)
 
-    fun update(ssid: String, psk: String, bssid: MacAddressCompat) {
+    fun update(ssid: String, psk: String, bssid: MacAddressCompat?) {
         val (lines, block, persistentMacLine, legacy) = content
-        persistentMacLine?.let { lines[it] = PERSISTENT_MAC + bssid }
         block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
                 .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
-        block[block.bssidLine!!] = "\tbssid=$bssid"
+        if (bssid != null) {
+            persistentMacLine?.let { lines[it] = PERSISTENT_MAC + bssid }
+            block[block.bssidLine!!] = "\tbssid=$bssid"
+        }
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.deviceStorage.cacheDir)
         try {
             tempFile.printWriter().use { writer ->

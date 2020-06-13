@@ -231,7 +231,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         } else holder.config?.let { master ->
             val binder = binder
             if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase || master.bssid != config.bssid) try {
-                withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid!!) }
+                withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid) }
                 (this.binder ?: binder)?.group = null
             } catch (e: Exception) {
                 Timber.w(e)
