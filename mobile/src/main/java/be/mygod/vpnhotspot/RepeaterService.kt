@@ -18,6 +18,7 @@ import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
@@ -28,7 +29,6 @@ import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
-import java.lang.IllegalArgumentException
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
 
@@ -75,7 +75,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
         var lastMac: String?
             get() = app.pref.getString(KEY_LAST_MAC, null)
-            private set(value) = app.pref.edit { putString(KEY_LAST_MAC, value) }
+            set(value) = app.pref.edit { putString(KEY_LAST_MAC, value) }
 
         var networkName: String?
             get() = app.pref.getString(KEY_NETWORK_NAME, null)
@@ -122,7 +122,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 }
             }
         val groupChanged = StickyEvent1 { group }
-        var thisDevice: WifiP2pDevice? = null
 
         fun startWps(pin: String? = null) {
             val channel = channel
@@ -164,8 +163,13 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
-            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> binder.thisDevice =
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
+                val device = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
+                val address = MacAddressCompat.fromString(device?.deviceAddress ?: return@broadcastReceiver)
+                if (Build.VERSION.SDK_INT < 29 || address != MacAddressCompat.ANY_ADDRESS) {
+                    lastMac = device.deviceAddress
+                }
+            }
             WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> if (!safeMode) onPersistentGroupsChanged()
         }
     }
@@ -242,13 +246,25 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
 
     @SuppressLint("NewApi") // networkId is available since Android 4.2
-    private fun onPersistentGroupsChanged() {
-        val channel = channel ?: return
-        val device = binder.thisDevice ?: return
+    private fun onPersistentGroupsChanged() = launch {
+        val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: withContext(Dispatchers.Default) {
+            try {
+                P2pSupplicantConfiguration().bssid
+            } catch (e: RuntimeException) {
+                Timber.d(e)
+                null
+            }
+        } ?: return@launch
+        val channel = channel ?: return@launch
         try {
-            p2pManager.requestPersistentGroupInfo(channel) {
-                if (it.isNotEmpty()) persistentSupported = true
-                val ownedGroups = it.filter { it.isGroupOwner && it.owner.deviceAddress == device.deviceAddress }
+            p2pManager.requestPersistentGroupInfo(channel) { groups ->
+                if (groups.isNotEmpty()) persistentSupported = true
+                val ownedGroups = groups.filter {
+                    if (!it.isGroupOwner) return@filter false
+                    val address = MacAddressCompat.fromString(it.owner.deviceAddress)
+                    // WifiP2pServiceImpl only removes self address
+                    Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
+                }
                 val main = ownedGroups.minBy { it.networkId }
                 // do not replace current group if it's better
                 if (binder.group?.passphrase == null) binder.group = main

@@ -199,8 +199,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val group = binder?.group
             if (group != null) try {
                 val config = withContext(Dispatchers.Default) {
-                    P2pSupplicantConfiguration(group,
-                            binder?.thisDevice?.deviceAddress, RepeaterService.deviceAddress?.toString())
+                    P2pSupplicantConfiguration(group, RepeaterService.lastMac)
                 }
                 holder.config = config
                 return SoftApConfigurationCompat.empty().apply {
