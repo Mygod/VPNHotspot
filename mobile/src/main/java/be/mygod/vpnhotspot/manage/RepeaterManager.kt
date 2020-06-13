@@ -209,7 +209,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     passphrase = config.psk
                     band = SoftApConfigurationCompat.BAND_ANY
                     channel = RepeaterService.operatingChannel
-                    bssid = RepeaterService.deviceAddress
+                    bssid = config.bssid
                 }
             } catch (e: RuntimeException) {
                 Timber.w(e)
@@ -230,8 +230,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
         } else holder.config?.let { master ->
             val binder = binder
-            if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase) try {
-                withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!) }
+            if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase || master.bssid != config.bssid) try {
+                withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid!!) }
                 (this.binder ?: binder)?.group = null
             } catch (e: Exception) {
                 Timber.w(e)

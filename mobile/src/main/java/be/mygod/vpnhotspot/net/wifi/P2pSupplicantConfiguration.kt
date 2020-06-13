@@ -14,11 +14,12 @@ import java.io.File
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/d2986c2/wpa_supplicant/config.c#488
  *   https://android.googlesource.com/platform/external/wpa_supplicant_8/+/6fa46df/wpa_supplicant/config_file.c#182
  */
-class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAddresses: String?) {
+class P2pSupplicantConfiguration(private val group: WifiP2pGroup?, vararg ownerAddresses: String?) {
     companion object {
         private const val TAG = "P2pSupplicantConfiguration"
         private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
         private const val CONF_PATH_LEGACY = "/data/misc/wifi/p2p_supplicant.conf"
+        private const val PERSISTENT_MAC = "p2p_device_persistent_mac_addr="
         private val networkParser =
                 "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
         private val whitespaceMatcher = "\\s+".toRegex()
@@ -27,6 +28,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
     private class NetworkBlock : ArrayList<String>() {
         var ssidLine: Int? = null
         var pskLine: Int? = null
+        var bssidLine: Int? = null
         var psk: String? = null
         var groupOwner = false
         var bssid: String? = null
@@ -44,16 +46,20 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
         } else false
     }
 
+    private data class Content(val lines: ArrayList<Any>, var target: NetworkBlock, var persistentMacLine: Int?,
+                               var legacy: Boolean)
+
     private val content by lazy {
         RootSession.use {
             val result = ArrayList<Any>()
             var target: NetworkBlock? = null
+            var persistentMacLine: Int? = null
             val command = "cat $CONF_PATH_TREBLE || cat $CONF_PATH_LEGACY"
             val shell = it.execQuiet(command)
             RootSession.checkOutput(command, shell, false, false)
             val parser = Parser(shell.out)
             try {
-                val bssids = (listOf(group.owner.deviceAddress, RepeaterService.lastMac) + ownerAddresses)
+                var bssids = (listOf(group?.owner?.deviceAddress, RepeaterService.lastMac) + ownerAddresses)
                         .filterNotNull()
                         .distinct()
                         .filter {
@@ -81,7 +87,10 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
                                             block.psk = match.groupValues[5].apply { check(length in 8..63) }
                                         }
                                         block.pskLine = block.size
-                                    } else if (bssids.any { matchedBssid.equals(it, true) }) block.bssid = matchedBssid
+                                    } else if (bssids.any { matchedBssid.equals(it, true) }) {
+                                        block.bssid = matchedBssid
+                                        block.bssidLine = block.size
+                                    }
                                 }
                             }
                             block.add(parser.line)
@@ -92,7 +101,14 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
                             check(block.ssidLine != null && block.pskLine != null)
                             target = block
                         }
-                    } else result.add(parser.line)
+                    } else {
+                        if (parser.trimmed.startsWith(PERSISTENT_MAC)) {
+                            require(persistentMacLine == null) { "Duplicated $PERSISTENT_MAC" }
+                            persistentMacLine = result.size
+                            bssids = listOf(parser.trimmed.substring(PERSISTENT_MAC.length))
+                        }
+                        result.add(parser.line)
+                    }
                 }
                 if (target == null && !RepeaterService.persistentSupported) {
                     result.add("")
@@ -114,7 +130,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
                         if (target == null) target = this
                     })
                 }
-                Triple(result, target!!, shell.err.isNotEmpty())
+                Content(result, target!!, persistentMacLine, shell.err.isNotEmpty())
             } catch (e: RuntimeException) {
                 FirebaseCrashlytics.getInstance().apply {
                     setCustomKey(TAG, parser.lines.joinToString("\n"))
@@ -125,13 +141,16 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup, vararg ownerAd
             }
         }
     }
-    val psk = group.passphrase ?: content.second.psk!!
+    val psk = group?.passphrase ?: content.target.psk!!
+    val bssid = MacAddressCompat.fromString(content.target.bssid!!)
 
-    fun update(ssid: String, psk: String) {
-        val (lines, block, legacy) = content
+    fun update(ssid: String, psk: String, bssid: MacAddressCompat) {
+        val (lines, block, persistentMacLine, legacy) = content
+        persistentMacLine?.let { lines[it] = PERSISTENT_MAC + bssid }
         block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
                 .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
         block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
+        block[block.bssidLine!!] = "\tbssid=$bssid"
         val tempFile = File.createTempFile("vpnhotspot-", ".conf", app.deviceStorage.cacheDir)
         try {
             tempFile.printWriter().use { writer ->
