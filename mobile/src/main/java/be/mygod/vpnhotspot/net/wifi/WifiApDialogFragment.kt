@@ -81,7 +81,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             ssid = dialogView.ssid.text.toString(),
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null,
             bssidAddr = if (dialogView.bssid.length() != 0) {
-                MacAddressCompat.fromString(dialogView.bssid.toString()).addr
+                MacAddressCompat.fromString(dialogView.bssid.text.toString()).addr
             } else null).apply {
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition
