@@ -170,7 +170,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     lastMac = device.deviceAddress
                 }
             }
-            WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION -> if (!safeMode) onPersistentGroupsChanged()
+            WifiP2pManagerHelper.ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED -> if (!safeMode) onPersistentGroupsChanged()
         }
     }
     /**
@@ -203,7 +203,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         super.onCreate()
         onChannelDisconnected()
         registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
-                WifiP2pManagerHelper.WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION))
+                WifiP2pManagerHelper.ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED))
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 

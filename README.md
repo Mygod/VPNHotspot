@@ -142,7 +142,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 26) [`Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132250)
 * (prior to API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
 * [`Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134299)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686)
+* (prior to API 30) [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134738)
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blacklist`
 * (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#158307)
@@ -163,6 +163,7 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (since API 24) `Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,system-api,whitelist`
 * (since API 24) `Landroid/bluetooth/BluetoothProfile;->PAN:I,system-api,whitelist`
 * (since API 30) `Landroid/content/Context;->TETHERING_SERVICE:Ljava/lang/String;,system-api,whitelist`
+* (since API 30) `Landroid/net/wifi/p2p/WifiP2pManager;->ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED:Ljava/lang/String;,system-api,whitelist`
 * (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123103)
 * (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123104)
 * (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#123105)
