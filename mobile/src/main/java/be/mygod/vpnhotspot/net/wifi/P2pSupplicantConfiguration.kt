@@ -116,7 +116,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null, ownerA
                     ssidLine = size
                     add("")
                     bssidLine = size
-                    add("")
+                    add("\tbssid=$bssid")
                     pskLine = size
                     add("")
                     add("\tproto=RSN")
