@@ -26,6 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
@@ -142,9 +143,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     }
 
     fun configure() = parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-        getConfiguration()?.let { config ->
+        getConfiguration()?.let { (config, readOnly) ->
             WifiApDialogFragment().apply {
-                arg(WifiApDialogFragment.Arg(config, p2pMode = true))
+                arg(WifiApDialogFragment.Arg(config, readOnly, true))
                 key(this@RepeaterManager.javaClass.name)
             }.showAllowingStateLoss(parent.parentFragmentManager)
         }
@@ -176,7 +177,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     }
 
     @MainThread
-    private suspend fun getConfiguration(): SoftApConfigurationCompat? {
+    private suspend fun getConfiguration(): Pair<SoftApConfigurationCompat, Boolean>? {
         if (RepeaterService.safeMode) {
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
@@ -193,25 +194,29 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     }
                     channel = RepeaterService.operatingChannel
                     bssid = RepeaterService.deviceAddress
-                }
+                } to false
             }
         } else {
             val group = binder?.group
-            if (group != null) try {
-                val config = withContext(Dispatchers.Default) {
-                    P2pSupplicantConfiguration(group, RepeaterService.lastMac)
-                }
-                holder.config = config
-                return SoftApConfigurationCompat.empty().apply {
-                    ssid = group.networkName
-                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
+            if (group != null) return SoftApConfigurationCompat.empty().run {
+                ssid = group.networkName
+                securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
+                band = SoftApConfigurationCompat.BAND_ANY
+                channel = RepeaterService.operatingChannel
+                try {
+                    val config = withContext(Dispatchers.Default) {
+                        P2pSupplicantConfiguration(group, RepeaterService.lastMac)
+                    }
+                    holder.config = config
                     passphrase = config.psk
-                    band = SoftApConfigurationCompat.BAND_ANY
-                    channel = RepeaterService.operatingChannel
                     bssid = config.bssid
+                    this to false
+                } catch (e: RuntimeException) {
+                    Timber.w(e)
+                    passphrase = group.passphrase
+                    bssid = group.owner?.deviceAddress?.let(MacAddressCompat::fromString)
+                    this to true
                 }
-            } catch (e: RuntimeException) {
-                Timber.w(e)
             }
         }
         SmartSnackbar.make(R.string.repeater_configure_failure).show()
@@ -229,7 +234,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
         } else holder.config?.let { master ->
             val binder = binder
-            if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase || master.bssid != config.bssid) try {
+            if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase ||
+                    master.bssid != config.bssid) try {
                 withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid) }
                 (this.binder ?: binder)?.group = null
             } catch (e: Exception) {
