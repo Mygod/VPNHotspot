@@ -164,11 +164,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private val deviceListener = broadcastReceiver { _, intent ->
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                val device = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)
-                val address = MacAddressCompat.fromString(device?.deviceAddress ?: return@broadcastReceiver)
-                if (Build.VERSION.SDK_INT < 29 || address != MacAddressCompat.ANY_ADDRESS) {
-                    lastMac = device.deviceAddress
-                }
+                val addr = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)?.deviceAddress
+                if (!addr.isNullOrEmpty() && (Build.VERSION.SDK_INT < 29 ||
+                                MacAddressCompat.fromString(addr) != MacAddressCompat.ANY_ADDRESS)) lastMac = addr
             }
             WifiP2pManagerHelper.ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED -> if (!safeMode) onPersistentGroupsChanged()
         }
