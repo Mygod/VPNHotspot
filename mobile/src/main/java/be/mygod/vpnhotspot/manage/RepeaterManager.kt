@@ -214,7 +214,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 } catch (e: RuntimeException) {
                     Timber.w(e)
                     passphrase = group.passphrase
-                    bssid = group.owner?.deviceAddress?.let(MacAddressCompat::fromString)
+                    bssid = group.owner?.deviceAddress?.let(MacAddressCompat.Companion::fromString)
                     this to true
                 }
             }
