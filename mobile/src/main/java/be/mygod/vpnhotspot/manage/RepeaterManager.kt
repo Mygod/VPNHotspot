@@ -27,15 +27,18 @@ import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
 import be.mygod.vpnhotspot.net.MacAddressCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -139,17 +142,18 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    private var configureJob: Job? = null
+    private var configuring = false
     fun configure() {
-        if (configureJob != null) return
-        configureJob = parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+        if (configuring) return
+        configuring = true
+        parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
             getConfiguration()?.let { (config, readOnly) ->
                 WifiApDialogFragment().apply {
                     arg(WifiApDialogFragment.Arg(config, readOnly, true))
                     key(this@RepeaterManager.javaClass.name)
                 }.showAllowingStateLoss(parent.parentFragmentManager)
             }
-            configureJob = null
+            configuring = false
         }
     }
 
