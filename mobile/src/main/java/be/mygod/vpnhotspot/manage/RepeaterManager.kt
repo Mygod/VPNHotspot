@@ -35,10 +35,7 @@ import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -142,12 +139,17 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    fun configure() = parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-        getConfiguration()?.let { (config, readOnly) ->
-            WifiApDialogFragment().apply {
-                arg(WifiApDialogFragment.Arg(config, readOnly, true))
-                key(this@RepeaterManager.javaClass.name)
-            }.showAllowingStateLoss(parent.parentFragmentManager)
+    private var configureJob: Job? = null
+    fun configure() {
+        if (configureJob != null) return
+        configureJob = parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+            getConfiguration()?.let { (config, readOnly) ->
+                WifiApDialogFragment().apply {
+                    arg(WifiApDialogFragment.Arg(config, readOnly, true))
+                    key(this@RepeaterManager.javaClass.name)
+                }.showAllowingStateLoss(parent.parentFragmentManager)
+            }
+            configureJob = null
         }
     }
 
