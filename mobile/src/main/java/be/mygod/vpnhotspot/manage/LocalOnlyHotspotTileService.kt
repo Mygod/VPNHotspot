@@ -9,11 +9,10 @@ import android.service.quicksettings.Tile
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(26)
-class LocalOnlyHotspotTileService : KillableTileService() {
+class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
 
     private var binder: LocalOnlyHotspotService.Binder? = null
@@ -28,6 +27,24 @@ class LocalOnlyHotspotTileService : KillableTileService() {
         super.onStopListening()
     }
 
+    override fun updateTile() {
+        val binder = binder ?: return
+        qsTile?.run {
+            icon = tile
+            subtitle(null)
+            val iface = binder.iface
+            if (iface.isNullOrEmpty()) {
+                state = Tile.STATE_INACTIVE
+                label = getText(R.string.tethering_temp_hotspot)
+            } else {
+                state = Tile.STATE_ACTIVE
+                label = binder.configuration?.ssid ?: getText(R.string.tethering_temp_hotspot)
+                subtitleDevices { it == iface }
+            }
+            updateTile()
+        }
+    }
+
     override fun onClick() {
         val binder = binder
         when {
@@ -39,19 +56,7 @@ class LocalOnlyHotspotTileService : KillableTileService() {
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as LocalOnlyHotspotService.Binder
-        service.ifaceChanged[this] = {
-            qsTile?.run {
-                icon = tile
-                if (it.isNullOrEmpty()) {
-                    state = Tile.STATE_INACTIVE
-                    label = getText(R.string.tethering_temp_hotspot)
-                } else {
-                    state = Tile.STATE_ACTIVE
-                    label = service.configuration?.ssid ?: getText(R.string.tethering_temp_hotspot)
-                }
-                updateTile()
-            }
-        }
+        service.ifaceChanged[this] = { updateTile() }
         super.onServiceConnected(name, service)
     }
 

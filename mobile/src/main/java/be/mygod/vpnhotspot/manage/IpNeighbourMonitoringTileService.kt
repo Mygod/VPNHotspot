@@ -1,0 +1,38 @@
+package be.mygod.vpnhotspot.manage
+
+import android.service.quicksettings.Tile
+import androidx.annotation.RequiresApi
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.util.KillableTileService
+
+@RequiresApi(24)
+abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeighbourMonitor.Callback {
+    private var neighbours: Collection<IpNeighbour> = emptyList()
+    abstract fun updateTile()
+
+    override fun onStartListening() {
+        super.onStartListening()
+        IpNeighbourMonitor.registerCallback(this)
+    }
+
+    override fun onStopListening() {
+        IpNeighbourMonitor.unregisterCallback(this)
+        super.onStopListening()
+    }
+
+    protected fun Tile.subtitleDevices(filter: (String) -> Boolean) {
+        val size = neighbours
+                .filter { it.state != IpNeighbour.State.FAILED && filter(it.dev) }
+                .distinctBy { it.lladdr }
+                .size
+        if (size > 0) subtitle(resources.getQuantityString(
+                R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size))
+    }
+
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+        this.neighbours = neighbours
+        updateTile()
+    }
+}

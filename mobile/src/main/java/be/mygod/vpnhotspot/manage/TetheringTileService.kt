@@ -17,7 +17,6 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
@@ -26,14 +25,14 @@ import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
-sealed class TetheringTileService : KillableTileService(), TetheringManager.StartTetheringCallback {
+sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManager.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
     protected abstract val labelString: Int
     protected abstract val tetherType: TetherType
     protected open val icon get() = tetherType.icon
-    protected var tethered: List<String>? = null
+    private var tethered: List<String>? = null
     protected val interested get() = tethered?.filter { TetherType.ofInterface(it) == tetherType }
     protected var binder: TetheringService.Binder? = null
 
@@ -73,8 +72,9 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
         binder = null
     }
 
-    protected open fun updateTile() {
+    override fun updateTile() {
         qsTile?.run {
+            subtitle(null)
             val interested = interested
             when {
                 interested == null -> {
@@ -89,6 +89,7 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
                     val binder = binder ?: return
                     state = Tile.STATE_ACTIVE
                     icon = if (interested.all(binder::isActive)) tileOn else tileOff
+                    subtitleDevices(interested::contains)
                 }
             }
             label = getText(labelString)
@@ -172,6 +173,7 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
 
         override fun updateTile() {
             qsTile?.run {
+                subtitle(null)
                 val interested = interested
                 if (interested == null) {
                     state = Tile.STATE_UNAVAILABLE
@@ -181,6 +183,7 @@ sealed class TetheringTileService : KillableTileService(), TetheringManager.Star
                         val binder = binder ?: return
                         state = Tile.STATE_ACTIVE
                         icon = if (interested.isNotEmpty() && interested.all(binder::isActive)) tileOn else tileOff
+                        subtitleDevices(interested::contains)
                     }
                     false -> {
                         state = Tile.STATE_INACTIVE

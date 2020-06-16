@@ -46,7 +46,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
                 .map { it.toPattern() }
 
         @RequiresApi(30)
-        private fun updateRegexs() {
+        private fun updateRegexs() = synchronized(this) {
+            if (!requiresUpdate) return@synchronized
             requiresUpdate = false
             TetheringManager.registerTetheringEventCallback(null, this)
             val tethering = "com.android.networkstack.tethering" to app.packageManager.getResourcesForApplication(
@@ -59,7 +60,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
         }
 
         @RequiresApi(30)
-        override fun onTetherableInterfaceRegexpsChanged(args: Array<out Any?>?) {
+        override fun onTetherableInterfaceRegexpsChanged(args: Array<out Any?>?) = synchronized(this) {
+            if (requiresUpdate) return@synchronized
             Timber.i("onTetherableInterfaceRegexpsChanged: ${args?.contentToString()}")
             TetheringManager.unregisterTetheringEventCallback(this)
             requiresUpdate = true
@@ -92,6 +94,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
             requiresUpdate -> {
+                Timber.d("requiresUpdate")
                 if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
                 ofInterface(iface, p2pDev)
             }
