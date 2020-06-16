@@ -122,7 +122,7 @@ object TetheringManager {
     /**
      * Bluetooth tethering type.
      *
-     * Requires BLUETOOTH permission, or BLUETOOTH_PRIVILEGED on API 30+.
+     * Requires BLUETOOTH permission.
      * @see [startTethering].
      */
     @RequiresApi(24)

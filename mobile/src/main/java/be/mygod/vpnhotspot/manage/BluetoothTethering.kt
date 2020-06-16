@@ -84,6 +84,8 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     private var pan: BluetoothProfile? = null
     var activeFailureCause: Throwable? = null
     /**
+     * Requires BLUETOOTH_PRIVILEGED on API 30+.
+     *
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
      */
     val active: Boolean? get() {
