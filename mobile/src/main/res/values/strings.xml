@@ -11,6 +11,8 @@
     * @string/wifi_ap_choose_2G
     * @string/wifi_ap_choose_5G
     * @string/wifi_hidden_network
+    * https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
+    * @plurals/quick_settings_hotspot_secondary_label_num_devices
   -->
 <resources>
     <string name="app_name">VPN Hotspot</string>
@@ -150,6 +152,10 @@
         <item quantity="other">%d interfaces</item>
     </plurals>
     <string name="notification_interfaces_inactive">Inactive: %s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="one">%d device</item>
+        <item quantity="other">%d devices</item>
+    </plurals>
 
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
