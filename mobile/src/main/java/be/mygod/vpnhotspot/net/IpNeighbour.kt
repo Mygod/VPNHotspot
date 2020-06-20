@@ -3,7 +3,10 @@ package be.mygod.vpnhotspot.net
 import android.os.Build
 import android.system.ErrnoException
 import android.system.OsConstants
+import be.mygod.vpnhotspot.root.ReadArp
+import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.parseNumericAddress
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
@@ -35,6 +38,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
         fun parse(line: String): List<IpNeighbour> {
+            if (line.isBlank()) return emptyList()
             return try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
@@ -87,17 +91,24 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
         private const val ARP_CACHE_EXPIRE = 1L * 1000 * 1000 * 1000
         private var arpCache = emptyList<List<String>>()
         private var arpCacheTime = -ARP_CACHE_EXPIRE
+        private fun Sequence<String>.makeArp() = this
+                .map { it.split(spaces) }
+                .drop(1)
+                .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
+                .toList()
         private fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
-                arpCache = File("/proc/net/arp").bufferedReader().readLines()
-                        .asSequence()
-                        .map { it.split(spaces) }
-                        .drop(1)
-                        .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
-                        .toList()
+                arpCache = File("/proc/net/arp").bufferedReader().lineSequence().makeArp()
             } catch (e: IOException) {
-                if (e !is FileNotFoundException || Build.VERSION.SDK_INT < 29 ||
-                        (e.cause as? ErrnoException)?.errno != OsConstants.EACCES) Timber.w(e)
+                if (e is FileNotFoundException && Build.VERSION.SDK_INT >= 29 &&
+                        (e.cause as? ErrnoException)?.errno == OsConstants.EACCES) try {
+                    arpCache = runBlocking {
+                        RootManager.use { it.execute(ReadArp()) }
+                    }.value.lineSequence().makeArp()
+                } catch (eRoot: Exception) {
+                    eRoot.addSuppressed(e)
+                    Timber.w(eRoot)
+                } else Timber.w(e)
             }
             return arpCache
         }

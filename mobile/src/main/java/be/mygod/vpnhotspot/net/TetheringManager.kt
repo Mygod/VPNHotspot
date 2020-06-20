@@ -15,11 +15,19 @@ import androidx.annotation.RequiresApi
 import androidx.collection.SparseArrayCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.StartTethering
+import be.mygod.vpnhotspot.root.StopTethering
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.callSuper
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import com.android.dx.stock.ProxyBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.io.File
 import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -49,7 +57,10 @@ object TetheringManager {
          */
         fun onTetheringFailed(error: Int? = null) { }
 
-        fun onException() { }
+        /**
+         * ADDED: Called when a local Exception occurred.
+         */
+        fun onException(e: Exception) { }
     }
 
     /**
@@ -130,7 +141,6 @@ object TetheringManager {
     /**
      * Ncm local tethering type.
      *
-     * Requires NETWORK_SETTINGS permission, which is sadly not obtainable.
      * @see [startTethering]
      */
     @RequiresApi(30)
@@ -149,7 +159,7 @@ object TetheringManager {
     @get:RequiresApi(30)
     private val instance by lazy @TargetApi(30) {
         @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
-        val service = app.getSystemService(TETHERING_SERVICE)
+        val service = Services.context.getSystemService(TETHERING_SERVICE)
         service
     }
     @get:RequiresApi(30)
@@ -211,11 +221,63 @@ object TetheringManager {
 
     private fun Handler?.makeExecutor() = Executor { if (this == null) it.run() else post(it) }
 
+    @Deprecated("Legacy API")
+    @RequiresApi(24)
+    fun startTetheringLegacy(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
+                             handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
+        val reference = WeakReference(callback)
+        val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback).apply {
+            dexCache(cacheDir)
+            handler { proxy, method, args ->
+                if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
+                @Suppress("NAME_SHADOWING") val callback = reference.get()
+                when (method.name) {
+                    "onTetheringStarted" -> callback?.onTetheringStarted()
+                    "onTetheringFailed" -> callback?.onTetheringFailed()
+                    else -> ProxyBuilder.callSuper(proxy, method, args)
+                }
+            }
+        }.build()
+        startTetheringLegacy(Services.connectivity, type, showProvisioningUi, proxy, handler)
+    }
+    @RequiresApi(30)
+    fun startTethering(type: Int, exemptFromEntitlementCheck: Boolean, showProvisioningUi: Boolean, executor: Executor,
+                       proxy: Any) {
+        startTethering(instance, newTetheringRequestBuilder.newInstance(type).let { builder ->
+            // setting exemption requires TETHER_PRIVILEGED permission
+            if (exemptFromEntitlementCheck) setExemptFromEntitlementCheck(builder, true)
+            setShouldShowEntitlementUi(builder, showProvisioningUi)
+            build(builder)
+        }, executor, proxy)
+    }
+    @RequiresApi(30)
+    fun proxy(callback: StartTetheringCallback): Any {
+        val reference = WeakReference(callback)
+        return Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
+                arrayOf(interfaceStartTetheringCallback), object : InvocationHandler {
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
+                @Suppress("NAME_SHADOWING") val callback = reference.get()
+                return when (val name = method.name) {
+                    "onTetheringStarted" -> {
+                        if (!args.isNullOrEmpty()) Timber.w("Unexpected args for $name: $args")
+                        callback?.onTetheringStarted()
+                    }
+                    "onTetheringFailed" -> {
+                        if (args?.size != 1) Timber.w("Unexpected args for $name: $args")
+                        callback?.onTetheringFailed(args?.get(0) as Int)
+                    }
+                    else -> callSuper(interfaceStartTetheringCallback, proxy, method, args)
+                }
+            }
+        })
+    }
     /**
      * Runs tether provisioning for the given type if needed and then starts tethering if
      * the check succeeds. If no carrier provisioning is required for tethering, tethering is
      * enabled immediately. If provisioning fails, tethering will not be enabled. It also
      * schedules tether provisioning re-checks if appropriate.
+     *
+     * CHANGED BEHAVIOR: This method will not throw Exceptions, instead, callback.onException will be called.
      *
      * @param type The type of tethering to start. Must be one of
      *         {@link ConnectivityManager.TETHERING_WIFI},
@@ -234,48 +296,57 @@ object TetheringManager {
      */
     @RequiresApi(24)
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
-                       handler: Handler? = null) {
-        val reference = WeakReference(callback)
-        if (Build.VERSION.SDK_INT >= 30) {
-            val request = newTetheringRequestBuilder.newInstance(type).let { builder ->
-                // setting exemption requires TETHER_PRIVILEGED permission
-                if (app.checkSelfPermission("android.permission.TETHER_PRIVILEGED") ==
-                        PackageManager.PERMISSION_GRANTED) setExemptFromEntitlementCheck(builder, true)
-                setShouldShowEntitlementUi(builder, showProvisioningUi)
-                build(builder)
+                       handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
+        if (Build.VERSION.SDK_INT >= 30) try {
+            val proxy = proxy(callback)
+            val executor = handler.makeExecutor()
+            try {
+                startTethering(type, true, showProvisioningUi, executor, proxy)
+            } catch (e1: InvocationTargetException) {
+                if (e1.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
+                    val result = try {
+                        RootManager.use { it.execute(StartTethering(type, showProvisioningUi)) }
+                    } catch (e2: Exception) {
+                        e2.addSuppressed(e1)
+                        try {
+                            // last resort: start tethering without trying to bypass entitlement check
+                            startTethering(type, false, showProvisioningUi, executor, proxy)
+                            Timber.w(e2)
+                        } catch (e3: Exception) {
+                            e3.addSuppressed(e2)
+                            Timber.w(e3)
+                            callback.onException(e3)
+                        }
+                        return@launch
+                    }
+                    if (result == null) callback.onTetheringStarted()
+                    else callback.onTetheringFailed(result.value)
+                } else callback.onException(e1)
             }
-            val proxy = Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
-                    arrayOf(interfaceStartTetheringCallback), object : InvocationHandler {
-                override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                    @Suppress("NAME_SHADOWING") val callback = reference.get()
-                    return when (val name = method.name) {
-                        "onTetheringStarted" -> {
-                            if (!args.isNullOrEmpty()) Timber.w("Unexpected args for $name: $args")
-                            callback?.onTetheringStarted()
-                        }
-                        "onTetheringFailed" -> {
-                            if (args?.size != 1) Timber.w("Unexpected args for $name: $args")
-                            callback?.onTetheringFailed(args?.getOrNull(0) as? Int?)
-                        }
-                        else -> callSuper(interfaceStartTetheringCallback, proxy, method, args)
-                    }
+        } catch (e: Exception) {
+            callback.onException(e)
+        } else @Suppress("DEPRECATION") try {
+            startTetheringLegacy(type, showProvisioningUi, callback, handler, cacheDir)
+        } catch (e: InvocationTargetException) {
+            if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
+                val result = try {
+                    val rootCache = File(cacheDir, "root")
+                    rootCache.mkdirs()
+                    check(rootCache.exists()) { "Creating root cache dir failed" }
+                    RootManager.use {
+                        it.execute(be.mygod.vpnhotspot.root.StartTetheringLegacy(
+                                rootCache, type, showProvisioningUi))
+                    }.value
+                } catch (eRoot: Exception) {
+                    eRoot.addSuppressed(e)
+                    Timber.w(eRoot)
+                    callback.onException(eRoot)
+                    return@launch
                 }
-            })
-            startTethering(instance, request, handler.makeExecutor(), proxy)
-        } else {
-            val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback).apply {
-                dexCache(app.deviceStorage.cacheDir)
-                handler { proxy, method, args ->
-                    if (args.isNotEmpty()) Timber.w("Unexpected args for ${method.name}: $args")
-                    @Suppress("NAME_SHADOWING") val callback = reference.get()
-                    when (method.name) {
-                        "onTetheringStarted" -> callback?.onTetheringStarted()
-                        "onTetheringFailed" -> callback?.onTetheringFailed()
-                        else -> ProxyBuilder.callSuper(proxy, method, args)
-                    }
-                }
-            }.build()
-            startTetheringLegacy(app.connectivity, type, showProvisioningUi, proxy, handler)
+                if (result) callback.onTetheringStarted() else callback.onTetheringFailed()
+            } else callback.onException(e)
+        } catch (e: Exception) {
+            callback.onException(e)
         }
     }
 
@@ -290,7 +361,21 @@ object TetheringManager {
      */
     @RequiresApi(24)
     fun stopTethering(type: Int) {
-        if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type) else stopTetheringLegacy(app.connectivity, type)
+        if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type)
+        else stopTetheringLegacy(Services.connectivity, type)
+    }
+    @RequiresApi(24)
+    fun stopTethering(type: Int, callback: (Exception) -> Unit) = try {
+        stopTethering(type)
+    } catch (e: InvocationTargetException) {
+        if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
+            try {
+                RootManager.use { it.execute(StopTethering(type)) }
+            } catch (eRoot: Exception) {
+                eRoot.addSuppressed(e)
+                callback(eRoot)
+            }
+        } else callback(e)
     }
 
     /**
@@ -517,7 +602,7 @@ object TetheringManager {
      * @return error The error code of the last error tethering or untethering the named
      *               interface
      */
-    fun getLastTetherError(iface: String): Int = getLastTetherError(app.connectivity, iface) as Int
+    fun getLastTetherError(iface: String): Int = getLastTetherError(Services.connectivity, iface) as Int
 
     // tether errors defined in ConnectivityManager up to Android 10
     private val tetherErrors29 = arrayOf("TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE",

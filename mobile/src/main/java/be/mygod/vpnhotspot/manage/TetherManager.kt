@@ -20,8 +20,10 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
@@ -50,25 +52,12 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             } catch (e: RuntimeException) {
                 app.logEvent("manage_write_settings") { param("message", e.toString()) }
             }
-            val started = manager.isStarted
-            try {
-                if (started) manager.stop() else manager.start()
-            } catch (e: IOException) {
-                Timber.w(e)
-                Toast.makeText(mainActivity, e.readableMessage, Toast.LENGTH_LONG).show()
-                ManageBar.start(itemView.context)
+            if (manager.isStarted) try {
+                manager.stop()
             } catch (e: InvocationTargetException) {
                 if (e.targetException !is SecurityException) Timber.w(e)
-                var cause: Throwable? = e
-                while (cause != null) {
-                    cause = cause.cause
-                    if (cause != null && cause !is InvocationTargetException) {
-                        Toast.makeText(mainActivity, cause.readableMessage, Toast.LENGTH_LONG).show()
-                        ManageBar.start(itemView.context)
-                        break
-                    }
-                }
-            }
+                manager.onException(e)
+            } else manager.start()
         }
     }
 
@@ -95,6 +84,14 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         Timber.d(javaClass.simpleName, "onTetheringFailed: $error")
         error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorMessage(it)}") }
         data.notifyChange()
+    }
+    override fun onException(e: Exception) {
+        if (e !is InvocationTargetException || e.targetException !is SecurityException) Timber.w(e)
+        GlobalScope.launch(Dispatchers.Main.immediate) {
+            val context = parent.context ?: app
+            Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
+            ManageBar.start(context)
+        }
     }
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
@@ -124,7 +121,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_WIFI
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
     }
     @RequiresApi(24)
     class Usb(parent: TetheringFragment) : TetherManager(parent) {
@@ -133,7 +130,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_USB
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
@@ -153,8 +150,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_BLUETOOTH
         override val isStarted get() = tethering.active == true
 
-        override fun onException() = ManageBar.start(parent.context ?: app)
-
         private var baseError: CharSequence? = null
         private fun makeErrorMessage(): CharSequence = listOfNotNull(
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
@@ -166,7 +161,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {
-            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH)
+            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, this::onException)
             Thread.sleep(1)         // give others a room to breathe
             onTetheringStarted()    // force flush state
         }
@@ -178,7 +173,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_ETHERNET
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
     }
     @RequiresApi(30)
     class Ncm(parent: TetheringFragment) : TetherManager(parent) {
@@ -187,7 +182,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_NCM
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
 
     @Suppress("DEPRECATION")

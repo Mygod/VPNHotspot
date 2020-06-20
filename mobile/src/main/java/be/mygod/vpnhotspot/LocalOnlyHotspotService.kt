@@ -5,7 +5,6 @@ import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
@@ -13,11 +12,13 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
+import java.net.Inet4Address
 
 @RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
@@ -80,7 +81,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         binder.iface = ""
         updateNotification()    // show invisible foreground notification to avoid being killed
         try {
-            app.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
+            Services.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
@@ -128,7 +129,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
         if (Build.VERSION.SDK_INT >= 28) timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.state != IpNeighbour.State.FAILED
+            it.ip is Inet4Address && it.state != IpNeighbour.State.FAILED
         })
     }
 

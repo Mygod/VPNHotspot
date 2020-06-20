@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.content.Intent
+import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -93,6 +94,8 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // call this first just in case we are shutting down immediately
+        if (Build.VERSION.SDK_INT >= 26) updateNotification()
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
@@ -109,7 +112,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
                     } else downstream.monitor = true
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
-                updateNotification()    // call this first just in case we are shutting down immediately
                 onDownstreamsChangedLocked()
             } else if (downstreams.isEmpty()) stopSelf(startId)
         }

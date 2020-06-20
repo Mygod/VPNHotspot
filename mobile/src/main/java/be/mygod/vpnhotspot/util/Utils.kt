@@ -25,12 +25,15 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
+import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 
-val Throwable.readableMessage get() = localizedMessage ?: javaClass.name
+val Throwable.readableMessage: String get() = if (this is InvocationTargetException) {
+    targetException.readableMessage
+} else localizedMessage ?: javaClass.name
 
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works

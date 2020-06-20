@@ -1,9 +1,12 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.annotation.TargetApi
-import android.net.*
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
-import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -23,7 +26,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             .build()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            val properties = app.connectivity.getLinkProperties(network)
+            val properties = Services.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
             var switching = false
             synchronized(this@DefaultNetworkMonitor) {
@@ -83,9 +86,9 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             }
         } else {
             if (Build.VERSION.SDK_INT in 24..27) @TargetApi(24) {
-                app.connectivity.registerDefaultNetworkCallback(networkCallback)
+                Services.connectivity.registerDefaultNetworkCallback(networkCallback)
             } else try {
-                app.connectivity.requestNetwork(networkRequest, networkCallback)
+                Services.connectivity.requestNetwork(networkRequest, networkCallback)
             } catch (e: SecurityException) {
                 // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
                 if (Build.VERSION.SDK_INT != 23) throw e
@@ -98,7 +101,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
 
     override fun destroyLocked() {
         if (!registered) return
-        app.connectivity.unregisterNetworkCallback(networkCallback)
+        Services.connectivity.unregisterNetworkCallback(networkCallback)
         registered = false
         currentNetwork = null
         currentLinkProperties = null

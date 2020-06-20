@@ -42,6 +42,7 @@ class TetherTimeoutMonitor(private val context: Context, private val onTimeout: 
         var enabled
             get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
             set(value) {
+                // TODO: WRITE_SECURE_SETTINGS permission
                 check(Settings.Global.putInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, if (value) 1 else 0))
             }
         @Deprecated("Use SoftApConfigurationCompat instead")

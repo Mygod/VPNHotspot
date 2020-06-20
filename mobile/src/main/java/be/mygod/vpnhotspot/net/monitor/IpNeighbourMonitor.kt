@@ -20,7 +20,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
             if (monitor == null) {
                 monitor = IpNeighbourMonitor()
                 instance = monitor
-                monitor.flush()
+                monitor.flushAsync()
                 null
             } else monitor.neighbours.values
         }?.let { callback.onIpNeighbourAvailable(it) }

@@ -6,6 +6,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.KillableTileService
+import java.net.Inet4Address
 
 @RequiresApi(24)
 abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeighbourMonitor.Callback {
@@ -24,7 +25,7 @@ abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeigh
 
     protected fun Tile.subtitleDevices(filter: (String) -> Boolean) {
         val size = neighbours
-                .filter { it.state != IpNeighbour.State.FAILED && filter(it.dev) }
+                .filter { it.ip is Inet4Address && it.state != IpNeighbour.State.FAILED && filter(it.dev) }
                 .distinctBy { it.lladdr }
                 .size
         if (size > 0) subtitle(resources.getQuantityString(

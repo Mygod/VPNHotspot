@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.util.LongSparseArray
+import androidx.collection.LongSparseArray
+import androidx.collection.set
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -63,10 +64,11 @@ object TrafficRecorder {
         loop@ for (line in RootSession.use {
             val command = "$IPTABLES -nvx -L vpnhotspot_acl"
             val result = it.execQuiet(command)
-            val message = RootSession.checkOutput(command, result, false, false)
+            val message = result.message(listOf(command))
             if (result.err.isNotEmpty()) Timber.i(message)
-            result.out.drop(2)
+            result.out.lineSequence().drop(2)
         }) {
+            if (line.isBlank()) continue
             val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
             try {
                 check(columns.size >= 9)
@@ -104,7 +106,7 @@ object TrafficRecorder {
                         }
                         if (oldRecord.id != null) {
                             check(records.put(key, record) == oldRecord)
-                            oldRecords.put(oldRecord.id!!, oldRecord)
+                            oldRecords[oldRecord.id!!] = oldRecord
                         }
                     }
                     else -> check(false)

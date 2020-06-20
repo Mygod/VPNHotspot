@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.app.Service
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import java.net.Inet4Address
 
 abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Callback {
     private var neighbours: Collection<IpNeighbour> = emptyList()
@@ -17,7 +18,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
     protected fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .filter { it.state != IpNeighbour.State.FAILED }
+                    .filter { it.ip is Inet4Address && it.state != IpNeighbour.State.FAILED }
                     .distinctBy { it.lladdr }
                     .size
         }

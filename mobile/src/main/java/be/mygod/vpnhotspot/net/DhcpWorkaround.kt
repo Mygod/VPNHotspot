@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.content.SharedPreferences
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.GlobalScope
@@ -32,11 +33,11 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
             RootSession.use {
                 try {
                     it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
-                } catch (e: RootSession.UnexpectedOutputException) {
-                    if (e.result.out.isEmpty() && (e.result.code == 2 || e.result.code == 254) && if (enabled) {
-                                e.result.err.joinToString("\n") == "RTNETLINK answers: File exists"
+                } catch (e: RoutingCommands.UnexpectedOutputException) {
+                    if (e.result.out.isEmpty() && (e.result.exit == 2 || e.result.exit == 254) && if (enabled) {
+                                e.result.err == "RTNETLINK answers: File exists"
                             } else {
-                                e.result.err.joinToString("\n") == "RTNETLINK answers: No such file or directory"
+                                e.result.err == "RTNETLINK answers: No such file or directory"
                             }) return@use
                     Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
                     SmartSnackbar.make(e).show()

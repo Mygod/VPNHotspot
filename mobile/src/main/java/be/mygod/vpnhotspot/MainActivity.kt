@@ -14,6 +14,7 @@ import be.mygod.vpnhotspot.manage.TetheringFragment
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import java.net.Inet4Address
@@ -28,7 +29,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model by viewModels<ClientViewModel>()
-        if (RepeaterService.supported) ServiceForegroundConnector(this, model, RepeaterService::class)
+        if (Services.p2p != null) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
                 it.ip.any { (ip, state) -> ip is Inet4Address && state != IpNeighbour.State.FAILED }

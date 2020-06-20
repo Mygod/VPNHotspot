@@ -13,6 +13,7 @@ import androidx.core.content.getSystemService
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.Services
 
 /**
  * This mechanism is used to maximize profit. Source: https://stackoverflow.com/a/29657230/2245107
@@ -91,7 +92,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         override fun onDestroy(owner: LifecycleOwner) = app.pref.unregisterOnSharedPreferenceChangeListener(this)
     }
 
-    private val wifi = app.wifi.createWifiLock(lockType, "vpnhotspot:wifi").apply { acquire() }
+    private val wifi = Services.wifi.createWifiLock(lockType, "vpnhotspot:wifi").apply { acquire() }
     @SuppressLint("WakelockTimeout")
     private val power = service.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "vpnhotspot:power").apply { acquire() }
 

@@ -38,10 +38,10 @@ data class SoftApConfigurationCompat(
         /**
          * TODO
          */
-        const val BAND_ANY = -1
-        const val BAND_2GHZ = 0
-        const val BAND_5GHZ = 1
-        const val BAND_6GHZ = 2
+        const val BAND_ANY = 0
+        const val BAND_2GHZ = 1
+        const val BAND_5GHZ = 2
+        const val BAND_6GHZ = 3
         const val CH_INVALID = 0
 
         // TODO: localize?
@@ -144,7 +144,9 @@ data class SoftApConfigurationCompat(
             classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java)
         }
         @get:RequiresApi(30)
-        private val setChannel by lazy { classBuilder.getDeclaredMethod("setChannel", Int::class.java) }
+        private val setChannel by lazy {
+            classBuilder.getDeclaredMethod("setChannel", Int::class.java, Int::class.java)
+        }
         @get:RequiresApi(30)
         private val setClientControlByUserEnabled by lazy {
             classBuilder.getDeclaredMethod("setClientControlByUserEnabled", Boolean::class.java)
@@ -156,7 +158,9 @@ data class SoftApConfigurationCompat(
             classBuilder.getDeclaredMethod("setMaxNumberOfClients", Int::class.java)
         }
         @get:RequiresApi(30)
-        private val setPassphrase by lazy { classBuilder.getDeclaredMethod("setPassphrase", String::class.java) }
+        private val setPassphrase by lazy {
+            classBuilder.getDeclaredMethod("setPassphrase", String::class.java, Int::class.java)
+        }
         @get:RequiresApi(30)
         private val setShutdownTimeoutMillis by lazy {
             classBuilder.getDeclaredMethod("setShutdownTimeoutMillis", Long::class.java)
@@ -186,7 +190,7 @@ data class SoftApConfigurationCompat(
                     }
                 },
                 preSharedKey,
-                if (Build.VERSION.SDK_INT >= 23) apBand.getInt(this) else BAND_ANY,         // TODO
+                if (Build.VERSION.SDK_INT >= 23) apBand.getInt(this) + 1 else BAND_ANY,     // TODO
                 if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else CH_INVALID,    // TODO
                 BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
                 0,  // TODO: unsupported field should have @RequiresApi?
@@ -275,10 +279,10 @@ data class SoftApConfigurationCompat(
         // TODO: can we always call copy constructor?
         val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
         setSsid(builder, ssid)
-        // TODO: setSecurityType
-        setPassphrase(builder, passphrase)
-        setBand(builder, band)
-        setChannel(builder, channel)
+        setPassphrase(builder, passphrase, securityType)
+        // TODO: how to use these?
+//        setBand(builder, band)
+//        setChannel(builder, band, channel)
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
         setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)

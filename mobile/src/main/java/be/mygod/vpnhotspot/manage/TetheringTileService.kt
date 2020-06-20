@@ -11,6 +11,7 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import be.mygod.vpnhotspot.App
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -20,8 +21,10 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.io.IOException
 import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
@@ -97,30 +100,17 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         }
     }
 
-    protected inline fun safeInvoker(func: () -> Unit) = try {
-        func()
-    } catch (e: IOException) {
-        Timber.w(e)
-        Toast.makeText(this, e.readableMessage, Toast.LENGTH_LONG).show()
-    } catch (e: InvocationTargetException) {
-        if (e.targetException !is SecurityException) Timber.w(e)
-        var cause: Throwable? = e
-        while (cause != null) {
-            cause = cause.cause
-            if (cause != null && cause !is InvocationTargetException) {
-                Toast.makeText(this, cause.readableMessage, Toast.LENGTH_LONG).show()
-                break
-            }
-        }
-    }
     override fun onClick() {
         val interested = interested ?: return
-        if (interested.isEmpty()) safeInvoker { start() } else {
+        if (interested.isEmpty()) start() else {
             val binder = binder
             if (binder == null) tapPending = true else {
                 val inactive = interested.filterNot(binder::isActive)
-                if (inactive.isEmpty()) safeInvoker { stop() }
-                else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                if (inactive.isEmpty()) try {
+                    stop()
+                } catch (e: Exception) {
+                    onException(e)
+                } else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
             }
         }
@@ -132,6 +122,12 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         error?.let { Toast.makeText(this, TetheringManager.tetherErrorMessage(it), Toast.LENGTH_LONG).show() }
         updateTile()
     }
+    override fun onException(e: Exception) {
+        if (e !is InvocationTargetException || e.targetException !is SecurityException) Timber.w(e)
+        GlobalScope.launch(Dispatchers.Main.immediate) {
+            Toast.makeText(this@TetheringTileService, e.readableMessage, Toast.LENGTH_LONG).show()
+        }
+    }
 
     class Wifi : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_wifi
@@ -139,14 +135,14 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val icon get() = R.drawable.ic_device_wifi_tethering
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
     }
     class Usb : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_usb
         override val tetherType get() = TetherType.USB
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
     }
     class Bluetooth : TetheringTileService() {
         private var tethering: BluetoothTethering? = null
@@ -156,7 +152,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {
-            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH)
+            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, this::onException)
             Thread.sleep(1)         // give others a room to breathe
             onTetheringStarted()    // force flush state
         }
@@ -202,12 +198,15 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     val binder = binder
                     if (binder == null) tapPending = true else {
                         val inactive = (interested ?: return).filterNot(binder::isActive)
-                        if (inactive.isEmpty()) safeInvoker { stop() }
-                        else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                        if (inactive.isEmpty()) try {
+                            stop()
+                        } catch (e: Exception) {
+                            onException(e)
+                        } else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
                     }
                 }
-                false -> safeInvoker { start() }
+                false -> start()
                 else -> tapPending = true
             }
         }
@@ -218,7 +217,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val tetherType get() = TetherType.ETHERNET
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
     }
     @RequiresApi(30)
     class Ncm : TetheringTileService() {
@@ -226,7 +225,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val tetherType get() = TetherType.NCM
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
 
     @Suppress("DEPRECATION")

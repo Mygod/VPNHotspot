@@ -31,6 +31,14 @@ I don't know about you but I can't get my stupid Windows 10 to work with
 now that they introduced this
 [Mobile hotspot](https://support.microsoft.com/en-us/help/4027762/windows-use-your-pc-as-a-mobile-hotspot).
 
+## Features that requires system app installation
+
+The following features in the app requires it to be installed under `/system/priv-app`.
+One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).
+
+* (prior to Android 11) Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
+* (since Android 11) Use the Bluetooth tethering shortcut switch in app.
+
 ## Settings and How to Use Them
 
 Default settings are picked to suit general use cases and maximize compatibility but it might not be optimal for battery
@@ -271,4 +279,4 @@ If some of these are unavailable, you can alternatively install a recent version
 Wi-Fi driver `wpa_supplicant`:
 
 * P2P configuration file is assumed to be saved to [`/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/0b4856b6dc451e290f1f64f6af17e010be78c073/wpa_supplicant/hidl/1.1/supplicant.cpp#26) and have reasonable format;
-* Android system is expected to restart `wpa_supplicant` after it crashes.
+* Android system is expected to restart `wpa_supplicant` after it terminates.

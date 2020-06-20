@@ -7,7 +7,6 @@ import android.os.Parcelable
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
-import android.util.LongSparseArray
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
@@ -15,6 +14,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
+import androidx.collection.LongSparseArray
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -145,7 +145,7 @@ class ClientsFragment : Fragment() {
                             AppDatabase.instance.clientRecordDao.update(this@apply)
                         }
                     }
-                    IpNeighbourMonitor.instance?.flush()
+                    IpNeighbourMonitor.instance?.flushAsync()
                     if (!wasWorking && item.itemId == R.id.block) {
                         SmartSnackbar.make(R.string.clients_popup_block_service_inactive).show()
                     }
@@ -223,9 +223,7 @@ class ClientsFragment : Fragment() {
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
         binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
-        binding.swipeRefresher.setOnRefreshListener {
-            IpNeighbourMonitor.instance?.flush()
-        }
+        binding.swipeRefresher.setOnRefreshListener { IpNeighbourMonitor.instance?.flushAsync() }
         activityViewModels<ClientViewModel>().value.clients.observe(viewLifecycleOwner) {
             adapter.submitList(it.toMutableList())
         }

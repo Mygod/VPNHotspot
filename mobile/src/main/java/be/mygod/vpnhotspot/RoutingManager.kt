@@ -7,6 +7,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.net.NetworkInterface
 
@@ -34,7 +35,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             if (!reinit && active.isEmpty()) return@synchronized
             for (manager in active.values) manager.routing?.stop()
             try {
-                Routing.clean()
+                runBlocking { Routing.clean() }
             } catch (e: RuntimeException) {
                 Timber.d(e)
                 SmartSnackbar.make(e).show()

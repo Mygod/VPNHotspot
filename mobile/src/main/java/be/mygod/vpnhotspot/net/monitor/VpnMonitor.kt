@@ -1,7 +1,10 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.net.*
-import be.mygod.vpnhotspot.App.Companion.app
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -21,7 +24,7 @@ object VpnMonitor : UpstreamMonitor() {
     }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            val properties = app.connectivity.getLinkProperties(network)
+            val properties = Services.connectivity.getLinkProperties(network)
             val ifname = properties?.interfaceName ?: return
             var switching = false
             synchronized(this@VpnMonitor) {
@@ -88,14 +91,14 @@ object VpnMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
             }
         } else {
-            app.connectivity.registerNetworkCallback(request, networkCallback)
+            Services.connectivity.registerNetworkCallback(request, networkCallback)
             registered = true
         }
     }
 
     override fun destroyLocked() {
         if (!registered) return
-        app.connectivity.unregisterNetworkCallback(networkCallback)
+        Services.connectivity.unregisterNetworkCallback(networkCallback)
         registered = false
         available.clear()
         currentNetwork = null

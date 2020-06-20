@@ -1,7 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.net.LinkProperties
-import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
@@ -27,8 +27,8 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
     private var registered = false
     override var currentIface: String? = null
         private set
-    override val currentLinkProperties get() = app.connectivity.allNetworks
-            .map { app.connectivity.getLinkProperties(it) }
+    override val currentLinkProperties get() = Services.connectivity.allNetworks
+            .map { Services.connectivity.getLinkProperties(it) }
             .singleOrNull { it?.interfaceName == iface }
 
     override fun registerCallbackLocked(callback: Callback) {

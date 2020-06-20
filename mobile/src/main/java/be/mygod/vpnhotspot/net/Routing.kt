@@ -11,9 +11,12 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.io.BufferedWriter
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -41,42 +44,38 @@ class Routing(private val caller: Any, private val downstream: String,
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
         private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
 
-        /**
-         * -w <seconds> is not supported on 7.1-.
-         * Fortunately there also isn't a time limit for starting a foreground service back in 7.1-.
-         *
-         * Source: https://android.googlesource.com/platform/external/iptables/+/android-5.0.0_r1/iptables/iptables.c#1574
-         */
-        val IPTABLES = if (Build.VERSION.SDK_INT >= 26) "iptables -w 1" else "iptables -w"
-        val IP6TABLES = if (Build.VERSION.SDK_INT >= 26) "ip6tables -w 1" else "ip6tables -w"
+        const val IPTABLES ="iptables -w"
+        const val IP6TABLES = "ip6tables -w"
 
-        fun clean() {
+        fun appendCleanCommands(commands: BufferedWriter) {
+            commands.appendln("$IPTABLES -t nat -F PREROUTING")
+            commands.appendln("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
+            commands.appendln("$IPTABLES -F vpnhotspot_fwd")
+            commands.appendln("$IPTABLES -X vpnhotspot_fwd")
+            commands.appendln("$IPTABLES -F vpnhotspot_acl")
+            commands.appendln("$IPTABLES -X vpnhotspot_acl")
+            commands.appendln("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
+            commands.appendln("$IPTABLES -t nat -F vpnhotspot_masquerade")
+            commands.appendln("$IPTABLES -t nat -X vpnhotspot_masquerade")
+            commands.appendln("while $IP6TABLES -D INPUT -j vpnhotspot_filter; do done")
+            commands.appendln("while $IP6TABLES -D FORWARD -j vpnhotspot_filter; do done")
+            commands.appendln("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
+            commands.appendln("$IP6TABLES -F vpnhotspot_filter")
+            commands.appendln("$IP6TABLES -X vpnhotspot_filter")
+            commands.appendln("while ip rule del priority $RULE_PRIORITY_DNS; do done")
+            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
+            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
+            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
+        }
+
+        suspend fun clean() {
             TrafficRecorder.clean()
-            RootSession.use {
-                it.execQuiet("$IPTABLES -t nat -F PREROUTING")
-                it.execQuiet("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
-                it.execQuiet("$IPTABLES -F vpnhotspot_fwd")
-                it.execQuiet("$IPTABLES -X vpnhotspot_fwd")
-                it.execQuiet("$IPTABLES -F vpnhotspot_acl")
-                it.execQuiet("$IPTABLES -X vpnhotspot_acl")
-                it.execQuiet("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-                it.execQuiet("$IPTABLES -t nat -F vpnhotspot_masquerade")
-                it.execQuiet("$IPTABLES -t nat -X vpnhotspot_masquerade")
-                it.execQuiet("while $IP6TABLES -D INPUT -j vpnhotspot_filter; do done")
-                it.execQuiet("while $IP6TABLES -D FORWARD -j vpnhotspot_filter; do done")
-                it.execQuiet("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
-                it.execQuiet("$IP6TABLES -F vpnhotspot_filter")
-                it.execQuiet("$IP6TABLES -X vpnhotspot_filter")
-                it.execQuiet("while ip rule del priority $RULE_PRIORITY_DNS; do done")
-                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
-                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
-                it.execQuiet("while ip rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
-            }
+            RootManager.use { it.execute(RoutingCommands.Clean()) }
         }
 
         private fun RootSession.Transaction.iptables(command: String, revert: String) {
             val result = execQuiet(command, revert)
-            val message = RootSession.checkOutput(command, result, err = false)
+            val message = result.message(listOf(command), err = false)
             if (result.err.isNotEmpty()) Timber.i(message)  // busy wait message
         }
         private fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
@@ -88,9 +87,9 @@ class Routing(private val caller: Any, private val downstream: String,
 
         private fun RootSession.Transaction.ndc(name: String, command: String, revert: String? = null) {
             val result = execQuiet(command, revert)
-            val log = RootSession.checkOutput(command, result,
-                    result.out.lastOrNull() != "200 0 $name operation succeeded")
-            if (result.out.size > 1) Timber.i(log)
+            val suffix = "200 0 $name operation succeeded\n"
+            result.check(listOf(command), !result.out.endsWith(suffix))
+            if (result.out.length > suffix.length) Timber.i(result.message(listOf(command), true))
         }
     }
 
@@ -270,7 +269,7 @@ class Routing(private val caller: Any, private val downstream: String,
             transaction.ndc("ipfwd", "ndc ipfwd enable vpnhotspot_$downstream",
                     "ndc ipfwd disable vpnhotspot_$downstream")
             return
-        } catch (e: RootSession.UnexpectedOutputException) {
+        } catch (e: RoutingCommands.UnexpectedOutputException) {
             Timber.w(IOException("ndc ipfwd enable failure", e))
         }
         transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")

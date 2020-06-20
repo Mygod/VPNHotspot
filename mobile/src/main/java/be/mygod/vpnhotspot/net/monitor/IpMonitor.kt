@@ -4,20 +4,25 @@ import android.os.Build
 import android.system.ErrnoException
 import android.system.OsConstants
 import androidx.core.content.edit
+import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.root.ProcessData
+import be.mygod.vpnhotspot.root.ProcessListener
+import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.channels.consumeEach
 import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
-import java.util.concurrent.Executors
-import java.util.concurrent.ScheduledExecutorService
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
+import kotlin.coroutines.EmptyCoroutineContext
 
-abstract class IpMonitor : Runnable {
+abstract class IpMonitor {
     companion object {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
@@ -51,7 +56,7 @@ abstract class IpMonitor : Runnable {
     @Volatile
     private var destroyed = false
     private var monitor: Process? = null
-    private var pool: ScheduledExecutorService? = null
+    private val worker = Job()
 
     private fun handleProcess(builder: ProcessBuilder) {
         val process = try {
@@ -79,8 +84,18 @@ abstract class IpMonitor : Runnable {
             if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
         }
         err.join()
-        process.waitFor()
-        Timber.d("Monitor process exited with ${process.exitValue()}")
+        Timber.d("Monitor process exited with ${process.waitFor()}")
+    }
+    private suspend fun handleChannel(channel: ReceiveChannel<ProcessData>) {
+        channel.consumeEach {
+            when (it) {
+                is ProcessData.StdoutLine -> if (errorMatcher.containsMatchIn(it.line)) {
+                    Timber.w(it.line)
+                } else processLine(it.line)
+                is ProcessData.StderrLine -> Timber.e(it.line)
+                is ProcessData.Exit -> Timber.d("Root monitor process exited with ${it.code}")
+            }
+        }
     }
 
     init {
@@ -92,17 +107,64 @@ abstract class IpMonitor : Runnable {
                     handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
                     if (destroyed) return@thread
                 }
-                handleProcess(ProcessBuilder("su", "-c", "exec ip monitor $monitoredObject"))
+                try {
+                    runBlocking(EmptyCoroutineContext + worker) {
+                        RootManager.use { server ->
+                            // while we only need to use this server once, we need to also keep the server alive
+                            handleChannel(server.create(ProcessListener(errorMatcher, "ip", "monitor", monitoredObject),
+                                    this))
+                        }
+                    }
+                } catch (e: CancellationException) {
+                } catch (e: Exception) {
+                    Timber.w(e)
+                }
                 if (destroyed) return@thread
                 app.logEvent("ip_monitor_failure")
             }
-            val pool = Executors.newScheduledThreadPool(1)
-            pool.scheduleAtFixedRate(this, 1, 1, TimeUnit.SECONDS)
-            this.pool = pool
+            GlobalScope.launch(Dispatchers.IO + worker) {
+                var server: RootServer? = null
+                try {
+                    while (isActive) {
+                        delay(1000)
+                        server = work(server)
+                    }
+                } finally {
+                    if (server != null) RootManager.release(server)
+                }
+            }
         }
     }
 
-    fun flush() = thread(name = "${javaClass.simpleName}-flush") { run() }
+    /**
+     * Possibly blocking. Should run in IO dispatcher or use [flushAsync].
+     */
+    suspend fun flush() = work(null)?.let { RootManager.release(it) }
+    fun flushAsync() = GlobalScope.launch(Dispatchers.IO) { flush() }
+
+    private suspend fun work(server: RootServer?): RootServer? {
+        if (currentMode != Mode.PollRoot) try {
+            poll()
+            return server
+        } catch (e: IOException) {
+            app.logEvent("ip_poll_failure")
+            Timber.d(e)
+        }
+        var newServer = server
+        try {
+            val command = listOf("ip", monitoredObject)
+            val result = (server ?: RootManager.acquire().also { newServer = it })
+                    .execute(RoutingCommands.Process(command))
+            result.check(command, false)
+            val lines = result.out.lines()
+            if (lines.any { errorMatcher.containsMatchIn(it) }) throw IOException(result.out)
+            processLines(lines.asSequence())
+        } catch (e: RuntimeException) {
+            app.logEvent("ip_su_poll_failure") { param("cause", e.message.toString()) }
+            Timber.d(e)
+        }
+        return newServer
+    }
 
     private fun poll() {
         val process = ProcessBuilder("ip", monitoredObject)
@@ -125,32 +187,9 @@ abstract class IpMonitor : Runnable {
         }
     }
 
-    override fun run() {
-        if (currentMode != Mode.PollRoot) try {
-            return poll()
-        } catch (e: IOException) {
-            app.logEvent("ip_poll_failure")
-            Timber.d(e)
-        }
-        try {
-            val command = "ip $monitoredObject"
-            RootSession.use { shell ->
-                val result = shell.execQuiet(command)
-                RootSession.checkOutput(command, result, false)
-                if (result.out.any { errorMatcher.containsMatchIn(it) }) {
-                    throw IOException(result.out.joinToString("\n"))
-                }
-                processLines(result.out.asSequence())
-            }
-        } catch (e: RuntimeException) {
-            app.logEvent("ip_su_poll_failure") { param("cause", e.message.toString()) }
-            Timber.d(e)
-        }
-    }
-
     fun destroy() {
         destroyed = true
         monitor?.destroy()
-        pool?.shutdown()
+        worker.cancel()
     }
 }

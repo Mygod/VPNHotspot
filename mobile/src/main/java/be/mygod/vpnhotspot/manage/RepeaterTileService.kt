@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.KillableTileService
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
 @RequiresApi(24)
@@ -22,13 +23,13 @@ class RepeaterTileService : KillableTileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        if (RepeaterService.supported) {
+        if (Services.p2p != null) {
             bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         } else updateTile()
     }
 
     override fun onStopListening() {
-        if (RepeaterService.supported) stopAndUnbind(this)
+        if (Services.p2p != null) stopAndUnbind(this)
         super.onStopListening()
     }
 

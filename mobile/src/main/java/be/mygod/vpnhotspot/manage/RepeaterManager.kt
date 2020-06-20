@@ -210,9 +210,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 band = SoftApConfigurationCompat.BAND_ANY
                 channel = RepeaterService.operatingChannel
                 try {
-                    val config = withContext(Dispatchers.Default) {
-                        P2pSupplicantConfiguration(group, RepeaterService.lastMac)
-                    }
+                    val config = P2pSupplicantConfiguration(group)
+                    config.init(RepeaterService.lastMac)
                     holder.config = config
                     passphrase = config.psk
                     bssid = config.bssid

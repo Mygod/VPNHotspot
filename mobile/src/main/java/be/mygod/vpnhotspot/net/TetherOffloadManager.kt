@@ -3,7 +3,9 @@ package be.mygod.vpnhotspot.net
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.SettingsGlobalPut
+import be.mygod.vpnhotspot.util.Services
 
 /**
  * It's hard to change tethering rules with Tethering hardware acceleration enabled for now.
@@ -16,11 +18,18 @@ import be.mygod.vpnhotspot.util.RootSession
 @RequiresApi(27)
 object TetherOffloadManager {
     private const val TETHER_OFFLOAD_DISABLED = "tether_offload_disabled"
-    var enabled: Boolean
-        get() = Settings.Global.getInt(app.contentResolver, TETHER_OFFLOAD_DISABLED, 0) == 0
-        set(value) {
-            RootSession.use {
-                it.exec("settings put global $TETHER_OFFLOAD_DISABLED ${if (value) 0 else 1}")
+    val enabled get() = Settings.Global.getInt(app.contentResolver, TETHER_OFFLOAD_DISABLED, 0) == 0
+    suspend fun setEnabled(value: Boolean) {
+        val int = if (value) 0 else 1
+        try {
+            check(Settings.Global.putInt(Services.context.contentResolver, TETHER_OFFLOAD_DISABLED, int))
+        } catch (e: SecurityException) {
+            try {
+                RootManager.use { it.execute(SettingsGlobalPut(TETHER_OFFLOAD_DISABLED, int.toString())) }
+            } catch (eRoot: Exception) {
+                eRoot.addSuppressed(e)
+                throw eRoot
             }
         }
+    }
 }

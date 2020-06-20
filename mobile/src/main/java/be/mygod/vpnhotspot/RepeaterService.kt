@@ -14,7 +14,6 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
-import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -25,6 +24,8 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
+import be.mygod.vpnhotspot.root.RepeaterCommands
+import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
@@ -51,18 +52,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
          */
         private const val PLACEHOLDER_NETWORK_NAME = "DIRECT-00-VPNHotspot"
 
-        /**
-         * This is only a "ServiceConnection" to system service and its impact on system is minimal.
-         */
-        private val p2pManager: WifiP2pManager? by lazy {
-            try {
-                app.getSystemService<WifiP2pManager>()
-            } catch (e: RuntimeException) {
-                Timber.w(e)
-                null
-            }
-        }
-        val supported get() = p2pManager != null
         var persistentSupported = false
 
         @delegate:TargetApi(29)
@@ -145,7 +134,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
     }
 
-    private val p2pManager get() = RepeaterService.p2pManager!!
+    private val p2pManager get() = Services.p2p!!
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
     @RequiresApi(28)
@@ -207,14 +196,23 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(oc: Int = operatingChannel) = try {
+    private fun setOperatingChannel(forceReinit: Boolean = false, oc: Int = operatingChannel) = try {
         val channel = channel
         if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
         // we don't care about listening channel
         else p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
             override fun onSuccess() { }
             override fun onFailure(reason: Int) {
-                SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
+                if (reason == WifiP2pManager.ERROR && Build.VERSION.SDK_INT >= 30) launch(start = CoroutineStart.UNDISPATCHED) {
+                    val rootReason = try {
+                        RootManager.use { it.execute(RepeaterCommands.SetChannel(oc, forceReinit)) }
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                        null
+                    } ?: return@launch
+                    SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, rootReason.value)).show()
+                } else SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
             }
         })
     } catch (e: InvocationTargetException) {
@@ -229,7 +227,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         channel = null
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-            if (!safeMode) setOperatingChannel()
+            if (!safeMode) setOperatingChannel(true)
         } catch (e: RuntimeException) {
             Timber.w(e)
             launch(Dispatchers.Main) {
@@ -240,18 +238,19 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
-        if (!safeMode && key == KEY_OPERATING_CHANNEL) setOperatingChannel()
+        if (!safeMode) when (key) {
+            KEY_OPERATING_CHANNEL -> setOperatingChannel()
+            KEY_SAFE_MODE -> setOperatingChannel(true)
+        }
     }
 
     @SuppressLint("NewApi") // networkId is available since Android 4.2
     private fun onPersistentGroupsChanged() = launch {
-        val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: withContext(Dispatchers.Default) {
-            try {
-                P2pSupplicantConfiguration().bssid
-            } catch (e: RuntimeException) {
-                Timber.d(e)
-                null
-            }
+        val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: try {
+            P2pSupplicantConfiguration().apply { init() }.bssid
+        } catch (e: RuntimeException) {
+            Timber.d(e)
+            null
         } ?: return@launch
         val channel = channel ?: return@launch
         try {
@@ -287,12 +286,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (status != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         status = Status.STARTING
-        // bump self to foreground location service to use foreground location permission later
-        if (Build.VERSION.SDK_INT >= 29 ||
-                // or show invisible foreground notification on television to avoid being killed
-                Build.VERSION.SDK_INT >= 26 && app.uiMode.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) {
-            showNotification()
-        }
+        // bump self to foreground location service (API 29+) to use location later, also to avoid getting killed
+        if (Build.VERSION.SDK_INT >= 26) showNotification()
         launch {
             registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                     WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
@@ -420,7 +415,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         SmartSnackbar.make(msg).apply {
             if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
                 if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
-                    app.wifi.isWifiEnabled = true
+                    Services.wifi.isWifiEnabled = true
                 } else it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
             }
         }.show()

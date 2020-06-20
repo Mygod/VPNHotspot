@@ -5,8 +5,8 @@ import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
+import be.mygod.vpnhotspot.util.Services
 
 object WifiApManager {
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
@@ -22,22 +22,18 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
     }
 
-    var configuration: SoftApConfigurationCompat
-        get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-            (getWifiApConfiguration(app.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
-                    ?: SoftApConfigurationCompat.empty()
-        } else (getSoftApConfiguration(app.wifi) as SoftApConfiguration).toCompat()
-        set(value) = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-            require(setWifiApConfiguration(app.wifi,
-                    value.toWifiConfiguration()) as Boolean) { "setWifiApConfiguration failed" }
-        } else require(setSoftApConfiguration(app.wifi, value.toPlatform()) as Boolean) {
-            "setSoftApConfiguration failed"
-        }
+    val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+        (getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
+                ?: SoftApConfigurationCompat.empty()
+    } else (getSoftApConfiguration(Services.wifi) as SoftApConfiguration).toCompat()
+    fun setConfiguration(value: SoftApConfigurationCompat) = (if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+        setWifiApConfiguration(Services.wifi, value.toWifiConfiguration())
+    } else setSoftApConfiguration(Services.wifi, value.toPlatform())) as Boolean
 
     private val cancelLocalOnlyHotspotRequest by lazy {
         WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
     }
-    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(app.wifi)
+    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
 
     @Suppress("DEPRECATION")
     private val setWifiApEnabled by lazy {
@@ -66,13 +62,13 @@ object WifiApManager {
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")
     fun start(wifiConfig: android.net.wifi.WifiConfiguration? = null) {
-        app.wifi.isWifiEnabled = false
-        app.wifi.setWifiApEnabled(wifiConfig, true)
+        Services.wifi.isWifiEnabled = false
+        Services.wifi.setWifiApEnabled(wifiConfig, true)
     }
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26")
     fun stop() {
-        app.wifi.setWifiApEnabled(null, false)
-        app.wifi.isWifiEnabled = true
+        Services.wifi.setWifiApEnabled(null, false)
+        Services.wifi.isWifiEnabled = true
     }
 }

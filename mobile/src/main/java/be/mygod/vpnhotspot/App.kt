@@ -2,11 +2,9 @@ package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
 import android.app.Application
-import android.app.UiModeManager
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.res.Configuration
-import android.net.ConnectivityManager
-import android.net.wifi.WifiManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.Size
@@ -18,10 +16,12 @@ import androidx.core.provider.FontRequest
 import androidx.emoji.text.EmojiCompat
 import androidx.emoji.text.FontRequestEmojiCompatConfig
 import androidx.preference.PreferenceManager
+import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
-import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.Services
 import com.google.firebase.analytics.ktx.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -38,6 +38,10 @@ class App : Application() {
         lateinit var app: App
     }
 
+    public override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
+    }
+
     override fun onCreate() {
         super.onCreate()
         app = this
@@ -47,6 +51,7 @@ class App : Application() {
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
+        Services.init(this)
         Firebase.initialize(deviceStorage)
         when (val codename = Build.VERSION.CODENAME) {
             "REL" -> { }
@@ -62,7 +67,9 @@ class App : Application() {
                     FirebaseCrashlytics.getInstance().log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
                 } else {
                     if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
-                    if (priority >= Log.INFO) FirebaseCrashlytics.getInstance().recordException(t)
+                    if (priority >= Log.INFO && t !is NoShellException) {
+                        FirebaseCrashlytics.getInstance().recordException(t)
+                    }
                 }
             }
         })
@@ -89,7 +96,7 @@ class App : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) GlobalScope.launch { RootSession.trimMemory() }
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) GlobalScope.launch { RootManager.closeExisting() }
     }
 
     /**
@@ -110,10 +117,7 @@ class App : Application() {
         })
     }
     val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
-    val connectivity by lazy { getSystemService<ConnectivityManager>()!! }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
-    val uiMode by lazy { getSystemService<UiModeManager>()!! }
-    val wifi by lazy { getSystemService<WifiManager>()!! }
 
     val hasTouch by lazy { packageManager.hasSystemFeature("android.hardware.faketouch") }
     val customTabsIntent by lazy {

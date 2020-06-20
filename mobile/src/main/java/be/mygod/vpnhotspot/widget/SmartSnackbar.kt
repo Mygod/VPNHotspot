@@ -11,7 +11,6 @@ import androidx.lifecycle.findViewTreeLifecycleOwner
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.readableMessage
 import com.google.android.material.snackbar.Snackbar
-import com.topjohnwu.superuser.NoShellException
 import java.util.concurrent.atomic.AtomicReference
 
 sealed class SmartSnackbar {
@@ -26,10 +25,7 @@ sealed class SmartSnackbar {
                 ToastWrapper(Toast.makeText(app, text, Toast.LENGTH_LONG))
             } else SnackbarWrapper(Snackbar.make(holder, text, Snackbar.LENGTH_LONG))
         }
-        fun make(e: Throwable) = make(when (e) {
-            is NoShellException -> e.cause ?: e
-            else -> e
-        }.readableMessage)
+        fun make(e: Throwable) = make(e.readableMessage)
     }
 
     class Register(private val view: View) : DefaultLifecycleObserver {
