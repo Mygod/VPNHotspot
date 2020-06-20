@@ -92,6 +92,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
      * It is advised to read this after initializing the instance.
      */
     fun readUnexpectedStderr(): String? {
+        if (!this::process.isInitialized) return null
         var available = process.errorStream.available()
         return if (available <= 0) null else String(ByteArrayOutputStream().apply {
             while (available > 0) {
