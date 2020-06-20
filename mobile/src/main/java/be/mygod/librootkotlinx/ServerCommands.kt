@@ -40,7 +40,7 @@ interface RootCommandChannel<T : Parcelable?> : Parcelable {
 
 @Parcelize
 internal class ChannelClosed(val index: Long) : RootCommandOneWay {
-    override suspend fun execute() = throw IllegalStateException("Internal implementation")
+    override suspend fun execute() = error("Internal implementation")
 }
 
 @Parcelize

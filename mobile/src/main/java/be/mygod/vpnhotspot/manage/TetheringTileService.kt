@@ -11,7 +11,6 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
-import be.mygod.vpnhotspot.App
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType

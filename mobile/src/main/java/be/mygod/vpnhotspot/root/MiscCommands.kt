@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
-import android.util.Log
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
@@ -26,14 +25,12 @@ class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir
             val process = ProcessBuilder("sh").redirectErrorStream(true).start()
             process.outputStream.bufferedWriter().use { commands ->
                 // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
-                val iptablesSave = if (Build.VERSION.SDK_INT >= 24) "iptables-save" else
-                    File(cacheDir, "iptables-save").absolutePath.also {
-                        commands.appendln("ln -sf /system/bin/iptables $it")
-                    }
-                val ip6tablesSave = if (Build.VERSION.SDK_INT >= 24) "ip6tables-save" else
-                    File(cacheDir, "ip6tables-save").absolutePath.also {
-                        commands.appendln("ln -sf /system/bin/ip6tables $it")
-                    }
+                val iptablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "iptables-save").absolutePath.also {
+                    commands.appendln("ln -sf /system/bin/iptables $it")
+                } else "iptables-save"
+                val ip6tablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "ip6tables-save").absolutePath.also {
+                    commands.appendln("ln -sf /system/bin/ip6tables $it")
+                } else "ip6tables-save"
                 commands.appendln("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}

@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
@@ -36,10 +35,6 @@ class App : Application() {
     companion object {
         @SuppressLint("StaticFieldLeak")
         lateinit var app: App
-    }
-
-    public override fun attachBaseContext(base: Context?) {
-        super.attachBaseContext(base)
     }
 
     override fun onCreate() {

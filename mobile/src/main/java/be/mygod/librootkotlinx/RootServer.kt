@@ -370,7 +370,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             loop@ while (true) {
                 val command = try {
                     input.readParcelable<Parcelable>(RootServer::class.java.classLoader)
-                } catch (e: EOFException) {
+                } catch (_: EOFException) {
                     break
                 }
                 val callback = counter

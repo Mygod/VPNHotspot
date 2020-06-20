@@ -2,7 +2,7 @@ package be.mygod.vpnhotspot.room
 
 import android.text.TextUtils
 import androidx.room.TypeConverter
-import be.mygod.vpnhotspot.util.useParcel
+import be.mygod.librootkotlinx.useParcel
 import timber.log.Timber
 import java.net.InetAddress
 

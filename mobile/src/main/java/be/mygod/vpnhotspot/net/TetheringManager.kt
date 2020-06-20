@@ -365,17 +365,19 @@ object TetheringManager {
         else stopTetheringLegacy(Services.connectivity, type)
     }
     @RequiresApi(24)
-    fun stopTethering(type: Int, callback: (Exception) -> Unit) = try {
-        stopTethering(type)
-    } catch (e: InvocationTargetException) {
-        if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
-            try {
-                RootManager.use { it.execute(StopTethering(type)) }
-            } catch (eRoot: Exception) {
-                eRoot.addSuppressed(e)
-                callback(eRoot)
-            }
-        } else callback(e)
+    fun stopTethering(type: Int, callback: (Exception) -> Unit) {
+        try {
+            stopTethering(type)
+        } catch (e: InvocationTargetException) {
+            if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
+                try {
+                    RootManager.use { it.execute(StopTethering(type)) }
+                } catch (eRoot: Exception) {
+                    eRoot.addSuppressed(e)
+                    callback(eRoot)
+                }
+            } else callback(e)
+        }
     }
 
     /**

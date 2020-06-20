@@ -137,18 +137,7 @@ exceptions:
   ThrowingNewInstanceOfSameException:
     active: true
   TooGenericExceptionCaught:
-    active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/*.Test.kt', '**/*.Spec.kt', '**/*.Spek.kt']
-    exceptionNames:
-      - ArrayIndexOutOfBoundsException
-      - Error
-      - Exception
-      - IllegalMonitorStateException
-      - NullPointerException
-      - IndexOutOfBoundsException
-      - RuntimeException
-      - Throwable
-    allowedExceptionNameRegex: '^(_|(ignore|expected).*)'
+    active: false
   TooGenericExceptionThrown:
     active: true
     exceptionNames:
@@ -345,8 +334,7 @@ performance:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/*.Test.kt', '**/*.Spec.kt', '**/*.Spek.kt']
   SpreadOperator:
-    active: true
-    excludes: ['**/test/**', '**/androidTest/**', '**/*.Test.kt', '**/*.Spec.kt', '**/*.Spek.kt']
+    active: false
   UnnecessaryTemporaryInstantiation:
     active: true
 

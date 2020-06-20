@@ -5,8 +5,6 @@ import android.annotation.TargetApi
 import android.content.*
 import android.net.InetAddresses
 import android.os.Build
-import android.os.Parcel
-import android.os.Parcelable
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -49,25 +47,6 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
         unregisterReceiver(receiver)
     } catch (_: IllegalArgumentException) { }
-}
-
-@SuppressLint("Recycle")
-fun <T> useParcel(block: (Parcel) -> T) = Parcel.obtain().run {
-    try {
-        block(this)
-    } finally {
-        recycle()
-    }
-}
-
-fun Parcelable.toByteArray(parcelableFlags: Int = 0) = useParcel { p ->
-    p.writeParcelable(this, parcelableFlags)
-    p.marshall()
-}
-inline fun <reified T : Parcelable> ByteArray.toParcelable() = useParcel { p ->
-    p.unmarshall(this, 0, size)
-    p.setDataPosition(0)
-    p.readParcelable<T>(T::class.java.classLoader)
 }
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {

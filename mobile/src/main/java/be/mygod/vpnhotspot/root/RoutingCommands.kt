@@ -40,7 +40,7 @@ object RoutingCommands {
 
         fun check(command: List<String>, out: Boolean = this.out.isNotEmpty(),
                   err: Boolean = this.err.isNotEmpty()) = message(command, out, err)?.let { msg ->
-             throw UnexpectedOutputException(msg, this)
+            throw UnexpectedOutputException(msg, this)
         }
     }
 

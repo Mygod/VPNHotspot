@@ -18,7 +18,6 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
         private const val PERSISTENT_MAC = "p2p_device_persistent_mac_addr="
         private val networkParser =
                 "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
-        private val whitespaceMatcher = "\\s+".toRegex()
     }
 
     private class NetworkBlock : ArrayList<String>() {

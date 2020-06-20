@@ -115,7 +115,7 @@ abstract class IpMonitor {
                                     this))
                         }
                     }
-                } catch (e: CancellationException) {
+                } catch (_: CancellationException) {
                 } catch (e: Exception) {
                     Timber.w(e)
                 }

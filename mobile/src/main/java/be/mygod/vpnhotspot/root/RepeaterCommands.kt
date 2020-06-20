@@ -68,7 +68,7 @@ object RepeaterCommands {
         override suspend fun execute(): WriteP2pConfig {
             test(CONF_PATH_TREBLE)?.let { return WriteP2pConfig(it, false) }
             test(CONF_PATH_LEGACY)?.let { return WriteP2pConfig(it, true) }
-            throw IllegalStateException("p2p config file not found")
+            error("p2p config file not found")
         }
     }
 

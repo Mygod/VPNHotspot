@@ -17,13 +17,17 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.isGone
+import be.mygod.librootkotlinx.toByteArray
+import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
 import be.mygod.vpnhotspot.net.MacAddressCompat
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.QRCodeDialog
+import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
 

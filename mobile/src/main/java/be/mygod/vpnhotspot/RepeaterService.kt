@@ -5,7 +5,6 @@ import android.annotation.TargetApi
 import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.res.Configuration
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
@@ -14,6 +13,7 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
+import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -73,7 +73,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             get() = app.pref.getString(KEY_PASSPHRASE, null)
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
-            @SuppressLint("InlinedApi") get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
+            @SuppressLint("InlinedApi")
+            get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
