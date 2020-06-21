@@ -33,11 +33,20 @@ now that they introduced this
 
 ## Features that requires system app installation
 
-The following features in the app requires it to be installed under `/system/priv-app`.
+The following features in the app requires it to be installed under `/system/priv-app` since some restricted permissions are required.
 One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).
 
-* (prior to Android 11) Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
-* (since Android 11) Use the Bluetooth tethering shortcut switch in app.
+* (since Android 11, since app v2.9.1) `android.permission.BLUETOOTH_PRIVILEGED`: Use the Bluetooth tethering shortcut switch in app.
+* (prior to Android 11, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
+
+Installing as system app also has the side benefit of launching root daemon less frequently due to having privileged permissions listed below.
+
+* `android.permission.LOCAL_MAC_ADDRESS`
+* `android.permission.MANAGE_USB`
+* `android.permission.TETHER_PRIVILEGED`
+* `android.permission.WRITE_SECURE_SETTINGS`
+
+Whenever you install an app update, if there was a new protected permission addition (last updated in v2.10.2), you should update the app installed in system as well to make the system grant the privileged permission.
 
 ## Settings and How to Use Them
 
