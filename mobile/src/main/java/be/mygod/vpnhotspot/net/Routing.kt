@@ -348,7 +348,7 @@ class Routing(private val caller: Any, private val downstream: String,
             ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         }
         UpstreamMonitor.registerCallback(upstream)
-        IpNeighbourMonitor.registerCallback(this)
+        IpNeighbourMonitor.registerCallback(this, true)
     }
     fun revert() {
         stop()

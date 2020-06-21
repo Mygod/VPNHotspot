@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net.monitor
 
 import androidx.collection.LongSparseArray
 import androidx.collection.set
+import be.mygod.vpnhotspot.net.IpDev
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -19,22 +20,24 @@ object TrafficRecorder {
     private const val ANYWHERE = "0.0.0.0/0"
 
     private var lastUpdate = 0L
-    private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
+    private val records = mutableMapOf<IpDev, TrafficRecord>()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
     fun register(ip: InetAddress, downstream: String, mac: MacAddressCompat) {
         val record = TrafficRecord(mac = mac.addr, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
-            Timber.d("Registering $ip%$downstream")
-            check(records.putIfAbsent(Pair(ip, downstream), record) == null)
+            val key = IpDev(ip, downstream)
+            Timber.d("Registering $key")
+            check(records.putIfAbsent(key, record) == null)
             scheduleUpdateLocked()
         }
     }
     fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
         update()    // flush stats before removing
-        Timber.d("Unregistering $ip%$downstream")
-        if (records.remove(Pair(ip, downstream)) == null) Timber.w("Failed to find traffic record for $ip%$downstream.")
+        val key = IpDev(ip, downstream)
+        Timber.d("Unregistering $key")
+        if (records.remove(key) == null) Timber.w("Failed to find traffic record for $key.")
     }
 
     private var updateJob: Job? = null
@@ -81,7 +84,7 @@ object TrafficRecorder {
                         check(isReceive != isSend) { "Failed to set up blocking rules, please clean routing rules" }
                         val ip = parseNumericAddress(columns[if (isReceive) 8 else 7])
                         val downstream = columns[if (isReceive) 6 else 5]
-                        val key = Pair(ip, downstream)
+                        val key = IpDev(ip, downstream)
                         val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules
                         val record = if (oldRecord.id == null) oldRecord else TrafficRecord(
                                 timestamp = timestamp,

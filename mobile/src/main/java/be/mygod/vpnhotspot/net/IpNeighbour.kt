@@ -37,12 +37,35 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
         private val devFallback = "^if(\\d+)\$".toRegex()
         private fun checkLladdrNotLoopback(lladdr: String) = if (lladdr == "00:00:00:00:00:00") "" else lladdr
 
-        fun parse(line: String): List<IpNeighbour> {
+        private fun populateList(base: IpNeighbour): List<IpNeighbour> {
+            val devParser = devFallback.matchEntire(base.dev)
+            if (devParser != null) try {
+                val index = devParser.groupValues[1].toInt()
+                val iface = NetworkInterface.getByIndex(index)
+                if (iface == null) Timber.w("Failed to find network interface #$index")
+                else return listOf(base.copy(dev = iface.name), base)
+            } catch (_: SocketException) { }
+            return listOf(base)
+        }
+
+        fun parse(line: String, fullMode: Boolean): List<IpNeighbour> {
             if (line.isBlank()) return emptyList()
             return try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
                 val dev = match.groupValues[3]                      // by regex, dev is non-empty as well
+                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else
+                    when (match.groupValues[7]) {
+                        "", "INCOMPLETE" -> State.INCOMPLETE
+                        "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
+                        "FAILED" -> {
+                            if (!fullMode) return populateList(IpNeighbour(ip, dev, MacAddressCompat.ALL_ZEROS_ADDRESS,
+                                    State.DELETING))    // skip parsing lladdr to avoid requesting root
+                            State.FAILED
+                        }
+                        "NOARP" -> return emptyList()   // skip
+                        else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
+                    }
                 var lladdr = checkLladdrNotLoopback(match.groupValues[5])
                 // use ARP as fallback for IPv4
                 if (lladdr.isEmpty()) lladdr = checkLladdrNotLoopback(arp()
@@ -50,14 +73,6 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                         .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                         .map { it[ARP_HW_ADDRESS] }
                         .singleOrNull() ?: "")
-                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else
-                    when (match.groupValues[7]) {
-                        "", "INCOMPLETE" -> State.INCOMPLETE
-                        "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
-                        "FAILED" -> State.FAILED
-                        "NOARP" -> return emptyList()   // skip
-                        else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
-                    }
                 val mac = try {
                     MacAddressCompat.fromString(lladdr)
                 } catch (e: IllegalArgumentException) {
@@ -66,15 +81,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                     if (state != State.DELETING) Timber.w(IOException("Failed to find MAC address for $line", e))
                     MacAddressCompat.ALL_ZEROS_ADDRESS
                 }
-                val result = IpNeighbour(ip, dev, mac, state)
-                val devParser = devFallback.matchEntire(dev)
-                if (devParser != null) try {
-                    val index = devParser.groupValues[1].toInt()
-                    val iface = NetworkInterface.getByIndex(index)
-                    if (iface == null) Timber.w("Failed to find network interface #$index")
-                    else return listOf(IpNeighbour(ip, iface.name, mac, state), result)
-                } catch (_: SocketException) { }
-                listOf(result)
+                populateList(IpNeighbour(ip, dev, mac, state))
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
                 emptyList()
@@ -114,3 +121,8 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
         }
     }
 }
+
+data class IpDev(val ip: InetAddress, val dev: String) {
+    override fun toString() = "$ip%$dev"
+}
+fun IpDev(neighbour: IpNeighbour) = IpDev(neighbour.ip, neighbour.dev)

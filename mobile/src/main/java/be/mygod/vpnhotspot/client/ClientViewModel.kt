@@ -59,7 +59,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     init {
         app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        IpNeighbourMonitor.registerCallback(this)
+        IpNeighbourMonitor.registerCallback(this, true)
     }
 
     override fun onCleared() {
