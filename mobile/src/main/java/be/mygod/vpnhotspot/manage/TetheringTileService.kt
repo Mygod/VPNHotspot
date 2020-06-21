@@ -92,6 +92,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     state = Tile.STATE_ACTIVE
                     icon = if (interested.all(binder::isActive)) tileOn else tileOff
                     subtitleDevices(interested::contains)
+                    listenForClients()
                 }
             }
             label = getText(labelString)
@@ -179,6 +180,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                         state = Tile.STATE_ACTIVE
                         icon = if (interested.isNotEmpty() && interested.all(binder::isActive)) tileOn else tileOff
                         subtitleDevices(interested::contains)
+                        listenForClients()
                     }
                     false -> {
                         state = Tile.STATE_INACTIVE

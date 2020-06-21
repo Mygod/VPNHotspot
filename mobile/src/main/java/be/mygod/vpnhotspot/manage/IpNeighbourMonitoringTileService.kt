@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.manage
 
 import android.service.quicksettings.Tile
+import androidx.annotation.CallSuper
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.IpNeighbour
@@ -11,15 +12,28 @@ import java.net.Inet4Address
 @RequiresApi(24)
 abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeighbourMonitor.Callback {
     private var neighbours: Collection<IpNeighbour> = emptyList()
+    private var canRegister = false
     abstract fun updateTile()
 
+    @CallSuper
     override fun onStartListening() {
         super.onStartListening()
-        IpNeighbourMonitor.registerCallback(this)
+        synchronized(this) { canRegister = true }
     }
 
+    /**
+     * Lazily start [IpNeighbourMonitor], which could invoke root.
+     */
+    protected fun listenForClients() = synchronized(this) {
+        if (canRegister) IpNeighbourMonitor.registerCallback(this)
+    }
+
+    @CallSuper
     override fun onStopListening() {
-        IpNeighbourMonitor.unregisterCallback(this)
+        synchronized(this) {
+            canRegister = false
+            IpNeighbourMonitor.unregisterCallback(this)
+        }
         super.onStopListening()
     }
 
