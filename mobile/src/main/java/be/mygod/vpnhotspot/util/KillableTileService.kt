@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.annotation.CallSuper
 import androidx.annotation.RequiresApi
 
 @RequiresApi(24)
@@ -20,7 +19,6 @@ abstract class KillableTileService : TileService(), ServiceConnection {
         if (Build.VERSION.SDK_INT >= 29) subtitle = value
     }
 
-    @CallSuper
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         if (tapPending) {
             tapPending = false

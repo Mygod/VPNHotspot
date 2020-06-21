@@ -40,7 +40,6 @@ class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
                 state = Tile.STATE_ACTIVE
                 label = binder.configuration?.ssid ?: getText(R.string.tethering_temp_hotspot)
                 subtitleDevices { it == iface }
-                listenForClients()
             }
             updateTile()
         }
