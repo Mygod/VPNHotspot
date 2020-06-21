@@ -44,7 +44,7 @@ class Routing(private val caller: Any, private val downstream: String,
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
         private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
 
-        const val IPTABLES ="iptables -w"
+        const val IPTABLES = "iptables -w"
         const val IP6TABLES = "ip6tables -w"
 
         fun appendCleanCommands(commands: BufferedWriter) {

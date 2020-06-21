@@ -31,7 +31,7 @@ I don't know about you but I can't get my stupid Windows 10 to work with
 now that they introduced this
 [Mobile hotspot](https://support.microsoft.com/en-us/help/4027762/windows-use-your-pc-as-a-mobile-hotspot).
 
-## Features that requires system app installation
+## Features That Requires System App Installation
 
 The following features in the app requires it to be installed under `/system/priv-app` since some restricted permissions are required.
 One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).

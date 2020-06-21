@@ -69,7 +69,7 @@ dependencies {
     val lifecycleVersion = "2.3.0-alpha04"
     val roomVersion = "2.2.5"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.6")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8", rootProject.extra.get("kotlinVersion").toString()))
     implementation("androidx.appcompat:appcompat:1.3.0-alpha01")    // https://issuetracker.google.com/issues/151603528
