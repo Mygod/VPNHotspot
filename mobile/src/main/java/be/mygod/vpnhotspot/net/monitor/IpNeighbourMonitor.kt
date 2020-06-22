@@ -33,7 +33,9 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
             } else monitor.neighbours.values
         }?.let { callback.onIpNeighbourAvailable(it) }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
-            if (callbacks.remove(callback) == null || callbacks.isNotEmpty()) return@synchronized
+            if (callbacks.remove(callback) == null) return@synchronized
+            fullMode = callbacks.any { it.value }
+            if (callbacks.isNotEmpty()) return@synchronized
             instance?.destroy()
             instance = null
         }
