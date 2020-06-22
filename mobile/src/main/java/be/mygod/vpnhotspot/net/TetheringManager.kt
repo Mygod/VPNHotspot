@@ -464,8 +464,8 @@ object TetheringManager {
          * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
          * @param clients The new set of tethered clients; the collection is not ordered.
          */
-        fun onClientsChanged(clients: Iterable<*>) {
-            Timber.i("onClientsChanged: ${clients.joinToString()}")
+        fun onClientsChanged(clients: Collection<*>) {
+            if (clients.isNotEmpty()) Timber.i("onClientsChanged: ${clients.joinToString()}")
         }
 
         /**
@@ -543,7 +543,7 @@ object TetheringManager {
                             }
                             "onClientsChanged" -> {
                                 if (noArgs != 1) Timber.w("Unexpected args for $name: $args")
-                                callback?.onClientsChanged(args!![0] as Iterable<*>)
+                                callback?.onClientsChanged(args!![0] as Collection<*>)
                             }
                             "onOffloadStatusChanged" -> {
                                 if (noArgs != 1) Timber.w("Unexpected args for $name: $args")

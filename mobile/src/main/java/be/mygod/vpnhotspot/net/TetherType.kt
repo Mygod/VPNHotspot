@@ -90,13 +90,14 @@ enum class TetherType(@DrawableRes val icon: Int) {
          *
          * Based on: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#479
          */
-        tailrec fun ofInterface(iface: String?, p2pDev: String? = null): TetherType = when {
+        fun ofInterface(iface: String?, p2pDev: String? = null) = synchronized(this) { ofInterfaceImpl(iface, p2pDev) }
+        private tailrec fun ofInterfaceImpl(iface: String?, p2pDev: String?): TetherType = when {
             iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
             requiresUpdate -> {
                 Timber.d("requiresUpdate")
                 if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
-                ofInterface(iface, p2pDev)
+                ofInterfaceImpl(iface, p2pDev)
             }
             wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
             wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
