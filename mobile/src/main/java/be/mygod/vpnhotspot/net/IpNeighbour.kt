@@ -68,7 +68,9 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 if (match.groups[4] != null) try {
                     lladdr = MacAddressCompat.fromString(match.groupValues[5])
                 } catch (e: IllegalArgumentException) {
-                    Timber.w(IOException("Failed to find MAC address for $line", e))
+                    if (state != State.INCOMPLETE && state != State.DELETING) {
+                        Timber.w(IOException("Failed to find MAC address for $line", e))
+                    }
                 }
                 // use ARP as fallback for IPv4, except for INCOMPLETE which by definition does not have arp entry,
                 // or for DELETING, which we do not care about MAC not present
