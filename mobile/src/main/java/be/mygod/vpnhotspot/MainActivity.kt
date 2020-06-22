@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         if (Services.p2p != null) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
-                it.ip.any { (ip, state) -> ip is Inet4Address && state != IpNeighbour.State.FAILED }
+                it.ip.any { (ip, state) -> ip is Inet4Address && state == IpNeighbour.State.VALID }
             }
             if (count > 0) binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
                 backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)

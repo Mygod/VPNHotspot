@@ -129,7 +129,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
         if (Build.VERSION.SDK_INT >= 28) timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.ip is Inet4Address && it.state != IpNeighbour.State.FAILED
+            it.ip is Inet4Address && it.state == IpNeighbour.State.VALID
         })
     }
 

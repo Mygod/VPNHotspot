@@ -18,7 +18,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
     protected fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .filter { it.ip is Inet4Address && it.state != IpNeighbour.State.FAILED }
+                    .filter { it.ip is Inet4Address && it.state == IpNeighbour.State.VALID }
                     .distinctBy { it.lladdr }
                     .size
         }

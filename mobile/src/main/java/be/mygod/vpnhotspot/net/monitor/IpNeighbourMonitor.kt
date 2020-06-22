@@ -16,9 +16,9 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         var fullMode = false
 
         /**
-         * @param full Whether the failed entries should also be parsed.
+         * @param full Whether the invalid entries should also be parsed.
          *  In this case it is more likely to trigger root request on API 29+.
-         *  However, even in light mode, caller should still filter out failed entries in
+         *  However, even in light mode, caller should still filter out invalid entries in
          *  [Callback.onIpNeighbourAvailable] in case the full mode was requested by other callers.
          */
         fun registerCallback(callback: Callback, full: Boolean = false) = synchronized(callbacks) {
