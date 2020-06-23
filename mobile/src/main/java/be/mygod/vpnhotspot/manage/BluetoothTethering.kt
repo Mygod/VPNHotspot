@@ -24,7 +24,9 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         private const val PAN = 5
         private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
         private val constructor by lazy {
-            clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java)
+            clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java).apply {
+                isAccessible = true
+            }
         }
         private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
 
