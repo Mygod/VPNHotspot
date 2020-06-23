@@ -216,7 +216,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     passphrase = config.psk
                     bssid = config.bssid
                     this to false
-                } catch (e: RuntimeException) {
+                } catch (e: Exception) {
                     Timber.w(e)
                     passphrase = group.passphrase
                     bssid = group.owner?.deviceAddress?.let(MacAddressCompat.Companion::fromString)
