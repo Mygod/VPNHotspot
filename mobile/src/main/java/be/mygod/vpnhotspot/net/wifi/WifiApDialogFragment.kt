@@ -80,8 +80,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     private lateinit var dialogView: DialogWifiApBinding
     private lateinit var bandOptions: MutableList<BandOption>
+    private lateinit var base: SoftApConfigurationCompat
     private var started = false
-    override val ret get() = Arg(arg.configuration.copy(
+    override val ret get() = Arg(base.copy(
             ssid = dialogView.ssid.text.toString(),
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null,
             bssidAddr = if (dialogView.bssid.length() != 0) {
@@ -141,20 +142,21 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else dialogView.bandWrapper.isGone = true
         if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
-        populateFromConfiguration(arg.configuration)
+        base = arg.configuration
+        populateFromConfiguration()
     }
 
-    private fun populateFromConfiguration(configuration: SoftApConfigurationCompat) {
-        dialogView.ssid.setText(configuration.ssid)
-        if (!arg.p2pMode) dialogView.security.setSelection(configuration.securityType)
-        dialogView.password.setText(configuration.passphrase)
+    private fun populateFromConfiguration() {
+        dialogView.ssid.setText(base.ssid)
+        if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
+        dialogView.password.setText(base.passphrase)
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-            dialogView.band.setSelection(if (configuration.channel in 1..165) {
-                bandOptions.indexOfFirst { it.channel == configuration.channel }
-            } else bandOptions.indexOfFirst { it.band == configuration.band })
+            dialogView.band.setSelection(if (base.channel in 1..165) {
+                bandOptions.indexOfFirst { it.channel == base.channel }
+            } else bandOptions.indexOfFirst { it.band == base.band })
         }
-        dialogView.bssid.setText(configuration.bssid?.toString())
-        dialogView.hiddenSsid.isChecked = configuration.isHiddenSsid
+        dialogView.bssid.setText(base.bssid?.toString())
+        dialogView.hiddenSsid.isChecked = base.isHiddenSsid
         // TODO support more fields from SACC
     }
 
@@ -209,8 +211,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             android.R.id.paste -> try {
                 app.clipboard.primaryClip?.getItemAt(0)?.text?.apply {
-                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>()
-                            ?.let { populateFromConfiguration(it) }
+                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>()?.let { config ->
+                        val newUnderlying = config.underlying
+                        if (newUnderlying != null) {
+                            arg.configuration.underlying?.let { check(it.javaClass == newUnderlying.javaClass) }
+                        } else config.underlying = arg.configuration.underlying
+                        base = config
+                        populateFromConfiguration()
+                    }
                 }
                 true
             } catch (e: IllegalArgumentException) {

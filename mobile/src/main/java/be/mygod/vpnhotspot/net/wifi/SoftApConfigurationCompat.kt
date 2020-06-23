@@ -33,7 +33,7 @@ data class SoftApConfigurationCompat(
         // TODO: WifiClient? nullable?
         var allowedClientList: List<Parcelable>?,
         var blockedClientList: List<Parcelable>?,
-        val underlying: Parcelable? = null) : Parcelable {
+        var underlying: Parcelable? = null) : Parcelable {
     companion object {
         /**
          * TODO
