@@ -82,12 +82,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private lateinit var bandOptions: MutableList<BandOption>
     private lateinit var base: SoftApConfigurationCompat
     private var started = false
-    override val ret get() = Arg(base.copy(
+    override val ret get() = Arg(generateConfig())
+
+    private fun generateConfig(populateBssid: Boolean = true) = base.copy(
             ssid = dialogView.ssid.text.toString(),
-            passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null,
-            bssidAddr = if (dialogView.bssid.length() != 0) {
-                MacAddressCompat.fromString(dialogView.bssid.text.toString()).addr
-            } else null).apply {
+            passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
@@ -95,7 +94,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val bandOption = dialogView.band.selectedItem as BandOption
         band = bandOption.band
         channel = bandOption.channel
-    })
+        if (populateBssid) bssid = if (dialogView.bssid.length() != 0) {
+            MacAddressCompat.fromString(dialogView.bssid.text.toString())
+        } else null
+    }
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
         val activity = requireActivity()
@@ -196,6 +198,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
                 ssidLength in 1..32 && passwordValid && bssidValid
+        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = bssidValid
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }
@@ -206,7 +209,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         return when (item?.itemId) {
             android.R.id.copy -> {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
-                        Base64.encodeToString(ret.configuration.toByteArray(), BASE64_FLAGS)))
+                        Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)))
                 true
             }
             android.R.id.paste -> try {
@@ -226,13 +229,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 false
             }
             R.id.share_qr -> {
-                val qrString = try {
-                    ret.configuration.toQrCode()
-                } catch (e: IllegalArgumentException) {
-                    SmartSnackbar.make(e).show()
-                    return false
-                }
-                QRCodeDialog().withArg(qrString).showAllowingStateLoss(parentFragmentManager)
+                QRCodeDialog().withArg(generateConfig(false).toQrCode()).showAllowingStateLoss(parentFragmentManager)
                 true
             }
             else -> false

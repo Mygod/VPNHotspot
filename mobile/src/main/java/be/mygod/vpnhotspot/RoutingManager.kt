@@ -36,7 +36,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             for (manager in active.values) manager.routing?.stop()
             try {
                 runBlocking { Routing.clean() }
-            } catch (e: RuntimeException) {
+            } catch (e: Exception) {
                 Timber.d(e)
                 SmartSnackbar.make(e).show()
                 return
