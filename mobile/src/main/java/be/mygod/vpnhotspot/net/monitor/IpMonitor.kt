@@ -159,7 +159,7 @@ abstract class IpMonitor {
             val lines = result.out.lines()
             if (lines.any { errorMatcher.containsMatchIn(it) }) throw IOException(result.out)
             processLines(lines.asSequence())
-        } catch (e: RuntimeException) {
+        } catch (e: Exception) {
             app.logEvent("ip_su_poll_failure") { param("cause", e.message.toString()) }
             Timber.d(e)
         }

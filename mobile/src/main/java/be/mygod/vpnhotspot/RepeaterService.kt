@@ -249,7 +249,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun onPersistentGroupsChanged() = launch {
         val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: try {
             P2pSupplicantConfiguration().apply { init() }.bssid
-        } catch (e: RuntimeException) {
+        } catch (e: Exception) {
             Timber.d(e)
             null
         } ?: return@launch

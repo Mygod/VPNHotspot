@@ -84,19 +84,21 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private var started = false
     override val ret get() = Arg(generateConfig())
 
-    private fun generateConfig(populateBssid: Boolean = true) = base.copy(
+    private fun generateConfig(full: Boolean = true) = base.copy(
             ssid = dialogView.ssid.text.toString(),
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
         }
-        val bandOption = dialogView.band.selectedItem as BandOption
-        band = bandOption.band
-        channel = bandOption.channel
-        if (populateBssid) bssid = if (dialogView.bssid.length() != 0) {
-            MacAddressCompat.fromString(dialogView.bssid.text.toString())
-        } else null
+        if (full) {
+            val bandOption = dialogView.band.selectedItem as BandOption
+            band = bandOption.band
+            channel = bandOption.channel
+            bssid = if (dialogView.bssid.length() != 0) {
+                MacAddressCompat.fromString(dialogView.bssid.text.toString())
+            } else null
+        }
     }
 
     override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
@@ -142,7 +144,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
         } else dialogView.bandWrapper.isGone = true
-        if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
+        dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         base = arg.configuration
         populateFromConfiguration()
