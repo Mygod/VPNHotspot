@@ -76,12 +76,17 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 // or for DELETING, which we do not care about MAC not present
                 if (ip is Inet4Address && lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != State.INCOMPLETE &&
                         state != State.DELETING) try {
-                    lladdr = MacAddressCompat.fromString(arp()
+                    val list = arp()
                             .asSequence()
                             .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                             .map { it[ARP_HW_ADDRESS] }
                             .distinct()
-                            .singleOrNull() ?: throw IllegalArgumentException("singleOrNull"))
+                            .toList()
+                    when (list.size) {
+                        1 -> lladdr = MacAddressCompat.fromString(list.single())
+                        0 -> { }
+                        else -> throw IllegalArgumentException("Unexpected output in arp: ${list.joinToString()}")
+                    }
                 } catch (e: IllegalArgumentException) {
                     Timber.w(e)
                 }
