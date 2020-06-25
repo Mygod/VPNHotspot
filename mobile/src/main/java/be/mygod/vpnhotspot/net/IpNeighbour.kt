@@ -80,6 +80,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                             .asSequence()
                             .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
                             .map { it[ARP_HW_ADDRESS] }
+                            .distinct()
                             .singleOrNull() ?: throw IllegalArgumentException("singleOrNull"))
                 } catch (e: IllegalArgumentException) {
                     Timber.w(e)
