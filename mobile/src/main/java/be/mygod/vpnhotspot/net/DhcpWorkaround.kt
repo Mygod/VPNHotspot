@@ -35,9 +35,9 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
                     it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
                 } catch (e: RoutingCommands.UnexpectedOutputException) {
                     if (e.result.out.isEmpty() && (e.result.exit == 2 || e.result.exit == 254) && if (enabled) {
-                                e.result.err == "RTNETLINK answers: File exists"
+                                e.result.err == "RTNETLINK answers: File exists\n"
                             } else {
-                                e.result.err == "RTNETLINK answers: No such file or directory"
+                                e.result.err == "RTNETLINK answers: No such file or directory\n"
                             }) return@use
                     Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
                     SmartSnackbar.make(e).show()
