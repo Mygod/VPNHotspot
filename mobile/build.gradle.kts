@@ -66,7 +66,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.3.0-alpha04"
+    val lifecycleVersion = "2.3.0-alpha05"
     val roomVersion = "2.2.5"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.9")
@@ -75,14 +75,14 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.3.0-alpha01")    // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.core:core-ktx:1.3.0")
-    implementation("androidx.emoji:emoji:1.1.0-rc01")
+    implementation("androidx.emoji:emoji:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.3.0-alpha06")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.1.1")
     implementation("androidx.room:room-ktx:$roomVersion")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0-rc01")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.android.billingclient:billing-ktx:3.0.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.2.0-beta01")
