@@ -291,6 +291,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         /**
          * If set to true, debug information will be printed to logcat.
          */
+        @JvmField
         @JvmStatic
         var DEBUG = false
 
