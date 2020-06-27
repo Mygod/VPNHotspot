@@ -74,25 +74,27 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 }
                 // use ARP as fallback for IPv4, except for INCOMPLETE which by definition does not have arp entry,
                 // or for DELETING, which we do not care about MAC not present
-                if (ip is Inet4Address && lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != State.INCOMPLETE &&
-                        state != State.DELETING) try {
-                    val list = arp()
-                            .asSequence()
-                            .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
-                            .map { it[ARP_HW_ADDRESS] }
-                            .distinct()
-                            .toList()
-                    when (list.size) {
-                        1 -> lladdr = MacAddressCompat.fromString(list.single())
-                        0 -> { }
-                        else -> throw IllegalArgumentException("Unexpected output in arp: ${list.joinToString()}")
+                if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != State.INCOMPLETE &&
+                        state != State.DELETING) {
+                    if (ip is Inet4Address) try {
+                        val list = arp()
+                                .asSequence()
+                                .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
+                                .map { it[ARP_HW_ADDRESS] }
+                                .distinct()
+                                .toList()
+                        when (list.size) {
+                            1 -> lladdr = MacAddressCompat.fromString(list.single())
+                            0 -> { }
+                            else -> throw IllegalArgumentException("Unexpected output in arp: ${list.joinToString()}")
+                        }
+                    } catch (e: IllegalArgumentException) {
+                        Timber.w(e)
                     }
-                } catch (e: IllegalArgumentException) {
-                    Timber.w(e)
-                }
-                if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS) {
-                    Timber.d(line)
-                    return emptyList()
+                    if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS) {
+                        Timber.d(line)
+                        return emptyList()
+                    }
                 }
                 devs.map { IpNeighbour(ip, it, lladdr, state) }
             } catch (e: Exception) {
