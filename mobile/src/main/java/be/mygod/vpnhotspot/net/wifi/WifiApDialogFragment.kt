@@ -190,9 +190,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else {
             requireContext().getString(R.string.credentials_password_too_short)
         }
+        dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
             MacAddressCompat.fromString(dialogView.bssid.text.toString())
-            dialogView.bssidWrapper.error = null
             true
         } catch (e: IllegalArgumentException) {
             dialogView.bssidWrapper.error = e.readableMessage

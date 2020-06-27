@@ -43,14 +43,16 @@
                 android:id="@+id/ssid_wrapper"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="@string/wifi_ssid">
+                android:hint="@string/wifi_ssid"
+                app:counterEnabled="true"
+                app:counterMaxLength="32"
+                app:errorEnabled="true">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/ssid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     style="@style/wifi_item_edit_content"
-                    android:inputType="textMultiLine|textNoSuggestions"
-                    android:maxLength="32" />
+                    android:inputType="textMultiLine|textNoSuggestions" />
             </com.google.android.material.textfield.TextInputLayout>
             <LinearLayout
                 android:id="@+id/security_wrapper"
@@ -76,6 +78,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
                 android:hint="@string/wifi_password"
+                app:counterEnabled="true"
+                app:counterMaxLength="63"
                 app:passwordToggleEnabled="true"
                 app:errorEnabled="true">
                 <com.google.android.material.textfield.TextInputEditText
@@ -112,6 +116,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
+                app:counterEnabled="true"
+                app:counterMaxLength="17"
                 android:hint="BSSID">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/bssid"
