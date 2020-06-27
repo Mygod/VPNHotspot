@@ -90,6 +90,10 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 } catch (e: IllegalArgumentException) {
                     Timber.w(e)
                 }
+                if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS) {
+                    Timber.d(line)
+                    return emptyList()
+                }
                 devs.map { IpNeighbour(ip, it, lladdr, state) }
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
