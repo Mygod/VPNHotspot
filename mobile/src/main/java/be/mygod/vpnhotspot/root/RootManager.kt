@@ -15,6 +15,7 @@ object RootManager : RootSession() {
     @Parcelize
     class RootInit : RootCommandNoResult {
         override suspend fun execute(): Parcelable? {
+            RootServer.DEBUG = BuildConfig.DEBUG
             Services.init(RootJava.getSystemContext())
             return null
         }

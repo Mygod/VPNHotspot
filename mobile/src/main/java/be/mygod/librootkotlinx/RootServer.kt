@@ -77,7 +77,6 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     }
 
     private lateinit var process: Process
-    private lateinit var worker: Thread
     /**
      * Thread safety: needs to be protected by mutex.
      */
@@ -86,7 +85,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     @Volatile
     var active = false
     private var counter = 0L
-    private val callbackListenerExit = CompletableDeferred<Unit>()
+    private lateinit var callbackListenerExit: Deferred<Unit>
     private val callbackLookup = LongSparseArray<Callback>()
     private val mutex = Mutex()
 
@@ -120,31 +119,33 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             warnLogger(line)
         }
     }
-    private suspend fun doInit(context: Context, niceName: String) = coroutineScope {
-        @Suppress("BlockingMethodInNonBlockingContext")
-        val init = async {
-            try {
-                process = ProcessBuilder("su").start()
-                val token1 = UUID.randomUUID().toString()
-                val writer = DataOutputStream(process.outputStream.buffered())
-                writer.writeBytes("echo $token1\n")
-                writer.flush()
-                val reader = process.inputStream.bufferedReader()
-                reader.lookForToken(token1)
-                if (DEBUG) Log.d(TAG, "Root shell initialized")
-                reader to writer
-            } catch (e: Exception) {
-                throw NoShellException(e)
-            }
-        }
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private suspend fun doInit(context: Context, niceName: String) {
         val token2 = UUID.randomUUID().toString()
-        val launchString = async(Dispatchers.IO) {
-            val appProcess = AppProcess.getAppProcess()
-            RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
-                    RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
-                    arrayOf("$token2\n"), niceName)
+        val list = coroutineScope {
+            val init = async(start = CoroutineStart.LAZY) {
+                try {
+                    process = ProcessBuilder("su").start()
+                    val token1 = UUID.randomUUID().toString()
+                    val writer = DataOutputStream(process.outputStream.buffered())
+                    writer.writeBytes("echo $token1\n")
+                    writer.flush()
+                    val reader = process.inputStream.bufferedReader()
+                    reader.lookForToken(token1)
+                    if (DEBUG) Log.d(TAG, "Root shell initialized")
+                    reader to writer
+                } catch (e: Exception) {
+                    throw NoShellException(e)
+                }
+            }
+            val launchString = async(start = CoroutineStart.LAZY) {
+                val appProcess = AppProcess.getAppProcess()
+                RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
+                        RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
+                        arrayOf("$token2\n"), niceName)
+            }
+            awaitAll(init, launchString)
         }
-        val list = awaitAll(init, launchString)
         val (reader, writer) = list[0] as Pair<BufferedReader, DataOutputStream>
         writer.writeBytes(list[1] as String)
         writer.flush()
@@ -180,29 +181,23 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
      */
     suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
         val future = CompletableDeferred<Unit>()
-        worker = Thread {
+        callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
             try {
-                runBlocking { doInit(context, niceName) }
+                doInit(context, niceName)
                 future.complete(Unit)
             } catch (e: Throwable) {
                 future.completeExceptionally(e)
-                callbackListenerExit.complete(Unit)
-                return@Thread
+                return@async
             }
             try {
                 callbackSpin()
-            } catch (e: Throwable) {
-                callbackListenerExit.completeExceptionally(e)
-                return@Thread
             } finally {
                 if (DEBUG) Log.d(TAG, "Waiting for exit")
                 process.waitFor()
-                runBlocking { closeInternal(true) }
+                closeInternal(true)
             }
             check(process.errorStream.available() == 0) // stderr should not be used
-            callbackListenerExit.complete(Unit)
         }
-        worker.start()
         future.await()
     }
     /**
