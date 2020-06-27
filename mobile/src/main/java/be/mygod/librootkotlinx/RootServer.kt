@@ -120,27 +120,33 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             warnLogger(line)
         }
     }
-    private fun doInit(context: Context, niceName: String) {
-        val writer: DataOutputStream
-        val reader: BufferedReader
-        try {
-            process = ProcessBuilder("su").start()
-            val token1 = UUID.randomUUID().toString()
-            writer = DataOutputStream(process.outputStream.buffered())
-            writer.writeBytes("echo $token1\n")
-            writer.flush()
-            reader = process.inputStream.bufferedReader()
-            reader.lookForToken(token1)
-        } catch (e: Exception) {
-            throw NoShellException(e)
+    private suspend fun doInit(context: Context, niceName: String) = coroutineScope {
+        @Suppress("BlockingMethodInNonBlockingContext")
+        val init = async {
+            try {
+                process = ProcessBuilder("su").start()
+                val token1 = UUID.randomUUID().toString()
+                val writer = DataOutputStream(process.outputStream.buffered())
+                writer.writeBytes("echo $token1\n")
+                writer.flush()
+                val reader = process.inputStream.bufferedReader()
+                reader.lookForToken(token1)
+                if (DEBUG) Log.d(TAG, "Root shell initialized")
+                reader to writer
+            } catch (e: Exception) {
+                throw NoShellException(e)
+            }
         }
-        if (DEBUG) Log.d(TAG, "Root shell initialized")
-
-        val appProcess = AppProcess.getAppProcess()
         val token2 = UUID.randomUUID().toString()
-        writer.writeBytes(RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
-            RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
-            arrayOf("$token2\n"), niceName))
+        val launchString = async(Dispatchers.IO) {
+            val appProcess = AppProcess.getAppProcess()
+            RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
+                    RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
+                    arrayOf("$token2\n"), niceName)
+        }
+        val list = awaitAll(init, launchString)
+        val (reader, writer) = list[0] as Pair<BufferedReader, DataOutputStream>
+        writer.writeBytes(list[1] as String)
         writer.flush()
         reader.lookForToken(token2) // wait for ready signal
         output = writer
@@ -176,7 +182,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         val future = CompletableDeferred<Unit>()
         worker = Thread {
             try {
-                doInit(context, niceName)
+                runBlocking { doInit(context, niceName) }
                 future.complete(Unit)
             } catch (e: Throwable) {
                 future.completeExceptionally(e)
