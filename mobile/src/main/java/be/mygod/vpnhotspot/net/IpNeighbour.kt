@@ -37,22 +37,22 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
          */
         private val devFallback = "^if(\\d+)\$".toRegex()
 
-        private fun populateList(base: IpNeighbour): List<IpNeighbour> {
-            val devParser = devFallback.matchEntire(base.dev)
+        private fun substituteDev(dev: String): Set<String> {
+            val devParser = devFallback.matchEntire(dev)
             if (devParser != null) try {
                 val index = devParser.groupValues[1].toInt()
                 val iface = NetworkInterface.getByIndex(index)
                 if (iface == null) Timber.w("Failed to find network interface #$index")
-                else return listOf(base.copy(dev = iface.name), base)
+                else return setOf(dev, iface.name)
             } catch (_: SocketException) { }
-            return listOf(base)
+            return setOf(dev)
         }
 
         fun parse(line: String, fullMode: Boolean): List<IpNeighbour> {
             return if (line.isBlank()) emptyList() else try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
-                val dev = match.groupValues[3]                      // by regex, dev is non-empty as well
+                val devs = substituteDev(match.groupValues[3])      // by regex, dev is non-empty as well
                 val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[7]) {
                     "", "INCOMPLETE" -> State.INCOMPLETE
                     "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
@@ -63,7 +63,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 var lladdr = MacAddressCompat.ALL_ZEROS_ADDRESS
                 if (!fullMode && state != State.VALID) {
                     // skip parsing lladdr to avoid requesting root
-                    return populateList(IpNeighbour(ip, dev, lladdr, State.DELETING))
+                    return devs.map { IpNeighbour(ip, it, lladdr, State.DELETING) }
                 }
                 if (match.groups[4] != null) try {
                     lladdr = MacAddressCompat.fromString(match.groupValues[5])
@@ -78,7 +78,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                         state != State.DELETING) try {
                     val list = arp()
                             .asSequence()
-                            .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] == dev }
+                            .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
                             .map { it[ARP_HW_ADDRESS] }
                             .distinct()
                             .toList()
@@ -90,7 +90,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 } catch (e: IllegalArgumentException) {
                     Timber.w(e)
                 }
-                populateList(IpNeighbour(ip, dev, lladdr, state))
+                devs.map { IpNeighbour(ip, it, lladdr, state) }
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
                 emptyList<IpNeighbour>()
