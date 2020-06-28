@@ -67,16 +67,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
         populateClients()
     }
 
-    init {
-        app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-    }
-
     override fun onStart(owner: LifecycleOwner) {
+        app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         IpNeighbourMonitor.registerCallback(this, false)
     }
-    override fun onStop(owner: LifecycleOwner) = IpNeighbourMonitor.unregisterCallback(this)
-
-    override fun onCleared() = app.unregisterReceiver(receiver)
+    override fun onStop(owner: LifecycleOwner) {
+        IpNeighbourMonitor.unregisterCallback(this)
+        app.unregisterReceiver(receiver)
+    }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         val binder = service as RepeaterService.Binder
