@@ -5,6 +5,8 @@ import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.IBinder
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import be.mygod.vpnhotspot.App.Companion.app
@@ -17,7 +19,7 @@ import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.broadcastReceiver
 
-class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback {
+class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback, DefaultLifecycleObserver {
     private var tetheredInterfaces = emptySet<String>()
     private val receiver = broadcastReceiver { _, intent ->
         tetheredInterfaces = (intent.tetheredIfaces ?: return@broadcastReceiver).toSet() +
@@ -59,7 +61,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     init {
         app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        IpNeighbourMonitor.registerCallback(this)
+    }
+
+    override fun onStart(owner: LifecycleOwner) {
         IpNeighbourMonitor.registerCallback(this, true)
+    }
+    override fun onStop(owner: LifecycleOwner) {
+        IpNeighbourMonitor.registerCallback(this, false)
     }
 
     override fun onCleared() {

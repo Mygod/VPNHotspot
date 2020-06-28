@@ -224,8 +224,9 @@ class ClientsFragment : Fragment() {
         binding.clients.adapter = adapter
         binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
         binding.swipeRefresher.setOnRefreshListener { IpNeighbourMonitor.instance?.flushAsync() }
-        activityViewModels<ClientViewModel>().value.clients.observe(viewLifecycleOwner) {
-            adapter.submitList(it.toMutableList())
+        activityViewModels<ClientViewModel>().value.apply {
+            lifecycle.addObserver(this)
+            clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }
         }
         return binding.root
     }
