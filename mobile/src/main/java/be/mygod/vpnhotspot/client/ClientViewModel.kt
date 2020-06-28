@@ -31,6 +31,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var neighbours: Collection<IpNeighbour> = emptyList()
     val clients = MutableLiveData<List<Client>>()
+    val fullMode = object : DefaultLifecycleObserver {
+        override fun onStart(owner: LifecycleOwner) {
+            IpNeighbourMonitor.registerCallback(this@ClientViewModel, true)
+        }
+        override fun onStop(owner: LifecycleOwner) {
+            IpNeighbourMonitor.registerCallback(this@ClientViewModel, false)
+        }
+    }
 
     private fun populateClients() {
         val clients = HashMap<Pair<String, MacAddressCompat>, Client>()
@@ -61,20 +69,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     init {
         app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        IpNeighbourMonitor.registerCallback(this)
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        IpNeighbourMonitor.registerCallback(this, true)
-    }
-    override fun onStop(owner: LifecycleOwner) {
         IpNeighbourMonitor.registerCallback(this, false)
     }
+    override fun onStop(owner: LifecycleOwner) = IpNeighbourMonitor.unregisterCallback(this)
 
-    override fun onCleared() {
-        IpNeighbourMonitor.unregisterCallback(this)
-        app.unregisterReceiver(receiver)
-    }
+    override fun onCleared() = app.unregisterReceiver(receiver)
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         val binder = service as RepeaterService.Binder

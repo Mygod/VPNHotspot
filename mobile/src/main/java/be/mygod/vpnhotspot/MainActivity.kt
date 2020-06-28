@@ -29,6 +29,7 @@ class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemS
         binding.navigation.setOnNavigationItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model by viewModels<ClientViewModel>()
+        lifecycle.addObserver(model)
         if (Services.p2p != null) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
