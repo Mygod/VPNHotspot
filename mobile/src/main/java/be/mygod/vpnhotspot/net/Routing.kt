@@ -91,11 +91,23 @@ class Routing(private val caller: Any, private val downstream: String,
             result.check(listOf(command), !result.out.endsWith(suffix))
             if (result.out.length > suffix.length) Timber.i(result.message(listOf(command), true))
         }
+
+        fun shouldSuppressIpError(e: RoutingCommands.UnexpectedOutputException, isAdd: Boolean = true) =
+                e.result.out.isEmpty() && (e.result.exit == 2 || e.result.exit == 254) && e.result.err == if (isAdd) {
+                    "RTNETLINK answers: File exists\n"
+                } else {
+                    "RTNETLINK answers: No such file or directory\n"
+                }
     }
 
-    private fun RootSession.Transaction.ipRule(add: String, priority: Int, rule: String = "", del: String = add) =
+    private fun RootSession.Transaction.ipRule(add: String, priority: Int, rule: String = "", del: String = add) {
+        try {
             exec("ip rule add $rule iif $downstream $add priority $priority",
                     "ip rule del $rule iif $downstream $del priority $priority")
+        } catch (e: RoutingCommands.UnexpectedOutputException) {
+            if (!shouldSuppressIpError(e)) throw e
+        }
+    }
     private fun RootSession.Transaction.ipRuleLookup(upstream: String, priority: Int, rule: String = "") =
             // by the time stopScript is called, table entry for upstream may already get removed
             ipRule("lookup $upstream", priority, rule, "")
