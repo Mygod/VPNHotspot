@@ -35,13 +35,10 @@ data class SoftApConfigurationCompat(
         var blockedClientList: List<Parcelable>?,
         var underlying: Parcelable? = null) : Parcelable {
     companion object {
-        /**
-         * TODO
-         */
-        const val BAND_ANY = 0
         const val BAND_2GHZ = 1
         const val BAND_5GHZ = 2
-        const val BAND_6GHZ = 3
+        const val BAND_6GHZ = 4
+        const val BAND_ANY = 7
         const val CH_INVALID = 0
 
         // TODO: localize?
@@ -190,7 +187,12 @@ data class SoftApConfigurationCompat(
                     }
                 },
                 preSharedKey,
-                if (Build.VERSION.SDK_INT >= 23) apBand.getInt(this) + 1 else BAND_ANY,     // TODO
+                if (Build.VERSION.SDK_INT >= 23) when (val band = apBand.getInt(this)) {
+                    0 -> BAND_2GHZ
+                    1 -> BAND_5GHZ
+                    -1 -> BAND_ANY
+                    else -> throw IllegalArgumentException("Unexpected band $band")
+                } else BAND_ANY,
                 if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else CH_INVALID,    // TODO
                 BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
                 0,  // TODO: unsupported field should have @RequiresApi?
@@ -265,9 +267,14 @@ data class SoftApConfigurationCompat(
         }
         result.preSharedKey = passphrase
         if (Build.VERSION.SDK_INT >= 23) {
-            apBand.setInt(result, band)
+            apBand.setInt(result, when (band) {
+                BAND_2GHZ -> 0
+                BAND_5GHZ -> 1
+                BAND_ANY -> -1
+                else -> throw IllegalArgumentException("Unsupported band $band")
+            })
             apChannel.setInt(result, channel)
-        }
+        } else require(band == BAND_ANY) { "Specifying band is unsupported on this platform" }
         if (bssid != original?.bssid) result.BSSID = bssid?.toString()
         result.hiddenSSID = isHiddenSsid
         return result
