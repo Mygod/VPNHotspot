@@ -96,7 +96,9 @@ class App : Application() {
 
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) GlobalScope.launch { RootManager.closeExisting() }
+        if (level == TRIM_MEMORY_RUNNING_CRITICAL || level >= TRIM_MEMORY_BACKGROUND) GlobalScope.launch {
+            RootManager.closeExisting()
+        }
     }
 
     /**
