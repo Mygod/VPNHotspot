@@ -7,13 +7,15 @@ import android.system.Os
 import android.system.OsConstants
 import android.text.TextUtils
 import be.mygod.librootkotlinx.ParcelableInt
+import be.mygod.librootkotlinx.ParcelableList
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
 import eu.chainfire.librootjava.RootJava
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.CompletableDeferred
 import java.io.File
 
 object RepeaterCommands {
@@ -26,29 +28,23 @@ object RepeaterCommands {
     }
 
     @Parcelize
+    data class DeletePersistentGroup(val netId: Int) : RootCommand<ParcelableInt?> {
+        override suspend fun execute() = Services.p2p!!.run {
+            deletePersistentGroup(obtainChannel(), netId)?.let { ParcelableInt(it) }
+        }
+    }
+
+    @Parcelize
+    class RequestPersistentGroupInfo : RootCommand<ParcelableList> {
+        override suspend fun execute() = Services.p2p!!.run {
+            ParcelableList(requestPersistentGroupInfo(obtainChannel()).toList())
+        }
+    }
+
+    @Parcelize
     class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
-            val uninitializer = object : WifiP2pManager.ChannelListener {
-                var target: WifiP2pManager.Channel? = null
-                override fun onChannelDisconnected() {
-                    if (target == channel) channel = null
-                }
-            }
-            val channel = channel ?: initialize(RootJava.getSystemContext(),
-                    Looper.getMainLooper(), uninitializer)
-            uninitializer.target = channel
-            RepeaterCommands.channel = channel  // cache the instance until invalidated
-            val future = CompletableDeferred<Int?>()
-            setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() {
-                    future.complete(null)
-                }
-
-                override fun onFailure(reason: Int) {
-                    future.complete(reason)
-                }
-            })
-            future.await()?.let { ParcelableInt(it) }
+            setWifiP2pChannels(obtainChannel(), 0, oc)?.let { ParcelableInt(it) }
         }
     }
 
@@ -82,4 +78,18 @@ object RepeaterCommands {
     private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
     private const val CONF_PATH_LEGACY = "/data/misc/wifi/p2p_supplicant.conf"
     private var channel: WifiP2pManager.Channel? = null
+
+    private fun WifiP2pManager.obtainChannel(): WifiP2pManager.Channel {
+        channel?.let { return it }
+        val uninitializer = object : WifiP2pManager.ChannelListener {
+            var target: WifiP2pManager.Channel? = null
+            override fun onChannelDisconnected() {
+                if (target == channel) channel = null
+            }
+        }
+        return initialize(RootJava.getSystemContext(), Looper.getMainLooper(), uninitializer).also {
+            uninitializer.target = it
+            channel = it    // cache the instance until invalidated
+        }
+    }
 }

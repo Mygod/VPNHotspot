@@ -22,6 +22,9 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
     }
 
+    /**
+     * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29-.
+     */
     val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
         (getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
                 ?: SoftApConfigurationCompat.empty()

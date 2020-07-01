@@ -7,12 +7,25 @@ import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.callSuper
+import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
+    private class ResultListener : WifiP2pManager.ActionListener {
+        val future = CompletableDeferred<Int?>()
+
+        override fun onSuccess() {
+            future.complete(null)
+        }
+
+        override fun onFailure(reason: Int) {
+            future.complete(reason)
+        }
+    }
+
     const val UNSUPPORTED = -2
     val ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED = if (Build.VERSION.SDK_INT >= 30) {
         "android.net.wifi.p2p.action.WIFI_P2P_PERSISTENT_GROUPS_CHANGED"
@@ -28,14 +41,18 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("setWifiP2pChannels", WifiP2pManager.Channel::class.java,
                 Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
-    fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int,
-                                          listener: WifiP2pManager.ActionListener) {
+    /**
+     * Requires one of NETWORK_SETTING, NETWORK_STACK, or OVERRIDE_WIFI_CONFIG permission since API 30.
+     */
+    suspend fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int): Int? {
+        val result = ResultListener()
         try {
-            setWifiP2pChannels(this, c, lc, oc, listener)
+            setWifiP2pChannels(this, c, lc, oc, result)
         } catch (_: NoSuchMethodException) {
             app.logEvent("NoSuchMethod_setWifiP2pChannels")
-            listener.onFailure(UNSUPPORTED)
+            return UNSUPPORTED
         }
+        return result.future.await()
     }
 
     /**
@@ -66,14 +83,18 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
                 WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
     }
-    fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int,
-                                             listener: WifiP2pManager.ActionListener) {
+    /**
+     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
+     */
+    suspend fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int): Int? {
+        val result = ResultListener()
         try {
-            deletePersistentGroup(this, c, netId, listener)
+            deletePersistentGroup(this, c, netId, result)
         } catch (_: NoSuchMethodException) {
             app.logEvent("NoSuchMethod_deletePersistentGroup")
-            listener.onFailure(UNSUPPORTED)
+            return UNSUPPORTED
         }
+        return result.future.await()
     }
 
     private val interfacePersistentGroupInfoListener by lazy @SuppressLint("PrivateApi") {
@@ -89,21 +110,24 @@ object WifiP2pManagerHelper {
     /**
      * Request a list of all the persistent p2p groups stored in system.
      *
+     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
+     *
      * @param c is the channel created at {@link #initialize}
      * @param listener for callback when persistent group info list is available. Can be null.
      */
-    fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel,
-                                                  listener: (Collection<WifiP2pGroup>) -> Unit) {
-        val proxy = Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
+    suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel): Collection<WifiP2pGroup> {
+        val result = CompletableDeferred<Collection<WifiP2pGroup>>()
+        requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when (method.name) {
                 "onPersistentGroupInfoAvailable" -> {
                     if (args?.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
-                    @Suppress("UNCHECKED_CAST") listener(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
+                    @Suppress("UNCHECKED_CAST")
+                    result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }
                 else -> callSuper(interfacePersistentGroupInfoListener, proxy, method, args)
             }
-        })
-        requestPersistentGroupInfo(this, c, proxy)
+        }))
+        return result.await()
     }
 }

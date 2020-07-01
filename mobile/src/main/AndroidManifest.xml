@@ -38,6 +38,8 @@
                      tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.READ_WIFI_CREDENTIAL"
+                     tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.TETHER_PRIVILEGED"
                      tools:ignore="ProtectedPermissions"/>

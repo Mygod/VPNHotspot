@@ -43,10 +43,12 @@ Installing as system app also has the side benefit of launching root daemon less
 
 * `android.permission.LOCAL_MAC_ADDRESS`
 * `android.permission.MANAGE_USB`
+* `android.permission.OVERRIDE_WIFI_CONFIG`
+* `android.permission.READ_WIFI_CREDENTIAL`
 * `android.permission.TETHER_PRIVILEGED`
 * `android.permission.WRITE_SECURE_SETTINGS`
 
-Whenever you install an app update, if there was a new protected permission addition (last updated in v2.10.2), you should update the app installed in system as well to make the system grant the privileged permission.
+Whenever you install an app update, if there was a new protected permission addition (last updated in v2.10.4), you should update the app installed in system as well to make the system grant the privileged permission.
 
 ## Settings and How to Use Them
 

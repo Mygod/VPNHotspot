@@ -5,6 +5,7 @@ import android.annotation.TargetApi
 import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
@@ -32,6 +33,7 @@ import kotlinx.coroutines.*
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Service for handling Wi-Fi P2P. `supported` must be checked before this service is started otherwise it would crash.
@@ -168,6 +170,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
+    private val deinitPending = AtomicBoolean(true)
 
     var status = Status.IDLE
         private set(value) {
@@ -197,41 +200,42 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(forceReinit: Boolean = false, oc: Int = operatingChannel) = try {
+    private fun setOperatingChannel(oc: Int = operatingChannel) {
         val channel = channel
-        if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-        // we don't care about listening channel
-        else p2pManager.setWifiP2pChannels(channel, 0, oc, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() { }
-            override fun onFailure(reason: Int) {
-                if (reason == WifiP2pManager.ERROR && Build.VERSION.SDK_INT >= 30) launch(start = CoroutineStart.UNDISPATCHED) {
-                    val rootReason = try {
-                        RootManager.use {
-                            if (forceReinit) it.execute(RepeaterCommands.Deinit())
-                            it.execute(RepeaterCommands.SetChannel(oc))
-                        }
-                    } catch (e: Exception) {
-                        Timber.w(e)
-                        SmartSnackbar.make(e).show()
-                        null
-                    } ?: return@launch
-                    SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, rootReason.value)).show()
-                } else SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
+        if (channel != null) launch(start = CoroutineStart.UNDISPATCHED) {
+            val reason = try {
+                // we don't care about listening channel
+                p2pManager.setWifiP2pChannels(channel, 0, oc) ?: return@launch
+            } catch (e: InvocationTargetException) {
+                if (oc != 0) {
+                    val message = getString(R.string.repeater_set_oc_failure, e.message)
+                    SmartSnackbar.make(message).show()
+                    Timber.w(RuntimeException("Failed to set operating channel $oc", e))
+                } else Timber.w(e)
+                return@launch
             }
-        })
-    } catch (e: InvocationTargetException) {
-        if (oc != 0) {
-            val message = getString(R.string.repeater_set_oc_failure, e.message)
-            SmartSnackbar.make(message).show()
-            Timber.w(RuntimeException("Failed to set operating channel $oc", e))
-        } else Timber.w(e)
+            if (reason == WifiP2pManager.ERROR && Build.VERSION.SDK_INT >= 30) {
+                val rootReason = try {
+                    RootManager.use {
+                        if (deinitPending.getAndSet(false)) it.execute(RepeaterCommands.Deinit())
+                        it.execute(RepeaterCommands.SetChannel(oc))
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e)
+                    SmartSnackbar.make(e).show()
+                    null
+                } ?: return@launch
+                SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, rootReason.value)).show()
+            } else SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
+        } else SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
     }
 
     override fun onChannelDisconnected() {
         channel = null
+        deinitPending.set(true)
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-            if (!safeMode) setOperatingChannel(true)
+            if (!safeMode) setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
             launch(Dispatchers.Main) {
@@ -244,7 +248,11 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (!safeMode) when (key) {
             KEY_OPERATING_CHANNEL -> setOperatingChannel()
-            KEY_SAFE_MODE -> setOperatingChannel(true)
+            KEY_SAFE_MODE -> {
+                deinitPending.set(true)
+                setOperatingChannel()
+                onPersistentGroupsChanged()
+            }
         }
     }
 
@@ -257,27 +265,43 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             null
         } ?: return@launch
         val channel = channel ?: return@launch
+        fun Collection<WifiP2pGroup>.filterUselessGroups(): List<WifiP2pGroup> {
+            if (isNotEmpty()) persistentSupported = true
+            val ownedGroups = filter {
+                if (!it.isGroupOwner) return@filter false
+                val address = MacAddressCompat.fromString(it.owner.deviceAddress)
+                // WifiP2pServiceImpl only removes self address
+                Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
+            }
+            val main = ownedGroups.minBy { it.networkId }
+            // do not replace current group if it's better
+            if (binder.group?.passphrase == null) binder.group = main
+            return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()
+        }
+        fun Int?.print(group: WifiP2pGroup) {
+            if (this == null) Timber.i("Removed redundant owned group: $group")
+            else SmartSnackbar.make(formatReason(R.string.repeater_clean_pog_failure, this)).show()
+        }
+        // we only get empty list on permission denial. Is there a better permission check?
+        if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.READ_WIFI_CREDENTIAL") ==
+                PackageManager.PERMISSION_GRANTED) try {
+            for (group in p2pManager.requestPersistentGroupInfo(channel).filterUselessGroups()) {
+                p2pManager.deletePersistentGroup(channel, group.networkId).print(group)
+            }
+            return@launch
+        } catch (e: ReflectiveOperationException) {
+            Timber.w(e)
+        }
         try {
-            p2pManager.requestPersistentGroupInfo(channel) { groups ->
-                if (groups.isNotEmpty()) persistentSupported = true
-                val ownedGroups = groups.filter {
-                    if (!it.isGroupOwner) return@filter false
-                    val address = MacAddressCompat.fromString(it.owner.deviceAddress)
-                    // WifiP2pServiceImpl only removes self address
-                    Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
-                }
-                val main = ownedGroups.minBy { it.networkId }
-                // do not replace current group if it's better
-                if (binder.group?.passphrase == null) binder.group = main
-                if (main != null) ownedGroups.filter { it.networkId != main.networkId }.forEach {
-                    p2pManager.deletePersistentGroup(channel, it.networkId, object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() = Timber.i("Removed redundant owned group: $it")
-                        override fun onFailure(reason: Int) = SmartSnackbar.make(
-                                formatReason(R.string.repeater_clean_pog_failure, reason)).show()
-                    })
+            RootManager.use { server ->
+                if (deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
+                @Suppress("UNCHECKED_CAST")
+                val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo()).value as List<WifiP2pGroup>
+                for (group in groups.filterUselessGroups()) {
+                    server.execute(RepeaterCommands.DeletePersistentGroup(group.networkId))?.value.print(group)
                 }
             }
-        } catch (e: ReflectiveOperationException) {
+        } catch (e: Exception) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
         }
