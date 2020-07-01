@@ -162,7 +162,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 26) [`Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154947s)
 * (prior to API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
 * [`Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#157883)
-* (prior to API 30) [`Landroid/net/wifi/p2p/WifiP2pManager;->WIFI_P2P_PERSISTENT_GROUPS_CHANGED_ACTION:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#134686)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158332)
 * (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183735)
 * (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272546)
@@ -251,7 +250,6 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * (prior to API 30) [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#155067)
 * [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158079)
 * [`Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;->onPersistentGroupInfoAvailable(Landroid/net/wifi/p2p/WifiP2pGroupList;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158156)
-* (since API 30) [`Landroid/net/wifi/p2p/WifiP2pManager;->ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED:Ljava/lang/String;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158160)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158296)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158320)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158330)
@@ -270,7 +268,6 @@ Nonexported system resources:
 Other:
 
 * (since API 29) `android.net.wifi.p2p.WifiP2pConfig` needs to be parcelized in a very specific order, except for possible extra fields at the end. (used only for safe mode)
-* Broadcast `android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED` is assumed to be sticky.
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000 respectively;

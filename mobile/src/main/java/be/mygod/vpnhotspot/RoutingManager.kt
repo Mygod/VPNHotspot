@@ -48,7 +48,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     /**
      * Both repeater and local-only hotspot are Wi-Fi based.
      */
-    open class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
+    class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
         override fun Routing.configure() {
             ipForward() // local only interfaces need to enable ip_forward
             forward()
@@ -84,10 +84,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    open fun ifaceHandler(iface: NetworkInterface) { }
-
     private fun initRoutingLocked() = try {
-        routing = Routing(caller, downstream, this::ifaceHandler).apply {
+        routing = Routing(caller, downstream).apply {
             try {
                 configure()
             } catch (e: Exception) {

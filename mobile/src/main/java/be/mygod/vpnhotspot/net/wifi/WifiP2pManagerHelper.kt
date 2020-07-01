@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pManager
-import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.callSuper
 import kotlinx.coroutines.CompletableDeferred
@@ -27,9 +26,6 @@ object WifiP2pManagerHelper {
     }
 
     const val UNSUPPORTED = -2
-    val ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED = if (Build.VERSION.SDK_INT >= 30) {
-        "android.net.wifi.p2p.action.WIFI_P2P_PERSISTENT_GROUPS_CHANGED"
-    } else "android.net.wifi.p2p.PERSISTENT_GROUPS_CHANGED"
 
     /**
      * Available since Android 4.4.

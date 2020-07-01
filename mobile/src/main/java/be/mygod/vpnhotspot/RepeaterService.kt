@@ -32,7 +32,6 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
-import java.net.NetworkInterface
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -115,6 +114,57 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
         val groupChanged = StickyEvent1 { group }
 
+        @SuppressLint("NewApi") // networkId is available since Android 4.2
+        suspend fun fetchPersistentGroup() {
+            val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: try {
+                P2pSupplicantConfiguration().apply { init() }.bssid
+            } catch (e: Exception) {
+                Timber.d(e)
+                null
+            } ?: return
+            val channel = channel ?: return
+            fun Collection<WifiP2pGroup>.filterUselessGroups(): List<WifiP2pGroup> {
+                if (isNotEmpty()) persistentSupported = true
+                val ownedGroups = filter {
+                    if (!it.isGroupOwner) return@filter false
+                    val address = MacAddressCompat.fromString(it.owner.deviceAddress)
+                    // WifiP2pServiceImpl only removes self address
+                    Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
+                }
+                val main = ownedGroups.minBy { it.networkId }
+                // do not replace current group if it's better
+                if (binder.group?.passphrase == null) binder.group = main
+                return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()
+            }
+            fun Int?.print(group: WifiP2pGroup) {
+                if (this == null) Timber.i("Removed redundant owned group: $group")
+                else SmartSnackbar.make(formatReason(R.string.repeater_clean_pog_failure, this)).show()
+            }
+            // we only get empty list on permission denial. Is there a better permission check?
+            if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.READ_WIFI_CREDENTIAL") ==
+                    PackageManager.PERMISSION_GRANTED) try {
+                for (group in p2pManager.requestPersistentGroupInfo(channel).filterUselessGroups()) {
+                    p2pManager.deletePersistentGroup(channel, group.networkId).print(group)
+                }
+                return
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+            }
+            try {
+                RootManager.use { server ->
+                    if (deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
+                    @Suppress("UNCHECKED_CAST")
+                    val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo()).value as List<WifiP2pGroup>
+                    for (group in groups.filterUselessGroups()) {
+                        server.execute(RepeaterCommands.DeletePersistentGroup(group.networkId))?.value.print(group)
+                    }
+                }
+            } catch (e: Exception) {
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+            }
+        }
+
         fun startWps(pin: String? = null) {
             val channel = channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
@@ -154,14 +204,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
     }
     private val deviceListener = broadcastReceiver { _, intent ->
-        when (intent.action) {
-            WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION -> {
-                val addr = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)?.deviceAddress
-                if (!addr.isNullOrEmpty() && (Build.VERSION.SDK_INT < 29 ||
-                                MacAddressCompat.fromString(addr) != MacAddressCompat.ANY_ADDRESS)) lastMac = addr
-            }
-            WifiP2pManagerHelper.ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED -> if (!safeMode) onPersistentGroupsChanged()
-        }
+        val addr = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)?.deviceAddress
+        if (!addr.isNullOrEmpty() && (Build.VERSION.SDK_INT < 29 ||
+                        MacAddressCompat.fromString(addr) != MacAddressCompat.ANY_ADDRESS)) lastMac = addr
     }
     /**
      * Writes and critical reads to routingManager should be protected with this context.
@@ -193,8 +238,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onCreate() {
         super.onCreate()
         onChannelDisconnected()
-        registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION,
-                WifiP2pManagerHelper.ACTION_WIFI_P2P_PERSISTENT_GROUPS_CHANGED))
+        registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -251,59 +295,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             KEY_SAFE_MODE -> {
                 deinitPending.set(true)
                 setOperatingChannel()
-                onPersistentGroupsChanged()
             }
-        }
-    }
-
-    @SuppressLint("NewApi") // networkId is available since Android 4.2
-    private fun onPersistentGroupsChanged() = launch {
-        val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: try {
-            P2pSupplicantConfiguration().apply { init() }.bssid
-        } catch (e: Exception) {
-            Timber.d(e)
-            null
-        } ?: return@launch
-        val channel = channel ?: return@launch
-        fun Collection<WifiP2pGroup>.filterUselessGroups(): List<WifiP2pGroup> {
-            if (isNotEmpty()) persistentSupported = true
-            val ownedGroups = filter {
-                if (!it.isGroupOwner) return@filter false
-                val address = MacAddressCompat.fromString(it.owner.deviceAddress)
-                // WifiP2pServiceImpl only removes self address
-                Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
-            }
-            val main = ownedGroups.minBy { it.networkId }
-            // do not replace current group if it's better
-            if (binder.group?.passphrase == null) binder.group = main
-            return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()
-        }
-        fun Int?.print(group: WifiP2pGroup) {
-            if (this == null) Timber.i("Removed redundant owned group: $group")
-            else SmartSnackbar.make(formatReason(R.string.repeater_clean_pog_failure, this)).show()
-        }
-        // we only get empty list on permission denial. Is there a better permission check?
-        if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.READ_WIFI_CREDENTIAL") ==
-                PackageManager.PERMISSION_GRANTED) try {
-            for (group in p2pManager.requestPersistentGroupInfo(channel).filterUselessGroups()) {
-                p2pManager.deletePersistentGroup(channel, group.networkId).print(group)
-            }
-            return@launch
-        } catch (e: ReflectiveOperationException) {
-            Timber.w(e)
-        }
-        try {
-            RootManager.use { server ->
-                if (deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
-                @Suppress("UNCHECKED_CAST")
-                val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo()).value as List<WifiP2pGroup>
-                for (group in groups.filterUselessGroups()) {
-                    server.execute(RepeaterCommands.DeletePersistentGroup(group.networkId))?.value.print(group)
-                }
-            }
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
         }
     }
 
@@ -328,7 +320,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         else -> {
                             Timber.i("Removing old group ($it)")
                             p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                override fun onSuccess() = doStart()
+                                override fun onSuccess() {
+                                    doStart()
+                                }
                                 override fun onFailure(reason: Int) =
                                         startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
                             })
@@ -345,7 +339,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * startService Step 2 (if a group isn't already available)
      */
-    private fun doStart() {
+    private fun doStart() = launch {
         val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
                 startFailure(formatReason(R.string.repeater_create_group_failure, reason),
@@ -353,7 +347,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
             override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
         }
-        val channel = channel ?: return listener.onFailure(WifiP2pManager.BUSY)
+        val channel = channel ?: return@launch listener.onFailure(WifiP2pManager.BUSY)
+        if (!safeMode) binder.fetchPersistentGroup()
         val networkName = networkName
         val passphrase = passphrase
         try {
@@ -431,11 +426,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             persistNextGroup = false
         }
         check(routingManager == null)
-        routingManager = object : RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!) {
-            override fun ifaceHandler(iface: NetworkInterface) {
-                iface.hardwareAddress?.let { lastMac = MacAddressCompat.bytesToString(it) }
-            }
-        }.apply { start() }
+        routingManager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!).apply { start() }
         status = Status.ACTIVE
         showNotification(group)
     }

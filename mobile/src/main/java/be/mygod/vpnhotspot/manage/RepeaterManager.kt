@@ -202,8 +202,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     bssid = RepeaterService.deviceAddress
                 } to false
             }
-        } else {
-            val group = binder?.group
+        } else binder?.let { binder ->
+            val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat.empty().run {
                 ssid = group.networkName
                 securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
