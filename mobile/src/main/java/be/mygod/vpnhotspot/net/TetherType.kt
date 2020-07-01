@@ -42,10 +42,12 @@ enum class TetherType(@DrawableRes val icon: Int) {
         @RequiresApi(30)    // unused on lower APIs
         val listener = Event0()
 
-        private fun Pair<String?, Resources>.getRegexs(name: String) = second
-                .getStringArray(second.getIdentifier(name, "array", first))
-                .filterNotNull()
-                .map { it.toPattern() }
+        private fun Pair<String?, Resources>.getRegexs(name: String) = second.getIdentifier(name, "array", first).let {
+            if (it == 0) {
+                Timber.i("$name is empty")
+                emptyList()
+            } else second.getStringArray(it).filterNotNull().map { it.toPattern() }
+        }
 
         @RequiresApi(30)
         private fun updateRegexs() = synchronized(this) {
