@@ -55,7 +55,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     private sealed class BandOption {
         open val band get() = SoftApConfigurationCompat.BAND_ANY
-        open val channel get() = SoftApConfigurationCompat.CH_INVALID
+        open val channel get() = 0
 
         object BandAny : BandOption() {
             override fun toString() = app.getString(R.string.wifi_ap_choose_auto)

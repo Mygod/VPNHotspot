@@ -14,32 +14,38 @@ import kotlinx.android.parcel.Parcelize
 
 @Parcelize
 data class SoftApConfigurationCompat(
-        var ssid: String?,
-        var securityType: Int,
-        var passphrase: String?,
-        @RequiresApi(23)
-        var band: Int,
-        @RequiresApi(23)
-        var channel: Int,
+        var ssid: String? = null,
         @Deprecated("Workaround for using inline class with Parcelize, use bssid")
-        var bssidAddr: Long?,
-        var maxNumberOfClients: Int,
-        @RequiresApi(28)
-        var shutdownTimeoutMillis: Long,
-        @RequiresApi(28)
-        var isAutoShutdownEnabled: Boolean,
-        var isClientControlByUserEnabled: Boolean,
-        var isHiddenSsid: Boolean,
-        // TODO: WifiClient? nullable?
-        var allowedClientList: List<Parcelable>?,
-        var blockedClientList: List<Parcelable>?,
+        var bssidAddr: Long? = null,
+        var passphrase: String? = null,
+        var isHiddenSsid: Boolean = false,
+        @TargetApi(23)
+        var band: Int = BAND_2GHZ,
+        @TargetApi(23)
+        var channel: Int = 0,
+        @TargetApi(30)
+        var maxNumberOfClients: Int = 0,
+        var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
+        @TargetApi(28)
+        var isAutoShutdownEnabled: Boolean = true,
+        @TargetApi(28)
+        var shutdownTimeoutMillis: Long = 0,
+        @TargetApi(30)
+        var isClientControlByUserEnabled: Boolean = false,
+        @RequiresApi(30)
+        var blockedClientList: List<MacAddress?> = emptyList(),
+        @RequiresApi(30)
+        var allowedClientList: List<MacAddress?> = emptyList(),
         var underlying: Parcelable? = null) : Parcelable {
     companion object {
         const val BAND_2GHZ = 1
         const val BAND_5GHZ = 2
         const val BAND_6GHZ = 4
         const val BAND_ANY = 7
-        const val CH_INVALID = 0
+        /**
+         * [android.net.wifi.WifiConfiguration.KeyMgmt.WPA2_PSK]
+         */
+        private const val LEGACY_WPA2_PSK = 4
 
         // TODO: localize?
         val securityTypes = arrayOf("OPEN", "WPA2-PSK", "WPA3-SAE", "WPA3-SAE Transition mode")
@@ -169,6 +175,18 @@ data class SoftApConfigurationCompat(
         @Suppress("DEPRECATION")
         fun android.net.wifi.WifiConfiguration.toCompat() = SoftApConfigurationCompat(
                 SSID,
+                BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
+                preSharedKey,
+                hiddenSSID,
+                // TODO [android.net.wifi.SoftApConfToXmlMigrationUtil.convertWifiConfigBandToSoftApConfigBand]
+                if (Build.VERSION.SDK_INT >= 23) when (val band = apBand.getInt(this)) {
+                    0 -> BAND_2GHZ
+                    1 -> BAND_5GHZ
+                    -1 -> BAND_2GHZ or BAND_5GHZ
+                    else -> throw IllegalArgumentException("Unexpected band $band")
+                } else BAND_ANY,
+                if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else 0,
+                0,
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
                         "More than 1 key managements supplied: $allowedKeyManagement"
@@ -177,59 +195,43 @@ data class SoftApConfigurationCompat(
                         -1,     // getAuthType returns NONE if nothing is selected
                         android.net.wifi.WifiConfiguration.KeyMgmt.NONE -> SoftApConfiguration.SECURITY_TYPE_OPEN
                         android.net.wifi.WifiConfiguration.KeyMgmt.WPA_PSK,
-                        4,      // WPA2_PSK
+                        LEGACY_WPA2_PSK,
                         11 -> { // WPA_PSK_SHA256
                             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
                         }
                         android.net.wifi.WifiConfiguration.KeyMgmt.SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
-                        // TODO: check source code
                         else -> throw IllegalArgumentException("Unrecognized key management: $allowedKeyManagement")
                     }
                 },
-                preSharedKey,
-                if (Build.VERSION.SDK_INT >= 23) when (val band = apBand.getInt(this)) {
-                    0 -> BAND_2GHZ
-                    1 -> BAND_5GHZ
-                    -1 -> BAND_ANY
-                    else -> throw IllegalArgumentException("Unexpected band $band")
-                } else BAND_ANY,
-                if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else CH_INVALID,    // TODO
-                BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
-                0,  // TODO: unsupported field should have @RequiresApi?
+                if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
                 if (Build.VERSION.SDK_INT >= 28) {
                     TetherTimeoutMonitor.timeout.toLong()
                 } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong(),
-                if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
-                false,  // TODO
-                hiddenSSID,
-                null,
-                null,
-                this)
+                underlying = this)
 
         @RequiresApi(30)
         @Suppress("UNCHECKED_CAST")
         fun SoftApConfiguration.toCompat() = SoftApConfigurationCompat(
                 ssid,
-                securityType,
+                bssid?.toCompat()?.addr,
                 passphrase,
+                isHiddenSsid,
                 getBand(this) as Int,
                 getChannel(this) as Int,
-                bssid?.toCompat()?.addr,
+                securityType,
                 getMaxNumberOfClients(this) as Int,
-                getShutdownTimeoutMillis(this) as Long,
                 isAutoShutdownEnabled(this) as Boolean,
+                getShutdownTimeoutMillis(this) as Long,
                 isClientControlByUserEnabled(this) as Boolean,
-                isHiddenSsid,
-                getAllowedClientList(this) as List<Parcelable>?,
-                getBlockedClientList(this) as List<Parcelable>?,
+                getBlockedClientList(this) as List<MacAddress?>,
+                getAllowedClientList(this) as List<MacAddress?>,
                 this)
 
         fun empty() = SoftApConfigurationCompat(
-                null, SoftApConfiguration.SECURITY_TYPE_OPEN, null, BAND_ANY, CH_INVALID, null, 0,
-                if (Build.VERSION.SDK_INT >= 28) {
+                isAutoShutdownEnabled = if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
+                shutdownTimeoutMillis = if (Build.VERSION.SDK_INT >= 28) {
                     TetherTimeoutMonitor.timeout.toLong()
-                } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong(),
-                if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false, false, false, null, null)
+                } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong())
     }
 
     @Suppress("DEPRECATION")
@@ -243,53 +245,53 @@ data class SoftApConfigurationCompat(
      * Based on:
      * https://android.googlesource.com/platform/packages/apps/Settings/+/android-5.0.0_r1/src/com/android/settings/wifi/WifiApDialog.java#88
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/wifi/tether/WifiTetherSettings.java#162
+     * TODO [SoftApConfiguration.toWifiConfiguration]
      */
     @SuppressLint("NewApi") // https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#1385
-    @Deprecated("Class deprecated in framework")
+    @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
     @Suppress("DEPRECATION")
     fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {
         val wc = underlying as? android.net.wifi.WifiConfiguration
         val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
         val original = wc?.toCompat()
         result.SSID = ssid
+        result.preSharedKey = passphrase
+        result.hiddenSSID = isHiddenSsid
+        if (Build.VERSION.SDK_INT >= 23) {
+            apBand.setInt(result, when (band) {
+                BAND_2GHZ -> 0
+                BAND_5GHZ -> 1
+                BAND_2GHZ or BAND_5GHZ, BAND_ANY -> -1
+                else -> throw IllegalArgumentException("Convert fail, unsupported band setting :$band")
+            })
+            apChannel.setInt(result, channel)
+        } else require(band == BAND_ANY) { "Specifying band is unsupported on this platform" }
         if (original?.securityType != securityType) {
             result.allowedKeyManagement.clear()
             result.allowedKeyManagement.set(when (securityType) {
                 SoftApConfiguration.SECURITY_TYPE_OPEN -> android.net.wifi.WifiConfiguration.KeyMgmt.NONE
                 // not actually used on API 30-
-                SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> android.net.wifi.WifiConfiguration.KeyMgmt.WPA_PSK
+                SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> LEGACY_WPA2_PSK
+                // CHANGED: not actually converted in framework-wifi
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE,
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> android.net.wifi.WifiConfiguration.KeyMgmt.SAE
-                else -> throw IllegalArgumentException("Unsupported securityType $securityType")
+                else -> throw IllegalArgumentException("Convert fail, unsupported security type :$securityType")
             })
             result.allowedAuthAlgorithms.clear()
             result.allowedAuthAlgorithms.set(android.net.wifi.WifiConfiguration.AuthAlgorithm.OPEN)
         }
-        result.preSharedKey = passphrase
-        if (Build.VERSION.SDK_INT >= 23) {
-            apBand.setInt(result, when (band) {
-                BAND_2GHZ -> 0
-                BAND_5GHZ -> 1
-                BAND_ANY -> -1
-                else -> throw IllegalArgumentException("Unsupported band $band")
-            })
-            apChannel.setInt(result, channel)
-        } else require(band == BAND_ANY) { "Specifying band is unsupported on this platform" }
+        // CHANGED: not actually converted in framework-wifi
         if (bssid != original?.bssid) result.BSSID = bssid?.toString()
-        result.hiddenSSID = isHiddenSsid
         return result
     }
 
     @RequiresApi(30)
     fun toPlatform(): SoftApConfiguration {
         val sac = underlying as? SoftApConfiguration
-        // TODO: can we always call copy constructor?
         val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
         setSsid(builder, ssid)
         setPassphrase(builder, passphrase, securityType)
-        // TODO: how to use these?
-//        setBand(builder, band)
-//        setChannel(builder, band, channel)
+        if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
         setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)
