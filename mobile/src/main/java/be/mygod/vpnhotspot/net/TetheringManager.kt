@@ -153,6 +153,14 @@ object TetheringManager {
      */
     @RequiresApi(30)
     const val TETHERING_ETHERNET = 5
+    /**
+     * WIGIG tethering type. Use a separate type to prevent
+     * conflicts with TETHERING_WIFI
+     * This type is only used internally by the tethering module
+     * @hide
+     */
+    @RequiresApi(30)
+    const val TETHERING_WIGIG = 6
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }

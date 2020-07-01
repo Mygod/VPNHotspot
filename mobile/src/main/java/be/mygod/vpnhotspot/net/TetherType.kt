@@ -20,16 +20,18 @@ enum class TetherType(@DrawableRes val icon: Int) {
     // if you have an issue with these Ethernet icon namings, blame Google
     NCM(R.drawable.ic_action_settings_ethernet),
     ETHERNET(R.drawable.ic_content_inbox),
+    WIGIG(R.drawable.ic_image_flash_on),
     ;
 
     val isWifi get() = when (this) {
-        WIFI_P2P, WIFI, WIMAX -> true
+        WIFI_P2P, WIFI, WIMAX, WIGIG -> true
         else -> false
     }
 
     companion object : TetheringManager.TetheringEventCallback {
         private lateinit var usbRegexs: List<Pattern>
         private lateinit var wifiRegexs: List<Pattern>
+        private var wigigRegexs = emptyList<Pattern>()
         private var wifiP2pRegexs = emptyList<Pattern>()
         private val wimaxRegexs: List<Pattern>
         private lateinit var bluetoothRegexs: List<Pattern>
@@ -54,6 +56,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
                     TetheringManager.resolvedService.serviceInfo.applicationInfo)
             usbRegexs = tethering.getRegexs("config_tether_usb_regexs")
             wifiRegexs = tethering.getRegexs("config_tether_wifi_regexs")
+            wigigRegexs = tethering.getRegexs("config_tether_wigig_regexs")
             wifiP2pRegexs = tethering.getRegexs("config_tether_wifi_p2p_regexs")
             bluetoothRegexs = tethering.getRegexs("config_tether_bluetooth_regexs")
             ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs")
@@ -100,6 +103,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
                 ofInterfaceImpl(iface, p2pDev)
             }
             wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
+            wigigRegexs.any { it.matcher(iface).matches() } -> WIGIG
             wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
             usbRegexs.any { it.matcher(iface).matches() } -> USB
             bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH

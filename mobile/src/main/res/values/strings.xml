@@ -65,6 +65,7 @@
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
+    <string name="tethering_manage_wigig">WiGig tethering</string>
 
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>

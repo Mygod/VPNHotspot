@@ -150,6 +150,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 
 * [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144306)
 * (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148899)
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIGIG:I`
 * (prior to API 30) [`Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA_PSK_SHA256:I,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153936)
 * (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->AP_BAND_2GHZ:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154057)
 * (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->AP_BAND_5GHZ:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154058)
@@ -262,6 +263,7 @@ Nonexported system resources:
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_usb_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_p2p_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
+* (since API 30) `@com.android.networkstack.tethering:array/config_tether_wigig_regexs`
 
 Other:
 

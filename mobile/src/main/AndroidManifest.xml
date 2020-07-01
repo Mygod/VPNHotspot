@@ -178,6 +178,18 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
         </service>
+        <service
+            android:name=".manage.TetheringTileService$WiGig"
+            android:directBootAware="true"
+            android:enabled="@bool/api_ge_30"
+            android:icon="@drawable/ic_image_flash_on"
+            android:label="@string/tethering_manage_wigig"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            tools:targetApi="30">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!--suppress DeprecatedClassUsageInspection -->
         <service
             android:name=".manage.TetheringTileService$WifiLegacy"

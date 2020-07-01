@@ -226,6 +226,14 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
+    @RequiresApi(30)
+    class WiGig : TetheringTileService() {
+        override val labelString get() = R.string.tethering_manage_wigig
+        override val tetherType get() = TetherType.WIGIG
+
+        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIGIG, true, this)
+        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIGIG, this::onException)
+    }
 
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 25")
