@@ -244,19 +244,19 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
     override fun onBind(intent: Intent) = binder
 
-    private fun setOperatingChannel(oc: Int = operatingChannel) {
+    private suspend fun setOperatingChannel(oc: Int = operatingChannel) {
         val channel = channel
-        if (channel != null) launch(start = CoroutineStart.UNDISPATCHED) {
+        if (channel != null) {
             val reason = try {
                 // we don't care about listening channel
-                p2pManager.setWifiP2pChannels(channel, 0, oc) ?: return@launch
+                p2pManager.setWifiP2pChannels(channel, 0, oc) ?: return
             } catch (e: InvocationTargetException) {
                 if (oc != 0) {
                     val message = getString(R.string.repeater_set_oc_failure, e.message)
                     SmartSnackbar.make(message).show()
                     Timber.w(RuntimeException("Failed to set operating channel $oc", e))
                 } else Timber.w(e)
-                return@launch
+                return
             }
             if (reason == WifiP2pManager.ERROR && Build.VERSION.SDK_INT >= 30) {
                 val rootReason = try {
@@ -268,7 +268,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     Timber.w(e)
                     SmartSnackbar.make(e).show()
                     null
-                } ?: return@launch
+                } ?: return
                 SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, rootReason.value)).show()
             } else SmartSnackbar.make(formatReason(R.string.repeater_set_oc_failure, reason)).show()
         } else SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
@@ -279,7 +279,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         deinitPending.set(true)
         if (status != Status.DESTROYED) try {
             channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
-            if (!safeMode) setOperatingChannel()
         } catch (e: RuntimeException) {
             Timber.w(e)
             launch(Dispatchers.Main) {
@@ -291,11 +290,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         if (!safeMode) when (key) {
-            KEY_OPERATING_CHANNEL -> setOperatingChannel()
-            KEY_SAFE_MODE -> {
-                deinitPending.set(true)
-                setOperatingChannel()
-            }
+            KEY_OPERATING_CHANNEL -> launch { setOperatingChannel() }
+            KEY_SAFE_MODE -> deinitPending.set(true)
         }
     }
 
@@ -348,7 +344,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
         }
         val channel = channel ?: return@launch listener.onFailure(WifiP2pManager.BUSY)
-        if (!safeMode) binder.fetchPersistentGroup()
+        if (!safeMode) {
+            binder.fetchPersistentGroup()
+            setOperatingChannel()
+        }
         val networkName = networkName
         val passphrase = passphrase
         try {
