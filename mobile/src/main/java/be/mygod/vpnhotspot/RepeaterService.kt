@@ -41,7 +41,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         const val KEY_SAFE_MODE = "service.repeater.safeMode"
-        private const val KEY_LAST_MAC = "service.repeater.lastMac"
+        private const val KEY_LAST_MAC = "service.repeater.lastMac.v2"
 
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
