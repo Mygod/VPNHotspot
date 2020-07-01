@@ -206,7 +206,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             override fun onFailure(reason: Int) {
                 if (reason == WifiP2pManager.ERROR && Build.VERSION.SDK_INT >= 30) launch(start = CoroutineStart.UNDISPATCHED) {
                     val rootReason = try {
-                        RootManager.use { it.execute(RepeaterCommands.SetChannel(oc, forceReinit)) }
+                        RootManager.use {
+                            if (forceReinit) it.execute(RepeaterCommands.Deinit())
+                            it.execute(RepeaterCommands.SetChannel(oc))
+                        }
                     } catch (e: Exception) {
                         Timber.w(e)
                         SmartSnackbar.make(e).show()

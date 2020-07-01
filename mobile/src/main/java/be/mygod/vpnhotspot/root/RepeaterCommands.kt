@@ -18,9 +18,16 @@ import java.io.File
 
 object RepeaterCommands {
     @Parcelize
-    class SetChannel(private val oc: Int, private val forceReinit: Boolean = false) : RootCommand<ParcelableInt?> {
+    class Deinit : RootCommandNoResult {
+        override suspend fun execute(): Parcelable? {
+            channel = null
+            return null
+        }
+    }
+
+    @Parcelize
+    class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
-            if (forceReinit) channel = null
             val uninitializer = object : WifiP2pManager.ChannelListener {
                 var target: WifiP2pManager.Channel? = null
                 override fun onChannelDisconnected() {
