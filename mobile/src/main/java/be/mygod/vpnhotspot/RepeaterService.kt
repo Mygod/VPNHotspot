@@ -11,7 +11,6 @@ import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
-import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
 import be.mygod.librootkotlinx.useParcel
@@ -162,7 +161,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 RootManager.use { server ->
                     if (deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
                     @Suppress("UNCHECKED_CAST")
-                    val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo()).value as List<WifiP2pGroup>
+                    val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo())
+                            .value as List<WifiP2pGroup>
                     for (group in groups.filterUselessGroups()) {
                         server.execute(RepeaterCommands.DeletePersistentGroup(group.networkId))?.value.print(group)
                     }

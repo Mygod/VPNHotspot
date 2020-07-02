@@ -9,7 +9,6 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
-import java.net.NetworkInterface
 
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val forceWifi: Boolean = false) {
     companion object {
@@ -17,8 +16,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         var masqueradeMode: Routing.MasqueradeMode
             @TargetApi(28) get() = app.pref.run {
                 getString(KEY_MASQUERADE_MODE, null)?.let { return@run Routing.MasqueradeMode.valueOf(it) }
-                if (getBoolean("service.masquerade", true)) // legacy settings
-                    Routing.MasqueradeMode.Simple else Routing.MasqueradeMode.None
+                if (getBoolean("service.masquerade", true)) {   // legacy settings
+                    Routing.MasqueradeMode.Simple
+                } else Routing.MasqueradeMode.None
             }.let {
                 // older app version enabled netd for everyone. should check again here
                 if (Build.VERSION.SDK_INT >= 28 || it != Routing.MasqueradeMode.Netd) it

@@ -7,9 +7,7 @@ import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
-import be.mygod.vpnhotspot.App
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.Services
 
