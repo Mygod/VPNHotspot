@@ -6,7 +6,6 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.wifi.SoftApConfiguration
-import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
 import android.os.Bundle
@@ -188,22 +187,26 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
             if (networkName != null && passphrase != null) {
-                return SoftApConfigurationCompat().apply {
-                    ssid = networkName
-                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
-                    this.passphrase = passphrase
-                    band = RepeaterService.operatingBand
-                    channel = RepeaterService.operatingChannel
+                return SoftApConfigurationCompat(
+                        ssid = networkName,
+                        passphrase = passphrase,
+                        band = RepeaterService.operatingBand,
+                        channel = RepeaterService.operatingChannel,
+                        securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                        isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
+                        shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).apply {
                     bssid = RepeaterService.deviceAddress
                 } to false
             }
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
-            if (group != null) return SoftApConfigurationCompat().run {
-                ssid = group.networkName
-                securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
-                band = SoftApConfigurationCompat.BAND_ANY
-                channel = RepeaterService.operatingChannel
+            if (group != null) return SoftApConfigurationCompat(
+                    ssid = group.networkName,
+                    channel = RepeaterService.operatingChannel,
+                    band = SoftApConfigurationCompat.BAND_ANY,
+                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                    isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
+                    shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
                 try {
                     val config = P2pSupplicantConfiguration(group)
                     config.init(RepeaterService.lastMac)
@@ -225,6 +228,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     private suspend fun updateConfiguration(config: SoftApConfigurationCompat) {
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.ssid
+            RepeaterService.deviceAddress = config.bssid
             RepeaterService.passphrase = config.passphrase
             RepeaterService.operatingBand = config.band
         } else holder.config?.let { master ->
@@ -240,6 +244,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             holder.config = null
         }
         RepeaterService.operatingChannel = config.channel
-        RepeaterService.deviceAddress = config.bssid
+        RepeaterService.isAutoShutdownEnabled = config.isAutoShutdownEnabled
+        RepeaterService.shutdownTimeoutMillis = config.shutdownTimeoutMillis
     }
 }

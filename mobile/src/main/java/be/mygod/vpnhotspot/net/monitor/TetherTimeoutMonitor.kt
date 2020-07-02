@@ -62,6 +62,10 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
     private var noClient = true
     private var timeoutJob: Job? = null
 
+    init {
+        onClientsChanged(true)
+    }
+
     override fun close() {
         timeoutJob?.cancel()
         timeoutJob = null
