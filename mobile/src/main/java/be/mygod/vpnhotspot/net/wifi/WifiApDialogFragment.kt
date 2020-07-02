@@ -155,8 +155,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     if (RepeaterService.safeMode) {
                         add(BandOption.Band2GHz)
                         add(BandOption.Band5GHz)
-                    }
-                    addAll(p2pChannels)
+                        addAll(channels)
+                    } else addAll(p2pChannels)
                 } else {
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
