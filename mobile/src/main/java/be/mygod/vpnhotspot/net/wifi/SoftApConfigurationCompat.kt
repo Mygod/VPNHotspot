@@ -53,17 +53,35 @@ data class SoftApConfigurationCompat(
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
         /**
-         * The frequency which AP resides on (MHz). Resides in range [2412, 5815].
+         * Based on:
+         * https://elixir.bootlin.com/linux/v5.7.6/source/net/wireless/util.c#L75
+         * TODO [com.android.server.wifi.util.ApConfigUtil]
          */
-        fun channelToFrequency(channel: Int) = when (channel) {
-            in 1..14 -> 2407 + 5 * channel
-            in 15..165 -> 5000 + 5 * channel
-            else -> throw IllegalArgumentException("Invalid channel $channel")
+        fun channelToFrequency(band: Int, chan: Int) = when (band) {
+            BAND_2GHZ -> when (chan) {
+                14 -> 2484
+                in 1 until 14 -> 2407 + chan * 5
+                else -> throw IllegalArgumentException("Invalid 2GHz channel $chan")
+            }
+            BAND_5GHZ -> when (chan) {
+                in 182..196 -> 4000 + chan * 5
+                in 1..Int.MAX_VALUE -> 5000 + chan * 5
+                else -> throw IllegalArgumentException("Invalid 5GHz channel $chan")
+            }
+            BAND_6GHZ -> if (chan in 1..253) {
+                5940 + chan * 5
+            } else throw IllegalArgumentException("Invalid 6GHz channel $chan")
+            // BAND_60GHZ -> if (chan in 1 until 7) 56160 + chan * 2160
+            else -> throw IllegalArgumentException("Invalid band $band")
         }
-        fun frequencyToChannel(frequency: Int) = when (frequency % 5) {
-            2 -> ((frequency - 2407) / 5).also { check(it in 1..14) { "Invalid 2.4 GHz frequency $frequency" } }
-            0 -> ((frequency - 5000) / 5).also { check(it in 15..165) { "Invalid 5 GHz frequency $frequency" } }
-            else -> throw IllegalArgumentException("Invalid frequency $frequency")
+        fun frequencyToChannel(freq: Int) = when (freq) {
+            2484 -> 14
+            in Int.MIN_VALUE until 2484 -> (freq - 2407) / 5
+            in 4910..4980 -> (freq - 4000) / 5
+            in Int.MIN_VALUE until 5945 -> (freq - 5000) / 5
+            in Int.MIN_VALUE..45000 -> (freq - 5940) / 5
+            in 58320..70200 -> (freq - 56160) / 2160
+            else -> throw IllegalArgumentException("Invalid frequency $freq")
         }
 
         /**

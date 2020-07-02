@@ -41,7 +41,24 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         Toolbar.OnMenuItemClickListener {
     companion object {
         private const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
-        private val channels by lazy { (1..165).map { BandOption.Channel(it) } }
+        private val channels by lazy {
+            val list = ArrayList<BandOption.Channel>()
+            for (chan in 1..14) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_2GHZ, chan))
+            for (chan in 1..196) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_5GHZ, chan))
+            if (Build.VERSION.SDK_INT >= 30) {
+                for (chan in 1..253) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_6GHZ, chan))
+            }
+            list
+        }
+        /**
+         * Source: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/c2fc6a1/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHal.java#1396
+         */
+        private val p2pChannels by lazy {
+            (1..165).map {
+                val band = if (it <= 14) SoftApConfigurationCompat.BAND_2GHZ else SoftApConfigurationCompat.BAND_5GHZ
+                BandOption.Channel(band, it)
+            }
+        }
     }
 
     @Parcelize
@@ -73,8 +90,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             override val band get() = SoftApConfigurationCompat.BAND_6GHZ
             override fun toString() = app.getString(R.string.wifi_ap_choose_6G)
         }
-        class Channel(override val channel: Int) : BandOption() {
-            override fun toString() = "${SoftApConfigurationCompat.channelToFrequency(channel)} MHz ($channel)"
+        class Channel(override val band: Int, override val channel: Int) : BandOption() {
+            override fun toString() = "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
         }
     }
 
@@ -132,13 +149,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                         add(BandOption.Band2GHz)
                         add(BandOption.Band5GHz)
                     }
+                    addAll(p2pChannels)
                 } else {
                     if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
                     add(BandOption.Band2GHz)
                     add(BandOption.Band5GHz)
                     if (Build.VERSION.SDK_INT >= 30) add(BandOption.Band6GHz)
+                    addAll(channels)
                 }
-                addAll(channels)
             }
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, bandOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)

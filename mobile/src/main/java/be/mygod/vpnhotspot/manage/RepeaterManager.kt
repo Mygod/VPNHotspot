@@ -192,12 +192,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     ssid = networkName
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
                     this.passphrase = passphrase
-                    band = when (RepeaterService.operatingBand) {
-                        WifiP2pConfig.GROUP_OWNER_BAND_AUTO -> SoftApConfigurationCompat.BAND_ANY
-                        WifiP2pConfig.GROUP_OWNER_BAND_2GHZ -> SoftApConfigurationCompat.BAND_2GHZ
-                        WifiP2pConfig.GROUP_OWNER_BAND_5GHZ -> SoftApConfigurationCompat.BAND_5GHZ
-                        else -> throw IllegalArgumentException("Unknown operatingBand")
-                    }
+                    band = RepeaterService.operatingBand
                     channel = RepeaterService.operatingChannel
                     bssid = RepeaterService.deviceAddress
                 } to false
@@ -231,12 +226,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.ssid
             RepeaterService.passphrase = config.passphrase
-            RepeaterService.operatingBand = when (config.band) {
-                SoftApConfigurationCompat.BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
-                SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                else -> throw IllegalArgumentException("Unknown band")
-            }
+            RepeaterService.operatingBand = config.band
         } else holder.config?.let { master ->
             val binder = binder
             if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase ||
