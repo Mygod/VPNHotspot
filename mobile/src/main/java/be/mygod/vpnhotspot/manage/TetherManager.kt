@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.annotation.TargetApi
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
@@ -18,6 +19,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
@@ -67,7 +69,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     inner class Data : be.mygod.vpnhotspot.manage.Data() {
         override val icon get() = tetherType.icon
         override val title get() = this@TetherManager.title
-        override var text: CharSequence = ""
+        override val text get() = error
         override val active get() = isStarted
     }
 
@@ -75,6 +77,10 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     abstract val title: CharSequence
     abstract val tetherType: TetherType
     open val isStarted get() = parent.enabledTypes.contains(tetherType)
+    protected open val error: CharSequence get() = baseError ?: ""
+
+    protected var baseError: String? = null
+        private set
 
     protected abstract fun start()
     protected abstract fun stop()
@@ -98,27 +104,53 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         (viewHolder as ViewHolder).manager = this
     }
 
-    private fun getErrorMessage(iface: String): String {
-        return TetheringManager.tetherErrorMessage(try {
-            TetheringManager.getLastTetherError(iface)
-        } catch (e: InvocationTargetException) {
-            if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
-            return e.readableMessage
-        })
-    }
-    protected open fun makeErrorMessage(errored: List<String>): CharSequence = errored
-            .filter { TetherType.ofInterface(it) == tetherType }
-            .joinToString("\n") { "$it: ${getErrorMessage(it)}" }
     fun updateErrorMessage(errored: List<String>) {
-        data.text = makeErrorMessage(errored)
-        data.notifyChange()
+        val interested = errored.filter { TetherType.ofInterface(it) == tetherType }
+        baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
+            "$iface: " + try {
+                TetheringManager.tetherErrorMessage(TetheringManager.getLastTetherError(iface))
+            } catch (e: InvocationTargetException) {
+                if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
+                e.readableMessage
+            }
+        }
     }
 
     @RequiresApi(24)
-    class Wifi(parent: TetheringFragment) : TetherManager(parent) {
+    class Wifi(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver,
+            WifiApManager.SoftApCallbackCompat {
+        private var failureReason: Int? = null
+
+        init {
+            if (Build.VERSION.SDK_INT >= 28) parent.viewLifecycleOwner.lifecycle.addObserver(this)
+        }
+
+        @TargetApi(28)
+        override fun onStart(owner: LifecycleOwner) {
+            WifiApCommands.registerSoftApCallback(this)
+        }
+        @TargetApi(28)
+        override fun onStop(owner: LifecycleOwner) {
+            WifiApCommands.unregisterSoftApCallback(this)
+        }
+
+        override fun onStateChanged(state: Int, failureReason: Int) {
+            if (state < 10 || state > 14) {
+                Timber.w(Exception("Unknown state $state"))
+                return
+            }
+            val newReason = if (state == 14) failureReason else null
+            if (this.failureReason != newReason) {
+                this.failureReason = newReason
+                data.notifyChange()
+            }
+        }
+
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
+        override val error get() = listOfNotNull(failureReason?.let { WifiApManager.failureReason(it) },
+                baseError).joinToString("\n")
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
@@ -134,10 +166,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
-        private val tethering = BluetoothTethering(parent.requireContext()) {
-            data.text = makeErrorMessage()
-            data.notifyChange()
-        }
+        private val tethering = BluetoothTethering(parent.requireContext()) { data.notifyChange() }
 
         init {
             parent.viewLifecycleOwner.lifecycle.addObserver(this)
@@ -149,15 +178,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.BLUETOOTH
         override val type get() = VIEW_TYPE_BLUETOOTH
         override val isStarted get() = tethering.active == true
-
-        private var baseError: CharSequence? = null
-        private fun makeErrorMessage(): CharSequence = listOfNotNull(
+        override val error get() = listOfNotNull(
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
                 baseError).joinToString("\n")
-        override fun makeErrorMessage(errored: List<String>): CharSequence {
-            baseError = super.makeErrorMessage(errored).let { if (it.isEmpty()) null else it }
-            return makeErrorMessage()
-        }
 
         override fun start() = BluetoothTethering.start(this)
         override fun stop() {

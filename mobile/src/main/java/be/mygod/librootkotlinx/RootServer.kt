@@ -15,7 +15,6 @@ import kotlinx.coroutines.channels.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
-import java.lang.ref.WeakReference
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
@@ -191,6 +190,9 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             }
             try {
                 callbackSpin()
+            } catch (e: Throwable) {
+                process.destroy()
+                throw e
             } finally {
                 if (DEBUG) Log.d(TAG, "Waiting for exit")
                 process.waitFor()
@@ -270,9 +272,13 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         if (active) {
             active = false
             if (DEBUG) Log.d(TAG, "Shutting down from client")
-            sendLocked(Shutdown())
-            output.close()
-            process.outputStream.close()
+            try {
+                sendLocked(Shutdown())
+                output.close()
+                process.outputStream.close()
+            } catch (e: IOException) {
+                Log.i(TAG, "send Shutdown failed", e)
+            }
             if (DEBUG) Log.d(TAG, "Client closed")
         }
         if (fromWorker) {
@@ -375,7 +381,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 CoroutineScope(Dispatchers.Main.immediate + job)
             }
             val callbackWorker = newSingleThreadContext("callbackWorker")
-            val channels = LongSparseArray<WeakReference<ReceiveChannel<Parcelable?>>>()
+            val channels = LongSparseArray<ReceiveChannel<Parcelable?>>()
 
             // thread safety: usage of output should be guarded by callbackWorker
             val output = DataOutputStream(System.out.buffered().apply {
@@ -396,7 +402,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 val callback = counter
                 if (DEBUG) Log.d(TAG, "Received #$callback: $command")
                 when (command) {
-                    is ChannelClosed -> channels[command.index]?.get()?.cancel()
+                    is ChannelClosed -> channels[command.index]?.cancel()
                     is RootCommandOneWay -> defaultWorker.launch {
                         try {
                             command.execute()
@@ -415,10 +421,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                     }
                     is RootCommandChannel<*> -> defaultWorker.launch {
                         val result = try {
-                            command.create(defaultWorker).also {
-                                channels[callback] = WeakReference(it)
-                            }.consumeEach { result ->
-                                withContext(callbackWorker) { output.pushResult(callback, result) }
+                            coroutineScope {
+                                command.create(this).also { channels[callback] = it }.consumeEach { result ->
+                                    withContext(callbackWorker) { output.pushResult(callback, result) }
+                                }
                             };
                             @Suppress("BlockingMethodInNonBlockingContext") {
                                 output.writeByte(CHANNEL_CONSUMED)

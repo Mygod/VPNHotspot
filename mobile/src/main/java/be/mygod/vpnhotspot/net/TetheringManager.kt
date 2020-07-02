@@ -18,10 +18,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.StartTethering
 import be.mygod.vpnhotspot.root.StopTethering
-import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.broadcastReceiver
-import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import be.mygod.vpnhotspot.util.*
 import com.android.dx.stock.ProxyBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -224,8 +221,6 @@ object TetheringManager {
     }
     @get:RequiresApi(30)
     private val stopTethering by lazy { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
-
-    private fun Handler?.makeExecutor() = Executor { if (this == null) it.run() else post(it) }
 
     @Deprecated("Legacy API")
     @RequiresApi(24)

@@ -33,6 +33,7 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -188,6 +189,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                         if (e.targetException !is SecurityException) Timber.w(e)
                         try {
                             RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }
+                        } catch (_: CancellationException) {
+                            null
                         } catch (eRoot: Exception) {
                             eRoot.addSuppressed(e)
                             Timber.w(eRoot)
@@ -216,6 +219,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 } catch (e: InvocationTargetException) {
                     try {
                         RootManager.use { it.execute(WifiApCommands.SetConfiguration(ret!!.configuration)) }
+                    } catch (_: CancellationException) {
                     } catch (eRoot: Exception) {
                         eRoot.addSuppressed(e)
                         Timber.w(eRoot)

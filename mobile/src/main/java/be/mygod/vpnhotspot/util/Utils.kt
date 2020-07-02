@@ -5,6 +5,7 @@ import android.annotation.TargetApi
 import android.content.*
 import android.net.InetAddresses
 import android.os.Build
+import android.os.Handler
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -28,6 +29,7 @@ import java.lang.reflect.Method
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
+import java.util.concurrent.Executor
 
 val Throwable.readableMessage: String get() = if (this is InvocationTargetException) {
     targetException.readableMessage
@@ -48,6 +50,8 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
         unregisterReceiver(receiver)
     } catch (_: IllegalArgumentException) { }
 }
+
+fun Handler?.makeExecutor() = Executor { if (this == null) it.run() else post(it) }
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
     if (!manager.isStateSaved) show(manager, tag)

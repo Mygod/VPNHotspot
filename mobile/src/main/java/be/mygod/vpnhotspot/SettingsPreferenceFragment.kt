@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
@@ -24,6 +25,7 @@ import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -48,10 +50,11 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             if (Build.VERSION.SDK_INT >= 27) {
                 isChecked = TetherOffloadManager.enabled
                 setOnPreferenceChangeListener { _, newValue ->
-                    if (TetherOffloadManager.enabled != newValue) GlobalScope.launch(Dispatchers.Main.immediate) {
+                    if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                         isEnabled = false
                         try {
                             TetherOffloadManager.setEnabled(newValue as Boolean)
+                        } catch (_: CancellationException) {
                         } catch (e: Exception) {
                             Timber.w(e)
                             SmartSnackbar.make(e).show()

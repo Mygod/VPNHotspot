@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.root
 
 import android.os.Parcelable
+import android.util.Log
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
@@ -16,6 +17,16 @@ object RootManager : RootSession() {
     class RootInit : RootCommandNoResult {
         override suspend fun execute(): Parcelable? {
             RootServer.DEBUG = BuildConfig.DEBUG
+            Timber.plant(object : Timber.DebugTree() {
+                override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+                    if (t == null) {
+                        Log.println(priority, tag, message)
+                    } else {
+                        Log.println(priority, tag, message)
+                        Log.d(tag, message, t)
+                    }
+                }
+            })
             Services.init(RootJava.getSystemContext())
             return null
         }

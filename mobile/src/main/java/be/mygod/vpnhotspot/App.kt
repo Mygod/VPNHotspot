@@ -66,7 +66,10 @@ class App : Application() {
                     if (priority != Log.DEBUG || BuildConfig.DEBUG) Log.println(priority, tag, message)
                     FirebaseCrashlytics.getInstance().log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
                 } else {
-                    if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
+                    if (priority >= Log.WARN || priority == Log.DEBUG) {
+                        Log.println(priority, tag, message)
+                        Log.d(tag, message, t)
+                    }
                     if (priority >= Log.INFO && t !is NoShellException) {
                         FirebaseCrashlytics.getInstance().recordException(t)
                     }
