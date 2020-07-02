@@ -93,6 +93,31 @@
                     android:maxLength="63"
                     android:imeOptions="flagForceAscii" />
             </com.google.android.material.textfield.TextInputLayout>
+            <Switch
+                android:id="@+id/auto_shutdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                style="@style/wifi_item_label"
+                android:text="Turn off hotspot automatically when no devices are connected"/>
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/timeout_wrapper"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:hint="Inactive timeout"
+                app:counterEnabled="true"
+                app:counterMaxLength="19"
+                app:errorEnabled="true"
+                app:suffixText="ms">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/timeout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_edit_content"
+                    android:inputType="number"
+                    android:maxLength="19" />
+            </com.google.android.material.textfield.TextInputLayout>
             <LinearLayout
                 android:id="@+id/band_wrapper"
                 android:layout_width="match_parent"

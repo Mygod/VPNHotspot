@@ -54,7 +54,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val dispatcher = newSingleThreadContext("LocalOnlyHotspotService")
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
-    @RequiresApi(28)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -86,8 +85,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                     if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
                         if (!receiverRegistered) {
-                            if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(
-                                    this@LocalOnlyHotspotService, reservation::close)
+                            val configuration = binder.configuration!!
+                            if (Build.VERSION.SDK_INT < 30 && configuration.isAutoShutdownEnabled) {
+                                timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis,
+                                        coroutineContext) { reservation.close() }
+                            }
                             registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
                             receiverRegistered = true
                         }

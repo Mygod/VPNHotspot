@@ -47,6 +47,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
         private const val KEY_OPERATING_BAND = "service.repeater.band.v2"
         private const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+        private const val KEY_AUTO_SHUTDOWN = "service.repeater.autoShutdown"
+        private const val KEY_SHUTDOWN_TIMEOUT = "service.repeater.shutdownTimeout"
         private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"
         /**
          * Placeholder for bypassing networkName check.
@@ -83,6 +85,12 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 return if (result > 0) result else 0
             }
             set(value) = app.pref.edit { putString(KEY_OPERATING_CHANNEL, value.toString()) }
+        var isAutoShutdownEnabled: Boolean
+            get() = app.pref.getBoolean(KEY_AUTO_SHUTDOWN, false)
+            set(value) = app.pref.edit { putBoolean(KEY_AUTO_SHUTDOWN, value) }
+        var shutdownTimeoutMillis: Long
+            get() = app.pref.getLong(KEY_SHUTDOWN_TIMEOUT, 0)
+            set(value) = app.pref.edit { putLong(KEY_SHUTDOWN_TIMEOUT, value) }
         var deviceAddress: MacAddressCompat?
             get() = try {
                 MacAddressCompat(app.pref.getLong(KEY_DEVICE_ADDRESS, MacAddressCompat.ANY_ADDRESS.addr)).run {
@@ -190,7 +198,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private val p2pManager get() = Services.p2p!!
     private var channel: WifiP2pManager.Channel? = null
     private val binder = Binder()
-    @RequiresApi(28)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -422,7 +429,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      * startService Step 3
      */
     private fun doStartLocked(group: WifiP2pGroup) {
-        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor = TetherTimeoutMonitor(this, binder::shutdown)
+        if (isAutoShutdownEnabled) timeoutMonitor = TetherTimeoutMonitor(shutdownTimeoutMillis, coroutineContext) {
+            binder.shutdown()
+        }
         binder.group = group
         if (persistNextGroup) {
             networkName = group.networkName

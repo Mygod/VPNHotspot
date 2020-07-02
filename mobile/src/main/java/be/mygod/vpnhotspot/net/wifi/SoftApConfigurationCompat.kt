@@ -222,9 +222,6 @@ data class SoftApConfigurationCompat(
                     }
                 },
                 if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
-                if (Build.VERSION.SDK_INT >= 28) {
-                    TetherTimeoutMonitor.timeout.toLong()
-                } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong(),
                 underlying = this)
 
         @RequiresApi(30)
@@ -244,12 +241,6 @@ data class SoftApConfigurationCompat(
                 getBlockedClientList(this) as List<MacAddress?>,
                 getAllowedClientList(this) as List<MacAddress?>,
                 this)
-
-        fun empty() = SoftApConfigurationCompat(
-                isAutoShutdownEnabled = if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
-                shutdownTimeoutMillis = if (Build.VERSION.SDK_INT >= 28) {
-                    TetherTimeoutMonitor.timeout.toLong()
-                } else TetherTimeoutMonitor.MIN_SOFT_AP_TIMEOUT_DELAY_MS.toLong())
     }
 
     @Suppress("DEPRECATION")

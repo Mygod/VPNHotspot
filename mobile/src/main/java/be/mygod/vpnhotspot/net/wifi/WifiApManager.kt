@@ -44,7 +44,7 @@ object WifiApManager {
      */
     val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
         (getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
-                ?: SoftApConfigurationCompat.empty()
+                ?: SoftApConfigurationCompat()
     } else (getSoftApConfiguration(Services.wifi) as SoftApConfiguration).toCompat()
     fun setConfiguration(value: SoftApConfigurationCompat) = (if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
         setWifiApConfiguration(Services.wifi, value.toWifiConfiguration())

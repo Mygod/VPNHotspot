@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
 import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
@@ -109,6 +110,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             isHiddenSsid = dialogView.hiddenSsid.isChecked
         }
         if (full) {
+            isAutoShutdownEnabled = dialogView.autoShutdown.isChecked
+            shutdownTimeoutMillis = dialogView.timeout.text.let { text ->
+                if (text.isNullOrEmpty()) 0 else text.toString().toLong()
+            }
             val bandOption = dialogView.band.selectedItem as BandOption
             band = bandOption.band
             channel = bandOption.channel
@@ -141,6 +146,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
+        dialogView.timeoutWrapper.helperText = "Default timeout: ${TetherTimeoutMonitor.defaultTimeout}ms"
+        if (!arg.readOnly) dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {
             bandOptions = mutableListOf<BandOption>().apply {
                 if (arg.p2pMode) {
@@ -172,6 +179,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.ssid.setText(base.ssid)
         if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
         dialogView.password.setText(base.passphrase)
+        dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
+        dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it == 0L) "" else it.toString() })
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
             dialogView.band.setSelection(if (base.channel in 1..165) {
                 bandOptions.indexOfFirst { it.channel == base.channel }
@@ -208,6 +217,15 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else {
             requireContext().getString(R.string.credentials_password_too_short)
         }
+        val timeoutError = dialogView.timeout.text.let { text ->
+            if (text.isNullOrEmpty()) null else try {
+                text.toString().toLong()
+                null
+            } catch (e: NumberFormatException) {
+                e.readableMessage
+            }
+        }
+        dialogView.timeoutWrapper.error = timeoutError
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
             MacAddressCompat.fromString(dialogView.bssid.text.toString())
@@ -217,8 +235,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             false
         }
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLength in 1..32 && passwordValid && bssidValid
-        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = bssidValid
+                ssidLength in 1..32 && passwordValid && timeoutError == null && bssidValid
+        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = timeoutError == null && bssidValid
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }

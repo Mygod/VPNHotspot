@@ -188,7 +188,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val networkName = RepeaterService.networkName
             val passphrase = RepeaterService.passphrase
             if (networkName != null && passphrase != null) {
-                return SoftApConfigurationCompat.empty().apply {
+                return SoftApConfigurationCompat().apply {
                     ssid = networkName
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
                     this.passphrase = passphrase
@@ -199,7 +199,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
-            if (group != null) return SoftApConfigurationCompat.empty().run {
+            if (group != null) return SoftApConfigurationCompat().run {
                 ssid = group.networkName
                 securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK   // is not actually used
                 band = SoftApConfigurationCompat.BAND_ANY
