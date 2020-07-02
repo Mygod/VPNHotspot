@@ -69,7 +69,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     inner class Data : be.mygod.vpnhotspot.manage.Data() {
         override val icon get() = tetherType.icon
         override val title get() = this@TetherManager.title
-        override val text get() = error
+        override val text get() = this@TetherManager.text
         override val active get() = isStarted
     }
 
@@ -77,7 +77,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     abstract val title: CharSequence
     abstract val tetherType: TetherType
     open val isStarted get() = parent.enabledTypes.contains(tetherType)
-    protected open val error: CharSequence get() = baseError ?: ""
+    protected open val text: CharSequence get() = baseError ?: ""
 
     protected var baseError: String? = null
         private set
@@ -149,7 +149,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
-        override val error get() = listOfNotNull(failureReason?.let { WifiApManager.failureReason(it) },
+        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReason(it) },
                 baseError).joinToString("\n")
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
@@ -178,7 +178,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.BLUETOOTH
         override val type get() = VIEW_TYPE_BLUETOOTH
         override val isStarted get() = tethering.active == true
-        override val error get() = listOfNotNull(
+        override val text get() = listOfNotNull(
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
                 baseError).joinToString("\n")
 
