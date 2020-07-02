@@ -167,9 +167,10 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272546)
 * (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_usb_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272549)
 * (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272551)
-* (since API 28) [`Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#245007)
+* (since API 28, prior to API 30) [`Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#245007)
 * [`Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#276573)
 * (since API 27) `Lcom/android/server/connectivity/tethering/OffloadHardwareInterface;->DEFAULT_TETHER_OFFLOAD_DISABLED:I`
+* (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#370415)
@@ -264,6 +265,7 @@ Nonexported system resources:
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_p2p_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wigig_regexs`
+* (since API 30) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownTimeoutMilliseconds`
 
 Other:
 

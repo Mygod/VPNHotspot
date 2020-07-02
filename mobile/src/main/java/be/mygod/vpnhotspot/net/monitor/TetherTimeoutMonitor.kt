@@ -5,12 +5,14 @@ import android.content.Intent
 import android.content.res.Resources
 import android.database.ContentObserver
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.os.postDelayed
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import be.mygod.vpnhotspot.util.intentFilter
@@ -45,16 +47,20 @@ class TetherTimeoutMonitor(private val context: Context, private val onTimeout: 
                 // TODO: WRITE_SECURE_SETTINGS permission
                 check(Settings.Global.putInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, if (value) 1 else 0))
             }
-        @Deprecated("Use SoftApConfigurationCompat instead")
         val timeout by lazy {
             val delay = try {
-                app.resources.getInteger(Resources.getSystem().getIdentifier(
-                        "config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))
+                if (Build.VERSION.SDK_INT < 30) Resources.getSystem().run {
+                    getInteger(getIdentifier("config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))
+                } else app.packageManager.getResourcesForApplication(WifiApManager.resolvedActivity.activityInfo
+                        .applicationInfo).run {
+                    getInteger(getIdentifier("config_wifiFrameworkSoftApShutDownTimeoutMilliseconds", "integer",
+                            "com.android.wifi.resources"))
+                }
             } catch (e: Resources.NotFoundException) {
                 Timber.w(e)
                 MIN_SOFT_AP_TIMEOUT_DELAY_MS
             }
-            if (delay < MIN_SOFT_AP_TIMEOUT_DELAY_MS) {
+            if (Build.VERSION.SDK_INT < 30 && delay < MIN_SOFT_AP_TIMEOUT_DELAY_MS) {
                 Timber.w("Overriding timeout delay with minimum limit value: $delay < $MIN_SOFT_AP_TIMEOUT_DELAY_MS")
                 MIN_SOFT_AP_TIMEOUT_DELAY_MS
             } else delay

@@ -171,10 +171,8 @@ object TetheringManager {
         service
     }
     @get:RequiresApi(30)
-    val resolvedService by lazy @TargetApi(30) {
-        app.packageManager.queryIntentServices(Intent(TETHERING_CONNECTOR_CLASS),
-                PackageManager.MATCH_SYSTEM_ONLY).single()
-    }
+    val resolvedService get() = app.packageManager.queryIntentServices(Intent(TETHERING_CONNECTOR_CLASS),
+            PackageManager.MATCH_SYSTEM_ONLY).single()
 
     @get:RequiresApi(24)
     private val classOnStartTetheringCallback by lazy {

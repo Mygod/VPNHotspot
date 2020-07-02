@@ -1,14 +1,31 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.TargetApi
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
+import be.mygod.vpnhotspot.App
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.Services
 
 object WifiApManager {
+    /**
+     * TODO [com.android.server.wifi.WifiContext.ACTION_RESOURCES_APK]
+     */
+    @RequiresApi(30)
+    private const val ACTION_RESOURCES_APK = "com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK"
+    /**
+     * Based on: TODO [com.android.server.wifi.WifiContext.getWifiOverlayApkPkgName]
+     */
+    @get:RequiresApi(30)
+    val resolvedActivity get() = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
+            PackageManager.MATCH_SYSTEM_ONLY).single()
+
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")
     private val setWifiApConfiguration by lazy {
