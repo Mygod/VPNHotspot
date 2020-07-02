@@ -81,8 +81,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed(error: Int?) {
-        Timber.d(javaClass.simpleName, "onTetheringFailed: $error")
-        error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorMessage(it)}") }
+        Timber.d("onTetheringFailed: $error")
+        error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorMessage(it)}").show() }
         data.notifyChange()
     }
     override fun onException(e: Exception) {
