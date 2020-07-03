@@ -420,14 +420,20 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                             Log.e(command.javaClass.simpleName, "Unexpected exception in RootCommandOneWay", e)
                         }
                     }
-                    is RootCommand<*> -> defaultWorker.launch {
-                        val result = try {
-                            val result = command.execute();
-                            { output.pushResult(callback, result) }
-                        } catch (e: Throwable) {
-                            { output.pushThrowable(callback, e) }
+                    is RootCommand<*> -> {
+                        val commandJob = Job()
+                        cancellables[callback] = { commandJob.cancel() }
+                        defaultWorker.launch(commandJob) {
+                            val result = try {
+                                val result = command.execute();
+                                { output.pushResult(callback, result) }
+                            } catch (e: Throwable) {
+                                { output.pushThrowable(callback, e) }
+                            } finally {
+                                cancellables.remove(callback)
+                            }
+                            withContext(callbackWorker) { result() }
                         }
-                        withContext(callbackWorker) { result() }
                     }
                     is RootCommandChannel<*> -> defaultWorker.launch {
                         val result = try {
