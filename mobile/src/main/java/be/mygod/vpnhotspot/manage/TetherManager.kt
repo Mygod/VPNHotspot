@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
 import android.content.Intent
+import android.net.MacAddress
 import android.os.Build
 import android.provider.Settings
 import android.view.View
@@ -114,12 +115,17 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 e.readableMessage
             }
         }
+        data.notifyChange()
     }
 
     @RequiresApi(24)
     class Wifi(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver,
             WifiApManager.SoftApCallbackCompat {
         private var failureReason: Int? = null
+        private var numClients: Int? = null
+        private var frequency = 0
+        private var bandwidth = WifiApManager.CHANNEL_WIDTH_INVALID
+        private var capability: Pair<Int, Long>? = null
 
         init {
             if (Build.VERSION.SDK_INT >= 28) parent.viewLifecycleOwner.lifecycle.addObserver(this)
@@ -139,17 +145,41 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 Timber.w(Exception("Unknown state $state"))
                 return
             }
-            val newReason = if (state == 14) failureReason else null
-            if (this.failureReason != newReason) {
-                this.failureReason = newReason
-                data.notifyChange()
-            }
+            this.failureReason = if (state == 14) failureReason else null   // WIFI_AP_STATE_FAILED
+            data.notifyChange()
+        }
+        override fun onNumClientsChanged(numClients: Int) {
+            this.numClients = numClients
+            if (Build.VERSION.SDK_INT >= 30) data.notifyChange()    // only emits when onCapabilityChanged can be called
+        }
+        override fun onInfoChanged(frequency: Int, bandwidth: Int) {
+            this.frequency = frequency
+            this.bandwidth = bandwidth
+            data.notifyChange()
+        }
+        override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) {
+            capability = maxSupportedClients to supportedFeatures
+            data.notifyChange()
         }
 
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
         override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) },
+                if (frequency != 0 || bandwidth != WifiApManager.CHANNEL_WIDTH_INVALID) {
+                    "$frequency MHz, ${WifiApManager.channelWidthLookup(bandwidth, true)}"
+                } else null,
+                capability?.let { (maxSupportedClients, supportedFeatures) ->
+                    "${numClients ?: "?"}/$maxSupportedClients clients connected\nSupported features: " + sequence {
+                        var features = supportedFeatures
+                        while (features != 0L) {
+                            @OptIn(ExperimentalStdlibApi::class)
+                            val bit = features.takeLowestOneBit()
+                            yield(WifiApManager.featureLookup(bit, true))
+                            features = features and bit.inv()
+                        }
+                    }.joinToString()
+                },
                 baseError).joinToString("\n")
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)

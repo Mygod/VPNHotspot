@@ -12,6 +12,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.LongConstantLookup
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.callSuper
 import timber.log.Timber
@@ -93,6 +94,7 @@ object WifiApManager {
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) { }
     }
+    @RequiresApi(28)
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
             "SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
 
@@ -106,17 +108,26 @@ object WifiApManager {
     private val unregisterSoftApCallback by lazy {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", interfaceSoftApCallback)
     }
+
     private val getMacAddress by lazy {
         Class.forName("android.net.wifi.WifiClient").getDeclaredMethod("getMacAddress")
     }
+
     private val classSoftApInfo by lazy { Class.forName("android.net.wifi.SoftApInfo") }
     private val getFrequency by lazy { classSoftApInfo.getDeclaredMethod("getFrequency") }
     private val getBandwidth by lazy { classSoftApInfo.getDeclaredMethod("getBandwidth") }
+    @RequiresApi(30)
+    val channelWidthLookup = ConstantLookup(classSoftApInfo, "CHANNEL_WIDTH_")
+    const val CHANNEL_WIDTH_INVALID = 0
+
     private val classSoftApCapability by lazy { Class.forName("android.net.wifi.SoftApCapability") }
     private val getMaxSupportedClients by lazy { classSoftApCapability.getDeclaredMethod("getMaxSupportedClients") }
     private val areFeaturesSupported by lazy {
         classSoftApCapability.getDeclaredMethod("areFeaturesSupported", Long::class.java)
     }
+    @RequiresApi(30)
+    val featureLookup = LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_")
+
     @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
