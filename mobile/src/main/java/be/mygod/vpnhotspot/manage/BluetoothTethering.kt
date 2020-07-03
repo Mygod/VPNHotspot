@@ -12,6 +12,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.readableMessage
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
@@ -85,7 +86,8 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
             pan.isTetheringOn
         } catch (e: InvocationTargetException) {
             activeFailureCause = e.cause ?: e
-            if (e.cause is SecurityException && Build.VERSION.SDK_INT >= 30) Timber.d(e) else Timber.w(e)
+            if (e.cause is SecurityException && Build.VERSION.SDK_INT >= 30) Timber.d(e.readableMessage)
+            else Timber.w(e)
             return null
         }
     }
