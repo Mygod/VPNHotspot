@@ -135,14 +135,14 @@ private val newLookup by lazy @TargetApi(26) {
  *
  * See also: https://stackoverflow.com/a/49532463/2245107
  */
-fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-    return if (Build.VERSION.SDK_INT >= 26 && method.isDefault) newLookup.newInstance(interfaceClass, 0xf)  // ALL_MODES
+fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?) = when {
+    Build.VERSION.SDK_INT >= 26 && method.isDefault -> newLookup.newInstance(interfaceClass, 0xf)   // ALL_MODES
             .`in`(interfaceClass).unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
                 if (args == null) invokeWithArguments() else invokeWithArguments(*args)
-            } else if (method.declaringClass === Object::class.java) {
-        // otherwise, we just redispatch it to InvocationHandler
-        if (args == null) method(this) else method(this, *args)
-    } else {
+            }
+    // otherwise, we just redispatch it to InvocationHandler
+    method.declaringClass.isAssignableFrom(javaClass) -> if (args == null) method(this) else method(this, *args)
+    else -> {
         Timber.w("Unhandled method: $method(${args?.contentDeepToString()})")
         null
     }

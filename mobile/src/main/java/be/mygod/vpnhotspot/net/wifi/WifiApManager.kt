@@ -133,12 +133,11 @@ object WifiApManager {
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
                 arrayOf(interfaceSoftApCallback), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                return if (Build.VERSION.SDK_INT >= 30 || method.name !in methods29) invokeActual(proxy, method, args) else {
-                    executor.execute { invokeActual(proxy, method, args) }
-                    null    // no return value as of API 30
-                }
-            }
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) =
+                    if (Build.VERSION.SDK_INT < 30 && method.name in methods29) {
+                        executor.execute { invokeActual(proxy, method, args) }
+                        null    // no return value as of API 30
+                    } else invokeActual(proxy, method, args)
 
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val noArgs = args?.size ?: 0
