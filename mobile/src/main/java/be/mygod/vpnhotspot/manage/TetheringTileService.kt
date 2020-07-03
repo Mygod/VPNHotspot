@@ -118,7 +118,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     override fun onTetheringStarted() = updateTile()
     override fun onTetheringFailed(error: Int?) {
         Timber.d("onTetheringFailed: $error")
-        error?.let { Toast.makeText(this, TetheringManager.tetherErrorMessage(it), Toast.LENGTH_LONG).show() }
+        error?.let { Toast.makeText(this, TetheringManager.tetherErrorLookup(it), Toast.LENGTH_LONG).show() }
         updateTile()
     }
     override fun onException(e: Exception) {

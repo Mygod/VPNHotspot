@@ -12,9 +12,7 @@ import android.net.Network
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
-import androidx.collection.SparseArrayCompat
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.StartTethering
 import be.mygod.vpnhotspot.root.StopTethering
@@ -607,31 +605,12 @@ object TetheringManager {
      */
     fun getLastTetherError(iface: String): Int = getLastTetherError(Services.connectivity, iface) as Int
 
-    // tether errors defined in ConnectivityManager up to Android 10
-    private val tetherErrors29 = arrayOf("TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE",
-            "TETHER_ERROR_SERVICE_UNAVAIL", "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE",
-            "TETHER_ERROR_MASTER_ERROR", "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR",
-            "TETHER_ERROR_ENABLE_NAT_ERROR", "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR",
-            "TETHER_ERROR_PROVISION_FAILED", "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN")
-    @get:RequiresApi(30)
-    private val tetherErrors by lazy {
-        SparseArrayCompat<String>().apply {
-            for (field in clazz.declaredFields) try {
-                // all TETHER_ERROR_* are system-api since API 30
-                if (field.name.startsWith("TETHER_ERROR_")) put(field.get(null) as Int, field.name)
-            } catch (e: Exception) {
-                Timber.w(e)
-            }
-        }
-    }
-    fun tetherErrorMessage(error: Int): String {
-        if (Build.VERSION.SDK_INT >= 30) try {
-            tetherErrors.get(error)?.let { return it }
-        } catch (e: ReflectiveOperationException) {
-            Timber.w(e)
-        }
-        return tetherErrors29.getOrNull(error) ?: app.getString(R.string.failure_reason_unknown, error)
-    }
+    val tetherErrorLookup = ConstantLookup(clazz, "TETHER_ERROR_",
+            "TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE", "TETHER_ERROR_SERVICE_UNAVAIL",
+            "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE", "TETHER_ERROR_MASTER_ERROR",
+            "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR", "TETHER_ERROR_ENABLE_NAT_ERROR",
+            "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR", "TETHER_ERROR_PROVISION_FAILED",
+            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN")
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(
             if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)

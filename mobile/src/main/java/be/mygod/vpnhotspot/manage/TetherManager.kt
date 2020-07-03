@@ -88,7 +88,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed(error: Int?) {
         Timber.d("onTetheringFailed: $error")
-        error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorMessage(it)}").show() }
+        error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorLookup(it)}").show() }
         data.notifyChange()
     }
     override fun onException(e: Exception) {
@@ -108,7 +108,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         val interested = errored.filter { TetherType.ofInterface(it) == tetherType }
         baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
             "$iface: " + try {
-                TetheringManager.tetherErrorMessage(TetheringManager.getLastTetherError(iface))
+                TetheringManager.tetherErrorLookup(TetheringManager.getLastTetherError(iface))
             } catch (e: InvocationTargetException) {
                 if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
                 e.readableMessage
@@ -149,7 +149,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
-        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReason(it) },
+        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) },
                 baseError).joinToString("\n")
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)

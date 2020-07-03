@@ -8,15 +8,12 @@ import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
-import android.os.Looper
 import androidx.annotation.RequiresApi
-import androidx.collection.SparseArrayCompat
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
+import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.makeExecutor
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -96,25 +93,8 @@ object WifiApManager {
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) { }
     }
-    private val startFailures29 = arrayOf("SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
-    private val startFailures by lazy {
-        SparseArrayCompat<String>().apply {
-            for (field in WifiManager::class.java.declaredFields) try {
-                // all SAP_START_FAILURE_* are system-api since API 30
-                if (field.name.startsWith("SAP_START_FAILURE_")) put(field.get(null) as Int, field.name)
-            } catch (e: Exception) {
-                Timber.w(e)
-            }
-        }
-    }
-    fun failureReason(reason: Int): String {
-        if (Build.VERSION.SDK_INT >= 30) try {
-            startFailures.get(reason)?.let { return it }
-        } catch (e: ReflectiveOperationException) {
-            Timber.w(e)
-        }
-        return startFailures29.getOrNull(reason) ?: app.getString(R.string.failure_reason_unknown, reason)
-    }
+    val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
+            "SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
 
     private val interfaceSoftApCallback by lazy { Class.forName("android.net.wifi.WifiManager\$SoftApCallback") }
     private val registerSoftApCallback by lazy {
