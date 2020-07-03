@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
+import android.provider.Settings
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.util.Services
 import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.produce
@@ -171,6 +173,21 @@ class StopTethering(private val type: Int) : RootCommandNoResult {
 
 @Parcelize
 class SettingsGlobalPut(val name: String, val value: String) : RootCommandNoResult {
+    companion object {
+        suspend fun int(name: String, value: Int) {
+            try {
+                check(Settings.Global.putInt(Services.context.contentResolver, name, value))
+            } catch (e: SecurityException) {
+                try {
+                    RootManager.use { it.execute(SettingsGlobalPut(name, value.toString())) }
+                } catch (eRoot: Exception) {
+                    eRoot.addSuppressed(e)
+                    throw eRoot
+                }
+            }
+        }
+    }
+
     @Suppress("BlockingMethodInNonBlockingContext")
     override suspend fun execute() = withContext(Dispatchers.IO) {
         val process = ProcessBuilder("settings", "put", "global", name, value).redirectErrorStream(true).start()

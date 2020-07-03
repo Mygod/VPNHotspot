@@ -6,6 +6,7 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.root.SettingsGlobalPut
 import kotlinx.coroutines.*
 import timber.log.Timber
 import kotlin.coroutines.CoroutineContext
@@ -32,13 +33,10 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
 
         @Deprecated("Use SoftApConfigurationCompat instead")
         @get:RequiresApi(28)
-        @set:RequiresApi(28)
-        var enabled
-            get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
-            set(value) {
-                // TODO: WRITE_SECURE_SETTINGS permission
-                check(Settings.Global.putInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, if (value) 1 else 0))
-            }
+        val enabled get() = Settings.Global.getInt(app.contentResolver, SOFT_AP_TIMEOUT_ENABLED, 1) == 1
+        @Deprecated("Use SoftApConfigurationCompat instead")
+        suspend fun setEnabled(value: Boolean) = SettingsGlobalPut.int(SOFT_AP_TIMEOUT_ENABLED, if (value) 1 else 0)
+
         val defaultTimeout: Int get() {
             val delay = if (Build.VERSION.SDK_INT >= 28) try {
                 if (Build.VERSION.SDK_INT < 30) Resources.getSystem().run {

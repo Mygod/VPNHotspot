@@ -1,3 +1,5 @@
+@file:Suppress("DEPRECATION")
+
 package be.mygod.vpnhotspot.manage
 
 import android.Manifest
@@ -27,6 +29,7 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
+import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.RootManager
@@ -214,11 +217,20 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
         AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+                val configuration = ret!!.configuration
+                @Suppress("DEPRECATION")
+                if (Build.VERSION.SDK_INT in 28 until 30 &&
+                        configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
+                    TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
+                } catch (e: Exception) {
+                    Timber.w(e)
+                    SmartSnackbar.make(e).show()
+                }
                 val success = try {
-                    WifiApManager.setConfiguration(ret!!.configuration)
+                    WifiApManager.setConfiguration(configuration)
                 } catch (e: InvocationTargetException) {
                     try {
-                        RootManager.use { it.execute(WifiApCommands.SetConfiguration(ret!!.configuration)) }
+                        RootManager.use { it.execute(WifiApCommands.SetConfiguration(configuration)) }
                     } catch (_: CancellationException) {
                     } catch (eRoot: Exception) {
                         eRoot.addSuppressed(e)
