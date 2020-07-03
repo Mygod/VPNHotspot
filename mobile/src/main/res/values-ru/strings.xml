@@ -41,6 +41,12 @@
     <string name="notification_tethering_title">VPN-модем активен</string>
     <string name="notification_channel_tethering">VPN модемная служба</string>
     <string name="notification_interfaces_inactive">Неактивных: %s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="one">%d устройство</item>
+        <item quantity="few">%d устройства</item>
+        <item quantity="many">%d устройств</item>
+        <item quantity="other">%d устройства</item>
+    </plurals>
 
     <string name="failure_reason_unknown">Неизвестно #%d</string>
     <string name="exception_interface_not_found">Ошибка: Нисходящий интерфейс не найден</string>
@@ -50,11 +56,13 @@
     <string name="wifi_ssid" msgid="5519636102673067319">"Имя сети"</string>
     <string name="wifi_security" msgid="6603611185592956936">"Защита"</string>
     <string name="wifi_password" msgid="5948219759936151048">"Пароль"</string>
-    <string name="credentials_password_too_short">Пароль должен содержать не менее 8 символов.</string>
+    <string name="wifi_hotspot_auto_off" msgid="5858098059725925084">"Выключать точку доступа Wi‑Fi автоматически, если к ней не подключено ни одного устройства"</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"Диапазон частот Wi-Fi"</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Авто"</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2,4 ГГц"</string>
     <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5,0 ГГц"</string>
+    <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC-адрес"</string>
+    <string name="wifi_hidden_network" msgid="973162091800925000">"Скрытая сеть"</string>
     <string name="wifi_save" msgid="3331121567988522826">"Сохранить"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-ru/donations__strings.xml -->

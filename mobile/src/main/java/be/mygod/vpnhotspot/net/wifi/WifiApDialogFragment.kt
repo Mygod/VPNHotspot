@@ -241,9 +241,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> dialogView.password.length() >= 8
             else -> true    // do not try to validate
         }
-        dialogView.passwordWrapper.error = if (passwordValid) null else {
-            requireContext().getString(R.string.credentials_password_too_short)
-        }
+        dialogView.passwordWrapper.error = if (passwordValid) null else " "
         val timeoutError = dialogView.timeout.text.let { text ->
             if (text.isNullOrEmpty()) null else try {
                 text.toString().toLong()

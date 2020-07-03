@@ -54,6 +54,14 @@
     <string name="tethering_manage_wifi">WLAN 热点</string>
     <string name="tethering_manage_wifi_legacy">WLAN 热点 (旧 API)</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
+<!-- TODO   <string name="tethering_manage_ethernet">Ethernet tethering</string>-->
+    <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
+    <string name="tethering_manage_wigig">WiGig 热点</string>
+    <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
+    <string name="tethering_manage_wifi_capabilities">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</string>
+    <string name="tethering_manage_wifi_no_features">无</string>
+    <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
+    <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>
 
     <string name="connected_state_incomplete">（正在连接）</string>
     <string name="connected_state_valid">（已连接）</string>
@@ -134,6 +142,9 @@
         <item quantity="other">%d 个接口</item>
     </plurals>
     <string name="notification_interfaces_inactive">不活跃：%s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="other">%d 台设备</item>
+    </plurals>
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
@@ -145,11 +156,20 @@
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
     <string name="wifi_security" msgid="6603611185592956936">"安全性"</string>
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
-    <string name="credentials_password_too_short" msgid="7502749986405522663">"密码至少应包含 8 个字符。"</string>
+    <string name="wifi_hotspot_auto_off">未连接任何设备时自动关闭 WLAN 热点</string>
+    <string name="wifi_hotspot_timeout">关闭延迟</string>
+    <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
     <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5.0 GHz 频段"</string>
+    <string name="wifi_ap_choose_6G">6.0 GHz 频段</string>
+    <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
+    <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
+    <string name="wifi_max_clients">允许连接设备数上限</string>
+    <string name="wifi_client_user_control">过滤可以连接的设备</string>
+    <string name="wifi_blocked_list">设备黑名单</string>
+    <string name="wifi_allowed_list">设备白名单</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->

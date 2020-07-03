@@ -136,6 +136,10 @@
         <item quantity="other">%d interfacce</item>
     </plurals>
     <string name="notification_interfaces_inactive">Inattivi: %s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="other">%d dispositivi</item>
+        <item quantity="one">%d dispositivo</item>
+    </plurals>
 
     <string name="failure_reason_unknown">sconosciuta #%d</string>
     <string name="exception_interface_not_found">Fatale: Interfaccia Downstream non trovata</string>
@@ -144,14 +148,16 @@
     <string name="configuration_view">Configurazione Wi\u2011Fi</string>
     <string name="configuration_share">Condividi con Codice QR</string>
     <string name="configuration_rejected">Il sistema Android rifiuta questa configurazione. (vedi logcat)</string>
-    <string name="wifi_ssid">Nome della rete</string>
+    <string name="wifi_ssid" msgid="5519636102673067319">"Nome rete"</string>
     <string name="wifi_security">Sicurezza</string>
     <string name="wifi_password">Password</string>
-    <string name="credentials_password_too_short">La password deve avere almeno 8 caratteri.</string>
+    <string name="wifi_hotspot_auto_off" msgid="5858098059725925084">"L\'hotspot Wi‑Fi viene disattivato se non ci sono dispositivi collegati"</string>
     <string name="wifi_hotspot_ap_band_title">Banda AP</string>
-    <string name="wifi_ap_choose_auto">Auto</string>
-    <string name="wifi_ap_choose_2G">Banda 2.4 GHz</string>
-    <string name="wifi_ap_choose_5G">Banda 5.0 GHz</string>
+    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Automatica"</string>
+    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"Banda a 2,4 GHz"</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"Banda a 5 GHz"</string>
+    <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"Indirizzo MAC"</string>
+    <string name="wifi_hidden_network" msgid="973162091800925000">"Rete nascosta"</string>
     <string name="wifi_save">Salva</string>
 
     <!-- Based on: https://github.com/SufficientlySecure/donations/blob/de39986/Donations/src/main/res/values-it/donations__strings.xml -->

@@ -136,6 +136,9 @@
         <item quantity="other">%d 個接口</item>
     </plurals>
     <string name="notification_interfaces_inactive">停用: %s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="other">%d 個裝置</item>
+    </plurals>
 
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">錯誤: 找不到下游接口</string>
@@ -147,11 +150,13 @@
     <string name="wifi_ssid">網路名稱</string>
     <string name="wifi_security">安全</string>
     <string name="wifi_password">密碼</string>
-    <string name="credentials_password_too_short">密碼至少需要 8 個字</string>
+    <string name="wifi_hotspot_auto_off">在沒有任何裝置連線時關閉 Wi\u2011Fi 無線基地台</string>
     <string name="wifi_hotspot_ap_band_title">AP 頻帶</string>
     <string name="wifi_ap_choose_auto">自動</string>
     <string name="wifi_ap_choose_2G">2.4 GHz 頻帶</string>
     <string name="wifi_ap_choose_5G">5.0 GHz 頻帶</string>
+    <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 位址"</string>
+    <string name="wifi_hidden_network" msgid="973162091800925000">"隱藏的網路"</string>
     <string name="wifi_save">儲存</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

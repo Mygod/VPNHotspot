@@ -66,7 +66,7 @@
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
-    <string name="tethering_manage_wigig">WiGig tethering</string>
+    <string name="tethering_manage_wigig">WiGig hotspot</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
     <string name="tethering_manage_wifi_capabilities">%1$s/%2$d clients connected\nSupported features: %3$s</string>
     <string name="tethering_manage_wifi_no_features">None</string>
@@ -175,7 +175,6 @@
     <string name="wifi_ssid">Network name</string>
     <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
-    <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
     <string name="wifi_hotspot_auto_off">Turn off hotspot automatically when no devices are connected</string>
     <string name="wifi_hotspot_timeout">Inactive timeout</string>
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
