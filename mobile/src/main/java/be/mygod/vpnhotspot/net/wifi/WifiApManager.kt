@@ -128,13 +128,12 @@ object WifiApManager {
     @get:RequiresApi(30)
     val featureLookup by lazy { LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_") }
 
-    private val methods29 = setOf("onStateChanged", "onNumClientsChanged")
     @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
                 arrayOf(interfaceSoftApCallback), object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) =
-                    if (Build.VERSION.SDK_INT < 30 && method.name in methods29) {
+                    if (Build.VERSION.SDK_INT < 30 && interfaceSoftApCallback === method.declaringClass) {
                         executor.execute { invokeActual(proxy, method, args) }
                         null    // no return value as of API 30
                     } else invokeActual(proxy, method, args)
