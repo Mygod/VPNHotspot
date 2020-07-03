@@ -117,7 +117,7 @@ object WifiApManager {
     private val getFrequency by lazy { classSoftApInfo.getDeclaredMethod("getFrequency") }
     private val getBandwidth by lazy { classSoftApInfo.getDeclaredMethod("getBandwidth") }
     @RequiresApi(30)
-    val channelWidthLookup = ConstantLookup(classSoftApInfo, "CHANNEL_WIDTH_")
+    val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { classSoftApInfo }
     const val CHANNEL_WIDTH_INVALID = 0
 
     private val classSoftApCapability by lazy { Class.forName("android.net.wifi.SoftApCapability") }
@@ -125,15 +125,16 @@ object WifiApManager {
     private val areFeaturesSupported by lazy {
         classSoftApCapability.getDeclaredMethod("areFeaturesSupported", Long::class.java)
     }
-    @RequiresApi(30)
-    val featureLookup = LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_")
+    @get:RequiresApi(30)
+    val featureLookup by lazy { LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_") }
 
+    private val methods29 = setOf("onStateChanged", "onNumClientsChanged")
     @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
                 arrayOf(interfaceSoftApCallback), object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                return if (Build.VERSION.SDK_INT >= 30) invokeActual(proxy, method, args) else {
+                return if (Build.VERSION.SDK_INT >= 30 || method.name !in methods29) invokeActual(proxy, method, args) else {
                     executor.execute { invokeActual(proxy, method, args) }
                     null    // no return value as of API 30
                 }

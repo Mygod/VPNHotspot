@@ -605,12 +605,12 @@ object TetheringManager {
      */
     fun getLastTetherError(iface: String): Int = getLastTetherError(Services.connectivity, iface) as Int
 
-    val tetherErrorLookup = ConstantLookup(clazz, "TETHER_ERROR_",
+    val tetherErrorLookup = ConstantLookup("TETHER_ERROR_",
             "TETHER_ERROR_NO_ERROR", "TETHER_ERROR_UNKNOWN_IFACE", "TETHER_ERROR_SERVICE_UNAVAIL",
             "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE", "TETHER_ERROR_MASTER_ERROR",
             "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR", "TETHER_ERROR_ENABLE_NAT_ERROR",
             "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR", "TETHER_ERROR_PROVISION_FAILED",
-            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN")
+            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") { clazz }
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(
             if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)

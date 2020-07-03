@@ -39,7 +39,7 @@ interface RootCommandChannel<T : Parcelable?> : Parcelable {
 }
 
 @Parcelize
-internal class CancelCommand(val index: Long) : RootCommandOneWay {
+internal data class CancelCommand(val index: Long) : RootCommandOneWay {
     override suspend fun execute() = error("Internal implementation")
 }
 

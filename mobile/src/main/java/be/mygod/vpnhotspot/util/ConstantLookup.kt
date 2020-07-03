@@ -7,10 +7,11 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import timber.log.Timber
 
-class ConstantLookup(private val clazz: Class<*>, private val prefix: String, private val lookup29: Array<out String>) {
+class ConstantLookup(private val prefix: String, private val lookup29: Array<out String>,
+                     private val clazz: () -> Class<*>) {
     private val lookup by lazy {
         SparseArrayCompat<String>().apply {
-            for (field in clazz.declaredFields) try {
+            for (field in clazz().declaredFields) try {
                 if (field.name.startsWith(prefix)) put(field.getInt(null), field.name)
             } catch (e: Exception) {
                 Timber.w(e)
@@ -30,10 +31,11 @@ class ConstantLookup(private val clazz: Class<*>, private val prefix: String, pr
 }
 
 @Suppress("FunctionName")
-fun ConstantLookup(clazz: Class<*>, prefix: String, vararg lookup29: String) = ConstantLookup(clazz, prefix, lookup29)
+fun ConstantLookup(prefix: String, vararg lookup29: String, clazz: () -> Class<*>) =
+        ConstantLookup(prefix, lookup29, clazz)
 @Suppress("FunctionName")
 inline fun <reified T> ConstantLookup(prefix: String, vararg lookup29: String) =
-        ConstantLookup(T::class.java, prefix, lookup29)
+        ConstantLookup(prefix, lookup29) { T::class.java }
 
 class LongConstantLookup(private val clazz: Class<*>, private val prefix: String) {
     private val lookup = LongSparseArray<String>().apply {

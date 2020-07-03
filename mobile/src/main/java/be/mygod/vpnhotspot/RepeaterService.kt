@@ -76,7 +76,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
             @SuppressLint("InlinedApi")
-            get() = app.pref.getInt(KEY_OPERATING_BAND, WifiP2pConfig.GROUP_OWNER_BAND_AUTO)
+            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_ANY)
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
@@ -366,11 +366,11 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     setNetworkName(PLACEHOLDER_NETWORK_NAME)
                     setPassphrase(passphrase)
                     operatingChannel.let { oc ->
-                        if (oc == 0) setGroupOperatingBand(when (operatingBand) {
+                        if (oc == 0) setGroupOperatingBand(when (val band = operatingBand) {
                             SoftApConfigurationCompat.BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                             SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                             SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                            else -> throw IllegalArgumentException("Unknown band")
+                            else -> throw IllegalArgumentException("Unknown band $band")
                         })
                         else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
                     }

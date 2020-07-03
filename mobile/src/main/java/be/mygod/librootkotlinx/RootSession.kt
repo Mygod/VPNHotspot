@@ -42,8 +42,9 @@ abstract class RootSession {
     }
 
     private suspend fun closeLocked() {
+        val server = server
+        this.server = null
         server?.close()
-        server = null
     }
     private fun startTimeoutLocked() {
         check(timeoutJob == null)
@@ -51,8 +52,8 @@ abstract class RootSession {
             delay(timeout)
             mutex.withLock {
                 check(usersCount == 0L)
-                closeLocked()
                 timeoutJob = null
+                closeLocked()
             }
         }
     }
@@ -75,14 +76,14 @@ abstract class RootSession {
             when {
                 !server.active -> {
                     usersCount = 0
-                    closeLocked()
                     closePending = false
+                    closeLocked()
                     return@withLock
                 }
                 --usersCount > 0L -> return@withLock
                 closePending -> {
-                    closeLocked()
                     closePending = false
+                    closeLocked()
                 }
                 else -> startTimeoutLocked()
             }

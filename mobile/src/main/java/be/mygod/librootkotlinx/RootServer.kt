@@ -193,13 +193,14 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             }
             try {
                 callbackSpin()
+                if (active) throw RemoteException("Root process exited unexpectedly")
             } catch (e: Throwable) {
                 process.destroy()
                 throw e
             } finally {
                 if (DEBUG) Log.d(TAG, "Waiting for exit")
                 process.waitFor()
-                closeInternal(true)
+                withContext(NonCancellable) { closeInternal(true) }
             }
             check(process.errorStream.available() == 0) // stderr should not be used
         }
@@ -280,7 +281,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     private suspend fun closeInternal(fromWorker: Boolean = false) = mutex.withLock {
         if (active) {
             active = false
-            if (DEBUG) Log.d(TAG, "Shutting down from client")
+            if (DEBUG) Log.d(TAG, if (fromWorker) "Shutting down from worker" else "Shutting down from client")
             try {
                 sendLocked(Shutdown())
                 output.close()
