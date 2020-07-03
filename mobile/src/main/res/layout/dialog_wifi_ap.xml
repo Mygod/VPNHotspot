@@ -99,13 +99,13 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
                 style="@style/wifi_item_label"
-                android:text="Turn off hotspot automatically when no devices are connected"/>
+                android:text="@string/wifi_hotspot_auto_off"/>
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/timeout_wrapper"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
-                android:hint="Inactive timeout"
+                android:hint="@string/wifi_hotspot_timeout"
                 app:counterEnabled="true"
                 app:counterMaxLength="19"
                 app:errorEnabled="true"
@@ -143,7 +143,7 @@
                 android:layout_marginTop="8dip"
                 app:counterEnabled="true"
                 app:counterMaxLength="17"
-                android:hint="BSSID">
+                android:hint="@string/wifi_advanced_mac_address_title">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/bssid"
                     android:layout_width="match_parent"

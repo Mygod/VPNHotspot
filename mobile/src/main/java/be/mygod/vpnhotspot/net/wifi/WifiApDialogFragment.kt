@@ -148,7 +148,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
         if (!arg.p2pMode && Build.VERSION.SDK_INT < 28) dialogView.autoShutdown.isGone = true
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
-            dialogView.timeoutWrapper.helperText = "Default timeout: ${TetherTimeoutMonitor.defaultTimeout}ms"
+            dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
+                    TetherTimeoutMonitor.defaultTimeout)
             if (!arg.readOnly) dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         } else dialogView.timeoutWrapper.isGone = true
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {

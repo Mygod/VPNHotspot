@@ -10,6 +10,7 @@
     * @string/wifi_ap_choose_auto
     * @string/wifi_ap_choose_2G
     * @string/wifi_ap_choose_5G
+    * @string/wifi_advanced_mac_address_title
     * @string/wifi_hidden_network
     * https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
     * @plurals/quick_settings_hotspot_secondary_label_num_devices
@@ -66,6 +67,9 @@
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
     <string name="tethering_manage_wigig">WiGig tethering</string>
+    <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
+    <string name="tethering_manage_wifi_capabilities">%1$s/%2$d clients connected\nSupported features: %3$s</string>
+    <string name="tethering_manage_wifi_no_features">None</string>
 
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>
@@ -104,8 +108,9 @@
     <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
     <string name="settings_service_repeater_safe_mode">Repeater safe mode</string>
     <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
-        not work with short SSIDs.</string>
-    <string name="settings_service_repeater_safe_mode_warning">Short SSIDs might require turning off safe mode.</string>
+        not work with short network names.</string>
+    <string name="settings_service_repeater_safe_mode_warning">Short network names might require turning off safe
+        mode.</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On</string>
@@ -169,11 +174,15 @@
     <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
     <string name="credentials_password_too_short">The password must have at least 8 characters.</string>
+    <string name="wifi_hotspot_auto_off">Turn off hotspot automatically when no devices are connected</string>
+    <string name="wifi_hotspot_timeout">Inactive timeout</string>
+    <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_ap_choose_auto">Auto</string>
     <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
     <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
     <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
+    <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_save">Save</string>
 

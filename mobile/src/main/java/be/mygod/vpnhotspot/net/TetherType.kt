@@ -44,7 +44,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
         private fun Pair<String?, Resources>.getRegexs(name: String) = second.getIdentifier(name, "array", first).let {
             if (it == 0) {
-                Timber.i("$name is empty")
+                if (name == "config_tether_wigig_regexs") Timber.i("$name is empty") else Timber.w(Exception(name))
                 emptyList()
             } else second.getStringArray(it).filterNotNull().map { it.toPattern() }
         }

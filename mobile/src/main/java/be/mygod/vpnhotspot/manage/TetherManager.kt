@@ -165,23 +165,25 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
-        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) },
+        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError,
                 if (frequency != 0 || bandwidth != WifiApManager.CHANNEL_WIDTH_INVALID) {
-                    "$frequency MHz, channel ${SoftApConfigurationCompat.frequencyToChannel(frequency)}, width " +
-                            WifiApManager.channelWidthLookup(bandwidth, true)
+                    parent.getString(R.string.tethering_manage_wifi_info, frequency,
+                            SoftApConfigurationCompat.frequencyToChannel(frequency),
+                            WifiApManager.channelWidthLookup(bandwidth, true))
                 } else null,
                 capability?.let { (maxSupportedClients, supportedFeatures) ->
-                    "${numClients ?: "?"}/$maxSupportedClients clients connected\nSupported features: " + sequence {
+                    app.getString(R.string.tethering_manage_wifi_capabilities, numClients ?: "?",
+                            maxSupportedClients, sequence {
                         var features = supportedFeatures
-                        if (features == 0L) yield("None") else while (features != 0L) {
+                        if (features == 0L) yield(parent.getString(R.string.tethering_manage_wifi_no_features))
+                        else while (features != 0L) {
                             @OptIn(ExperimentalStdlibApi::class)
                             val bit = features.takeLowestOneBit()
                             yield(WifiApManager.featureLookup(bit, true))
                             features = features and bit.inv()
                         }
-                    }.joinToString()
-                },
-                baseError).joinToString("\n")
+                    }.joinToString())
+                }).joinToString("\n")
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
