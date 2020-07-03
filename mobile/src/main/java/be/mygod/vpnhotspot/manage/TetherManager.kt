@@ -19,6 +19,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.readableMessage
@@ -167,7 +168,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_WIFI
         override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) },
                 if (frequency != 0 || bandwidth != WifiApManager.CHANNEL_WIDTH_INVALID) {
-                    "$frequency MHz, ${WifiApManager.channelWidthLookup(bandwidth, true)}"
+                    "$frequency MHz, channel ${SoftApConfigurationCompat.frequencyToChannel(frequency)}, width " +
+                            WifiApManager.channelWidthLookup(bandwidth, true)
                 } else null,
                 capability?.let { (maxSupportedClients, supportedFeatures) ->
                     "${numClients ?: "?"}/$maxSupportedClients clients connected\nSupported features: " + sequence {
