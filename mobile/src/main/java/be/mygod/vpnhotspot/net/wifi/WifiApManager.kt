@@ -97,6 +97,8 @@ object WifiApManager {
     @RequiresApi(28)
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
             "SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
+    @get:RequiresApi(30)
+    val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
 
     private val interfaceSoftApCallback by lazy { Class.forName("android.net.wifi.WifiManager\$SoftApCallback") }
     private val registerSoftApCallback by lazy {

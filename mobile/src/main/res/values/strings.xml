@@ -70,6 +70,8 @@
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
     <string name="tethering_manage_wifi_capabilities">%1$s/%2$d clients connected\nSupported features: %3$s</string>
     <string name="tethering_manage_wifi_no_features">None</string>
+    <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
+    <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
 
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>
@@ -184,6 +186,10 @@
     <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
+    <string name="wifi_max_clients">Maximum number of clients</string>
+    <string name="wifi_client_user_control">Control which client can use hotspot</string>
+    <string name="wifi_blocked_list">Blocked list of clients</string>
+    <string name="wifi_allowed_list">Allowed list of clients</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

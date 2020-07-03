@@ -1,8 +1,10 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.DialogInterface
+import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
@@ -42,6 +44,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         Toolbar.OnMenuItemClickListener {
     companion object {
         private const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
+        private val nonMacChars = "[^0-9a-fA-F:]+".toRegex()
         private val channels by lazy {
             val list = ArrayList<BandOption.Channel>()
             for (chan in 1..14) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_2GHZ, chan))
@@ -109,7 +112,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
         }
-        if (full) {
+        if (full) @TargetApi(28) {
             isAutoShutdownEnabled = dialogView.autoShutdown.isChecked
             shutdownTimeoutMillis = dialogView.timeout.text.let { text ->
                 if (text.isNullOrEmpty()) 0 else text.toString().toLong()
@@ -120,6 +123,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.text.toString())
             } else null
+            maxNumberOfClients = dialogView.maxClient.text.let { text ->
+                if (text.isNullOrEmpty()) 0 else text.toString().toInt()
+            }
+            isClientControlByUserEnabled = dialogView.clientUserControl.isChecked
+            allowedClientList = (dialogView.allowedList.text ?: "").split(nonMacChars)
+                    .filter { it.isNotEmpty() }.map { MacAddress.fromString(it) }
+            blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
+                    .filter { it.isNotEmpty() }.map { MacAddress.fromString(it) }
         }
     }
 
@@ -150,7 +161,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
             dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
                     TetherTimeoutMonitor.defaultTimeout)
-            if (!arg.readOnly) dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         } else dialogView.timeoutWrapper.isGone = true
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {
             bandOptions = mutableListOf<BandOption>().apply {
@@ -175,6 +186,16 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else dialogView.bandWrapper.isGone = true
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 30) {
+            dialogView.maxClientWrapper.isGone = true
+            dialogView.clientUserControl.isGone = true
+            dialogView.blockedListWrapper.isGone = true
+            dialogView.allowedListWrapper.isGone = true
+        } else {
+            dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
+        }
         base = arg.configuration
         populateFromConfiguration()
     }
@@ -193,18 +214,19 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid
-        // TODO support more fields from SACC
+        dialogView.maxClient.setText(base.maxNumberOfClients.let { if (it == 0) "" else it.toString() })
+        dialogView.clientUserControl.isChecked = base.isClientControlByUserEnabled
+        dialogView.blockedList.setText(base.blockedClientList.joinToString("\n"))
+        dialogView.allowedList.setText(base.allowedClientList.joinToString("\n"))
     }
 
     override fun onStart() {
         super.onStart()
         started = true
-        if (!arg.readOnly) validate()
+        validate()
     }
 
-    /**
-     * This function is reached only if not arg.readOnly.
-     */
+    @TargetApi(28)
     private fun validate() {
         if (!started) return
         val ssidLength = dialogView.ssid.text.toString().toByteArray().size
@@ -239,9 +261,36 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bssidWrapper.error = e.readableMessage
             false
         }
+        val maxClientError = dialogView.maxClient.text.let { text ->
+            if (text.isNullOrEmpty()) null else try {
+                text.toString().toInt()
+                null
+            } catch (e: NumberFormatException) {
+                e.readableMessage
+            }
+        }
+        dialogView.maxClientWrapper.error = maxClientError
+        val blockedListError = try {
+            (dialogView.blockedList.text ?: "").split(nonMacChars)
+                    .filter { it.isNotEmpty() }.forEach { MacAddress.fromString(it) }
+            null
+        } catch (e: IllegalArgumentException) {
+            e.readableMessage
+        }
+        dialogView.blockedListWrapper.error = blockedListError
+        val allowedListError = try {
+            (dialogView.allowedList.text ?: "").split(nonMacChars)
+                    .filter { it.isNotEmpty() }.forEach { MacAddress.fromString(it) }
+            null
+        } catch (e: IllegalArgumentException) {
+            e.readableMessage
+        }
+        dialogView.allowedListWrapper.error = allowedListError
+        val canCopy = timeoutError == null && bssidValid && maxClientError == null && blockedListError == null &&
+                allowedListError == null
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLength in 1..32 && passwordValid && timeoutError == null && bssidValid
-        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = timeoutError == null && bssidValid
+                ssidLength in 1..32 && passwordValid && canCopy
+        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }

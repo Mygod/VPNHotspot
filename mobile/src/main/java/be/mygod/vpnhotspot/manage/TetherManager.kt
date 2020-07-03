@@ -1,7 +1,9 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
+import android.content.ClipData
 import android.content.Intent
+import android.net.MacAddress
 import android.os.Build
 import android.provider.Settings
 import android.view.View
@@ -160,6 +162,14 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) {
             capability = maxSupportedClients to supportedFeatures
             data.notifyChange()
+        }
+        override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) {
+            SmartSnackbar.make(parent.getString(R.string.tethering_manage_wifi_client_blocked, client,
+                    WifiApManager.clientBlockLookup(blockedReason, true))).apply {
+                action(R.string.tethering_manage_wifi_copy_mac) {
+                    app.clipboard.setPrimaryClip(ClipData.newPlainText(null, client.toString()))
+                }
+            }.show()
         }
 
         override val title get() = parent.getString(R.string.tethering_manage_wifi)

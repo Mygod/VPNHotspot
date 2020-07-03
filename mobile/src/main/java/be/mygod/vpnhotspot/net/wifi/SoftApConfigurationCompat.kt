@@ -33,9 +33,9 @@ data class SoftApConfigurationCompat(
         @TargetApi(30)
         var isClientControlByUserEnabled: Boolean = false,
         @RequiresApi(30)
-        var blockedClientList: List<MacAddress?> = emptyList(),
+        var blockedClientList: List<MacAddress> = emptyList(),
         @RequiresApi(30)
-        var allowedClientList: List<MacAddress?> = emptyList(),
+        var allowedClientList: List<MacAddress> = emptyList(),
         var underlying: Parcelable? = null) : Parcelable {
     companion object {
         const val BAND_2GHZ = 1
@@ -238,8 +238,8 @@ data class SoftApConfigurationCompat(
                 isAutoShutdownEnabled(this) as Boolean,
                 getShutdownTimeoutMillis(this) as Long,
                 isClientControlByUserEnabled(this) as Boolean,
-                getBlockedClientList(this) as List<MacAddress?>,
-                getAllowedClientList(this) as List<MacAddress?>,
+                getBlockedClientList(this) as List<MacAddress>,
+                getAllowedClientList(this) as List<MacAddress>,
                 this)
     }
 
