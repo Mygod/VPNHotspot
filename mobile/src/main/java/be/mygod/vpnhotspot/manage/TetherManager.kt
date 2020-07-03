@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
 import android.content.Intent
-import android.net.MacAddress
 import android.os.Build
 import android.provider.Settings
 import android.view.View
@@ -174,7 +173,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 capability?.let { (maxSupportedClients, supportedFeatures) ->
                     "${numClients ?: "?"}/$maxSupportedClients clients connected\nSupported features: " + sequence {
                         var features = supportedFeatures
-                        while (features != 0L) {
+                        if (features == 0L) yield("None") else while (features != 0L) {
                             @OptIn(ExperimentalStdlibApi::class)
                             val bit = features.takeLowestOneBit()
                             yield(WifiApManager.featureLookup(bit, true))
