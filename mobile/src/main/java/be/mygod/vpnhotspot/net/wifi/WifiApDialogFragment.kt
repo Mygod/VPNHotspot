@@ -185,9 +185,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
         dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it == 0L) "" else it.toString() })
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-            dialogView.band.setSelection(if (base.channel in 1..165) {
+            val selection = if (base.channel != 0) {
                 bandOptions.indexOfFirst { it.channel == base.channel }
-            } else bandOptions.indexOfFirst { it.band == base.band })
+            } else bandOptions.indexOfFirst { it.band == base.band }
+            dialogView.band.setSelection(if (selection == -1) 0 else selection)
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid
