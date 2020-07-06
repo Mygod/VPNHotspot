@@ -19,11 +19,13 @@ object RootManager : RootSession() {
             RootServer.DEBUG = BuildConfig.DEBUG
             Timber.plant(object : Timber.DebugTree() {
                 override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+                    if (priority >= Log.WARN) System.err.println("$priority/$tag: $message")
                     if (t == null) {
                         Log.println(priority, tag, message)
                     } else {
                         Log.println(priority, tag, message)
                         Log.d(tag, message, t)
+                        if (priority >= Log.WARN) t.printStackTrace(System.err)
                     }
                 }
             })
