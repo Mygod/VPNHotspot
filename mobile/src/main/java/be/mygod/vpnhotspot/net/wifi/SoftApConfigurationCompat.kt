@@ -214,6 +214,7 @@ data class SoftApConfigurationCompat(
                         android.net.wifi.WifiConfiguration.KeyMgmt.NONE -> SoftApConfiguration.SECURITY_TYPE_OPEN
                         android.net.wifi.WifiConfiguration.KeyMgmt.WPA_PSK,
                         LEGACY_WPA2_PSK,
+                        6,      // FT_PSK
                         11 -> { // WPA_PSK_SHA256
                             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
                         }
