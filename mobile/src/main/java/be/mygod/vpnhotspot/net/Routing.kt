@@ -92,11 +92,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
 
         fun shouldSuppressIpError(e: RoutingCommands.UnexpectedOutputException, isAdd: Boolean = true) =
-                e.result.out.isEmpty() && (e.result.exit == 2 || e.result.exit == 254) && e.result.err == if (isAdd) {
-                    "RTNETLINK answers: File exists\n"
+                e.result.out.isEmpty() && (e.result.exit == 2 || e.result.exit == 254) && if (isAdd) {
+                    "RTNETLINK answers: File exists"
                 } else {
-                    "RTNETLINK answers: No such file or directory\n"
-                }
+                    "RTNETLINK answers: No such file or directory"
+                } == e.result.err.trim()
     }
 
     private fun RootSession.Transaction.ipRule(add: String, priority: Int, rule: String = "", del: String = add) {
