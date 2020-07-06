@@ -191,6 +191,13 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 future.completeExceptionally(e)
                 return@async
             }
+            val errorReader = async(Dispatchers.IO) {
+                try {
+                    process.errorStream.bufferedReader().useLines { seq ->
+                        for (line in seq) warnLogger(line)
+                    }
+                } catch (_: IOException) { }
+            }
             try {
                 callbackSpin()
                 if (active) throw RemoteException("Root process exited unexpectedly")
@@ -199,10 +206,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 throw e
             } finally {
                 if (DEBUG) Log.d(TAG, "Waiting for exit")
+                errorReader.await()
                 process.waitFor()
                 withContext(NonCancellable) { closeInternal(true) }
             }
-            check(process.errorStream.available() == 0) // stderr should not be used
         }
         future.await()
     }
