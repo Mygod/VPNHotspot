@@ -267,7 +267,15 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI_LEGACY
 
-        override fun start() = WifiApManager.start()
-        override fun stop() = WifiApManager.stop()
+        override fun start() = try {
+            WifiApManager.start()
+        } catch (e: Exception) {
+            onException(e)
+        }
+        override fun stop() = try {
+            WifiApManager.stop()
+        } catch (e: Exception) {
+            onException(e)
+        }
     }
 }

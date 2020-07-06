@@ -242,7 +242,15 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val tetherType get() = TetherType.WIFI
         override val icon get() = R.drawable.ic_device_wifi_tethering
 
-        override fun start() = WifiApManager.start()
-        override fun stop() = WifiApManager.stop()
+        override fun start() = try {
+            WifiApManager.start()
+        } catch (e: Exception) {
+            onException(e)
+        }
+        override fun stop() = try {
+            WifiApManager.stop()
+        } catch (e: Exception) {
+            onException(e)
+        }
     }
 }
