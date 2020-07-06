@@ -122,9 +122,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
                     if (target == null) target = this
                 })
             }
-            content = Content(result, target!!.apply {
-                RepeaterService.lastMac = bssid!!
-            }, persistentMacLine, legacy)
+            content = Content(result, target!!, persistentMacLine, legacy)
         } catch (e: Exception) {
             FirebaseCrashlytics.getInstance().apply {
                 setCustomKey(TAG, config)

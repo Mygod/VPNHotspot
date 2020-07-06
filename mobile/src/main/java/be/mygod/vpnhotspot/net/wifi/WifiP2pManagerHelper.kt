@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pManager
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.util.callSuper
 import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
@@ -125,5 +127,16 @@ object WifiP2pManagerHelper {
             }
         }))
         return result.await()
+    }
+
+    @SuppressLint("MissingPermission")
+    @RequiresApi(29)
+    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddressCompat? {
+        val future = CompletableDeferred<String?>()
+        requestDeviceInfo(c) { future.complete(it?.deviceAddress) }
+        return future.await()?.let {
+            val address = if (it.isEmpty()) null else MacAddressCompat.fromString(it)
+            if (address == MacAddressCompat.ANY_ADDRESS) null else address
+        }
     }
 }

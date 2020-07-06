@@ -6,11 +6,10 @@ import android.os.Parcelable
 import android.system.Os
 import android.system.OsConstants
 import android.text.TextUtils
-import be.mygod.librootkotlinx.ParcelableInt
-import be.mygod.librootkotlinx.ParcelableList
-import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandNoResult
+import androidx.annotation.RequiresApi
+import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
@@ -31,6 +30,14 @@ object RepeaterCommands {
     data class DeletePersistentGroup(val netId: Int) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
             deletePersistentGroup(obtainChannel(), netId)?.let { ParcelableInt(it) }
+        }
+    }
+
+    @Parcelize
+    @RequiresApi(29)
+    class RequestDeviceAddress : RootCommand<ParcelableLong?> {
+        override suspend fun execute() = Services.p2p!!.run {
+            requestDeviceAddress(obtainChannel())?.let { ParcelableLong(it.addr) }
         }
     }
 

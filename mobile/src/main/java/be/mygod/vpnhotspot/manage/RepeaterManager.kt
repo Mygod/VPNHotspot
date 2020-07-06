@@ -209,7 +209,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
                 try {
                     val config = P2pSupplicantConfiguration(group)
-                    config.init(RepeaterService.lastMac)
+                    config.init(binder.obtainDeviceAddress()?.toString())
                     holder.config = config
                     passphrase = config.psk
                     bssid = config.bssid

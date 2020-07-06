@@ -17,10 +17,10 @@ import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
-import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
@@ -40,7 +40,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         const val KEY_SAFE_MODE = "service.repeater.safeMode"
-        private const val KEY_LAST_MAC = "service.repeater.lastMac.v2"
 
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
@@ -64,9 +63,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         val safeModeConfigurable get() = Build.VERSION.SDK_INT >= 29 && hasP2pValidateName
         val safeMode get() = Build.VERSION.SDK_INT >= 29 &&
                 (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
-        var lastMac: String?
-            get() = app.pref.getString(KEY_LAST_MAC, null)
-            set(value) = app.pref.edit { putString(KEY_LAST_MAC, value) }
 
         var networkName: String?
             get() = app.pref.getString(KEY_NETWORK_NAME, null)
@@ -121,14 +117,18 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
         val groupChanged = StickyEvent1 { group }
 
-        @SuppressLint("NewApi") // networkId is available since Android 4.2
-        suspend fun fetchPersistentGroup() {
-            val ownerAddress = lastMac?.let(MacAddressCompat.Companion::fromString) ?: try {
-                P2pSupplicantConfiguration().apply { init() }.bssid
+        suspend fun obtainDeviceAddress(): MacAddressCompat? {
+            return if (Build.VERSION.SDK_INT >= 29) p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
+                RootManager.use { it.execute(RepeaterCommands.RequestDeviceAddress()) }
             } catch (e: Exception) {
                 Timber.d(e)
                 null
-            } ?: return
+            }?.let { MacAddressCompat(it.value) } else lastMac?.let { MacAddressCompat.fromString(it) }
+        }
+
+        @SuppressLint("NewApi") // networkId is available since Android 4.2
+        suspend fun fetchPersistentGroup() {
+            val ownerAddress = obtainDeviceAddress() ?: return
             val channel = channel ?: return
             fun Collection<WifiP2pGroup>.filterUselessGroups(): List<WifiP2pGroup> {
                 if (isNotEmpty()) persistentSupported = true
@@ -212,9 +212,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     }
     private val deviceListener = broadcastReceiver { _, intent ->
         val addr = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)?.deviceAddress
-        if (!addr.isNullOrEmpty() && (Build.VERSION.SDK_INT < 29 ||
-                        MacAddressCompat.fromString(addr) != MacAddressCompat.ANY_ADDRESS)) lastMac = addr
+        if (!addr.isNullOrEmpty()) lastMac = addr
     }
+    private var lastMac: String? = null
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
@@ -245,7 +245,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onCreate() {
         super.onCreate()
         onChannelDisconnected()
-        registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
+        if (Build.VERSION.SDK_INT < 29) {
+            registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
+        }
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -494,7 +496,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             dispatcher.close()
         }
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
-        unregisterReceiver(deviceListener)
+        if (Build.VERSION.SDK_INT < 29) unregisterReceiver(deviceListener)
         status = Status.DESTROYED
         if (Build.VERSION.SDK_INT >= 27) channel?.close()
         super.onDestroy()
