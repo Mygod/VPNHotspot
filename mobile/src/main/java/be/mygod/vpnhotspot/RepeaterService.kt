@@ -44,8 +44,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
-        private const val KEY_OPERATING_BAND = "service.repeater.band.v2"
-        private const val KEY_OPERATING_CHANNEL = "service.repeater.oc"
+        private const val KEY_OPERATING_BAND = "service.repeater.band.v3"
+        private const val KEY_OPERATING_CHANNEL = "service.repeater.oc.v2"
         private const val KEY_AUTO_SHUTDOWN = "service.repeater.autoShutdown"
         private const val KEY_SHUTDOWN_TIMEOUT = "service.repeater.shutdownTimeout"
         private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"
@@ -371,8 +371,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                             SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                             SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                             else -> throw IllegalArgumentException("Unknown band $band")
-                        })
-                        else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+                        }) else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
                     }
                     setDeviceAddress(deviceAddress?.toPlatform())
                 }.build().run {
