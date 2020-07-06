@@ -117,9 +117,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             shutdownTimeoutMillis = dialogView.timeout.text.let { text ->
                 if (text.isNullOrEmpty()) 0 else text.toString().toLong()
             }
-            val bandOption = dialogView.band.selectedItem as BandOption
-            band = bandOption.band
-            channel = bandOption.channel
+            if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
+                val bandOption = dialogView.band.selectedItem as BandOption
+                band = bandOption.band
+                channel = bandOption.channel
+            }
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.text.toString())
             } else null
