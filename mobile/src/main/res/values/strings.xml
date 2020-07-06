@@ -68,7 +68,10 @@
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
     <string name="tethering_manage_wigig">WiGig hotspot</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
-    <string name="tethering_manage_wifi_capabilities">%1$s/%2$d clients connected\nSupported features: %3$s</string>
+    <plurals name="tethering_manage_wifi_capabilities">
+        <item quantity="one">%1$s/%2$d client connected\nSupported features: %3$s</item>
+        <item quantity="other">%1$s/%2$d clients connected\nSupported features: %3$s</item>
+    </plurals>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>

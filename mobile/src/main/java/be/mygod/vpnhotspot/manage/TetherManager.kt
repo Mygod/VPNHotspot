@@ -183,8 +183,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                             WifiApManager.channelWidthLookup(bandwidth, true))
                 } else null,
                 capability?.let { (maxSupportedClients, supportedFeatures) ->
-                    app.getString(R.string.tethering_manage_wifi_capabilities, numClients ?: "?",
-                            maxSupportedClients, sequence {
+                    app.resources.getQuantityString(R.plurals.tethering_manage_wifi_capabilities, maxSupportedClients,
+                            numClients ?: "?", maxSupportedClients, sequence {
                         var features = supportedFeatures
                         if (features == 0L) yield(parent.getString(R.string.tethering_manage_wifi_no_features))
                         else while (features != 0L) {

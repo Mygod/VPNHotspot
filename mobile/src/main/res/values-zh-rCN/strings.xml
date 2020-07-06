@@ -58,7 +58,9 @@
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
     <string name="tethering_manage_wigig">WiGig 热点</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
-    <string name="tethering_manage_wifi_capabilities">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</string>
+    <plurals name="tethering_manage_wifi_capabilities">
+        <item quantity="other">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</item>
+    </plurals>
     <string name="tethering_manage_wifi_no_features">无</string>
     <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>
