@@ -37,7 +37,7 @@ The following features in the app requires it to be installed under `/system/pri
 One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).
 
 * (since Android 11, since app v2.9.1) `android.permission.BLUETOOTH_PRIVILEGED`: Use the Bluetooth tethering shortcut switch in app.
-* (prior to Android 11, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
+* (Android 8-10, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
 
 Installing as system app also has the side benefit of launching root daemon less frequently due to having privileged permissions listed below.
 

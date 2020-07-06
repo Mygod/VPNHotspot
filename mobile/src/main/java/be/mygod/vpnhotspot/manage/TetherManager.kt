@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
@@ -95,7 +96,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         data.notifyChange()
     }
     override fun onException(e: Exception) {
-        if (e !is InvocationTargetException || e.targetException !is SecurityException) Timber.w(e)
+        if (e.getRootCause() !is SecurityException) Timber.w(e)
         GlobalScope.launch(Dispatchers.Main.immediate) {
             val context = parent.context ?: app
             Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()

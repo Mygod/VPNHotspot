@@ -6,6 +6,7 @@ import android.content.*
 import android.net.InetAddresses
 import android.os.Build
 import android.os.Handler
+import android.os.RemoteException
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -32,9 +33,11 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.util.concurrent.Executor
 
-val Throwable.readableMessage: String get() = if (this is InvocationTargetException) {
-    targetException.readableMessage
-} else localizedMessage ?: javaClass.name
+tailrec fun Throwable.getRootCause(): Throwable {
+    if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
+    return this
+}
+val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
 
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works

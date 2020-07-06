@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.Dispatchers
@@ -122,7 +123,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         updateTile()
     }
     override fun onException(e: Exception) {
-        if (e !is InvocationTargetException || e.targetException !is SecurityException) Timber.w(e)
+        if (e.getRootCause() !is SecurityException) Timber.w(e)
         GlobalScope.launch(Dispatchers.Main.immediate) {
             Toast.makeText(this@TetheringTileService, e.readableMessage, Toast.LENGTH_LONG).show()
         }
