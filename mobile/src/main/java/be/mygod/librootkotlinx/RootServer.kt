@@ -1,6 +1,7 @@
 package be.mygod.librootkotlinx
 
 import android.content.Context
+import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
@@ -158,7 +159,11 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 val appProcess = AppProcess.getAppProcess()
                 RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
                         RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
-                        arrayOf("$token2\n"), niceName)
+                        arrayOf("$token2\n"), niceName).let { result ->
+                    if (Build.VERSION.SDK_INT < 24) result
+                    // undo the patch on newer APIs to let linker do the work
+                    else result.replaceFirst(" LD_LIBRARY_PATH=", " __SUPPRESSED_LD_LIBRARY_PATH=")
+                }
             }
             awaitAll(init, launchString)
         }
@@ -402,7 +407,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
 
         private fun rootMain(args: Array<String>) {
             require(args.isNotEmpty())
-            RootJava.restoreOriginalLdLibraryPath()
+            if (Build.VERSION.SDK_INT < 24) RootJava.restoreOriginalLdLibraryPath()
             val mainInitialized = CountDownLatch(1)
             val main = Thread({
                 @Suppress("DEPRECATION")
