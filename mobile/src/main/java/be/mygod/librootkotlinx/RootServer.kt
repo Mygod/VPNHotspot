@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
+import android.system.Os
+import android.util.Base64
 import android.util.Log
 import androidx.collection.LongSparseArray
 import androidx.collection.set
@@ -19,6 +21,7 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
+import java.security.MessageDigest
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
@@ -157,8 +160,20 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             }
             val launchString = async(start = CoroutineStart.LAZY) {
                 val appProcess = AppProcess.getAppProcess()
+                val relocated = if (Build.VERSION.SDK_INT < 29) {
+                    val target = File(context.codeCacheDir, MessageDigest.getInstance("SHA-256").run {
+                        update(appProcess.toByteArray())
+                        Base64.encodeToString(digest(), Base64.NO_PADDING or Base64.NO_WRAP or Base64.URL_SAFE)
+                    })
+                    if (!target.canExecute()) { // copy file to local cache to reset xattr/SELinux context
+                        File(appProcess).copyTo(target, true)
+                        Os.chmod(target.absolutePath, 0b111_101_101)
+                    }
+                    check(target.canExecute())
+                    target.absolutePath
+                } else appProcess
                 RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
-                        RootServer::class.java.name, appProcess, AppProcess.guessIfAppProcessIs64Bits(appProcess),
+                        RootServer::class.java.name, relocated, AppProcess.guessIfAppProcessIs64Bits(appProcess),
                         arrayOf("$token2\n"), niceName).let { result ->
                     if (Build.VERSION.SDK_INT < 24) result
                     // undo the patch on newer APIs to let linker do the work
