@@ -179,7 +179,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#370416)
 * (prior to API 29) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#372578)
 
-Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)
+<details>
+<summary>Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)</summary>
 
 * (since API 24) [`Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#35264)
 * (since API 24) [`Landroid/bluetooth/BluetoothProfile;->PAN:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#35361)
@@ -276,6 +277,8 @@ Hidden whitelisted APIs: (same catch as above, however, things in this list are 
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158320)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158330)
 * (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183757)
+
+</details>
 
 Nonexported system resources:
 
