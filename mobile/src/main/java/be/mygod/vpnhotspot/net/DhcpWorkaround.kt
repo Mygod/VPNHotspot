@@ -34,7 +34,7 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
                 try {
                     it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
                 } catch (e: RoutingCommands.UnexpectedOutputException) {
-                    if (Routing.shouldSuppressIpError(e)) return@use
+                    if (Routing.shouldSuppressIpError(e, enabled)) return@use
                     Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
                     SmartSnackbar.make(e).show()
                 }
