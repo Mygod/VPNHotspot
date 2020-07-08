@@ -17,6 +17,7 @@ import androidx.emoji.text.FontRequestEmojiCompatConfig
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround
+import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
@@ -49,6 +50,10 @@ class App : Application() {
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         } else deviceStorage = this
         Services.init(this)
+
+        val callback = object : TetheringManager.TetheringEventCallback { }
+        TetheringManager.registerTetheringEventCallbackCompat(this, callback)
+        TetheringManager.unregisterTetheringEventCallbackCompat(this, callback)
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)

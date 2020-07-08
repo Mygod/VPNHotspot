@@ -11,6 +11,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.os.Handler
+import android.util.Log
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.RootManager
@@ -560,6 +561,7 @@ object TetheringManager {
                 })
             }.also { if (!computed) return }
         }
+        Log.i("debug", "registerTetheringEventCallback $proxy")
         registerTetheringEventCallback(instance, executor ?: null.makeExecutor(), proxy)
     }
     /**
@@ -573,6 +575,7 @@ object TetheringManager {
     @RequiresApi(30)
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
+        Log.i("debug", "unregisterTetheringEventCallback $proxy")
         unregisterTetheringEventCallback(instance, proxy)
     }
 
