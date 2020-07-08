@@ -26,7 +26,7 @@ android {
         minSdkVersion(21)
         targetSdkVersion(targetSdk)
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 239
+        versionCode = 240
         versionName = "2.10.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments(mapOf(
