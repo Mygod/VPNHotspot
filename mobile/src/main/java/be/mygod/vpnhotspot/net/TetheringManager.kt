@@ -297,31 +297,38 @@ object TetheringManager {
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
                        handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
         if (Build.VERSION.SDK_INT >= 30) try {
-            val proxy = proxy(callback)
             val executor = handler.makeExecutor()
-            try {
-                startTethering(type, true, showProvisioningUi, executor, proxy)
-            } catch (e1: InvocationTargetException) {
-                if (e1.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
-                    val result = try {
-                        RootManager.use { it.execute(StartTethering(type, showProvisioningUi)) }
-                    } catch (e2: Exception) {
-                        e2.addSuppressed(e1)
-                        try {
-                            // last resort: start tethering without trying to bypass entitlement check
-                            startTethering(type, false, showProvisioningUi, executor, proxy)
-                            Timber.w(e2)
-                        } catch (e3: Exception) {
-                            e3.addSuppressed(e2)
-                            Timber.w(e3)
-                            callback.onException(e3)
+            startTethering(type, true, showProvisioningUi,
+                    executor, proxy(object : StartTetheringCallback {
+                override fun onTetheringStarted() = callback.onTetheringStarted()
+                override fun onTetheringFailed(error: Int?) {
+                    if (error != TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) callback.onTetheringFailed(error)
+                    else GlobalScope.launch(Dispatchers.Unconfined) {
+                        val result = try {
+                            RootManager.use { it.execute(StartTethering(type, showProvisioningUi)) }
+                        } catch (eRoot: Exception) {
+                            try {   // last resort: start tethering without trying to bypass entitlement check
+                                startTethering(type, false, showProvisioningUi, executor, proxy(callback))
+                                Timber.w(eRoot)
+                            } catch (e: Exception) {
+                                e.addSuppressed(eRoot)
+                                callback.onException(e)
+                            }
+                            return@launch
                         }
-                        return@launch
+                        when {
+                            result == null -> callback.onTetheringStarted()
+                            result.value == TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION -> try {
+                                startTethering(type, false, showProvisioningUi, executor, proxy(callback))
+                            } catch (e: Exception) {
+                                callback.onException(e)
+                            }
+                            else -> callback.onTetheringFailed(result.value)
+                        }
                     }
-                    if (result == null) callback.onTetheringStarted()
-                    else callback.onTetheringFailed(result.value)
-                } else callback.onException(e1)
-            }
+                }
+                override fun onException(e: Exception) = callback.onException(e)
+            }))
         } catch (e: Exception) {
             callback.onException(e)
         } else @Suppress("DEPRECATION") try {
@@ -607,6 +614,8 @@ object TetheringManager {
             "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR", "TETHER_ERROR_ENABLE_NAT_ERROR",
             "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR", "TETHER_ERROR_PROVISION_FAILED",
             "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") { clazz }
+    @RequiresApi(30)
+    const val TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION = 14
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(
             if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)

@@ -151,6 +151,7 @@
     <string name="failure_reason_unknown">未知 #%d</string>
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
+    <string name="permission_missing">权限不足</string>
 
     <string name="configuration_view">设置 WLAN</string>
     <string name="configuration_share">使用 QR 码分享</string>

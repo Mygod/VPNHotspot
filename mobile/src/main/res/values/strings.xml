@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
  Values copied from:
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-    * https://android.googlesource.com/platform/packages/apps/Settings/+/37c9c5b/res/values/strings.xml
+   https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
+   https://android.googlesource.com/platform/packages/apps/Settings/+/37c9c5b/res/values/strings.xml
     * @string/usb_tethering_button_text
     * @string/wifi_hotspot_checkbox_text
     * @string/bluetooth_tether_checkbox_text
@@ -12,7 +12,7 @@
     * @string/wifi_ap_choose_5G
     * @string/wifi_advanced_mac_address_title
     * @string/wifi_hidden_network
-    * https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
+   https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
     * @plurals/quick_settings_hotspot_secondary_label_num_devices
   -->
 <resources>
@@ -171,6 +171,7 @@
     <string name="failure_reason_unknown">unknown #%d</string>
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
+    <string name="permission_missing">Permission missing</string>
 
     <string name="configuration_view">Wi\u2011Fi configuration</string>
     <string name="configuration_share">Share via QR code</string>

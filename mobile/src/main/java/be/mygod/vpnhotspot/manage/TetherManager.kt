@@ -92,7 +92,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed(error: Int?) {
         Timber.d("onTetheringFailed: $error")
-        error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorLookup(it)}").show() }
+        if (Build.VERSION.SDK_INT < 30 || error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
+            error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorLookup(it)}").show() }
+        } else GlobalScope.launch(Dispatchers.Main.immediate) {
+            val context = parent.context ?: app
+            Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
+            ManageBar.start(context)
+        }
         data.notifyChange()
     }
     override fun onException(e: Exception) {
