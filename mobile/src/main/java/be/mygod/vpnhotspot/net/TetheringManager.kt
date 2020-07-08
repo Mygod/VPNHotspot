@@ -509,12 +509,15 @@ object TetheringManager {
     fun registerTetheringEventCallback(executor: Executor?, callback: TetheringEventCallback) {
         val reference = WeakReference(callback)
         val proxy = synchronized(callbackMap) {
+            var computed = false
             callbackMap.computeIfAbsent(callback) {
+                computed = true
                 Proxy.newProxyInstance(interfaceTetheringEventCallback.classLoader,
                         arrayOf(interfaceTetheringEventCallback), object : InvocationHandler {
                     private var regexpsSent = false
                     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                        @Suppress("NAME_SHADOWING") val callback = reference.get()
+                        @Suppress("NAME_SHADOWING")
+                        val callback = reference.get()
                         val noArgs = args?.size ?: 0
                         return when (val name = method.name) {
                             "onTetheringSupported" -> {
@@ -555,7 +558,7 @@ object TetheringManager {
                         }
                     }
                 })
-            }
+            }.also { if (!computed) return }
         }
         registerTetheringEventCallback(instance, executor ?: null.makeExecutor(), proxy)
     }
@@ -579,23 +582,19 @@ object TetheringManager {
      * Only [TetheringEventCallback.onTetheredInterfacesChanged] is supported on API 29-.
      */
     fun registerTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (Build.VERSION.SDK_INT >= 30) {
-            registerTetheringEventCallback(null.makeExecutor(), callback)
-        } else synchronized(callbackMap) {
+        if (Build.VERSION.SDK_INT < 30) synchronized(callbackMap) {
             callbackMap.computeIfAbsent(callback) {
                 broadcastReceiver { _, intent ->
                     callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
                 }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
             }
-        }
+        } else registerTetheringEventCallback(null.makeExecutor(), callback)
     }
     fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (Build.VERSION.SDK_INT >= 30) {
-            unregisterTetheringEventCallback(callback)
-        } else {
+        if (Build.VERSION.SDK_INT < 30) {
             val receiver = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
             context.ensureReceiverUnregistered(receiver as BroadcastReceiver)
-        }
+        } else unregisterTetheringEventCallback(callback)
     }
 
     /**
