@@ -336,8 +336,12 @@ object TetheringManager {
         } catch (e: InvocationTargetException) {
             if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
                 val result = try {
+                    val rootCache = File(cacheDir, "root")
+                    rootCache.mkdirs()
+                    check(rootCache.exists()) { "Creating root cache dir failed" }
                     RootManager.use {
-                        it.execute(be.mygod.vpnhotspot.root.StartTetheringLegacy(cacheDir, type, showProvisioningUi))
+                        it.execute(be.mygod.vpnhotspot.root.StartTetheringLegacy(
+                                rootCache, type, showProvisioningUi))
                     }.value
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)
