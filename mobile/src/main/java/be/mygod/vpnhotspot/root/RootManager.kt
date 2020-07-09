@@ -16,7 +16,7 @@ object RootManager : RootSession() {
     @Parcelize
     class RootInit : RootCommandNoResult {
         override suspend fun execute(): Parcelable? {
-            RootServer.DEBUG = BuildConfig.DEBUG
+            RootServer.isDebugEnabled = BuildConfig.DEBUG
             Timber.plant(object : Timber.DebugTree() {
                 override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
                     if (priority >= Log.WARN) System.err.println("$priority/$tag: $message")
@@ -36,7 +36,7 @@ object RootManager : RootSession() {
 
     override fun createServer() = RootServer { Timber.w(it) }
     override suspend fun initServer(server: RootServer) {
-        RootServer.DEBUG = BuildConfig.DEBUG
+        RootServer.isDebugEnabled = BuildConfig.DEBUG
         try {
             server.init(app)
         } finally {

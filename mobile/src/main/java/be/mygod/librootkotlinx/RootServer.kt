@@ -12,6 +12,7 @@ import androidx.collection.LongSparseArray
 import androidx.collection.set
 import androidx.collection.valueIterator
 import eu.chainfire.librootjava.AppProcess
+import eu.chainfire.librootjava.Logger
 import eu.chainfire.librootjava.RootJava
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -152,7 +153,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                     writer.flush()
                     val reader = process.inputStream.bufferedReader()
                     reader.lookForToken(token1)
-                    if (DEBUG) Log.d(TAG, "Root shell initialized")
+                    if (isDebugEnabled) Log.d(TAG, "Root shell initialized")
                     reader to writer
                 } catch (e: Exception) {
                     throw NoShellException(e)
@@ -189,7 +190,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         output = writer
         require(!active)
         active = true
-        if (DEBUG) Log.d(TAG, "Root server initialized")
+        if (isDebugEnabled) Log.d(TAG, "Root server initialized")
     }
 
     private fun callbackSpin() {
@@ -209,7 +210,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                     }
                 }
             }
-            if (DEBUG) Log.d(TAG, "Received callback #$index: $result")
+            if (isDebugEnabled) Log.d(TAG, "Received callback #$index: $result")
             callback(input, result)
         }
     }
@@ -244,7 +245,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 process.destroy()
                 throw e
             } finally {
-                if (DEBUG) Log.d(TAG, "Waiting for exit")
+                if (isDebugEnabled) Log.d(TAG, "Waiting for exit")
                 errorReader.await()
                 process.waitFor()
                 withContext(NonCancellable) { closeInternal(true) }
@@ -267,7 +268,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     private fun sendLocked(command: Parcelable) {
         output.writeParcelable(command)
         output.flush()
-        if (DEBUG) Log.d(TAG, "Sent #$counter: $command")
+        if (isDebugEnabled) Log.d(TAG, "Sent #$counter: $command")
         counter++
     }
 
@@ -327,7 +328,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     private suspend fun closeInternal(fromWorker: Boolean = false) = mutex.withLock {
         if (active) {
             active = false
-            if (DEBUG) Log.d(TAG, if (fromWorker) "Shutting down from worker" else "Shutting down from client")
+            if (isDebugEnabled) Log.d(TAG, if (fromWorker) "Shutting down from worker" else "Shutting down from client")
             try {
                 sendLocked(Shutdown())
                 output.close()
@@ -335,7 +336,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             } catch (e: IOException) {
                 Log.i(TAG, "send Shutdown failed", e)
             }
-            if (DEBUG) Log.d(TAG, "Client closed")
+            if (isDebugEnabled) Log.d(TAG, "Client closed")
         }
         if (fromWorker) {
             for (callback in callbackLookup.valueIterator()) callback.cancel()
@@ -354,8 +355,12 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         /**
          * If set to true, debug information will be printed to logcat.
          */
-        @JvmField
-        var DEBUG = false
+        @JvmStatic
+        var isDebugEnabled = false
+            set(value) {
+                field = value
+                Logger.setDebugLogging(value)
+            }
 
         private const val TAG = "RootServer"
         private const val SUCCESS = 0
@@ -448,7 +453,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             // thread safety: usage of input should be in main thread
             val input = DataInputStream(System.`in`.buffered())
             var counter = 0L
-            if (DEBUG) Log.d(TAG, "Server entering main loop")
+            if (isDebugEnabled) Log.d(TAG, "Server entering main loop")
             loop@ while (true) {
                 val command = try {
                     input.readParcelable<Parcelable>(RootServer::class.java.classLoader)
@@ -456,7 +461,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                     break
                 }
                 val callback = counter
-                if (DEBUG) Log.d(TAG, "Received #$callback: $command")
+                if (isDebugEnabled) Log.d(TAG, "Received #$callback: $command")
                 when (command) {
                     is CancelCommand -> cancellables[command.index]?.invoke()
                     is RootCommandOneWay -> defaultWorker.launch {
@@ -508,10 +513,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 counter++
             }
             job.cancel()
-            if (DEBUG) Log.d(TAG, "Clean up initiated before exit. Jobs: ${job.children.joinToString()}")
+            if (isDebugEnabled) Log.d(TAG, "Clean up initiated before exit. Jobs: ${job.children.joinToString()}")
             if (runBlocking { withTimeoutOrNull(5000) { job.join() } } == null) {
                 Log.w(TAG, "Clean up timeout: ${job.children.joinToString()}")
-            } else if (DEBUG) Log.d(TAG, "Clean up finished, exiting")
+            } else if (isDebugEnabled) Log.d(TAG, "Clean up finished, exiting")
         }
     }
 }
