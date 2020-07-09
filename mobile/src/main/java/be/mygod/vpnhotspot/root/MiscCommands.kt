@@ -19,14 +19,12 @@ import java.io.FileOutputStream
 import java.io.InterruptedIOException
 import java.util.concurrent.Executor
 
-val SHELL = System.getenv("SHELL") ?: "sh"
-
 @Parcelize
 class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
     @Suppress("BlockingMethodInNonBlockingContext")
     override suspend fun execute() = withContext(Dispatchers.IO) {
         FileOutputStream(path, true).use { out ->
-            val process = ProcessBuilder(SHELL).redirectErrorStream(true).start()
+            val process = ProcessBuilder("sh").redirectErrorStream(true).start()
             process.outputStream.bufferedWriter().use { commands ->
                 // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
                 val iptablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "iptables-save").absolutePath.also {

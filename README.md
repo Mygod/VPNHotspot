@@ -307,6 +307,7 @@ Undocumented system binaries are all bundled and executable:
 * `ip` (`link monitor neigh rule`);
 * `ndc` (`ipfwd` since API 23, `nat` since API 28);
 * `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
+* `sh`;
 * `su`.
 
 If some of these are unavailable, you can alternatively install a recent version (v1.28.1 or higher) of Busybox.
