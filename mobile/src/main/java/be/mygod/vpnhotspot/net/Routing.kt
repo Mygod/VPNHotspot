@@ -14,6 +14,8 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.if_nametoindex
+import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.BufferedWriter
@@ -43,6 +45,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
         private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
 
+        private const val ROOT_DIR = "/system/bin/"
+        const val IP = "${ROOT_DIR}ip"
         const val IPTABLES = "iptables -w"
         const val IP6TABLES = "ip6tables -w"
 
@@ -61,10 +65,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendln("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
             commands.appendln("$IP6TABLES -F vpnhotspot_filter")
             commands.appendln("$IP6TABLES -X vpnhotspot_filter")
-            commands.appendln("while ip rule del priority $RULE_PRIORITY_DNS; do done")
-            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM; do done")
-            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
-            commands.appendln("while ip rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
+            commands.appendln("while $IP rule del priority $RULE_PRIORITY_DNS; do done")
+            commands.appendln("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
+            commands.appendln("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
+            commands.appendln("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
         }
 
         suspend fun clean() {
@@ -99,17 +103,17 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 } == e.result.err.trim()
     }
 
-    private fun RootSession.Transaction.ipRule(add: String, priority: Int, rule: String = "", del: String = add) {
+    private fun RootSession.Transaction.ipRule(action: String, priority: Int, rule: String = "") {
         try {
-            exec("ip rule add $rule iif $downstream $add priority $priority",
-                    "ip rule del $rule iif $downstream $del priority $priority")
+            exec("$IP rule add $rule iif $downstream $action priority $priority",
+                    "$IP rule del $rule iif $downstream $action priority $priority")
         } catch (e: RoutingCommands.UnexpectedOutputException) {
             if (!shouldSuppressIpError(e)) throw e
         }
     }
-    private fun RootSession.Transaction.ipRuleLookup(upstream: String, priority: Int, rule: String = "") =
-            // by the time stopScript is called, table entry for upstream may already get removed
-            ipRule("lookup $upstream", priority, rule, "")
+    private fun RootSession.Transaction.ipRuleLookup(ifindex: Int, priority: Int, rule: String = "") =
+            // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
+            ipRule("lookup ${1000 + ifindex}", priority, rule)
 
     enum class MasqueradeMode {
         None,
@@ -148,8 +152,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * The only case when upstream is null is on API 23- and we are using system default rules.
          */
         inner class Subrouting(priority: Int, val upstream: String? = null) {
+            val ifindex = if (upstream == null) 0 else if_nametoindex(upstream).also { check(it != 0) }
             val transaction = RootSession.beginTransaction().safeguard {
-                if (upstream != null) ipRuleLookup(upstream, priority)
+                if (upstream != null) ipRuleLookup(ifindex, priority)
                 @TargetApi(28) when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> {
@@ -216,6 +221,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 Timber.w(e)
                 null
             }
+            dns = listOf(parseNumericAddress("8.8.8.8"))
             updateDnsRoute()
         }
     }
@@ -313,10 +319,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    private inner class DnsRoute(val upstream: String, val dns: String) {
+    private inner class DnsRoute(val ifindex: Int, val dns: String) {
         val transaction = RootSession.beginTransaction().safeguard {
             val hostAddress = hostAddress.address.hostAddress
-            ipRuleLookup(upstream, RULE_PRIORITY_DNS, "to $dns")
+            ipRuleLookup(ifindex, RULE_PRIORITY_DNS, "to $dns")
             iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
             iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
         }
@@ -324,16 +330,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var currentDns: DnsRoute? = null
     private fun updateDnsRoute() {
         val selected = sequenceOf(upstream, fallbackUpstream).flatMap { upstream ->
-            val ifname = upstream.subrouting?.upstream
-            if (ifname == null) emptySequence() else upstream.dns.asSequence().map { ifname to it }
+            val ifindex = upstream.subrouting?.ifindex ?: 0
+            if (ifindex == 0) emptySequence() else upstream.dns.asSequence().map { ifindex to it }
         }.firstOrNull { it.second is Inet4Address }
-        val upstream = selected?.first
+        val ifindex = selected?.first ?: 0
         var dns = selected?.second?.hostAddress
         if (dns.isNullOrBlank()) dns = null
-        if (upstream != currentDns?.upstream || dns != currentDns?.dns) {
+        if (ifindex != currentDns?.ifindex || dns != currentDns?.dns) {
             currentDns?.transaction?.revert()
-            currentDns = if (upstream == null || dns == null) null else try {
-                DnsRoute(upstream, dns)
+            currentDns = if (ifindex == 0 || dns == null) null else try {
+                DnsRoute(ifindex, dns)
             } catch (e: RuntimeException) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()

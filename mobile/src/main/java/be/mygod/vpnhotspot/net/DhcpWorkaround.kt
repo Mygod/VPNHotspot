@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.content.SharedPreferences
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -32,7 +33,7 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
         try {
             RootSession.use {
                 try {
-                    it.exec("ip rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
+                    it.exec("$IP rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
                 } catch (e: RoutingCommands.UnexpectedOutputException) {
                     if (Routing.shouldSuppressIpError(e, enabled)) return@use
                     Timber.w(IOException("Failed to tweak dhcp workaround rule", e))

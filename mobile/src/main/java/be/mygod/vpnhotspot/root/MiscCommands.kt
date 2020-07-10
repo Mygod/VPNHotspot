@@ -8,7 +8,8 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Companion.IP
+import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.android.parcel.Parcelize
@@ -50,16 +51,16 @@ class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir
                     |$ip6tablesSave
                     |echo
                     |echo ip rule
-                    |ip rule
+                    |$IP rule
                     |echo
                     |echo ip neigh
-                    |ip neigh
+                    |$IP neigh
                     |echo
                     |echo iptables -nvx -L vpnhotspot_fwd
-                    |${Routing.IPTABLES} -nvx -L vpnhotspot_fwd
+                    |$IPTABLES -nvx -L vpnhotspot_fwd
                     |echo
                     |echo iptables -nvx -L vpnhotspot_acl
-                    |${Routing.IPTABLES} -nvx -L vpnhotspot_acl
+                    |$IPTABLES -nvx -L vpnhotspot_acl
                     |echo
                     |echo logcat-su
                     |logcat -d

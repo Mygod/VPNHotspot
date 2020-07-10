@@ -7,6 +7,7 @@ import android.net.InetAddresses
 import android.os.Build
 import android.os.Handler
 import android.os.RemoteException
+import android.system.Os
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -24,6 +25,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
+import java.io.File
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -150,3 +152,7 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
         null
     }
 }
+
+fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
+    Os.if_nametoindex(ifname)
+} else File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().readText().toInt()

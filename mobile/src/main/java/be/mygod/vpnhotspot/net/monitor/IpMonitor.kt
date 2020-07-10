@@ -8,6 +8,7 @@ import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.root.ProcessData
 import be.mygod.vpnhotspot.root.ProcessListener
 import be.mygod.vpnhotspot.root.RootManager
@@ -104,14 +105,14 @@ abstract class IpMonitor {
             if (mode.isMonitor) {
                 if (mode != Mode.MonitorRoot) {
                     // monitor may get rejected by SELinux enforcing
-                    handleProcess(ProcessBuilder("ip", "monitor", monitoredObject))
+                    handleProcess(ProcessBuilder(Routing.IP, "monitor", monitoredObject))
                     if (destroyed) return@thread
                 }
                 try {
                     runBlocking(EmptyCoroutineContext + worker) {
                         RootManager.use { server ->
                             // while we only need to use this server once, we need to also keep the server alive
-                            handleChannel(server.create(ProcessListener(errorMatcher, "ip", "monitor", monitoredObject),
+                            handleChannel(server.create(ProcessListener(errorMatcher, Routing.IP, "monitor", monitoredObject),
                                     this))
                         }
                     }
@@ -152,7 +153,7 @@ abstract class IpMonitor {
         }
         var newServer = server
         try {
-            val command = listOf("ip", monitoredObject)
+            val command = listOf(Routing.IP, monitoredObject)
             val result = (server ?: RootManager.acquire().also { newServer = it })
                     .execute(RoutingCommands.Process(command))
             result.check(command, false)
@@ -167,7 +168,7 @@ abstract class IpMonitor {
     }
 
     private fun poll() {
-        val process = ProcessBuilder("ip", monitoredObject)
+        val process = ProcessBuilder(Routing.IP, monitoredObject)
                 .redirectErrorStream(true)
                 .start()
         process.waitFor()
