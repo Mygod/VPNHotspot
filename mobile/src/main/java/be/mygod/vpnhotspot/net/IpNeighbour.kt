@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.os.Build
 import android.system.ErrnoException
+import android.system.Os
 import android.system.OsConstants
 import be.mygod.vpnhotspot.root.ReadArp
 import be.mygod.vpnhotspot.root.RootManager
@@ -13,8 +14,6 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.NetworkInterface
-import java.net.SocketException
 
 data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddressCompat, val state: State) {
     enum class State {
@@ -39,12 +38,11 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
 
         private fun substituteDev(dev: String): Set<String> {
             val devParser = devFallback.matchEntire(dev)
-            if (devParser != null) try {
+            if (devParser != null) {
                 val index = devParser.groupValues[1].toInt()
-                val iface = NetworkInterface.getByIndex(index)
-                if (iface == null) Timber.w("Failed to find network interface #$index")
-                else return setOf(dev, iface.name)
-            } catch (_: SocketException) { }
+                Os.if_indextoname(index)?.let { iface -> return setOf(dev, iface) }
+                Timber.w("Failed to find network interface #$index")
+            }
             return setOf(dev)
         }
 
