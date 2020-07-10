@@ -16,6 +16,7 @@ import be.mygod.vpnhotspot.util.Services
 import eu.chainfire.librootjava.RootJava
 import kotlinx.android.parcel.Parcelize
 import java.io.File
+import java.io.IOException
 
 object RepeaterCommands {
     @Parcelize
@@ -60,8 +61,12 @@ object RepeaterCommands {
         override suspend fun execute(): Parcelable? {
             File(if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE).writeText(data)
             for (process in File("/proc").listFiles { _, name -> TextUtils.isDigitsOnly(name) }!!) {
-                if (File(File(process, "cmdline").inputStream().bufferedReader().readText()
-                                .split(Char.MIN_VALUE, limit = 2).first()).name == "wpa_supplicant") {
+                val cmdline = try {
+                    File(process, "cmdline").inputStream().bufferedReader().readText()
+                } catch (_: IOException) {
+                    continue
+                }
+                if (File(cmdline.split(Char.MIN_VALUE, limit = 2).first()).name == "wpa_supplicant") {
                     Os.kill(process.name.toInt(), OsConstants.SIGTERM)
                 }
             }
