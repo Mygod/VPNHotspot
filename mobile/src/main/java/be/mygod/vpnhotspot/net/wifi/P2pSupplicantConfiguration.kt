@@ -109,6 +109,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
                     ssidLine = size
                     add("")
                     bssidLine = size
+                    bssid = bssids.singleOrNull()
                     add("\tbssid=$bssid")
                     pskLine = size
                     add("")
@@ -133,7 +134,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
         }
     }
     val psk by lazy { group?.passphrase ?: content.target.psk!! }
-    val bssid by lazy { MacAddressCompat.fromString(content.target.bssid!!) }
+    val bssid by lazy {
+        content.target.bssid?.let { MacAddressCompat.fromString(it) }
+    }
 
     suspend fun update(ssid: String, psk: String, bssid: MacAddressCompat?) {
         val (lines, block, persistentMacLine, legacy) = content
