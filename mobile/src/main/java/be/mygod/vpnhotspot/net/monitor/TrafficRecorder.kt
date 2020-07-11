@@ -135,7 +135,8 @@ object TrafficRecorder {
             if (!timeout && timestamp - lastUpdate <= 100) return
             try {
                 doUpdate(timestamp)
-            } catch (e: RuntimeException) {
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
             }
