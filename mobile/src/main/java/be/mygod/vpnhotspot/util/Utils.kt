@@ -146,7 +146,16 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
                 if (args == null) invokeWithArguments() else invokeWithArguments(*args)
             }
     // otherwise, we just redispatch it to InvocationHandler
-    method.declaringClass.isAssignableFrom(javaClass) -> if (args == null) method(this) else method(this, *args)
+    method.declaringClass.isAssignableFrom(javaClass) -> when {
+        method.declaringClass == Object::class.java -> when (method.name) {
+            "hashCode" -> System.identityHashCode(proxy)
+            "equals" -> proxy === args!![0]
+            "toString" -> "${proxy.javaClass.name}@${System.identityHashCode(proxy).toString(16)}"
+            else -> error("Unsupported Object method dispatched")
+        }
+        args == null -> method(this)
+        else -> method(this, *args)
+    }
     else -> {
         Timber.w("Unhandled method: $method(${args?.contentDeepToString()})")
         null
