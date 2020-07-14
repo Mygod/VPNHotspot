@@ -34,10 +34,7 @@ import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.android.parcel.Parcelize
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -215,7 +212,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     bssid = config.bssid
                     this to false
                 } catch (e: Exception) {
-                    Timber.w(e)
+                    if (e !is CancellationException) Timber.w(e)
                     passphrase = group.passphrase
                     bssid = group.owner?.deviceAddress?.let(MacAddressCompat.Companion::fromString)
                     this to true
