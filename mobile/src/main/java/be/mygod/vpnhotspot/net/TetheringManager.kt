@@ -577,12 +577,7 @@ object TetheringManager {
     @RequiresApi(30)
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
-        try {
-            unregisterTetheringEventCallback(instance, proxy)
-        } catch (e: InvocationTargetException) {
-            if (e.targetException !is IllegalArgumentException) throw e
-            Timber.e(e) // TODO: b/160765229
-        }
+        unregisterTetheringEventCallback(instance, proxy)
     }
 
     /**
