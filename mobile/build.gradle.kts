@@ -11,6 +11,7 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     val targetSdk = 29
+    buildToolsVersion("30.0.1")
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion

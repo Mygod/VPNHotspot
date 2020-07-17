@@ -71,7 +71,7 @@ class RootSession : AutoCloseable {
                     RootSession()
                 }
                 revertCommands.forEach { shell.submit(it) }
-            } catch (e: RuntimeException) {     // if revert fails, it should fail silently
+            } catch (e: Exception) {            // if revert fails, it should fail silently
                 Timber.d(e)
             } finally {
                 revertCommands.clear()
