@@ -480,10 +480,9 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                                 { output.pushResult(callback, result) }
                             } catch (e: Throwable) {
                                 { output.pushThrowable(callback, e) }
-                            } finally {
-                                cancellables.remove(callback)
                             }
-                            withContext(callbackWorker) { result() }
+                            cancellables.remove(callback)
+                            withContext(callbackWorker + NonCancellable) { result() }
                         }
                     }
                     is RootCommandChannel<*> -> defaultWorker.launch {
@@ -502,10 +501,9 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                             }
                         } catch (e: Throwable) {
                             { output.pushThrowable(callback, e) }
-                        } finally {
-                            cancellables.remove(callback)
                         }
-                        withContext(callbackWorker) { result() }
+                        cancellables.remove(callback)
+                        withContext(callbackWorker + NonCancellable) { result() }
                     }
                     is Shutdown -> break@loop
                     else -> throw IllegalArgumentException("Unrecognized input: $command")
