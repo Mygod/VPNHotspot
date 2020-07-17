@@ -38,7 +38,7 @@ object RootManager : RootSession() {
     override suspend fun initServer(server: RootServer) {
         RootServer.isDebugEnabled = BuildConfig.DEBUG
         try {
-            server.init(app)
+            server.init(app.deviceStorage)
         } finally {
             server.readUnexpectedStderr()?.let { Timber.e(it) }
         }
