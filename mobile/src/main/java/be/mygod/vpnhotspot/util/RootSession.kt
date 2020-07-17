@@ -18,7 +18,7 @@ class RootSession : AutoCloseable {
             monitor.lock()
             val instance = try {
                 RootSession()
-            } catch (e: RuntimeException) {
+            } catch (e: Exception) {
                 monitor.unlock()
                 throw e
             }
@@ -41,11 +41,6 @@ class RootSession : AutoCloseable {
         server!!.execute(RoutingCommands.Process(listOf("sh", "-c", command), redirect))
     }
     fun exec(command: String) = execQuiet(command).check(listOf(command))
-    fun execOut(command: String): String {
-        val result = execQuiet(command)
-        result.check(listOf(command), false)
-        return result.out
-    }
 
     /**
      * This transaction is different from what you may have in mind since you can revert it after committing it.

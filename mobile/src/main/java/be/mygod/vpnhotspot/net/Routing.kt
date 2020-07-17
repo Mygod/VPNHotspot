@@ -17,6 +17,7 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.if_nametoindex
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.io.BufferedWriter
 import java.io.IOException
@@ -340,7 +341,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             currentDns?.transaction?.revert()
             currentDns = if (ifindex == 0 || dns == null) null else try {
                 DnsRoute(ifindex, dns)
-            } catch (e: RuntimeException) {
+            } catch (_: CancellationException) {
+                null
+            } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
                 null

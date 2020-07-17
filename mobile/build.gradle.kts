@@ -95,7 +95,7 @@ dependencies {
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("eu.chainfire:librootjava:1.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.8")
     testImplementation("junit:junit:4.13")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test:runner:1.2.0")

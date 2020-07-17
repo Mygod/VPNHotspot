@@ -16,7 +16,6 @@ import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
-import java.lang.RuntimeException
 
 class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs),
         DefaultLifecycleObserver {

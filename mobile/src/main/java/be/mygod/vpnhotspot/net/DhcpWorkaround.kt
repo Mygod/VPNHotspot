@@ -6,6 +6,7 @@ import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -40,6 +41,7 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
                     SmartSnackbar.make(e).show()
                 }
             }
+        } catch (_: CancellationException) {
         } catch (e: Exception) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
