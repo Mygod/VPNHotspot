@@ -5,8 +5,6 @@ import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
-import android.system.Os
-import android.util.Base64
 import android.util.Log
 import androidx.collection.LongSparseArray
 import androidx.collection.set
@@ -22,7 +20,6 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.*
-import java.security.MessageDigest
 import java.util.*
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
@@ -142,49 +139,42 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
     }
     @Suppress("BlockingMethodInNonBlockingContext")
     private suspend fun doInit(context: Context, niceName: String) {
-        val token2 = UUID.randomUUID().toString()
-        val list = coroutineScope {
-            val init = async(start = CoroutineStart.LAZY) {
-                try {
-                    process = ProcessBuilder("su").start()
-                    val token1 = UUID.randomUUID().toString()
-                    val writer = DataOutputStream(process.outputStream.buffered())
-                    writer.writeBytes("echo $token1\n")
-                    writer.flush()
-                    val reader = process.inputStream.bufferedReader()
-                    reader.lookForToken(token1)
-                    if (isDebugEnabled) Log.d(TAG, "Root shell initialized")
-                    reader to writer
-                } catch (e: Exception) {
-                    throw NoShellException(e)
-                }
+        val init = GlobalScope.async {
+            try {
+                process = ProcessBuilder("su").start()
+                val token1 = UUID.randomUUID().toString()
+                val writer = DataOutputStream(process.outputStream.buffered())
+                writer.writeBytes("echo $token1\n")
+                writer.flush()
+                val reader = process.inputStream.bufferedReader()
+                reader.lookForToken(token1)
+                if (isDebugEnabled) Log.d(TAG, "Root shell initialized")
+                reader to writer
+            } catch (e: Exception) {
+                throw NoShellException(e)
             }
-            val launchString = async(start = CoroutineStart.LAZY) {
-                val appProcess = AppProcess.getAppProcess()
-                val relocated = if (Build.VERSION.SDK_INT < 29) {
-                    val target = File(context.codeCacheDir, MessageDigest.getInstance("SHA-256").run {
-                        update(appProcess.toByteArray())
-                        Base64.encodeToString(digest(), Base64.NO_PADDING or Base64.NO_WRAP or Base64.URL_SAFE)
-                    })
-                    if (!target.canExecute()) { // copy file to local cache to reset xattr/SELinux context
-                        File(appProcess).copyTo(target, true)
-                        Os.chmod(target.absolutePath, 0b111_101_101)
-                    }
-                    check(target.canExecute())
-                    target.absolutePath
-                } else appProcess
-                RootJava.getLaunchString(context.packageCodePath + " exec",   // hack: plugging in exec
-                        RootServer::class.java.name, relocated, AppProcess.guessIfAppProcessIs64Bits(appProcess),
-                        arrayOf("$token2\n"), niceName).let { result ->
-                    if (Build.VERSION.SDK_INT < 24) result
-                    // undo the patch on newer APIs to let linker do the work
-                    else result.replaceFirst(" LD_LIBRARY_PATH=", " __SUPPRESSED_LD_LIBRARY_PATH=")
-                }
-            }
-            awaitAll(init, launchString)
         }
-        val (reader, writer) = list[0] as Pair<BufferedReader, DataOutputStream>
-        writer.writeBytes(list[1] as String)
+        val token2 = UUID.randomUUID().toString()
+        val appProcess = AppProcess.getAppProcess()
+        val (relocated, setup) = if (Build.VERSION.SDK_INT < 29) {
+            val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+            val uuid = if (persistence.canRead()) persistence.readText() else UUID.randomUUID().toString().also {
+                persistence.writeText(it)
+            }
+            // workaround Samsung's stupid kernel patch: https://github.com/Chainfire/librootjava/issues/19
+            val path = "/dev/app_process_$uuid"
+            path to "cp -n $appProcess $path && chmod 700 $path && "
+        } else appProcess to ""
+        val launchString = setup + RootJava.getLaunchString(
+                context.packageCodePath + " exec",  // hack: plugging in exec
+                RootServer::class.java.name, relocated, AppProcess.guessIfAppProcessIs64Bits(appProcess),
+                arrayOf("$token2\n"), niceName).let { result ->
+            if (Build.VERSION.SDK_INT < 24) result
+            // undo the patch on newer APIs to let linker do the work
+            else result.replaceFirst(" LD_LIBRARY_PATH=", " __SUPPRESSED_LD_LIBRARY_PATH=")
+        }
+        val (reader, writer) = init.await()
+        writer.writeBytes(launchString)
         writer.flush()
         reader.lookForToken(token2) // wait for ready signal
         output = writer
