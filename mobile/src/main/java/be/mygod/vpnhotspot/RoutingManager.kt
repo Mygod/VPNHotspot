@@ -7,6 +7,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 
@@ -96,7 +97,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         true
     } catch (e: Exception) {
         SmartSnackbar.make(e).show()
-        Timber.w(e)
+        if (e !is CancellationException) Timber.w(e)
         routing = null
         false
     }
