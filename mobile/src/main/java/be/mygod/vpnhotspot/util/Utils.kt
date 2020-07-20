@@ -26,6 +26,7 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.File
+import java.io.FileNotFoundException
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -164,4 +165,8 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
 
 fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
     Os.if_nametoindex(ifname)
-} else File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().toInt() }
+} else try {
+    File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().toInt() }
+} catch (_: FileNotFoundException) {
+    NetworkInterface.getByName(ifname).index
+}
