@@ -19,6 +19,7 @@ import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import java.io.*
 import java.util.*
 import java.util.concurrent.CountDownLatch
@@ -194,7 +195,9 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             val result = input.readByte()
             val callback = mutex.synchronized {
                 callbackLookup[index]!!.also {
-                    if (it.shouldRemove(result)) {
+                    if (it.shouldRemove(result).also { shouldRemove ->
+                                Timber.i("$index($result) should remove $it: $shouldRemove")
+                            }) {
                         callbackLookup.remove(index)
                         it.active = false
                     }
