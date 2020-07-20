@@ -153,7 +153,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * The only case when upstream is null is on API 23- and we are using system default rules.
          */
         inner class Subrouting(priority: Int, val upstream: String? = null) {
-            val ifindex = if (upstream == null) 0 else if_nametoindex(upstream).also { check(it != 0) }
+            val ifindex = if (upstream == null) 0 else if_nametoindex(upstream).also { check(it > 0) }
             val transaction = RootSession.beginTransaction().safeguard {
                 if (upstream != null) ipRuleLookup(ifindex, priority)
                 @TargetApi(28) when (masqueradeMode) {
