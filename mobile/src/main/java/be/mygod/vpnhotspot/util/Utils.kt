@@ -168,5 +168,5 @@ fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
 } else try {
     File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().toInt() }
 } catch (_: FileNotFoundException) {
-    NetworkInterface.getByName(ifname).index
+    NetworkInterface.getByName(ifname)?.index ?: 0
 }
