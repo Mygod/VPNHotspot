@@ -194,11 +194,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 break
             }
             val result = input.readByte()
+            Timber.i("Received callback #$index: $result")
             val callback = mutex.synchronized {
-                callbackLookup[index]!!.also {
-                    if (it.shouldRemove(result).also { shouldRemove ->
-                                Timber.i("$index($result) should remove $it: $shouldRemove")
-                            }) {
+                (callbackLookup[index] ?: error("Empty callback #$index")).also {
+                    if (it.shouldRemove(result)) {
                         callbackLookup.remove(index)
                         it.active = false
                     }
@@ -277,6 +276,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
         mutex.withLock {
             if (active) {
+                Timber.i("Register callback #$counter $command")
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else future.cancel()
@@ -307,6 +307,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
         mutex.withLock {
             if (active) {
+                Timber.i("Register callback #$counter $command")
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else callback.finish.cancel()
