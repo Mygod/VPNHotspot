@@ -134,7 +134,12 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 if (isNotEmpty()) persistentSupported = true
                 val ownedGroups = filter {
                     if (!it.isGroupOwner) return@filter false
-                    val address = MacAddressCompat.fromString(it.owner.deviceAddress)
+                    val address = try {
+                        MacAddressCompat.fromString(it.owner.deviceAddress)
+                    } catch (e: IllegalArgumentException) {
+                        Timber.w(e)
+                        return@filter true  // assuming it was changed due to privacy
+                    }
                     // WifiP2pServiceImpl only removes self address
                     Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
                 }
