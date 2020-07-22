@@ -36,6 +36,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         suspend fun sendClosed() = withContext(NonCancellable) { server.execute(CancelCommand(index)) }
 
         private fun initException(targetClass: Class<*>, message: String): Throwable {
+            @Suppress("NAME_SHADOWING")
             var targetClass = targetClass
             while (true) {
                 try {
@@ -468,7 +469,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                         val commandJob = Job()
                         cancellables[callback] = { commandJob.cancel() }
                         defaultWorker.launch(commandJob) {
-                            val result = try {
+                            try {
                                 val result = command.execute()
                                 withContext(callbackWorker + NonCancellable) { output.pushResult(callback, result) }
                             } catch (e: Throwable) {
