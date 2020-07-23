@@ -165,7 +165,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             }
             // workaround Samsung's stupid kernel patch: https://github.com/Chainfire/librootjava/issues/19
             val path = "/dev/app_process_$uuid"
-            path to "cp -n $appProcess $path && chmod 700 $path && "
+            path to "[ -f $path ] || cp $appProcess $path && chmod 700 $path && "
         } else appProcess to ""
         val launchString = setup + RootJava.getLaunchString(
                 context.packageCodePath + " exec",  // hack: plugging in exec
