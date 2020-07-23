@@ -445,6 +445,7 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                 writer.appendln(args[0])    // echo ready signal
                 writer.flush()
             })
+            System.setOut(System.err)       // prevent future write attempts to System.out
             // thread safety: usage of input should be in main thread
             val input = DataInputStream(System.`in`.buffered())
             var counter = 0L
