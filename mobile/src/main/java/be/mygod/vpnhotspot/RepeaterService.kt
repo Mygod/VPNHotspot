@@ -394,7 +394,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         check(p.readString() == passphrase)
                         val extrasLength = end - p.dataPosition()
                         check(extrasLength and 3 == 0)  // parcel should be padded
-                        if (extrasLength != 4) Timber.w(Exception("Unexpected extrasLength $extrasLength"))
+                        if (extrasLength != 4) app.logEvent("p2p_config_extras_unexpected_length") {
+                            param("length", extrasLength.toLong())
+                        }
                         val extras = (0 until extrasLength / 4).map { p.readInt() }
                         p.setDataPosition(0)
                         p.writeString(creator)
