@@ -198,13 +198,13 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             val result = input.readByte()
             Timber.i("Received callback #$index: $result")
             val callback = mutex.synchronized {
-                (callbackLookup[index] ?: error("Empty callback #$index")).also {
+                if (active) (callbackLookup[index] ?: error("Empty callback #$index")).also {
                     if (it.shouldRemove(result)) {
                         callbackLookup.remove(index)
                         it.active = false
                     }
-                }
-            }
+                } else null
+            } ?: break
             if (isDebugEnabled) Log.d(TAG, "Received callback #$index: $result")
             callback(input, result)
         }
