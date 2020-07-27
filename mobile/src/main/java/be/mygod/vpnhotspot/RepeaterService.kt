@@ -43,8 +43,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
-        private const val KEY_OPERATING_BAND = "service.repeater.band.v3"
-        private const val KEY_OPERATING_CHANNEL = "service.repeater.oc.v2"
+        private const val KEY_OPERATING_BAND = "service.repeater.band.v4"
+        private const val KEY_OPERATING_CHANNEL = "service.repeater.oc.v3"
         private const val KEY_AUTO_SHUTDOWN = "service.repeater.autoShutdown"
         private const val KEY_SHUTDOWN_TIMEOUT = "service.repeater.shutdownTimeout"
         private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"

@@ -227,7 +227,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             RepeaterService.networkName = config.ssid
             RepeaterService.deviceAddress = config.bssid
             RepeaterService.passphrase = config.passphrase
-            RepeaterService.operatingBand = config.band
         } else holder.config?.let { master ->
             val binder = binder
             if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase ||
@@ -240,6 +239,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             holder.config = null
         }
+        RepeaterService.operatingBand = config.band
         RepeaterService.operatingChannel = config.channel
         RepeaterService.isAutoShutdownEnabled = config.isAutoShutdownEnabled
         RepeaterService.shutdownTimeoutMillis = config.shutdownTimeoutMillis
