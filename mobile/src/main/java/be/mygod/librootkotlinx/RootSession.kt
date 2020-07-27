@@ -24,7 +24,11 @@ abstract class RootSession {
     private var closePending = false
 
     private suspend fun ensureServerLocked(): RootServer {
-        server?.let { return it }
+        server?.let {
+            if (it.active) return it
+            closeLocked()
+            usersCount = 0
+        }
         check(usersCount == 0L)
         val server = createServer()
         try {
@@ -42,6 +46,7 @@ abstract class RootSession {
     }
 
     private suspend fun closeLocked() {
+        closePending = false
         val server = server
         this.server = null
         server?.close()
@@ -76,15 +81,11 @@ abstract class RootSession {
             when {
                 !server.active -> {
                     usersCount = 0
-                    closePending = false
                     closeLocked()
                     return@withLock
                 }
                 --usersCount > 0L -> return@withLock
-                closePending -> {
-                    closePending = false
-                    closeLocked()
-                }
+                closePending -> closeLocked()
                 else -> startTimeoutLocked()
             }
         }

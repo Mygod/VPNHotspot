@@ -192,7 +192,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     Subrouting(priority, ifname)
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
-                    Timber.w(e)
+                    if (e !is CancellationException) Timber.w(e)
                     null
                 }
             }
@@ -221,7 +221,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 Subrouting(priority)
             } catch (e: Exception) {
                 SmartSnackbar.make(e).show()
-                Timber.w(e)
+                if (e !is CancellationException) Timber.w(e)
                 null
             }
             dns = listOf(parseNumericAddress("8.8.8.8"))
