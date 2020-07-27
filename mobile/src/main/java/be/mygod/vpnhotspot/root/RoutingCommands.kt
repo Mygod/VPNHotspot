@@ -16,7 +16,7 @@ object RoutingCommands {
     class Clean : RootCommandOneWay {
         @Suppress("BlockingMethodInNonBlockingContext")
         override suspend fun execute() = withContext(Dispatchers.IO) {
-            val process = ProcessBuilder("sh").redirectErrorStream(true).start()
+            val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use(Routing.Companion::appendCleanCommands)
             when (val code = process.waitFor()) {
                 0 -> { }
@@ -48,7 +48,7 @@ object RoutingCommands {
     class Process(val command: List<String>, private val redirect: Boolean = false) : RootCommand<ProcessResult> {
         @Suppress("BlockingMethodInNonBlockingContext")
         override suspend fun execute() = withContext(Dispatchers.IO) {
-            val process = ProcessBuilder(command).redirectErrorStream(redirect).start()
+            val process = ProcessBuilder(command).fixPath(redirect).start()
             coroutineScope {
                 val output = async { process.inputStream.bufferedReader().readText() }
                 val error = async { if (redirect) "" else process.errorStream.bufferedReader().readText() }
