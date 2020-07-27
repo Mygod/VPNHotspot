@@ -5,6 +5,8 @@ import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import androidx.collection.LongSparseArray
 import androidx.collection.set
@@ -440,12 +442,14 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             val cancellables = LongSparseArray<() -> Unit>()
 
             // thread safety: usage of output should be guarded by callbackWorker
-            val output = DataOutputStream(System.out.buffered().apply {
+            val output = DataOutputStream(FileOutputStream(Os.dup(FileDescriptor.out)).buffered().apply {
+                // prevent future write attempts to System.out, possibly from Samsung changes (again)
+                Os.dup2(FileDescriptor.err, OsConstants.STDOUT_FILENO)
+                System.setOut(System.err)
                 val writer = writer()
                 writer.appendln(args[0])    // echo ready signal
                 writer.flush()
             })
-            System.setOut(System.err)       // prevent future write attempts to System.out
             // thread safety: usage of input should be in main thread
             val input = DataInputStream(System.`in`.buffered())
             var counter = 0L
