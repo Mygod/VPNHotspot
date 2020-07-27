@@ -5,10 +5,10 @@ import android.util.Log
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
+import be.mygod.librootkotlinx.systemContext
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.util.Services
-import eu.chainfire.librootjava.RootJava
 import kotlinx.android.parcel.Parcelize
 import timber.log.Timber
 
@@ -29,7 +29,7 @@ object RootManager : RootSession() {
                     }
                 }
             })
-            Services.init(RootJava.getSystemContext())
+            Services.init(systemContext)
             return null
         }
     }

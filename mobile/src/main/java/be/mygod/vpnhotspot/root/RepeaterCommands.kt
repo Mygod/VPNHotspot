@@ -13,7 +13,6 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
-import eu.chainfire.librootjava.RootJava
 import kotlinx.android.parcel.Parcelize
 import java.io.File
 import java.io.IOException
@@ -99,7 +98,7 @@ object RepeaterCommands {
                 if (target == channel) channel = null
             }
         }
-        return initialize(RootJava.getSystemContext(), Looper.getMainLooper(), uninitializer).also {
+        return initialize(systemContext, Looper.getMainLooper(), uninitializer).also {
             uninitializer.target = it
             channel = it    // cache the instance until invalidated
         }

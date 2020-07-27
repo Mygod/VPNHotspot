@@ -1,12 +1,21 @@
+@file:JvmName("Utils")
+
 package be.mygod.librootkotlinx
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.*
 import kotlinx.android.parcel.Parcelize
 
 class NoShellException(cause: Throwable) : Exception("Root missing", cause)
+
+val systemContext by lazy {
+    val classActivityThread = Class.forName("android.app.ActivityThread")
+    val activityThread = classActivityThread.getMethod("systemMain").invoke(null)
+    classActivityThread.getMethod("getSystemContext").invoke(activityThread) as Context
+}
 
 @Parcelize
 data class ParcelableByte(val value: Byte) : Parcelable
