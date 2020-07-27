@@ -48,7 +48,9 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
     private val aggregator = GlobalScope.actor<PersistentMap<IpDev, IpNeighbour>>(capacity = Channel.CONFLATED) {
         for (value in channel) {
             val neighbours = value.values
-            synchronized(callbacks) { for ((callback, _) in callbacks) callback.onIpNeighbourAvailable(neighbours) }
+            for (callback in synchronized(callbacks) { callbacks.keys.toList() }) {
+                callback.onIpNeighbourAvailable(neighbours)
+            }
         }
     }
     private var neighbours = persistentMapOf<IpDev, IpNeighbour>()
