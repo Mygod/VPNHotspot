@@ -32,7 +32,7 @@ class EBegFragment : AppCompatDialogFragment() {
         }
 
         override fun onBillingSetupFinished(billingResult: BillingResult) {
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) GlobalScope.launch(Dispatchers.IO) {
                 billingClient.queryPurchases(BillingClient.SkuType.INAPP).apply {
                     if (responseCode == BillingClient.BillingResponseCode.OK) {
                         onPurchasesUpdated(this.billingResult, purchasesList)
