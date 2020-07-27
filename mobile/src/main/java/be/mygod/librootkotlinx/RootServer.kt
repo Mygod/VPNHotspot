@@ -475,36 +475,37 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
                         val commandJob = Job()
                         cancellables[callback] = { commandJob.cancel() }
                         defaultWorker.launch(commandJob) {
-                            try {
-                                val result = command.execute()
-                                withContext(callbackWorker + NonCancellable) { output.pushResult(callback, result) }
+                            val result = try {
+                                val result = command.execute();
+                                { output.pushResult(callback, result) }
                             } catch (e: Throwable) {
-                                withContext(callbackWorker + NonCancellable) { output.pushThrowable(callback, e) }
+                                { output.pushThrowable(callback, e) }
                             } finally {
                                 cancellables.remove(callback)
                             }
+                            withContext(callbackWorker + NonCancellable) { result() }
                         }
                     }
                     is RootCommandChannel<*> -> defaultWorker.launch {
-                        try {
+                        val result = try {
                             coroutineScope {
                                 command.create(this).also {
                                     cancellables[callback] = { it.cancel() }
                                 }.consumeEach { result ->
                                     withContext(callbackWorker) { output.pushResult(callback, result) }
                                 }
-                            }
-                            @Suppress("BlockingMethodInNonBlockingContext")
-                            withContext(callbackWorker + NonCancellable) {
+                            };
+                            @Suppress("BlockingMethodInNonBlockingContext") {
                                 output.writeByte(CHANNEL_CONSUMED)
                                 output.writeLong(callback)
                                 output.flush()
                             }
                         } catch (e: Throwable) {
-                            withContext(callbackWorker + NonCancellable) { output.pushThrowable(callback, e) }
+                            { output.pushThrowable(callback, e) }
                         } finally {
                             cancellables.remove(callback)
                         }
+                        withContext(callbackWorker + NonCancellable) { result() }
                     }
                     is Shutdown -> break@loop
                     else -> throw IllegalArgumentException("Unrecognized input: $command")
