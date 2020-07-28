@@ -29,7 +29,7 @@ object RootManager : RootSession() {
                     }
                 }
             })
-            Services.init(systemContext)
+            Services.init { systemContext }
             return null
         }
     }

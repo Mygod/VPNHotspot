@@ -11,9 +11,10 @@ import timber.log.Timber
 
 @SuppressLint("LogNotTimber")
 object Services {
-    lateinit var context: Context
-    fun init(context: Context) {
-        this.context = context
+    private lateinit var contextInit: () -> Context
+    val context by lazy { contextInit() }
+    fun init(context: () -> Context) {
+        contextInit = context
     }
 
     val connectivity by lazy { context.getSystemService<ConnectivityManager>()!! }
