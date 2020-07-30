@@ -219,7 +219,9 @@ data class SoftApConfigurationCompat(
                             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
                         }
                         android.net.wifi.WifiConfiguration.KeyMgmt.SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
-                        else -> throw IllegalArgumentException("Unrecognized key management: $allowedKeyManagement")
+                        else -> android.net.wifi.WifiConfiguration.KeyMgmt.strings.getOrElse(selected) { "?" }.let {
+                            throw IllegalArgumentException("Unrecognized key management $it ($selected)")
+                        }
                     }
                 },
                 if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
