@@ -202,6 +202,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                             SmartSnackbar.make(eRoot).show()
                             null
                         }
+                    } catch (e: IllegalArgumentException) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                        null
                     }?.let { configuration ->
                         WifiApDialogFragment().apply {
                             arg(WifiApDialogFragment.Arg(configuration))
