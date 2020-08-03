@@ -372,13 +372,16 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
                     setNetworkName(PLACEHOLDER_NETWORK_NAME)
                     setPassphrase(passphrase)
-                    operatingChannel.let { oc ->
-                        if (oc == 0) setGroupOperatingBand(when (val band = operatingBand) {
+                    when (val oc = operatingChannel) {
+                        0 -> setGroupOperatingBand(when (val band = operatingBand) {
                             SoftApConfigurationCompat.BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                             SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                             SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                             else -> throw IllegalArgumentException("Unknown band $band")
-                        }) else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+                        })
+                        else -> {
+                            setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+                        }
                     }
                     setDeviceAddress(deviceAddress?.toPlatform())
                 }.build().run {

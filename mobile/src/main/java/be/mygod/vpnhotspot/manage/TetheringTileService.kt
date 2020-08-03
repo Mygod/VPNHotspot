@@ -25,7 +25,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.lang.reflect.InvocationTargetException
 
 @RequiresApi(24)
 sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManager.StartTetheringCallback {
