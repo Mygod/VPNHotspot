@@ -162,8 +162,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> {
                         // note: specifying -i wouldn't work for POSTROUTING
-                        iptablesAdd(if (upstream == null) "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE" else
-                            "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                        iptablesAdd(if (upstream == null) {
+                            "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE"
+                        } else "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
                     }
                     MasqueradeMode.Netd -> {
                         check(upstream != null) // fallback is only needed for repeater on API 23 < 28

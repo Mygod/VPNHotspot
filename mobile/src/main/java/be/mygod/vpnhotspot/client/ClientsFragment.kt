@@ -105,8 +105,9 @@ class ClientsFragment : Fragment() {
             receive = -1
         }
 
-        override fun toString() = if (send < 0 || receive < 0) "" else
-                "▲ ${Formatter.formatFileSize(app, send)}/s\t\t▼ ${Formatter.formatFileSize(app, receive)}/s"
+        override fun toString() = if (send < 0 || receive < 0) "" else {
+            "▲ ${Formatter.formatFileSize(app, send)}/s\t\t▼ ${Formatter.formatFileSize(app, receive)}/s"
+        }
     }
 
     private inner class ClientViewHolder(parent: ViewGroup, val binding: ListitemClientBinding =
