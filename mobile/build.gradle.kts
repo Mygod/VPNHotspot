@@ -70,7 +70,7 @@ dependencies {
     val lifecycleVersion = "2.3.0-alpha06"
     val roomVersion = "2.2.5"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.9")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.10")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8", rootProject.extra.get("kotlinVersion").toString()))
     implementation("androidx.appcompat:appcompat:1.3.0-alpha01")    // https://issuetracker.google.com/issues/151603528
@@ -86,7 +86,7 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.android.billingclient:billing-ktx:3.0.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.2.0-rc01")
+    implementation("com.google.android.material:material:1.2.0")
     implementation("com.google.firebase:firebase-analytics-ktx:17.4.4")
     implementation("com.google.firebase:firebase-crashlytics:17.1.1")
     implementation("com.google.zxing:core:3.4.0")
