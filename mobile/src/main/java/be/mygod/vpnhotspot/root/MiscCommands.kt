@@ -28,7 +28,7 @@ fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
 }
 
 @Parcelize
-class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
+data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
     @Suppress("BlockingMethodInNonBlockingContext")
     override suspend fun execute() = withContext(Dispatchers.IO) {
         FileOutputStream(path, true).use { out ->
@@ -128,7 +128,8 @@ class ReadArp : RootCommand<ParcelableString> {
 
 @Parcelize
 @RequiresApi(30)
-class StartTethering(private val type: Int, private val showProvisioningUi: Boolean) : RootCommand<ParcelableInt?> {
+data class StartTethering(private val type: Int,
+                          private val showProvisioningUi: Boolean) : RootCommand<ParcelableInt?> {
     override suspend fun execute(): ParcelableInt? {
         val future = CompletableDeferred<Int?>()
         val callback = object : TetheringManager.StartTetheringCallback {
@@ -151,8 +152,8 @@ class StartTethering(private val type: Int, private val showProvisioningUi: Bool
 @Parcelize
 @RequiresApi(24)
 @Suppress("DEPRECATION")
-class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
-                           private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
+data class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
+                                private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
     override suspend fun execute(): ParcelableBoolean {
         val future = CompletableDeferred<Boolean>()
         val callback = object : TetheringManager.StartTetheringCallback {
@@ -172,7 +173,7 @@ class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
 
 @Parcelize
 @RequiresApi(24)
-class StopTethering(private val type: Int) : RootCommandNoResult {
+data class StopTethering(private val type: Int) : RootCommandNoResult {
     override suspend fun execute(): Parcelable? {
         TetheringManager.stopTethering(type)
         return null
@@ -180,7 +181,7 @@ class StopTethering(private val type: Int) : RootCommandNoResult {
 }
 
 @Parcelize
-class SettingsGlobalPut(val name: String, val value: String) : RootCommandNoResult {
+data class SettingsGlobalPut(val name: String, val value: String) : RootCommandNoResult {
     companion object {
         suspend fun int(name: String, value: Int) {
             try {

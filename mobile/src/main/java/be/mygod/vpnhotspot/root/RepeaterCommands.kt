@@ -49,7 +49,7 @@ object RepeaterCommands {
     }
 
     @Parcelize
-    class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
+    data class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
             setWifiP2pChannels(obtainChannel(), 0, oc)?.let { ParcelableInt(it) }
         }
