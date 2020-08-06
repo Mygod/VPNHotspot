@@ -140,7 +140,13 @@ abstract class IpMonitor {
     /**
      * Possibly blocking. Should run in IO dispatcher or use [flushAsync].
      */
-    suspend fun flush() = work(null)?.let { RootManager.release(it) }
+    suspend fun flush() = work(null)?.let {
+        try {
+            RootManager.release(it)
+        } catch (e: Exception) {
+            Timber.w(e)
+        }
+    }
     fun flushAsync() = GlobalScope.launch(Dispatchers.IO) { flush() }
 
     private suspend fun work(server: RootServer?): RootServer? {
