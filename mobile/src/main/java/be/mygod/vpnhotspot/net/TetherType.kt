@@ -46,7 +46,12 @@ enum class TetherType(@DrawableRes val icon: Int) {
             if (it == 0) {
                 if (name == "config_tether_wigig_regexs") Timber.i("$name is empty") else Timber.w(Exception(name))
                 emptyList()
-            } else second.getStringArray(it).filterNotNull().map { it.toPattern() }
+            } else try {
+                second.getStringArray(it).filterNotNull().map { it.toPattern() }
+            } catch (_: Resources.NotFoundException) {
+                Timber.w(Exception("$name not found"))
+                emptyList<Pattern>()
+            }
         }
 
         @RequiresApi(30)
