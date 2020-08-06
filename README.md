@@ -281,7 +281,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 
 Nonexported system resources:
 
-* `@android:array/config_tether_wimax_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_bluetooth_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_ncm_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_usb_regexs`

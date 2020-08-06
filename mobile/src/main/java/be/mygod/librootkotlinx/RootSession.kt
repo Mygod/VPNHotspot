@@ -29,7 +29,7 @@ abstract class RootSession {
             closeLocked()
             usersCount = 0
         }
-        check(usersCount == 0L)
+        check(usersCount == 0L) { "Unexpected $server, $usersCount" }
         val server = createServer()
         try {
             initServer(server)

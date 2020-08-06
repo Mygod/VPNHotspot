@@ -15,7 +15,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
     WIFI_P2P(R.drawable.ic_action_settings_input_antenna),
     USB(R.drawable.ic_device_usb),
     WIFI(R.drawable.ic_device_network_wifi),
-    WIMAX(R.drawable.ic_action_contactless),
     BLUETOOTH(R.drawable.ic_device_bluetooth),
     // if you have an issue with these Ethernet icon namings, blame Google
     NCM(R.drawable.ic_action_settings_ethernet),
@@ -24,7 +23,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
     ;
 
     val isWifi get() = when (this) {
-        WIFI_P2P, WIFI, WIMAX, WIGIG -> true
+        WIFI_P2P, WIFI, WIGIG -> true
         else -> false
     }
 
@@ -33,7 +32,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private lateinit var wifiRegexs: List<Pattern>
         private var wigigRegexs = emptyList<Pattern>()
         private var wifiP2pRegexs = emptyList<Pattern>()
-        private val wimaxRegexs: List<Pattern>
         private lateinit var bluetoothRegexs: List<Pattern>
         private var ncmRegexs = emptyList<Pattern>()
         private val ethernetRegex: Pattern?
@@ -88,7 +86,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
             }
-            wimaxRegexs = system.getRegexs("config_tether_wimax_regexs")
             // available since Android 4.0: https://android.googlesource.com/platform/frameworks/base/+/c96a667162fab44a250503caccb770109a9cb69a
             ethernetRegex = system.second.getString(system.second.getIdentifier(
                     "config_ethernet_iface_regex", "string", system.first)).run { if (isEmpty()) null else toPattern() }
@@ -115,7 +112,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
             usbRegexs.any { it.matcher(iface).matches() } -> USB
             bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
             ncmRegexs.any { it.matcher(iface).matches() } -> NCM
-            wimaxRegexs.any { it.matcher(iface).matches() } -> WIMAX
             ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
             else -> NONE
         }
