@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.DialogInterface
-import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
@@ -130,9 +129,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             isClientControlByUserEnabled = dialogView.clientUserControl.isChecked
             allowedClientList = (dialogView.allowedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.map { MacAddress.fromString(it) }
+                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
             blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.map { MacAddress.fromString(it) }
+                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
         }
     }
 
@@ -272,7 +271,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.maxClientWrapper.error = maxClientError
         val blockedListError = try {
             (dialogView.blockedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.forEach { MacAddress.fromString(it) }
+                    .filter { it.isNotEmpty() }.forEach { MacAddressCompat.fromString(it).toPlatform() }
             null
         } catch (e: IllegalArgumentException) {
             e.readableMessage
@@ -280,7 +279,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.blockedListWrapper.error = blockedListError
         val allowedListError = try {
             (dialogView.allowedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.forEach { MacAddress.fromString(it) }
+                    .filter { it.isNotEmpty() }.forEach { MacAddressCompat.fromString(it).toPlatform() }
             null
         } catch (e: IllegalArgumentException) {
             e.readableMessage

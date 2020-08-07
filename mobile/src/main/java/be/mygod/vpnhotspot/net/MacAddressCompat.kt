@@ -56,13 +56,22 @@ inline class MacAddressCompat(val addr: Long) {
          */
         fun fromString(addr: String) = ByteBuffer.allocate(Long.SIZE_BYTES).run {
             order(ByteOrder.LITTLE_ENDIAN)
-            val bytes = try {
-                addr.split(':').map { Integer.parseInt(it, 16).toByte() }.toByteArray()
-            } catch (e: NumberFormatException) {
-                throw IllegalArgumentException(e)
+            var start = 0
+            var i = 0
+            while (position() < ETHER_ADDR_LEN && start < addr.length) {
+                val end = i
+                if (addr.getOrElse(i) { ':' } == ':') ++i else if (i < start + 2) {
+                    ++i
+                    continue
+                }
+                put(if (start == end) 0 else try {
+                    Integer.parseInt(addr.substring(start, end), 16).toByte()
+                } catch (e: NumberFormatException) {
+                    throw IllegalArgumentException(e)
+                })
+                start = i
             }
-            require(bytes.size == ETHER_ADDR_LEN)
-            put(bytes)
+            require(position() == ETHER_ADDR_LEN) { "MAC address too short" }
             rewind()
             MacAddressCompat(long)
         }
