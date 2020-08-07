@@ -27,8 +27,8 @@ android {
         minSdkVersion(21)
         targetSdkVersion(targetSdk)
         resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 247
-        versionName = "2.10.12"
+        versionCode = 248
+        versionName = "2.10.13"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments(mapOf(
                 "room.incremental" to "true",
