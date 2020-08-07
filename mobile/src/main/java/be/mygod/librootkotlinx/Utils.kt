@@ -4,36 +4,12 @@ package be.mygod.librootkotlinx
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Build
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.*
-import androidx.annotation.RequiresApi
 import kotlinx.android.parcel.Parcelize
-import java.io.File
 
 class NoShellException(cause: Throwable) : Exception("Root missing", cause)
-
-/**
- * Based on: https://android.googlesource.com/platform/bionic/+/aff9a34/linker/linker.cpp#3397
- */
-@get:RequiresApi(29)
-val genericLdConfigFilePath: String get() {
-    "/system/etc/ld.config.${Build.VERSION.SDK_INT}.txt".let { if (File(it).isFile) return it }
-    if (Build.VERSION.SDK_INT >= 30) "/linkerconfig/ld.config.txt".let {
-        check(File(it).isFile) { "failed to find generated linker configuration from \"$it\"" }
-        return it
-    }
-    val prop = Class.forName("android.os.SystemProperties")
-    if (prop.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java).invoke(null,
-                    "ro.vndk.lite", false) as Boolean) return "/system/etc/ld.config.vndk_lite.txt"
-    when (val version = prop.getDeclaredMethod("get", String::class.java, String::class.java).invoke(null,
-            "ro.vndk.version", "") as String) {
-        "", "current" -> { }
-        else -> "/system/etc/ld.config.$version.txt".let { if (File(it).isFile) return it }
-    }
-    return "/system/etc/ld.config.txt"
-}
 
 val systemContext by lazy {
     val classActivityThread = Class.forName("android.app.ActivityThread")

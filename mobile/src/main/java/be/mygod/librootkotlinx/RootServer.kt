@@ -1,7 +1,6 @@
 package be.mygod.librootkotlinx
 
 import android.content.Context
-import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
@@ -11,9 +10,6 @@ import android.util.Log
 import androidx.collection.LongSparseArray
 import androidx.collection.set
 import androidx.collection.valueIterator
-import eu.chainfire.librootjava.AppProcess
-import eu.chainfire.librootjava.Logger
-import eu.chainfire.librootjava.RootJava
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
@@ -161,35 +157,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
             UUID.randomUUID().toString().also { persistence.writeText(it) }
         }
-        // to workaround Samsung's stupid kernel patch, we need to relocate outside of /data: https://github.com/Chainfire/librootjava/issues/19
-        val (baseDir, relocated) = if (Build.VERSION.SDK_INT < 29) "/dev" to "/dev/app_process_$uuid" else {
-            val apexPath = "/apex/$uuid"
-            writer.writeBytes("[ -d $apexPath ] || " +
-                    "mkdir $apexPath && " +
-                    // we need to mount a new tmpfs to override noexec flag
-                    "mount -t tmpfs -o size=1M tmpfs $apexPath || exit 1\n")
-            // unfortunately native ld.config.txt only recognizes /data,/system,/system_ext as system directories;
-            // to link correctly, we need to add our path to the linker config too
-            val ldConfig = "$apexPath/etc/ld.config.txt"
-            writer.writeBytes("[ -f $ldConfig ] || " +
-                    "mkdir -p $apexPath/etc && " +
-                    "echo dir.system = $apexPath >$ldConfig && " +
-                    "cat $genericLdConfigFilePath >>$ldConfig || exit 1\n")
-            "$apexPath/bin" to "$apexPath/bin/app_process"
-        }
-        writer.writeBytes("[ -f $relocated ] || " +
-                "mkdir -p $baseDir && " +
-                "cp /proc/${android.os.Process.myPid()}/exe $relocated && " +
-                "chmod 700 $relocated || exit 1\n")
-        writer.writeBytes(RootJava.getLaunchString(
-                context.packageCodePath + " exec",  // hack: plugging in exec
-                RootServer::class.java.name, relocated,
-                AppProcess.guessIfAppProcessIs64Bits(File("/proc/self/exe").canonicalPath),
-                arrayOf("$token2\n"), niceName).let { result ->
-            if (Build.VERSION.SDK_INT < 24) result
-            // undo the patch on newer APIs to let linker do the work
-            else result.replaceFirst(" LD_LIBRARY_PATH=", " __SUPPRESSED_LD_LIBRARY_PATH=")
-        })
+        val (script, relocated) = AppProcess.relocateScript(uuid)
+        script.appendln(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
+                niceName) + " $token2")
+        writer.writeBytes(script.toString())
         writer.flush()
         reader.lookForToken(token2) // wait for ready signal
         output = writer
@@ -365,10 +336,6 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
          */
         @JvmStatic
         var isDebugEnabled = false
-            set(value) {
-                field = value
-                Logger.setDebugLogging(value)
-            }
 
         private const val TAG = "RootServer"
         private const val SUCCESS = 0
@@ -435,7 +402,6 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
 
         private fun rootMain(args: Array<String>) {
             require(args.isNotEmpty())
-            if (Build.VERSION.SDK_INT < 24) RootJava.restoreOriginalLdLibraryPath()
             val mainInitialized = CountDownLatch(1)
             val main = Thread({
                 @Suppress("DEPRECATION")
