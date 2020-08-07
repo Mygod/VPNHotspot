@@ -171,8 +171,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             data.notifyChange()
         }
         override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) {
-            SmartSnackbar.make(parent.getString(R.string.tethering_manage_wifi_client_blocked, client,
-                    WifiApManager.clientBlockLookup(blockedReason, true))).apply {
+            val reason = WifiApManager.clientBlockLookup(blockedReason, true)
+            Timber.i("$client blocked from connecting: $reason ($blockedReason)")
+            SmartSnackbar.make(parent.getString(R.string.tethering_manage_wifi_client_blocked, client, reason)).apply {
                 action(R.string.tethering_manage_wifi_copy_mac) {
                     app.clipboard.setPrimaryClip(ClipData.newPlainText(null, client.toString()))
                 }
