@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit
  * This object manages creation of [RootServer] and times them out automagically, with default timeout of 5 minutes.
  */
 abstract class RootSession {
-    protected open fun createServer() = RootServer()
     protected abstract suspend fun initServer(server: RootServer)
     /**
      * Timeout to close [RootServer] in milliseconds.
@@ -30,7 +29,7 @@ abstract class RootSession {
             usersCount = 0
         }
         check(usersCount == 0L) { "Unexpected $server, $usersCount" }
-        val server = createServer()
+        val server = RootServer()
         try {
             initServer(server)
             this.server = server
