@@ -141,44 +141,58 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             warnLogger(line)
         }
     }
-    @Suppress("BlockingMethodInNonBlockingContext")
-    private suspend fun doInit(context: Context, niceName: String) {
-        val init = GlobalScope.async {
-            try {
-                process = ProcessBuilder("su").start()
-                val token1 = UUID.randomUUID().toString()
-                val writer = DataOutputStream(process.outputStream.buffered())
-                writer.writeBytes("echo $token1\n")
-                writer.flush()
-                val reader = process.inputStream.bufferedReader()
-                reader.lookForToken(token1)
-                if (isDebugEnabled) Log.d(TAG, "Root shell initialized")
-                reader to writer
-            } catch (e: Exception) {
-                throw NoShellException(e)
-            }
+    private fun doInit(context: Context, niceName: String) {
+        val (reader, writer) = try {
+            process = ProcessBuilder("su").start()
+            val token1 = UUID.randomUUID().toString()
+            val writer = DataOutputStream(process.outputStream.buffered())
+            writer.writeBytes("echo $token1\n")
+            writer.flush()
+            val reader = process.inputStream.bufferedReader()
+            reader.lookForToken(token1)
+            if (isDebugEnabled) Log.d(TAG, "Root shell initialized")
+            reader to writer
+        } catch (e: Exception) {
+            throw NoShellException(e)
         }
+
         val token2 = UUID.randomUUID().toString()
-        val appProcess = AppProcess.getAppProcess()
-        val (relocated, setup) = if (Build.VERSION.SDK_INT < 29) {
-            val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-            val uuid = if (persistence.canRead()) persistence.readText() else UUID.randomUUID().toString().also {
-                persistence.writeText(it)
-            }
-            // workaround Samsung's stupid kernel patch: https://github.com/Chainfire/librootjava/issues/19
-            val path = "/dev/app_process_$uuid"
-            path to "[ -f $path ] || cp $appProcess $path && chmod 700 $path && "
-        } else appProcess to ""
-        val launchString = setup + RootJava.getLaunchString(
+        val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+        val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
+            UUID.randomUUID().toString().also { persistence.writeText(it) }
+        }
+        // to workaround Samsung's stupid kernel patch, we need to relocate outside of /data: https://github.com/Chainfire/librootjava/issues/19
+        val (baseDir, relocated) = if (Build.VERSION.SDK_INT < 29) "/dev" to "/dev/app_process_$uuid" else {
+            val apexPath = "/apex/$uuid"
+            writer.writeBytes("[ -d $apexPath ] || " +
+                    "mkdir $apexPath && " +
+                    // we need to mount a new tmpfs to override noexec flag
+                    "mount -t tmpfs -o size=1M tmpfs $apexPath || exit 1\n")
+            // unfortunately native ld.config.txt only recognizes /data,/system,/system_ext as system directories;
+            // to link correctly, we need to add our path to the linker config too
+            val ldConfig = "$apexPath/etc/ld.config.txt"
+            val masterLdConfig = if (Build.VERSION.SDK_INT == 29) {
+                "/system/etc/ld.config.29.txt"
+            } else "/linkerconfig/ld.config.txt"
+            writer.writeBytes("[ -f $ldConfig ] || " +
+                    "mkdir -p $apexPath/etc && " +
+                    "echo dir.system = $apexPath >$ldConfig && " +
+                    "cat $masterLdConfig >>$ldConfig || exit 1\n")
+            "$apexPath/bin" to "$apexPath/bin/app_process"
+        }
+        writer.writeBytes("[ -f $relocated ] || " +
+                "mkdir -p $baseDir && " +
+                "cp /proc/${android.os.Process.myPid()}/exe $relocated && " +
+                "chmod 700 $relocated || exit 1\n")
+        writer.writeBytes(RootJava.getLaunchString(
                 context.packageCodePath + " exec",  // hack: plugging in exec
-                RootServer::class.java.name, relocated, AppProcess.guessIfAppProcessIs64Bits(appProcess),
+                RootServer::class.java.name, relocated,
+                AppProcess.guessIfAppProcessIs64Bits(File("/proc/self/exe").canonicalPath),
                 arrayOf("$token2\n"), niceName).let { result ->
             if (Build.VERSION.SDK_INT < 24) result
             // undo the patch on newer APIs to let linker do the work
             else result.replaceFirst(" LD_LIBRARY_PATH=", " __SUPPRESSED_LD_LIBRARY_PATH=")
-        }
-        val (reader, writer) = init.await()
-        writer.writeBytes(launchString)
+        })
         writer.flush()
         reader.lookForToken(token2) // wait for ready signal
         output = writer
