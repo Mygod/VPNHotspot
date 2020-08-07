@@ -171,13 +171,10 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
             // unfortunately native ld.config.txt only recognizes /data,/system,/system_ext as system directories;
             // to link correctly, we need to add our path to the linker config too
             val ldConfig = "$apexPath/etc/ld.config.txt"
-            val masterLdConfig = if (Build.VERSION.SDK_INT == 29) {
-                "/system/etc/ld.config.29.txt"
-            } else "/linkerconfig/ld.config.txt"
             writer.writeBytes("[ -f $ldConfig ] || " +
                     "mkdir -p $apexPath/etc && " +
                     "echo dir.system = $apexPath >$ldConfig && " +
-                    "cat $masterLdConfig >>$ldConfig || exit 1\n")
+                    "cat $genericLdConfigFilePath >>$ldConfig || exit 1\n")
             "$apexPath/bin" to "$apexPath/bin/app_process"
         }
         writer.writeBytes("[ -f $relocated ] || " +
