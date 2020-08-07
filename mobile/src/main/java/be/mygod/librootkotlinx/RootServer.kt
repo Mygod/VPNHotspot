@@ -157,38 +157,28 @@ class RootServer @JvmOverloads constructor(private val warnLogger: (String) -> U
         }
 
         val token2 = UUID.randomUUID().toString()
-        val uuid by lazy {
-            val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-            context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
-                UUID.randomUUID().toString().also { persistence.writeText(it) }
-            }
+        val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+        val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
+            UUID.randomUUID().toString().also { persistence.writeText(it) }
         }
         // to workaround Samsung's stupid kernel patch, we need to relocate outside of /data: https://github.com/Chainfire/librootjava/issues/19
         val (baseDir, relocated) = if (Build.VERSION.SDK_INT < 29) "/dev" to "/dev/app_process_$uuid" else {
-            val cachePath = context.codeCacheDir.canonicalPath
-            if (cachePath.startsWith("/data/")) {
-                val relocated = File(context.codeCacheDir, "relocated")
-                relocated.mkdir()
-                check(relocated.isDirectory)
-                relocated.absolutePath to File(relocated, "app_process").absolutePath
-            } else {
-                val apexPath = "/apex/$uuid"
-                writer.writeBytes("[ -d $apexPath ] || " +
-                        "mkdir $apexPath && " +
-                        // we need to mount a new tmpfs to override noexec flag
-                        "mount -t tmpfs -o size=1M tmpfs $apexPath || exit 1\n")
-                // unfortunately native ld.config.txt only recognizes /data,/system,/system_ext as system directories;
-                // to link correctly, we need to add our path to the linker config too
-                val ldConfig = "$apexPath/etc/ld.config.txt"
-                val masterLdConfig = if (Build.VERSION.SDK_INT == 29) {
-                    "/system/etc/ld.config.29.txt"
-                } else "/linkerconfig/ld.config.txt"
-                writer.writeBytes("[ -f $ldConfig ] || " +
-                        "mkdir -p $apexPath/etc && " +
-                        "echo dir.system = $apexPath >$ldConfig && " +
-                        "cat $masterLdConfig >>$ldConfig || exit 1\n")
-                "$apexPath/bin" to "$apexPath/bin/app_process"
-            }
+            val apexPath = "/apex/$uuid"
+            writer.writeBytes("[ -d $apexPath ] || " +
+                    "mkdir $apexPath && " +
+                    // we need to mount a new tmpfs to override noexec flag
+                    "mount -t tmpfs -o size=1M tmpfs $apexPath || exit 1\n")
+            // unfortunately native ld.config.txt only recognizes /data,/system,/system_ext as system directories;
+            // to link correctly, we need to add our path to the linker config too
+            val ldConfig = "$apexPath/etc/ld.config.txt"
+            val masterLdConfig = if (Build.VERSION.SDK_INT == 29) {
+                "/system/etc/ld.config.29.txt"
+            } else "/linkerconfig/ld.config.txt"
+            writer.writeBytes("[ -f $ldConfig ] || " +
+                    "mkdir -p $apexPath/etc && " +
+                    "echo dir.system = $apexPath >$ldConfig && " +
+                    "cat $masterLdConfig >>$ldConfig || exit 1\n")
+            "$apexPath/bin" to "$apexPath/bin/app_process"
         }
         writer.writeBytes("[ -f $relocated ] || " +
                 "mkdir -p $baseDir && " +
