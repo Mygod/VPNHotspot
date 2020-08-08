@@ -19,8 +19,9 @@ object AppProcess {
         }
         val prop = Class.forName("android.os.SystemProperties")
         if (prop.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java).invoke(null,
-                        "ro.vndk.lite", false) as Boolean) return "/system/etc/ld.config.vndk_lite.txt"
-        when (val version = prop.getDeclaredMethod("get", String::class.java, String::class.java).invoke(null,
+                        "ro.vndk.lite", false) as Boolean) "/system/etc/ld.config.vndk_lite.txt".let {
+            if (File(it).isFile) return it
+        } else when (val version = prop.getDeclaredMethod("get", String::class.java, String::class.java).invoke(null,
                 "ro.vndk.version", "") as String) {
             "", "current" -> { }
             else -> "/system/etc/ld.config.$version.txt".let { if (File(it).isFile) return it }
