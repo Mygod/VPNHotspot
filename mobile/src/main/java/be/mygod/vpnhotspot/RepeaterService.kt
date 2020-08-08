@@ -211,7 +211,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
                         WifiP2pManager.WIFI_P2P_STATE_DISABLED) launch { cleanLocked() }    // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
-                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO)!!,
+                    intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
         }
     }
@@ -422,10 +422,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * Used during step 2, also called when connection changed
      */
-    private fun onP2pConnectionChanged(info: WifiP2pInfo, group: WifiP2pGroup?) = launch {
+    private fun onP2pConnectionChanged(info: WifiP2pInfo?, group: WifiP2pGroup?) = launch {
         Timber.d("P2P connection changed: $info\n$group")
         when {
-            !info.groupFormed || !info.isGroupOwner || group?.isGroupOwner != true -> {
+            info?.groupFormed != true || !info.isGroupOwner || group?.isGroupOwner != true -> {
                 if (routingManager != null) cleanLocked()
                 // P2P shutdown, else other groups changing before start, ignore
             }
