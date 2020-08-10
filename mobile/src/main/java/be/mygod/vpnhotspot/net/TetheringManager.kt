@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
@@ -69,6 +70,8 @@ object TetheringManager {
 
     @RequiresApi(30)
     private const val TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector"
+    @RequiresApi(30)
+    private const val IN_PROCESS_SUFFIX = ".InProcess"
 
     /**
      * This is a sticky broadcast since almost forever.
@@ -165,9 +168,17 @@ object TetheringManager {
         val service = Services.context.getSystemService(TETHERING_SERVICE)
         service
     }
+
+    private fun resolveSystemService(action: String): ResolveInfo? {
+        val result = app.packageManager.queryIntentServices(Intent(action), PackageManager.MATCH_SYSTEM_ONLY)
+        check(result.size <= 1) { "Multiple system services handle $action: ${result.joinToString()}" }
+        return result.firstOrNull()
+    }
     @get:RequiresApi(30)
-    val resolvedService get() = app.packageManager.queryIntentServices(Intent(TETHERING_CONNECTOR_CLASS),
-            PackageManager.MATCH_SYSTEM_ONLY).single()
+    val resolvedService get() = sequence {
+        resolveSystemService(TETHERING_CONNECTOR_CLASS + IN_PROCESS_SUFFIX)?.let { yield(it) }
+        resolveSystemService(TETHERING_CONNECTOR_CLASS)?.let { yield(it) }
+    }.single()
 
     @get:RequiresApi(24)
     private val classOnStartTetheringCallback by lazy {
