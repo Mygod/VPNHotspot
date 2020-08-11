@@ -12,7 +12,10 @@ object AppProcess {
      */
     @get:RequiresApi(29)
     val genericLdConfigFilePath: String get() {
-        "/system/etc/ld.config.${Build.VERSION.SDK_INT}.txt".let { if (File(it).isFile) return it }
+        val classVMRuntime = Class.forName("dalvik.system.VMRuntime")
+        val abiString = classVMRuntime.getDeclaredMethod("getCurrentInstructionSet").invoke(
+                classVMRuntime.getDeclaredMethod("getRuntime").invoke(null))
+        "/system/etc/ld.config.$abiString.txt".let { if (File(it).isFile) return it }
         if (Build.VERSION.SDK_INT >= 30) "/linkerconfig/ld.config.txt".let {
             check(File(it).isFile) { "failed to find generated linker configuration from \"$it\"" }
             return it
