@@ -145,18 +145,21 @@ class RootServer {
         } catch (e: Exception) {
             throw NoShellException(e)
         }
-
-        val token2 = UUID.randomUUID().toString()
-        val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-        val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
-            UUID.randomUUID().toString().also { persistence.writeText(it) }
+        try {
+            val token2 = UUID.randomUUID().toString()
+            val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+            val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
+                UUID.randomUUID().toString().also { persistence.writeText(it) }
+            }
+            val (script, relocated) = AppProcess.relocateScript(uuid)
+            script.appendln(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
+                    niceName) + " $token2")
+            writer.writeBytes(script.toString())
+            writer.flush()
+            reader.lookForToken(token2) // wait for ready signal
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to launch root daemon", e)
         }
-        val (script, relocated) = AppProcess.relocateScript(uuid)
-        script.appendln(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
-                niceName) + " $token2")
-        writer.writeBytes(script.toString())
-        writer.flush()
-        reader.lookForToken(token2) // wait for ready signal
         output = writer
         require(!active)
         active = true
