@@ -20,3 +20,10 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-if public class be.mygod.librootkotlinx.RootServer {
+    private void doInit(android.content.Context, java.lang.String);
+}
+-keep class be.mygod.librootkotlinx.RootServer {
+    public static void main(java.lang.String[]);
+}
