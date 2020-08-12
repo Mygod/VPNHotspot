@@ -7,9 +7,28 @@ import android.content.Context
 import android.os.Parcel
 import android.os.Parcelable
 import android.util.*
+import androidx.annotation.RequiresApi
 import kotlinx.android.parcel.Parcelize
 
 class NoShellException(cause: Throwable) : Exception("Root missing", cause)
+
+val currentInstructionSet by lazy {
+    val classVMRuntime = Class.forName("dalvik.system.VMRuntime")
+    val runtime = classVMRuntime.getDeclaredMethod("getRuntime").invoke(null)
+    classVMRuntime.getDeclaredMethod("getCurrentInstructionSet").invoke(runtime) as String
+}
+
+private val classSystemProperties by lazy { Class.forName("android.os.SystemProperties") }
+@get:RequiresApi(26)
+val isVndkLite by lazy {
+    classSystemProperties.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java).invoke(null,
+            "ro.vndk.lite", false) as Boolean
+}
+@get:RequiresApi(26)
+val vndkVersion by lazy {
+    classSystemProperties.getDeclaredMethod("get", String::class.java, String::class.java).invoke(null,
+            "ro.vndk.version", "") as String
+}
 
 val systemContext by lazy {
     val classActivityThread = Class.forName("android.app.ActivityThread")

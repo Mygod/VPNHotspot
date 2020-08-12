@@ -11,24 +11,18 @@ object AppProcess {
     /**
      * Based on: https://android.googlesource.com/platform/bionic/+/aff9a34/linker/linker.cpp#3397
      */
-    @get:RequiresApi(29)
+    @get:RequiresApi(28)
     val genericLdConfigFilePath: String get() {
-        val classVMRuntime = Class.forName("dalvik.system.VMRuntime")
-        val abiString = classVMRuntime.getDeclaredMethod("getCurrentInstructionSet").invoke(
-                classVMRuntime.getDeclaredMethod("getRuntime").invoke(null))
-        "/system/etc/ld.config.$abiString.txt".let { if (File(it).isFile) return it }
+        "/system/etc/ld.config.$currentInstructionSet.txt".let { if (File(it).isFile) return it }
         if (Build.VERSION.SDK_INT >= 30) "/linkerconfig/ld.config.txt".let {
             check(File(it).isFile) { "failed to find generated linker configuration from \"$it\"" }
             return it
         }
-        val prop = Class.forName("android.os.SystemProperties")
-        if (prop.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java).invoke(null,
-                        "ro.vndk.lite", false) as Boolean) "/system/etc/ld.config.vndk_lite.txt".let {
-            if (File(it).isFile) return it
-        } else when (val version = prop.getDeclaredMethod("get", String::class.java, String::class.java).invoke(null,
-                "ro.vndk.version", "") as String) {
+        if (isVndkLite) {
+            "/system/etc/ld.config.vndk_lite.txt".let { if (File(it).isFile) return it }
+        } else when (vndkVersion) {
             "", "current" -> { }
-            else -> "/system/etc/ld.config.$version.txt".let { if (File(it).isFile) return it }
+            else -> "/system/etc/ld.config.$vndkVersion.txt".let { if (File(it).isFile) return it }
         }
         return "/system/etc/ld.config.txt"
     }
@@ -36,7 +30,7 @@ object AppProcess {
     /**
      * Based on: https://android.googlesource.com/platform/bionic/+/30f2f05/linker/linker_config.cpp#182
      */
-    @RequiresApi(29)
+    @RequiresApi(26)
     fun findLinkerSection(lines: Sequence<String>, binaryRealPath: String): String {
         for (untrimmed in lines) {
             val line = untrimmed.substringBefore('#').trim()
