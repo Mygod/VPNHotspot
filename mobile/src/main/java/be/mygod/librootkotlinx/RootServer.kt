@@ -348,6 +348,7 @@ class RootServer {
         fun main(args: Array<String>) {
             Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
                 Logger.me.e("Uncaught exception from $thread", throwable)
+                throwable.printStackTrace()     // stderr will be read by listener
                 exitProcess(1)
             }
             rootMain(args)
