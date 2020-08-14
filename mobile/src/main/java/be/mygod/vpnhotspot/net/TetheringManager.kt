@@ -178,7 +178,7 @@ object TetheringManager {
     val resolvedService get() = sequence {
         resolveSystemService(TETHERING_CONNECTOR_CLASS + IN_PROCESS_SUFFIX)?.let { yield(it) }
         resolveSystemService(TETHERING_CONNECTOR_CLASS)?.let { yield(it) }
-    }.single()
+    }.first()
 
     @get:RequiresApi(24)
     private val classOnStartTetheringCallback by lazy {
