@@ -29,7 +29,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         fun monitored(iface: String) = downstreams[iface]?.monitor
     }
 
-    private inner class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
+    private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
             RoutingManager(caller, downstream) {
         override fun Routing.configure() {
             forward()

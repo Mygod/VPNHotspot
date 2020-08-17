@@ -15,7 +15,6 @@ import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
 import timber.log.Timber
-import java.util.concurrent.Executor
 
 object WifiApCommands {
     @RequiresApi(28)
@@ -90,7 +89,7 @@ object WifiApCommands {
                 @RequiresApi(30)
                 override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) =
                         push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
-            }, Executor {
+            }) {
                 scope.launch {
                     try {
                         it.run()
@@ -98,7 +97,7 @@ object WifiApCommands {
                         finish.completeExceptionally(e)
                     }
                 }
-            })
+            }
             try {
                 finish.await()
             } finally {

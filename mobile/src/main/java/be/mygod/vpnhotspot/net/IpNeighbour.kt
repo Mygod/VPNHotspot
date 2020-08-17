@@ -97,7 +97,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 devs.map { IpNeighbour(ip, it, lladdr, state) }
             } catch (e: Exception) {
                 Timber.w(IllegalArgumentException("Unable to parse line: $line", e))
-                emptyList<IpNeighbour>()
+                emptyList()
             }
         }
 
@@ -138,4 +138,5 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
 data class IpDev(val ip: InetAddress, val dev: String) {
     override fun toString() = "$ip%$dev"
 }
+@Suppress("FunctionName")
 fun IpDev(neighbour: IpNeighbour) = IpDev(neighbour.ip, neighbour.dev)

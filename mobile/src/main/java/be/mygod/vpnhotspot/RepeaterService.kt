@@ -410,7 +410,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         p.writeString(passphrase)
                         extras.forEach(p::writeInt)
                         p.setDataPosition(0)
-                        p.readParcelable<WifiP2pConfig>(javaClass.classLoader)
+                        p.readParcelable(javaClass.classLoader)
                     }
                 }, listener)
             }

@@ -18,7 +18,6 @@ import kotlinx.coroutines.channels.produce
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InterruptedIOException
-import java.util.concurrent.Executor
 
 fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     environment().compute("PATH") { _, value ->
@@ -141,7 +140,7 @@ data class StartTethering(private val type: Int,
                 future.complete(error!!)
             }
         }
-        TetheringManager.startTethering(type, true, showProvisioningUi, Executor {
+        TetheringManager.startTethering(type, true, showProvisioningUi, {
             GlobalScope.launch(Dispatchers.Unconfined) { it.run() }
         }, TetheringManager.proxy(callback))
         return future.await()?.let { ParcelableInt(it) }

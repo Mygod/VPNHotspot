@@ -163,6 +163,7 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
     }
 }
 
+@Suppress("FunctionName")
 fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
     Os.if_nametoindex(ifname)
 } else try {

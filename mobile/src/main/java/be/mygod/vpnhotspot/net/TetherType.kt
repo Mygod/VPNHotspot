@@ -48,7 +48,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
                 second.getStringArray(it).filterNotNull().map { it.toPattern() }
             } catch (_: Resources.NotFoundException) {
                 Timber.w(Exception("$name not found"))
-                emptyList<Pattern>()
+                emptyList()
             }
         }
 

@@ -372,9 +372,7 @@ class RootServer {
                 write(bytes)
             } catch (_: NotSerializableException) {
                 writeByte(EX_GENERIC)
-                writeUTF(StringWriter().also {
-                    e.printStackTrace(PrintWriter(it))
-                }.toString())
+                writeUTF(e.stackTraceToString())
             }
             flush()
         }
