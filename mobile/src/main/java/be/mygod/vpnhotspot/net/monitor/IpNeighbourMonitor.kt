@@ -28,9 +28,11 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
             if (monitor == null) {
                 monitor = IpNeighbourMonitor()
                 instance = monitor
-                monitor.flushAsync()
                 null
-            } else monitor.neighbours.values
+            } else {
+                monitor.flushAsync()
+                monitor.neighbours.values
+            }
         }?.let { callback.onIpNeighbourAvailable(it) }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (callbacks.remove(callback) == null) return@synchronized

@@ -16,8 +16,7 @@ class IpLinkMonitor private constructor() : IpMonitor() {
             if (monitor == null) {
                 monitor = IpLinkMonitor()
                 instance = monitor
-            }
-            monitor.flushAsync()
+            } else monitor.flushAsync()
         }
         fun unregisterCallback(owner: Any) = synchronized(this) {
             if (callbacks.remove(owner) == null || callbacks.isNotEmpty()) return@synchronized
