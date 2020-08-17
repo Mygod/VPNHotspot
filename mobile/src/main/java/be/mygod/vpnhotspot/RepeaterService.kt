@@ -143,7 +143,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     // WifiP2pServiceImpl only removes self address
                     Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
                 }
-                val main = ownedGroups.minBy { it.networkId }
+                val main = ownedGroups.minByOrNull { it.networkId }
                 // do not replace current group if it's better
                 if (binder.group?.passphrase == null) binder.group = main
                 return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()

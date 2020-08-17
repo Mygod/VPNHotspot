@@ -81,7 +81,7 @@ object AppProcess {
         val script = StringBuilder()
         val (baseDir, relocated) = if (Build.VERSION.SDK_INT < 29) "/dev" to "/dev/app_process_$token" else {
             val apexPath = "/apex/$token"
-            script.appendln("[ -d $apexPath ] || " +
+            script.appendLine("[ -d $apexPath ] || " +
                     "mkdir $apexPath && " +
                     // we need to mount a new tmpfs to override noexec flag
                     "mount -t tmpfs -o size=1M tmpfs $apexPath || exit 1")
@@ -95,13 +95,13 @@ object AppProcess {
                 Logger.me.w("Failed to locate system section", e)
                 "system"
             }
-            script.appendln("[ -f $ldConfig ] || " +
+            script.appendLine("[ -f $ldConfig ] || " +
                     "mkdir -p $apexPath/etc && " +
                     "echo dir.$section = $apexPath >$ldConfig && " +
                     "cat $masterLdConfig >>$ldConfig || exit 1")
             "$apexPath/bin" to "$apexPath/bin/app_process"
         }
-        script.appendln("[ -f $relocated ] || " +
+        script.appendLine("[ -f $relocated ] || " +
                 "mkdir -p $baseDir && " +
                 "cp $myExe $relocated && " +
                 "chmod 700 $relocated || exit 1")

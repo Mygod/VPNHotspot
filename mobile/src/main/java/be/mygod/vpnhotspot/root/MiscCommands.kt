@@ -36,12 +36,12 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
             process.outputStream.bufferedWriter().use { commands ->
                 // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
                 val iptablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "iptables-save").absolutePath.also {
-                    commands.appendln("ln -sf /system/bin/iptables $it")
+                    commands.appendLine("ln -sf /system/bin/iptables $it")
                 } else "iptables-save"
                 val ip6tablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "ip6tables-save").absolutePath.also {
-                    commands.appendln("ln -sf /system/bin/ip6tables $it")
+                    commands.appendLine("ln -sf /system/bin/ip6tables $it")
                 } else "ip6tables-save"
-                commands.appendln("""
+                commands.appendLine("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}
                     |echo

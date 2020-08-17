@@ -152,7 +152,7 @@ class RootServer {
                 UUID.randomUUID().toString().also { persistence.writeText(it) }
             }
             val (script, relocated) = AppProcess.relocateScript(uuid)
-            script.appendln(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
+            script.appendLine(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
                     niceName) + " $token2")
             writer.writeBytes(script.toString())
             writer.flush()
@@ -409,7 +409,7 @@ class RootServer {
                 Os.dup2(FileDescriptor.err, OsConstants.STDOUT_FILENO)
                 System.setOut(System.err)
                 val writer = writer()
-                writer.appendln(args[0])    // echo ready signal
+                writer.appendLine(args[0])  // echo ready signal
                 writer.flush()
             })
             // thread safety: usage of input should be in main thread
