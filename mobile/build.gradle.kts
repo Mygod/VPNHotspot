@@ -11,7 +11,7 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     val targetSdk = 29
-    buildToolsVersion("30.0.1")
+    buildToolsVersion("30.0.2")
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
@@ -94,7 +94,7 @@ dependencies {
     implementation("com.linkedin.dexmaker:dexmaker:2.28.0")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.2")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.8")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.9")
     testImplementation("junit:junit:4.13")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test:runner:1.2.0")

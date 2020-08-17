@@ -63,7 +63,7 @@ object WifiApCommands {
     @Parcelize
     @RequiresApi(28)
     class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
-        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
+        override fun create(scope: CoroutineScope) = scope.produce<SoftApCallbackParcel>(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
             val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
                 private fun push(parcel: SoftApCallbackParcel) = check(try {

@@ -3,7 +3,7 @@ plugins {
 }
 
 buildscript {
-    val kotlinVersion = "1.3.72"
+    val kotlinVersion = "1.4.0"
     extra.set("kotlinVersion", kotlinVersion)
 
     repositories {

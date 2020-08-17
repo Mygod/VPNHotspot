@@ -441,7 +441,8 @@ class RootServer {
                                 val result = command.execute();
                                 { output.pushResult(callback, result) }
                             } catch (e: Throwable) {
-                                { output.pushThrowable(callback, e) }
+                                val worker = { output.pushThrowable(callback, e) }
+                                worker
                             } finally {
                                 cancellables.remove(callback)
                             }
@@ -463,7 +464,8 @@ class RootServer {
                                 output.flush()
                             }
                         } catch (e: Throwable) {
-                            { output.pushThrowable(callback, e) }
+                            val worker = { output.pushThrowable(callback, e) }
+                            worker
                         } finally {
                             cancellables.remove(callback)
                         }

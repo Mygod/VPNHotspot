@@ -195,7 +195,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         var features = supportedFeatures
                         if (features == 0L) yield(parent.getString(R.string.tethering_manage_wifi_no_features))
                         else while (features != 0L) {
-                            @OptIn(ExperimentalStdlibApi::class)
                             val bit = features.takeLowestOneBit()
                             yield(WifiApManager.featureLookup(bit, true))
                             features = features and bit.inv()
