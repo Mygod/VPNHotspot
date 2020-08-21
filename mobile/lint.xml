@@ -4,4 +4,5 @@
         <ignore regexp="org.mockito.*" />
     </issue>
     <issue id="MissingTranslation" severity="ignore" />
+    <issue id="UseAppTint" severity="informational" />
 </lint>

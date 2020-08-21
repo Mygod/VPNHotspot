@@ -67,16 +67,16 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.3.0-alpha06"
+    val lifecycleVersion = "2.3.0-alpha07"
     val roomVersion = "2.2.5"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.0.10")
     kapt("androidx.room:room-compiler:$roomVersion")
-    implementation("androidx.appcompat:appcompat:1.3.0-alpha01")    // https://issuetracker.google.com/issues/151603528
+    implementation("androidx.appcompat:appcompat:1.3.0-alpha02")    // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.core:core-ktx:1.3.1")
     implementation("androidx.emoji:emoji:1.1.0")
-    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha07")
+    implementation("androidx.fragment:fragment-ktx:1.3.0-alpha08")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
@@ -92,7 +92,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:4.7.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.0")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.3.9")
     testImplementation("junit:junit:4.13")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")

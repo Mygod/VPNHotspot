@@ -46,7 +46,7 @@ object ServiceNotification {
                             context.resources.getQuantityString(R.plurals.notification_interfaces,
                                     interfaceCount, interfaceCount))))
                     .bigText(lines.joinToString("\n"))
-                    .build()
+                    .build()!!
         }
     }
 
