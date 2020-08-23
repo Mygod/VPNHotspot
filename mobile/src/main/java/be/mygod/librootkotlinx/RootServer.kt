@@ -16,7 +16,6 @@ import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import timber.log.Timber
 import java.io.*
 import java.util.*
 import java.util.concurrent.CountDownLatch
@@ -175,7 +174,6 @@ class RootServer {
                 break
             }
             val result = input.readByte()
-            Timber.i("Received callback #$index: $result")
             val callback = mutex.synchronized {
                 if (active) (callbackLookup[index] ?: error("Empty callback #$index")).also {
                     if (it.shouldRemove(result)) {
@@ -251,7 +249,6 @@ class RootServer {
         val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
         mutex.withLock {
             if (active) {
-                Timber.i("Register callback #$counter $command")
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else future.cancel()
@@ -282,7 +279,6 @@ class RootServer {
         val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
         mutex.withLock {
             if (active) {
-                Timber.i("Register callback #$counter $command")
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else callback.finish.cancel()
