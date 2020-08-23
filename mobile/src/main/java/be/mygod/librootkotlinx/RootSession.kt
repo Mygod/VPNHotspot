@@ -25,8 +25,8 @@ abstract class RootSession {
     private suspend fun ensureServerLocked(): RootServer {
         server?.let {
             if (it.active) return it
-            closeLocked()
             usersCount = 0
+            closeLocked()
         }
         check(usersCount == 0L) { "Unexpected $server, $usersCount" }
         val server = RootServer()
