@@ -355,7 +355,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     fun stop() {
-        stopped = true
+        synchronized(this) { stopped = true }
         IpNeighbourMonitor.unregisterCallback(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
