@@ -54,7 +54,7 @@
     <string name="tethering_manage_wifi">WLAN 热点</string>
     <string name="tethering_manage_wifi_legacy">WLAN 热点 (旧 API)</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
-<!-- TODO   <string name="tethering_manage_ethernet">Ethernet tethering</string>-->
+    <string name="tethering_manage_ethernet" msgid="959743110824197356">"以太网络共享"</string>
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
     <string name="tethering_manage_wigig">WiGig 热点</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>

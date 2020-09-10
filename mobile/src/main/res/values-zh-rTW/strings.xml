@@ -64,7 +64,7 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi 無線基地台</string>
     <string name="tethering_manage_wifi_legacy">Wi\u2011Fi 無線基地台 (舊式)</string>
     <string name="tethering_manage_bluetooth">藍牙網路共用</string>
-    <!-- TODO   <string name="tethering_manage_ethernet">Ethernet tethering</string>-->
+    <string name="tethering_manage_ethernet" msgid="959743110824197356">"乙太網路網路共用"</string>
     <string name="tethering_manage_ncm">USB 網路共用 (NCM)</string>
     <string name="tethering_manage_wigig">WiGig 無線基地台</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 頻道 %2$d, 頻寬 %3$s</string>

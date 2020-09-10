@@ -22,6 +22,7 @@
     <string name="tethering_manage_usb" msgid="585829947108007917">"USB-модем"</string>
     <string name="tethering_manage_wifi" msgid="7763495093333664887">"Точка доступа Wi‑Fi"</string>
     <string name="tethering_manage_bluetooth" msgid="2379175828878753652">"Bluetooth-модем"</string>
+    <string name="tethering_manage_ethernet" msgid="959743110824197356">"Режим Ethernet-модема"</string>
 
     <string name="connected_state_incomplete">" (подключение)"</string>
     <string name="connected_state_valid">" (доступный)"</string>
