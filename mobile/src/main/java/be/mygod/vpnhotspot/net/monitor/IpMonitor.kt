@@ -170,7 +170,10 @@ abstract class IpMonitor {
             app.logEvent("ip_su_poll_failure") { param("cause", e.message.toString()) }
             Timber.d(e)
         }
-        return newServer
+        return if (newServer?.active != false) newServer else {
+            RootManager.release(newServer!!)
+            null
+        }
     }
 
     private fun poll() {
