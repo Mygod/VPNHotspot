@@ -135,6 +135,7 @@ abstract class IpMonitor {
                 }
             }
         }
+        flushAsync()
     }
 
     /**
