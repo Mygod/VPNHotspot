@@ -23,12 +23,12 @@ import java.util.concurrent.Executor
 
 object WifiApManager {
     /**
-     * TODO [com.android.server.wifi.WifiContext.ACTION_RESOURCES_APK]
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/000ad45/service/java/com/android/server/wifi/WifiContext.java#41
      */
     @RequiresApi(30)
     private const val ACTION_RESOURCES_APK = "com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK"
     /**
-     * Based on: TODO [com.android.server.wifi.WifiContext.getWifiOverlayApkPkgName]
+     * Based on: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/000ad45/service/java/com/android/server/wifi/WifiContext.java#66
      */
     @get:RequiresApi(30)
     val resolvedActivity get() = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),

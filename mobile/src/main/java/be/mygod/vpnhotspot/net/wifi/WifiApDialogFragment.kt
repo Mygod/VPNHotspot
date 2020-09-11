@@ -237,9 +237,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val selectedSecurity = if (arg.p2pMode) {
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         } else dialogView.security.selectedItemPosition
+        // see also: https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#688
         val passwordValid = when (selectedSecurity) {
-            // TODO
-            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> dialogView.password.length() >= 8
+            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> {
+                dialogView.password.length() >= 8
+            }
             else -> true    // do not try to validate
         }
         dialogView.passwordWrapper.error = if (passwordValid) null else " "

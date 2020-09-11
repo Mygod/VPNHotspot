@@ -47,7 +47,6 @@ data class SoftApConfigurationCompat(
          */
         private const val LEGACY_WPA2_PSK = 4
 
-        // TODO: localize?
         val securityTypes = arrayOf("OPEN", "WPA2-PSK", "WPA3-SAE", "WPA3-SAE Transition mode")
 
         private val qrSanitizer = Regex("([\\\\\":;,])")
@@ -55,7 +54,7 @@ data class SoftApConfigurationCompat(
         /**
          * Based on:
          * https://elixir.bootlin.com/linux/v5.7.6/source/net/wireless/util.c#L75
-         * TODO [com.android.server.wifi.util.ApConfigUtil]
+         * https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/ScanResult.java;l=624;drc=f7ccda05642b55700d67a288462bada488fc7f5e
          */
         fun channelToFrequency(band: Int, chan: Int) = when (band) {
             BAND_2GHZ -> when (chan) {
@@ -196,7 +195,7 @@ data class SoftApConfigurationCompat(
                 BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
                 preSharedKey,
                 hiddenSSID,
-                // TODO [android.net.wifi.SoftApConfToXmlMigrationUtil.convertWifiConfigBandToSoftApConfigBand]
+                // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
                 if (Build.VERSION.SDK_INT >= 23) when (val band = apBand.getInt(this)) {
                     0 -> BAND_2GHZ
                     1 -> BAND_5GHZ
@@ -258,7 +257,7 @@ data class SoftApConfigurationCompat(
      * Based on:
      * https://android.googlesource.com/platform/packages/apps/Settings/+/android-5.0.0_r1/src/com/android/settings/wifi/WifiApDialog.java#88
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/wifi/tether/WifiTetherSettings.java#162
-     * TODO [SoftApConfiguration.toWifiConfiguration]
+     * https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#511
      */
     @SuppressLint("NewApi") // https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#1385
     @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
