@@ -34,10 +34,7 @@ abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor()
                     }
                     val new = generateMonitor()
                     monitor = new
-                    for (callback in callbacks) {
-                        callback.onLost()
-                        new.registerCallback(callback)
-                    }
+                    for (callback in callbacks) new.registerCallback(callback)
                 }
             }
         }

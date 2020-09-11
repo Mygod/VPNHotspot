@@ -21,32 +21,31 @@ import timber.log.Timber
 class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs),
         DefaultLifecycleObserver {
     companion object {
-        private val internetAddress = parseNumericAddress("8.8.8.8")
+        private val internetV4Address = parseNumericAddress("8.8.8.8")
+        private val internetV6Address = parseNumericAddress("2001:4860:4860::8888")
     }
 
-    private data class Interface(val ifname: String, val internet: Boolean = true)
     private open inner class Monitor : UpstreamMonitor.Callback {
-        protected var currentInterface: Interface? = null
-        val charSequence get() = currentInterface?.run {
+        protected var currentInterfaces = emptyMap<String, Boolean>()
+        val charSequence get() = currentInterfaces.map { (ifname, internet) ->
             if (internet) SpannableStringBuilder(ifname).apply {
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             } else ifname
-        } ?: "∅"
+        }.joinTo(SpannableStringBuilder()).let { if (it.isEmpty()) "∅" else it }
 
-        override fun onAvailable(ifname: String, properties: LinkProperties) {
-            currentInterface = Interface(ifname, properties.allRoutes.any {
-                try {
-                    it.matches(internetAddress)
-                } catch (e: RuntimeException) {
-                    Timber.w(e)
-                    false
+        override fun onAvailable(properties: LinkProperties?) {
+            val result = mutableMapOf<String, Boolean>()
+            for (route in properties?.allRoutes ?: emptyList()) {
+                result.compute(route.`interface` ?: continue) { _, internet ->
+                    internet == true || try {
+                        route.matches(internetV4Address) || route.matches(internetV6Address)
+                    } catch (e: RuntimeException) {
+                        Timber.w(e)
+                        false
+                    }
                 }
-            })
-            onUpdate()
-        }
-
-        override fun onLost() {
-            currentInterface = null
+            }
+            currentInterfaces = result
             onUpdate()
         }
     }
@@ -54,7 +53,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     private val primary = Monitor()
     private val fallback: Monitor = object : Monitor() {
         override fun onFallback() {
-            currentInterface = Interface("<default>")
+            currentInterfaces = mapOf("<default>" to true)
             onUpdate()
         }
     }
