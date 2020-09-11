@@ -31,8 +31,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
             if (internet) SpannableStringBuilder(ifname).apply {
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             } else ifname
-        }.joinToString().let { if (it.isEmpty()) "∅" else it }
-
+        }.joinTo(SpannableStringBuilder()).let { if (it.isEmpty()) "∅" else it }
 
         override fun onAvailable(properties: LinkProperties?) {
             val result = mutableMapOf<String, Boolean>()
