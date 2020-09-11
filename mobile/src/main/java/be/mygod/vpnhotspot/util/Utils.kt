@@ -117,17 +117,6 @@ val LinkProperties.allInterfaceNames get() = getAllInterfaceNames.invoke(this) a
 private val getAllRoutes by lazy { LinkProperties::class.java.getDeclaredMethod("getAllRoutes") }
 @Suppress("UNCHECKED_CAST")
 val LinkProperties.allRoutes get() = getAllRoutes.invoke(this) as List<RouteInfo>
-private val getStackedLinks by lazy { LinkProperties::class.java.getDeclaredMethod("getStackedLinks") }
-@Suppress("UNCHECKED_CAST")
-private val LinkProperties.stackedLinks get() = getStackedLinks.invoke(this) as List<LinkProperties>
-
-private suspend fun SequenceScope<LinkProperties>.yieldRec(prop: LinkProperties) {
-    yield(prop)
-    for (link in prop.stackedLinks) yieldRec(link)
-}
-val LinkProperties.allStackedLinks get() = let {
-    sequence { yieldRec(it) }
-}
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

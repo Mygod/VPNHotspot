@@ -185,9 +185,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         override fun onAvailable(properties: LinkProperties?) = synchronized(this@Routing) {
             if (stopped) return
             val toRemove = subrouting.keys.toMutableSet()
-            for (link in properties?.allStackedLinks ?: emptySequence()) {
-                val ifname = link.interfaceName
-                if (ifname == null || toRemove.remove(ifname) || !upstreams.add(ifname)) continue
+            for (ifname in properties?.allInterfaceNames ?: emptyList()) {
+                if (toRemove.remove(ifname) || !upstreams.add(ifname)) continue
                 try {
                     subrouting[ifname] = Subrouting(priority, ifname)
                 } catch (e: Exception) {
