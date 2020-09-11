@@ -326,7 +326,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private inner class DnsRoute(val ifindex: Int, val dns: String) {
         val transaction = RootSession.beginTransaction().safeguard {
             val hostAddress = hostAddress.address.hostAddress
-            ipRuleLookup(ifindex, RULE_PRIORITY_DNS, "to $dns")
+            if (ifindex != 0) ipRuleLookup(ifindex, RULE_PRIORITY_DNS, "to $dns")
             iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
             iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
         }
@@ -342,7 +342,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         if (dns.isNullOrBlank()) dns = null
         if (ifindex != currentDns?.ifindex || dns != currentDns?.dns) {
             currentDns?.transaction?.revert()
-            currentDns = if (ifindex == 0 || dns == null) null else try {
+            currentDns = if (dns == null) null else try {
                 DnsRoute(ifindex, dns)
             } catch (_: CancellationException) {
                 null
