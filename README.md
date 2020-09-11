@@ -56,13 +56,13 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 ### Upstream
 
-* Upstream network interface: Main upstream used to reroute traffic.
+* Upstream network interface: Main upstream regex used to reroute traffic.
   Leave blank for auto detect system VPN (allow/do not bypass this app to use VPN for it to work).
-  Put `none` (or other similarly invalid entries) to suppress tethering VPN.
+  Put `none` (or `a^` or other similarly invalid entries) to suppress tethering VPN.
 * Fallback upstream:
   Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
   Leave blank for auto detect.
-  Put `none` (or other similarly invalid entries) to forbid falling back.
+  Put `none` (or `a^` or other similarly invalid entries) to forbid falling back.
   Put other interface name if you feel like it.
 * IP Masquerade Mode:
   - None:
