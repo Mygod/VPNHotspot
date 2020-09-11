@@ -10,7 +10,8 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
+class InterfaceMonitor(ifaceRegex: String) : UpstreamMonitor() {
+    private val iface = ifaceRegex.toRegex()
     private val request = networkRequestBuilder().apply {
         removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
         removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
@@ -24,7 +25,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            if (properties?.allInterfaceNames?.contains(iface) != true) return
+            if (properties?.allInterfaceNames?.any(iface::matches) != true) return
             synchronized(this@InterfaceMonitor) {
                 available[network] = properties
                 currentNetwork = network
@@ -33,7 +34,7 @@ class InterfaceMonitor(val iface: String) : UpstreamMonitor() {
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            val matched = properties.allInterfaceNames.contains(iface)
+            val matched = properties.allInterfaceNames.any(iface::matches)
             synchronized(this@InterfaceMonitor) {
                 if (!matched) {
                     if (currentNetwork == network) currentNetwork = null
