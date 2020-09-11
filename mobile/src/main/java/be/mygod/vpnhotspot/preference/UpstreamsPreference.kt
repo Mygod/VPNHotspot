@@ -14,6 +14,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.SpanFormatter
+import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 
@@ -33,7 +34,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
         } ?: "∅"
 
         override fun onAvailable(ifname: String, properties: LinkProperties) {
-            currentInterface = Interface(ifname, properties.routes.any {
+            currentInterface = Interface(ifname, properties.allRoutes.any {
                 try {
                     it.matches(internetAddress)
                 } catch (e: RuntimeException) {

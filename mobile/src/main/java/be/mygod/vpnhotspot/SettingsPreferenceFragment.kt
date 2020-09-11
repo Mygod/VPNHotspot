@@ -20,6 +20,7 @@ import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -148,8 +149,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
                 AlwaysAutoCompleteEditTextPreferenceDialogFragment().apply {
                     setArguments(preference.key, Services.connectivity.allNetworks.mapNotNull {
-                        Services.connectivity.getLinkProperties(it)?.interfaceName
-                    }.toTypedArray())
+                        Services.connectivity.getLinkProperties(it)?.allInterfaceNames
+                    }.flatten().toTypedArray())
                     setTargetFragment(this@SettingsPreferenceFragment, 0)
                 }.showAllowingStateLoss(parentFragmentManager, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)

@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.*
 import android.net.InetAddresses
+import android.net.LinkProperties
+import android.net.RouteInfo
 import android.os.Build
 import android.os.Handler
 import android.os.RemoteException
@@ -108,6 +110,13 @@ private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
 fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
     InetAddresses.parseNumericAddress(address)
 } else parseNumericAddress(null, address) as InetAddress
+
+private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
+@Suppress("UNCHECKED_CAST")
+val LinkProperties.allInterfaceNames get() = getAllInterfaceNames.invoke(this) as List<String>
+private val getAllRoutes by lazy { LinkProperties::class.java.getDeclaredMethod("getAllRoutes") }
+@Suppress("UNCHECKED_CAST")
+val LinkProperties.allRoutes get() = getAllRoutes.invoke(this) as List<RouteInfo>
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {
