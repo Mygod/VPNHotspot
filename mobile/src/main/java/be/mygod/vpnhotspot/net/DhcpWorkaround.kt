@@ -34,7 +34,8 @@ object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
         try {
             RootSession.use {
                 try {
-                    it.exec("$IP rule $action iif lo uidrange 0-0 lookup local_network priority 11000")
+                    // ROUTE_TABLE_LOCAL_NETWORK: https://cs.android.com/android/platform/superproject/+/master:system/netd/server/RouteController.cpp;l=74;drc=b6dc40ac3d566d952d8445fc6ac796109c0cbc87
+                    it.exec("$IP rule $action iif lo uidrange 0-0 lookup 97 priority 11000")
                 } catch (e: RoutingCommands.UnexpectedOutputException) {
                     if (Routing.shouldSuppressIpError(e, enabled)) return@use
                     Timber.w(IOException("Failed to tweak dhcp workaround rule", e))
