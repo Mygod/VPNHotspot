@@ -20,6 +20,7 @@ import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.io.BufferedWriter
 import java.io.IOException
+import java.lang.RuntimeException
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -206,11 +207,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 val size = dest.address.size
                 var bestRoute: RouteInfo? = null
                 for (route in routes!!) {
-                    if (route.destination.rawAddress.size == size &&
-                            (bestRoute == null ||
-                                    bestRoute.destination.prefixLength < route.destination.prefixLength) &&
-                            route.matches(dest)) {
-                        bestRoute = route
+                    if (route.destination.rawAddress.size == size && (bestRoute == null ||
+                                    bestRoute.destination.prefixLength < route.destination.prefixLength)) {
+                        try {
+                            if (route.matches(dest)) bestRoute = route
+                        } catch (e: RuntimeException) {
+                            Timber.w(e)
+                        }
                     }
                 }
                 dest to bestRoute?.`interface`
