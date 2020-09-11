@@ -9,11 +9,9 @@ import android.os.Build
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import timber.log.Timber
 
 object DefaultNetworkMonitor : UpstreamMonitor() {
     private var registered = false
-    private var currentNetwork: Network? = null
     override var currentLinkProperties: LinkProperties? = null
         private set
     /**
@@ -27,62 +25,30 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            val ifname = properties?.interfaceName ?: return
-            var switching = false
             synchronized(this@DefaultNetworkMonitor) {
-                val oldProperties = currentLinkProperties
-                if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
-                    switching = true    // we are using the other default network now
-                    currentNetwork = network
-                }
                 currentLinkProperties = properties
                 callbacks.toList()
-            }.forEach {
-                if (switching) it.onLost()
-                it.onAvailable(ifname, properties)
-            }
+            }.forEach { it.onAvailable(properties) }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            var losing = true
-            var ifname: String?
             synchronized(this@DefaultNetworkMonitor) {
-                if (currentNetwork == null) {
-                    onAvailable(network)
-                    return
-                }
-                if (currentNetwork != network) return
-                val oldProperties = currentLinkProperties!!
                 currentLinkProperties = properties
-                ifname = properties.interfaceName
-                when (ifname) {
-                    null -> Timber.w("interfaceName became null: $oldProperties -> $properties")
-                    oldProperties.interfaceName -> losing = false
-                    else -> Timber.w(RuntimeException("interfaceName changed: $oldProperties -> $properties"))
-                }
                 callbacks.toList()
-            }.forEach {
-                if (losing) {
-                    if (ifname == null) return onLost(network)
-                    it.onLost()
-                }
-                ifname?.let { ifname -> it.onAvailable(ifname, properties) }
-            }
+            }.forEach { it.onAvailable(properties) }
         }
 
         override fun onLost(network: Network) = synchronized(this@DefaultNetworkMonitor) {
-            if (currentNetwork != network) return
-            currentNetwork = null
             currentLinkProperties = null
             callbacks.toList()
-        }.forEach { it.onLost() }
+        }.forEach { it.onAvailable() }
     }
 
     override fun registerCallbackLocked(callback: Callback) {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) GlobalScope.launch {
-                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
+                callback.onAvailable(currentLinkProperties)
             }
         } else {
             if (Build.VERSION.SDK_INT in 24..27) @TargetApi(24) {
@@ -103,7 +69,6 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         if (!registered) return
         Services.connectivity.unregisterNetworkCallback(networkCallback)
         registered = false
-        currentNetwork = null
         currentLinkProperties = null
     }
 }

@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.annotation.TargetApi
 import android.net.LinkProperties
+import android.net.RouteInfo
 import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -13,9 +14,7 @@ import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
-import be.mygod.vpnhotspot.util.RootSession
-import be.mygod.vpnhotspot.util.if_nametoindex
-import be.mygod.vpnhotspot.util.parseNumericAddress
+import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
@@ -180,52 +179,65 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
         }
 
-        var subrouting: Subrouting? = null
-        var dns: List<InetAddress> = emptyList()
+        var subrouting = mutableMapOf<String, Subrouting>()
+        var dns = emptyList<Pair<InetAddress, String?>>()
 
-        override fun onAvailable(ifname: String, properties: LinkProperties) = synchronized(this@Routing) {
+        override fun onAvailable(properties: LinkProperties?) = synchronized(this@Routing) {
             if (stopped) return
-            val subrouting = subrouting
-            when {
-                subrouting != null -> check(subrouting.upstream == ifname) { "${subrouting.upstream} != $ifname" }
-                !upstreams.add(ifname) -> return
-                else -> this.subrouting = try {
-                    Subrouting(priority, ifname)
+            val toRemove = subrouting.keys.toMutableSet()
+            for (link in properties?.allStackedLinks ?: emptySequence()) {
+                val ifname = link.interfaceName
+                if (ifname == null || toRemove.remove(ifname) || !upstreams.add(ifname)) continue
+                try {
+                    subrouting[ifname] = Subrouting(priority, ifname)
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
                     if (e !is CancellationException) Timber.w(e)
-                    null
                 }
             }
-            dns = properties.dnsServers
-            updateDnsRoute()
-        }
-
-        override fun onLost() = synchronized(this@Routing) {
-            if (stopped) return
-            val subrouting = subrouting ?: return
-            // we could be removing fallback subrouting which no collision could ever happen, check before removing
-            subrouting.upstream?.let { check(upstreams.remove(it)) }
-            subrouting.transaction.revert()
-            this.subrouting = null
-            dns = emptyList()
+            for (ifname in toRemove) {
+                subrouting.remove(ifname)?.transaction?.revert()
+                check(upstreams.remove(ifname))
+            }
+            val routes = properties?.allRoutes
+            dns = properties?.dnsServers?.map { dest ->
+                // based on:
+                // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/packages/Tethering/src/com/android/networkstack/tethering/TetheringInterfaceUtils.java;l=88;drc=master
+                // https://cs.android.com/android/platform/superproject/+/master:frameworks/libs/net/common/framework/android/net/util/NetUtils.java;l=44;drc=de5905fe0407a1f5e115423d56c948ee2400683d
+                val size = dest.address.size
+                var bestRoute: RouteInfo? = null
+                for (route in routes!!) {
+                    if (route.destination.rawAddress.size == size &&
+                            (bestRoute == null ||
+                                    bestRoute.destination.prefixLength < route.destination.prefixLength) &&
+                            route.matches(dest)) {
+                        bestRoute = route
+                    }
+                }
+                dest to bestRoute?.`interface`
+            } ?: emptyList()
             updateDnsRoute()
         }
     }
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
         var fallbackInactive = true
+
+        override fun onAvailable(properties: LinkProperties?) {
+            check(fallbackInactive)
+            super.onAvailable(properties)
+        }
+
         override fun onFallback() = synchronized(this@Routing) {
             if (stopped) return
             fallbackInactive = false
-            check(subrouting == null)
-            subrouting = try {
-                Subrouting(priority)
+            check(subrouting.isEmpty() && upstreams.add(""))
+            try {
+                subrouting[""] = Subrouting(priority)
             } catch (e: Exception) {
                 SmartSnackbar.make(e).show()
                 if (e !is CancellationException) Timber.w(e)
-                null
             }
-            dns = listOf(parseNumericAddress("8.8.8.8"))
+            dns = listOf(parseNumericAddress("8.8.8.8") to null)
             updateDnsRoute()
         }
     }
@@ -334,8 +346,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var currentDns: DnsRoute? = null
     private fun updateDnsRoute() {
         val selected = sequenceOf(upstream, fallbackUpstream).flatMap { upstream ->
-            val ifindex = upstream.subrouting?.ifindex ?: 0
-            if (ifindex == 0) emptySequence() else upstream.dns.asSequence().map { ifindex to it }
+            upstream.dns.asSequence().map { (server, iface) ->
+                ((if (iface != null) upstream.subrouting[iface]?.ifindex else null) ?: 0) to server
+            }
         }.firstOrNull { it.second is Inet4Address }
         val ifindex = selected?.first ?: 0
         var dns = selected?.second?.hostAddress
@@ -378,8 +391,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
         disableSystem?.revert()
-        fallbackUpstream.subrouting?.transaction?.revert()
-        upstream.subrouting?.transaction?.revert()
+        fallbackUpstream.subrouting.values.forEach { it.transaction.revert() }
+        upstream.subrouting.values.forEach { it.transaction.revert() }
         transaction.revert()
     }
 }

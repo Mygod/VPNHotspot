@@ -37,18 +37,15 @@ abstract class UpstreamMonitor {
             if (key == KEY) GlobalScope.launch {    // prevent callback called in main
                 synchronized(this) {
                     val old = monitor
-                    val (active, callbacks) = synchronized(old) {
-                        (old.currentIface != null) to old.callbacks.toList().also {
+                    val callbacks = synchronized(old) {
+                        old.callbacks.toList().also {
                             old.callbacks.clear()
                             old.destroyLocked()
                         }
                     }
                     val new = generateMonitor()
                     monitor = new
-                    for (callback in callbacks) {
-                        if (active) callback.onLost()
-                        new.registerCallback(callback)
-                    }
+                    for (callback in callbacks) new.registerCallback(callback)
                 }
             }
         }
@@ -56,14 +53,9 @@ abstract class UpstreamMonitor {
 
     interface Callback {
         /**
-         * Called if some interface is available. This might be called on different ifname without having called onLost.
-         * This might also be called on the same ifname but with updated link properties.
+         * Called if some possibly stacked interface is available
          */
-        fun onAvailable(ifname: String, properties: LinkProperties)
-        /**
-         * Called if no interface is available.
-         */
-        fun onLost()
+        fun onAvailable(properties: LinkProperties? = null)
         /**
          * Called on API 23- from DefaultNetworkMonitor. This indicates that there isn't a good way of telling the
          * default network (see DefaultNetworkMonitor) and we are using rules at priority 22000
@@ -77,7 +69,6 @@ abstract class UpstreamMonitor {
 
     val callbacks = mutableSetOf<Callback>()
     protected abstract val currentLinkProperties: LinkProperties?
-    open val currentIface: String? get() = currentLinkProperties?.interfaceName
     protected abstract fun registerCallbackLocked(callback: Callback)
     abstract fun destroyLocked()
 

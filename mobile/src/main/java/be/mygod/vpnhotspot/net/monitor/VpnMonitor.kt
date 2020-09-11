@@ -16,71 +16,40 @@ object VpnMonitor : UpstreamMonitor() {
             .build()
     private var registered = false
 
-    private val available = HashMap<Network, LinkProperties>()
+    private val available = HashMap<Network, LinkProperties?>()
     private var currentNetwork: Network? = null
-    override val currentLinkProperties: LinkProperties? get() {
-        val currentNetwork = currentNetwork
-        return if (currentNetwork == null) null else available[currentNetwork]
-    }
+    override val currentLinkProperties: LinkProperties? get() = currentNetwork?.let { available[it] }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            val ifname = properties?.interfaceName ?: return
-            var switching = false
             synchronized(this@VpnMonitor) {
-                val oldProperties = available.put(network, properties)
-                if (currentNetwork != network || ifname != oldProperties?.interfaceName) {
-                    if (currentNetwork != null) switching = true
-                    currentNetwork = network
-                }
+                available[network] = properties
+                currentNetwork = network
                 callbacks.toList()
-            }.forEach {
-                if (switching) it.onLost()
-                it.onAvailable(ifname, properties)
-            }
+            }.forEach { it.onAvailable(properties) }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            var losing = true
-            var ifname: String?
             synchronized(this@VpnMonitor) {
-                if (currentNetwork == null) {
-                    onAvailable(network)
-                    return
-                }
-                if (currentNetwork != network) return
-                val oldProperties = available.put(network, properties)!!
-                ifname = properties.interfaceName
-                when (ifname) {
-                    null -> Timber.w("interfaceName became null: $oldProperties -> $properties")
-                    oldProperties.interfaceName -> losing = false
-                    else -> Timber.w("interfaceName changed: $oldProperties -> $properties")
-                }
+                available[network] = properties
+                if (currentNetwork == null) currentNetwork = network
+                else if (currentNetwork != network) return
                 callbacks.toList()
-            }.forEach {
-                if (losing) {
-                    if (ifname == null) return onLost(network)
-                    it.onLost()
-                }
-                ifname?.let { ifname -> it.onAvailable(ifname, properties) }
-            }
+            }.forEach { it.onAvailable(properties) }
         }
 
         override fun onLost(network: Network) {
-            var newProperties: LinkProperties? = null
+            var properties: LinkProperties? = null
             synchronized(this@VpnMonitor) {
                 if (available.remove(network) == null || currentNetwork != network) return
                 if (available.isNotEmpty()) {
                     val next = available.entries.first()
                     currentNetwork = next.key
-                    Timber.d("Switching to ${next.value.interfaceName} as VPN interface")
-                    newProperties = next.value
+                    Timber.d("Switching to ${next.value} as VPN interface")
+                    properties = next.value
                 } else currentNetwork = null
                 callbacks.toList()
-            }.forEach {
-                it.onLost()
-                newProperties?.let { prop -> it.onAvailable(prop.interfaceName!!, prop) }
-            }
+            }.forEach { it.onAvailable(properties) }
         }
     }
 
@@ -88,7 +57,7 @@ object VpnMonitor : UpstreamMonitor() {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) GlobalScope.launch {
-                callback.onAvailable(currentLinkProperties.interfaceName!!, currentLinkProperties)
+                callback.onAvailable(currentLinkProperties)
             }
         } else {
             Services.connectivity.registerNetworkCallback(request, networkCallback)
