@@ -99,7 +99,7 @@ abstract class IpMonitor {
         }
     }
 
-    init {
+    protected fun init() {
         thread(name = "${javaClass.simpleName}-input") {
             val mode = currentMode
             if (mode.isMonitor) {

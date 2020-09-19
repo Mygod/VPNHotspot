@@ -57,6 +57,10 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
     }
     private var neighbours = persistentMapOf<IpDev, IpNeighbour>()
 
+    init {
+        init()
+    }
+
     override val monitoredObject: String get() = "neigh"
 
     override fun processLine(line: String) {
