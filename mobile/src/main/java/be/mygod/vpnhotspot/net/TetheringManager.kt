@@ -29,6 +29,7 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
 /**
@@ -56,7 +57,12 @@ object TetheringManager {
         /**
          * ADDED: Called when a local Exception occurred.
          */
-        fun onException(e: Exception) { }
+        fun onException(e: Exception) {
+            when (e.getRootCause()) {
+                is SecurityException, is CancellationException -> { }
+                else -> Timber.w(e)
+            }
+        }
     }
 
     /**
@@ -320,7 +326,7 @@ object TetheringManager {
                         } catch (eRoot: Exception) {
                             try {   // last resort: start tethering without trying to bypass entitlement check
                                 startTethering(type, false, showProvisioningUi, executor, proxy(callback))
-                                Timber.w(eRoot)
+                                if (eRoot !is CancellationException) Timber.w(eRoot)
                             } catch (e: Exception) {
                                 e.addSuppressed(eRoot)
                                 callback.onException(e)
@@ -356,7 +362,7 @@ object TetheringManager {
                     }.value
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)
-                    Timber.w(eRoot)
+                    if (eRoot !is CancellationException) Timber.w(eRoot)
                     callback.onException(eRoot)
                     return@launch
                 }
