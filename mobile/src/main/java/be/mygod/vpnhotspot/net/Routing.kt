@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.net.LinkProperties
 import android.net.RouteInfo
@@ -222,26 +223,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
-        var fallbackInactive = true
-
-        override fun onAvailable(properties: LinkProperties?) {
-            check(fallbackInactive)
-            super.onAvailable(properties)
-        }
-
-        override fun onFallback() = synchronized(this@Routing) {
-            if (stopped) return
-            fallbackInactive = false
-            check(subrouting.isEmpty() && upstreams.add(""))
-            try {
-                subrouting[""] = Subrouting(priority)
-            } catch (e: Exception) {
-                SmartSnackbar.make(e).show()
-                if (e !is CancellationException) Timber.w(e)
-            }
-            dns = listOf(parseNumericAddress("8.8.8.8") to null)
-            updateDnsRoute()
-        }
+        @SuppressLint("NewApi")
+        override fun onFallback() = onAvailable(LinkProperties().apply {
+            interfaceName = ""
+            setDnsServers(listOf(parseNumericAddress("8.8.8.8")))
+        })
     }
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
     private var disableSystem: RootSession.Transaction? = null
