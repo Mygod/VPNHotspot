@@ -4,6 +4,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
 
 /**
  * This object manages creation of [RootServer] and times them out automagically, with default timeout of 5 minutes.
@@ -14,7 +15,7 @@ abstract class RootSession {
      * Timeout to close [RootServer] in milliseconds.
      */
     protected open val timeout get() = TimeUnit.MINUTES.toMillis(5)
-    protected open val timeoutDispatcher get() = Dispatchers.Default
+    protected open val timeoutContext: CoroutineContext get() = Dispatchers.Default
 
     private val mutex = Mutex()
     private var server: RootServer? = null
@@ -52,7 +53,7 @@ abstract class RootSession {
     }
     private fun startTimeoutLocked() {
         check(timeoutJob == null)
-        timeoutJob = GlobalScope.launch(timeoutDispatcher, CoroutineStart.UNDISPATCHED) {
+        timeoutJob = GlobalScope.launch(timeoutContext, CoroutineStart.UNDISPATCHED) {
             delay(timeout)
             mutex.withLock {
                 check(usersCount == 0L)
