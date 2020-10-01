@@ -58,7 +58,11 @@ abstract class RootSession {
             mutex.withLock {
                 check(usersCount == 0L)
                 timeoutJob = null
-                closeLocked()
+                try {
+                    closeLocked()
+                } catch (e: Exception) {
+                    Logger.me.e("Closing RootServer on timeout failed", e)
+                }
             }
         }
     }
