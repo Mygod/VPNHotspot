@@ -46,6 +46,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private const val RULE_PRIORITY_UPSTREAM = 17800
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
         private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
+        private const val RULE_PRIORITY_TETHERING = 18000
 
         private const val ROOT_DIR = "/system/bin/"
         const val IP = "${ROOT_DIR}ip"
@@ -153,22 +154,24 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         /**
          * The only case when upstream is null is on API 23- and we are using system default rules.
          */
-        inner class Subrouting(priority: Int, val upstream: String? = null) {
-            val ifindex = if (upstream == null) 0 else if_nametoindex(upstream).also {
+        inner class Subrouting(priority: Int, val upstream: String) {
+            val ifindex = if (upstream.isEmpty()) 0 else if_nametoindex(upstream).also {
                 if (it <= 0) throw IOException("Interface $upstream not found")
             }
             val transaction = RootSession.beginTransaction().safeguard {
-                if (upstream != null) ipRuleLookup(ifindex, priority)
+                if (upstream.isEmpty()) {
+                    ipRule("goto $RULE_PRIORITY_TETHERING", priority)   // skip unreachable rule
+                } else ipRuleLookup(ifindex, priority)
                 @TargetApi(28) when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> {
                         // note: specifying -i wouldn't work for POSTROUTING
-                        iptablesAdd(if (upstream == null) {
+                        iptablesAdd(if (upstream.isEmpty()) {
                             "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE"
                         } else "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
                     }
                     MasqueradeMode.Netd -> {
-                        check(upstream != null) // fallback is only needed for repeater on API 23 < 28
+                        check(upstream.isNotEmpty())    // fallback is only needed for repeater on API 23 < 28
                         /**
                          * 0 means that there are no interface addresses coming after, which is unused anyway.
                          *
@@ -230,7 +233,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         })
     }
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
-    private var disableSystem: RootSession.Transaction? = null
 
     private inner class Client(private val ip: Inet4Address, mac: MacAddressCompat) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
@@ -364,12 +366,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     fun commit() {
+        transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
-        if (fallbackUpstream.fallbackInactive) disableSystem = RootSession.beginTransaction().safeguard {
-            ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
-        }
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this, true)
     }
@@ -378,7 +378,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
-        disableSystem?.revert()
         fallbackUpstream.subrouting.values.forEach { it.transaction.revert() }
         upstream.subrouting.values.forEach { it.transaction.revert() }
         transaction.revert()
