@@ -6,6 +6,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
@@ -57,7 +58,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
-        val ifaces = intent.localOnlyTetheredIfaces ?: return@broadcastReceiver
+        val ifaces = (intent.localOnlyTetheredIfaces ?: return@broadcastReceiver).filter {
+            TetherType.ofInterface(it) != TetherType.WIFI_P2P
+        }
         Timber.d("onTetherStateChangedLocked: $ifaces")
         check(ifaces.size <= 1)
         val iface = ifaces.singleOrNull()
