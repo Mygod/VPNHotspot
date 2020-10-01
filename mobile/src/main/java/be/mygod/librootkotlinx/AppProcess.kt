@@ -15,8 +15,8 @@ object AppProcess {
     val genericLdConfigFilePath: String get() {
         "/system/etc/ld.config.$currentInstructionSet.txt".let { if (File(it).isFile) return it }
         if (Build.VERSION.SDK_INT >= 30) "/linkerconfig/ld.config.txt".let {
-            check(File(it).isFile) { "failed to find generated linker configuration from \"$it\"" }
-            return it
+            if (File(it).isFile) return it
+            Logger.me.w("Failed to find generated linker configuration from \"$it\"")
         }
         if (isVndkLite) {
             "/system/etc/ld.config.vndk_lite.txt".let { if (File(it).isFile) return it }
