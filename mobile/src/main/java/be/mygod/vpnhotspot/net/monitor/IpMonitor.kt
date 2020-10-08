@@ -172,7 +172,11 @@ abstract class IpMonitor {
             Timber.d(e)
         }
         return if (newServer?.active != false) newServer else {
-            RootManager.release(newServer!!)
+            try {
+                RootManager.release(newServer!!)
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
             null
         }
     }
