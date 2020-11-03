@@ -1,6 +1,7 @@
 package be.mygod.librootkotlinx
 
 import android.content.Context
+import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
@@ -314,7 +315,12 @@ class RootServer {
      */
     suspend fun close() {
         closeInternal()
-        callbackListenerExit.await()
+        try {
+            withTimeout(10000) { callbackListenerExit.await() }
+        } catch (e: TimeoutCancellationException) {
+            Logger.me.w("Closing the instance has timed out", e)
+            if (Build.VERSION.SDK_INT < 26) process.destroy() else if (process.isAlive) process.destroyForcibly()
+        }
     }
 
     companion object {
