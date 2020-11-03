@@ -7,6 +7,7 @@ import android.system.OsConstants
 import be.mygod.vpnhotspot.root.ReadArp
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.parseNumericAddress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.File
@@ -127,7 +128,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                     }.value.lineSequence().makeArp()
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)
-                    Timber.w(eRoot)
+                    if (eRoot !is CancellationException) Timber.w(eRoot)
                 } else Timber.w(e)
             }
             return arpCache
