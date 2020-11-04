@@ -87,8 +87,12 @@ enum class TetherType(@DrawableRes val icon: Int) {
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
             }
             // available since Android 4.0: https://android.googlesource.com/platform/frameworks/base/+/c96a667162fab44a250503caccb770109a9cb69a
-            ethernetRegex = system.second.getString(system.second.getIdentifier(
-                    "config_ethernet_iface_regex", "string", system.first)).run { if (isEmpty()) null else toPattern() }
+            ethernetRegex = try {
+                system.second.getString(system.second.getIdentifier("config_ethernet_iface_regex", "string",
+                        system.first)).run { if (isEmpty()) null else toPattern() }
+            } catch (_: Resources.NotFoundException) {
+                null
+            }
         }
 
         /**
