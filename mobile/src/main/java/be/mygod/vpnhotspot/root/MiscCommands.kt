@@ -73,7 +73,10 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                 """.trimMargin())
             }
             process.inputStream.copyTo(out)
-            check(process.waitFor() == 0)
+            when (val exit = process.waitFor()) {
+                0 -> { }
+                else -> out.write("Process exited with $exit".toByteArray())
+            }
         }
         null
     }
