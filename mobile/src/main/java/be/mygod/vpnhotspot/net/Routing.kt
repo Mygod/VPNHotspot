@@ -135,7 +135,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     private val hostAddress = try {
         val iface = NetworkInterface.getByName(downstream) ?: error("iface not found")
-        val addresses = iface.interfaceAddresses!!.filter { it.address is Inet4Address }
+        val addresses = iface.interfaceAddresses!!.filter { it.address is Inet4Address && it.networkPrefixLength <= 32 }
         if (addresses.size > 1) error("More than one addresses was found: $addresses")
         addresses.first()
     } catch (e: Exception) {
