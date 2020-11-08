@@ -21,7 +21,6 @@ import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
 import kotlin.concurrent.thread
-import kotlin.coroutines.EmptyCoroutineContext
 
 abstract class IpMonitor {
     companion object {
@@ -109,7 +108,7 @@ abstract class IpMonitor {
                     if (destroyed) return@thread
                 }
                 try {
-                    runBlocking(EmptyCoroutineContext + worker) {
+                    runBlocking(worker) {
                         RootManager.use { server ->
                             // while we only need to use this server once, we need to also keep the server alive
                             handleChannel(server.create(ProcessListener(errorMatcher, Routing.IP, "monitor", monitoredObject),

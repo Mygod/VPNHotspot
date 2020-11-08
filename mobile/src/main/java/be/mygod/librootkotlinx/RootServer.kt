@@ -270,7 +270,7 @@ class RootServer {
     @Throws(RemoteException::class)
     fun <T : Parcelable?> create(command: RootCommandChannel<T>, scope: CoroutineScope,
                                  classLoader: ClassLoader?) = scope.produce<T>(
-            capacity = command.capacity.also {
+            SupervisorJob(), command.capacity.also {
                 when (it) {
                     Channel.UNLIMITED, Channel.CONFLATED -> { }
                     else -> throw IllegalArgumentException("Unsupported channel capacity $it")
