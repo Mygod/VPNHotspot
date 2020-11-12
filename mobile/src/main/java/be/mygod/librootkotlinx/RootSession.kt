@@ -39,7 +39,7 @@ abstract class RootSession {
             try {
                 server.close()
             } catch (eClose: Throwable) {
-                throw eClose.apply { addSuppressed(e) }
+                e.addSuppressed(eClose)
             }
             throw e
         }
