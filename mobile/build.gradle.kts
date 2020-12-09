@@ -11,7 +11,7 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     val targetSdk = 29
-    buildToolsVersion("30.0.2")
+    buildToolsVersion("30.0.3")
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
@@ -70,30 +70,31 @@ dependencies {
     val lifecycleVersion = "2.3.0-beta01"
     val roomVersion = "2.2.5"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.1")
     kapt("androidx.room:room-compiler:$roomVersion")
+    implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.appcompat:appcompat:1.3.0-alpha02")    // https://issuetracker.google.com/issues/151603528
-    implementation("androidx.browser:browser:1.2.0")
+    implementation("androidx.browser:browser:1.3.0")
     implementation("androidx.core:core-ktx:1.3.2")
     implementation("androidx.emoji:emoji:1.1.0")
-    implementation("androidx.fragment:fragment-ktx:1.3.0-beta01")
+    implementation("androidx.fragment:fragment-ktx:1.3.0-beta02")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.1.1")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("com.android.billingclient:billing-ktx:3.0.1")
+    implementation("com.android.billingclient:billing-ktx:3.0.2")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.2.1")
     implementation("com.google.firebase:firebase-analytics-ktx:18.0.0")
-    implementation("com.google.firebase:firebase-crashlytics:17.2.2")
+    implementation("com.google.firebase:firebase-crashlytics:17.3.0")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:4.7.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.0")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.4.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.4.2")
     testImplementation("junit:junit:4.13.1")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test:runner:1.3.0")
