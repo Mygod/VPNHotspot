@@ -2,6 +2,7 @@
 
     <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <item name="android:navigationBarColor">@color/navigationBarColor</item>
+        <item name="android:navigationBarDividerColor" tools:targetApi="o_mr1">@color/navigationBarDividerColor</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">@bool/is_day</item>
         <item name="actionBarStyle">@style/Widget.MaterialComponents.Light.ActionBar.Solid</item>
         <item name="colorPrimary">@color/colorPrimary</item>

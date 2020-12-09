@@ -35,12 +35,4 @@
         android:background="?android:attr/windowBackground"
         app:menu="@menu/navigation"/>
 
-    <View
-        android:id="@+id/line"
-        android:layout_width="match_parent"
-        android:layout_height="0.1px"
-        android:background="?android:attr/navigationBarColor"
-        android:elevation="9dp"
-        tools:ignore="PxUsage"/>
-
 </LinearLayout>
