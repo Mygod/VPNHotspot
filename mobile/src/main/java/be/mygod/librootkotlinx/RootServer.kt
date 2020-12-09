@@ -226,7 +226,11 @@ class RootServer {
         }
         future.await()
     } finally {
-        readUnexpectedStderr()?.let { Logger.me.e(it) }
+        try {
+            readUnexpectedStderr()?.let { Logger.me.e(it) }
+        } catch (e: IOException) {
+            Logger.me.e("Failed to read from stderr", e)    // avoid the real exception being swallowed
+        }
     }
 
     /**
