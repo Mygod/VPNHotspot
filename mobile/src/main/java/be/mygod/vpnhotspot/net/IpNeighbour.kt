@@ -79,11 +79,12 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                         val list = arp()
                                 .asSequence()
                                 .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
-                                .map { it[ARP_HW_ADDRESS] }
+                                .map { MacAddressCompat.fromString(it[ARP_HW_ADDRESS]) }
+                                .filter { it != MacAddressCompat.ALL_ZEROS_ADDRESS }
                                 .distinct()
                                 .toList()
                         when (list.size) {
-                            1 -> lladdr = MacAddressCompat.fromString(list.single())
+                            1 -> lladdr = list.single()
                             0 -> { }
                             else -> throw IllegalArgumentException("Unexpected output in arp: ${list.joinToString()}")
                         }
