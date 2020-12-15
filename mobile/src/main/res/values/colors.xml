@@ -7,5 +7,4 @@
     <color name="colorPrimaryDark">#087f23</color>
     <color name="colorSecondary">#AEEA00</color>
     <color name="navigationBarColor">@android:color/black</color>
-    <color name="navigationBarDividerColor">@android:color/transparent</color>
 </resources>
