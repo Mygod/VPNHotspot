@@ -9,7 +9,6 @@
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 <a href="https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot" target="_blank"><img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" height="60"></a>,
-<a href="https://labs.xda-developers.com/store/app/be.mygod.vpnhotspot" target="_blank">XDA Labs</a>,
 <a href="https://appdistribution.firebase.dev/i/FUCPGdzm" target="_blank">sign up for beta</a>
 
 This app is useful for:
