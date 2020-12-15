@@ -12,9 +12,9 @@ import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.produce
+import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InterruptedIOException

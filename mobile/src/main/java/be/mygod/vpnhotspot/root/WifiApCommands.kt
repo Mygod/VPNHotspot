@@ -9,11 +9,11 @@ import be.mygod.librootkotlinx.RootCommandChannel
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.channels.produce
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object WifiApCommands {

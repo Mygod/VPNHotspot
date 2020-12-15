@@ -5,7 +5,7 @@ import android.util.Log
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object RootManager : RootSession(), Logger {

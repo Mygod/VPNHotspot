@@ -41,8 +41,8 @@ import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.*
+import kotlinx.parcelize.Parcelize
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {

@@ -2,10 +2,10 @@ package be.mygod.librootkotlinx
 
 import android.os.Parcelable
 import androidx.annotation.MainThread
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.parcelize.Parcelize
 
 interface RootCommand<Result : Parcelable?> : Parcelable {
     /**

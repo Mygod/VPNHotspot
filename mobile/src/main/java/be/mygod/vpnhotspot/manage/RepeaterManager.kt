@@ -33,8 +33,8 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.*
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.net.NetworkInterface
 import java.net.SocketException

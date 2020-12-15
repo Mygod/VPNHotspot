@@ -8,7 +8,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.util.*
 import androidx.annotation.RequiresApi
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 
 class NoShellException(cause: Throwable) : Exception("Root missing", cause)
 

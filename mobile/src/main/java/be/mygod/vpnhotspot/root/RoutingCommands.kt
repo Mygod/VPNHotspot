@@ -5,11 +5,11 @@ import android.util.Log
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandOneWay
 import be.mygod.vpnhotspot.net.Routing
-import kotlinx.android.parcel.Parcelize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.parcelize.Parcelize
 
 object RoutingCommands {
     @Parcelize

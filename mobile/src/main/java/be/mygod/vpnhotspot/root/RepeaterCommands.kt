@@ -13,7 +13,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.IOException
 

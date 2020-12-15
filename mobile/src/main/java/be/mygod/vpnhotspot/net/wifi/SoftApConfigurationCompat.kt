@@ -10,7 +10,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 
 @Parcelize
 data class SoftApConfigurationCompat(

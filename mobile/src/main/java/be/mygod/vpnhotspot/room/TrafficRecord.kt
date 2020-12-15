@@ -2,7 +2,7 @@ package be.mygod.vpnhotspot.room
 
 import android.os.Parcelable
 import androidx.room.*
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 import java.net.InetAddress
 
 @Entity(foreignKeys = [ForeignKey(entity = TrafficRecord::class, parentColumns = ["id"], childColumns = ["previousId"],

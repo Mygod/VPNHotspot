@@ -4,8 +4,8 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     kotlin("android")
-    kotlin("android.extensions")
     kotlin("kapt")
+    id("kotlin-parcelize")
 }
 
 android {

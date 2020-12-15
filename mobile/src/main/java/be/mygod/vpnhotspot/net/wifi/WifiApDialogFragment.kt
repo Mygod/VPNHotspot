@@ -31,7 +31,7 @@ import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.android.parcel.Parcelize
+import kotlinx.parcelize.Parcelize
 
 /**
  * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
