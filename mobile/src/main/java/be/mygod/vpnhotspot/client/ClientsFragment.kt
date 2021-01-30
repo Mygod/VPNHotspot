@@ -238,7 +238,9 @@ class ClientsFragment : Fragment() {
         }
         super.onStart()
         // we just put these two thing together as this is the only place we need to use this event for now
-        TrafficRecorder.foregroundListeners[this] = adapter::updateTraffic
+        TrafficRecorder.foregroundListeners[this] = { newRecords, oldRecords ->
+            lifecycleScope.launchWhenStarted { adapter.updateTraffic(newRecords, oldRecords) }
+        }
         lifecycleScope.launchWhenStarted {
             withContext(Dispatchers.Default) {
                 TrafficRecorder.rescheduleUpdate()  // next schedule time might be 1 min, force reschedule to <= 1s
