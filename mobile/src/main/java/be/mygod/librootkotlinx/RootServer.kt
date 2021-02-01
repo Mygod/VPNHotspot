@@ -206,9 +206,7 @@ class RootServer {
             }
             val errorReader = async(Dispatchers.IO) {
                 try {
-                    process.errorStream.bufferedReader().useLines { seq ->
-                        for (line in seq) Logger.me.w(line)
-                    }
+                    process.errorStream.bufferedReader().forEachLine(Logger.me::w)
                 } catch (_: IOException) { }
             }
             try {

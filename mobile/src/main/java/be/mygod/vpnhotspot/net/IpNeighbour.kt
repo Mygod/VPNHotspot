@@ -120,7 +120,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 .toList()
         private fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
-                arpCache = File("/proc/net/arp").bufferedReader().lineSequence().makeArp()
+                arpCache = File("/proc/net/arp").bufferedReader().useLines { it.makeArp() }
             } catch (e: IOException) {
                 if (e is FileNotFoundException && Build.VERSION.SDK_INT >= 29 &&
                         (e.cause as? ErrnoException)?.errno == OsConstants.EACCES) try {

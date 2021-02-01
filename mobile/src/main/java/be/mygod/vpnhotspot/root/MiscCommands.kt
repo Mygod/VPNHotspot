@@ -124,7 +124,7 @@ class ProcessListener(private val terminateRegex: Regex,
 @Parcelize
 class ReadArp : RootCommand<ParcelableString> {
     override suspend fun execute() = withContext(Dispatchers.IO) {
-        ParcelableString(File("/proc/net/arp").bufferedReader().readText())
+        ParcelableString(File("/proc/net/arp").readText())
     }
 }
 

@@ -61,7 +61,7 @@ object RepeaterCommands {
             File(if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE).writeText(data)
             for (process in File("/proc").listFiles { _, name -> TextUtils.isDigitsOnly(name) }!!) {
                 val cmdline = try {
-                    File(process, "cmdline").inputStream().bufferedReader().readText()
+                    File(process, "cmdline").inputStream().bufferedReader().use { it.readText() }
                 } catch (_: IOException) {
                     continue
                 }
