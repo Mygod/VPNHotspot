@@ -13,6 +13,7 @@ import android.net.Network
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
+import androidx.core.os.ExecutorCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.StartTethering
@@ -63,6 +64,10 @@ object TetheringManager {
                 else -> Timber.w(e)
             }
         }
+    }
+
+    private object InPlaceExecutor : Executor {
+        override fun execute(command: Runnable) = command.run()
     }
 
     /**
@@ -314,7 +319,7 @@ object TetheringManager {
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
                        handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
         if (Build.VERSION.SDK_INT >= 30) try {
-            val executor = handler.makeExecutor()
+            val executor = if (handler == null) InPlaceExecutor else ExecutorCompat.create(handler)
             startTethering(type, true, showProvisioningUi,
                     executor, proxy(object : StartTetheringCallback {
                 override fun onTetheringStarted() = callback.onTetheringStarted()
@@ -581,7 +586,7 @@ object TetheringManager {
                 })
             }.also { if (!computed) return }
         }
-        registerTetheringEventCallback(instance, executor ?: null.makeExecutor(), proxy)
+        registerTetheringEventCallback(instance, executor ?: InPlaceExecutor, proxy)
     }
     /**
      * Remove tethering event callback previously registered with
@@ -609,7 +614,7 @@ object TetheringManager {
                     callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
                 }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
             }
-        } else registerTetheringEventCallback(null.makeExecutor(), callback)
+        } else registerTetheringEventCallback(InPlaceExecutor, callback)
     }
     fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
         if (Build.VERSION.SDK_INT < 30) {

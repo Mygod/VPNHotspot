@@ -7,7 +7,6 @@ import android.net.InetAddresses
 import android.net.LinkProperties
 import android.net.RouteInfo
 import android.os.Build
-import android.os.Handler
 import android.os.RemoteException
 import android.system.Os
 import android.text.Spannable
@@ -36,7 +35,6 @@ import java.lang.reflect.Method
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
-import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -59,8 +57,6 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
         unregisterReceiver(receiver)
     } catch (_: IllegalArgumentException) { }
 }
-
-fun Handler?.makeExecutor() = Executor { if (this == null) it.run() else post(it) }
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
     if (!manager.isStateSaved) show(manager, tag)
