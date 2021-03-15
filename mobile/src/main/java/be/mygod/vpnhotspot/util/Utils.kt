@@ -172,7 +172,7 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
 fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
     Os.if_nametoindex(ifname)
 } else try {
-    File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().toInt() }
+    File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().trim().toInt() }
 } catch (_: FileNotFoundException) {
     NetworkInterface.getByName(ifname)?.index ?: 0
 }
