@@ -119,11 +119,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         (viewHolder as ViewHolder).manager = this
     }
 
-    fun updateErrorMessage(errored: List<String>) {
+    fun updateErrorMessage(errored: List<String>, lastErrors: Map<String, Int>) {
         val interested = errored.filter { TetherType.ofInterface(it) == tetherType }
         baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
             "$iface: " + try {
-                TetheringManager.tetherErrorLookup(TetheringManager.getLastTetherError(iface))
+                TetheringManager.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                    TetheringManager.getLastTetherError(iface)
+                } else lastErrors[iface] ?: 0)
             } catch (e: InvocationTargetException) {
                 if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
                 e.readableMessage

@@ -629,6 +629,7 @@ object TetheringManager {
      * @return error The error code of the last error tethering or untethering the named
      *               interface
      */
+    @Deprecated("Use {@link TetheringEventCallback#onError(String, int)} instead.")
     fun getLastTetherError(iface: String): Int = getLastTetherError(Services.connectivity, iface) as Int
 
     val tetherErrorLookup = ConstantLookup("TETHER_ERROR_",

@@ -42,7 +42,8 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
-    inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
+    inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
+        TetheringManager.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         @get:RequiresApi(26)
         internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
@@ -67,6 +68,11 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         private var listDeferred = CompletableDeferred<List<Manager>>(emptyList())
         private fun updateEnabledTypes() {
             this@TetheringFragment.enabledTypes = enabledIfaces.map { TetherType.ofInterface(it) }.toSet()
+        }
+
+        val lastErrors = mutableMapOf<String, Int>()
+        override fun onError(ifName: String, error: Int) {
+            if (error == 0) lastErrors.remove(ifName) else lastErrors[ifName] = error
         }
 
         suspend fun notifyInterfaceChanged(lastList: List<Manager>? = null) {
@@ -104,11 +110,11 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             list.add(ManageBar)
             if (Build.VERSION.SDK_INT >= 24) {
                 list.addAll(tetherManagers)
-                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
+                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             }
             if (Build.VERSION.SDK_INT >= 30) {
                 list.addAll(tetherManagers30)
-                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces) }
+                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             }
             if (Build.VERSION.SDK_INT < 26) {
                 list.add(wifiManagerLegacy)
@@ -279,15 +285,20 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             lifecycleScope.launchWhenStarted { adapter.notifyInterfaceChanged() }
         }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-            lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
+        if (Build.VERSION.SDK_INT >= 30) {
+            TetheringManager.registerTetheringEventCallback(null, adapter)
+            TetherType.listener[this] = { lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() } }
         }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
         (binder ?: return).routingsChanged -= this
         binder = null
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
+        if (Build.VERSION.SDK_INT >= 30) {
+            TetherType.listener -= this
+            TetheringManager.unregisterTetheringEventCallback(adapter)
+            adapter.lastErrors.clear()
+        }
         requireContext().unregisterReceiver(receiver)
     }
 }
