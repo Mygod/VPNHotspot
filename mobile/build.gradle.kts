@@ -67,17 +67,17 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.3.0"
-    val roomVersion = "2.3.0-beta03"
+    val lifecycleVersion = "2.3.1"
+    val roomVersion = "2.3.0-rc01"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.appcompat:appcompat:1.3.0-beta01")     // https://issuetracker.google.com/issues/151603528
+    implementation("androidx.appcompat:appcompat:1.3.0-rc01")   // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.3.0")
-    implementation("androidx.core:core-ktx:1.5.0-beta03")
+    implementation("androidx.core:core-ktx:1.5.0-rc01")
     implementation("androidx.emoji:emoji:1.1.0")
-    implementation("androidx.fragment:fragment-ktx:1.3.1")
+    implementation("androidx.fragment:fragment-ktx:1.3.2")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
@@ -87,13 +87,13 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:3.0.3")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.3.0")
-    implementation("com.google.firebase:firebase-analytics-ktx:18.0.2")
-    implementation("com.google.firebase:firebase-crashlytics:17.4.0")
+    implementation("com.google.firebase:firebase-analytics-ktx:18.0.3")
+    implementation("com.google.firebase:firebase-crashlytics:17.4.1")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:4.7.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.0")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.4.2")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
