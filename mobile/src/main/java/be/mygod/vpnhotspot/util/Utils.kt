@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.*
+import android.content.res.Resources
 import android.net.InetAddresses
 import android.net.LinkProperties
 import android.net.RouteInfo
@@ -132,6 +133,11 @@ var MenuItem.isNotGone: Boolean
     set(value) {
         isVisible = value
         isEnabled = value
+    }
+
+fun Resources.findIdentifier(name: String, defType: String, defPackage: String, alternativePackage: String? = null) =
+    getIdentifier(name, defType, defPackage).let {
+        if (alternativePackage != null && it == 0) getIdentifier(name, defType, alternativePackage) else it
     }
 
 @get:RequiresApi(26)

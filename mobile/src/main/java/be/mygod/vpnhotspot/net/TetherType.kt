@@ -7,6 +7,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.findIdentifier
 import timber.log.Timber
 import java.util.regex.Pattern
 
@@ -40,12 +41,13 @@ enum class TetherType(@DrawableRes val icon: Int) {
         @RequiresApi(30)    // unused on lower APIs
         val listener = Event0()
 
-        private fun Pair<String?, Resources>.getRegexs(name: String) = second.getIdentifier(name, "array", first).let {
-            if (it == 0) {
+        private fun Pair<String, Resources>.getRegexs(name: String, alternativePackage: String? = null): List<Pattern> {
+            val id = second.findIdentifier(name, "array", first, alternativePackage)
+            return if (id == 0) {
                 if (name == "config_tether_wigig_regexs") Timber.i("$name is empty") else Timber.w(Exception(name))
                 emptyList()
             } else try {
-                second.getStringArray(it).filterNotNull().map { it.toPattern() }
+                second.getStringArray(id).filterNotNull().map { it.toPattern() }
             } catch (_: Resources.NotFoundException) {
                 Timber.w(Exception("$name not found"))
                 emptyList()
@@ -57,14 +59,15 @@ enum class TetherType(@DrawableRes val icon: Int) {
             if (!requiresUpdate) return@synchronized
             requiresUpdate = false
             TetheringManager.registerTetheringEventCallback(null, this)
-            val tethering = "com.android.networkstack.tethering" to app.packageManager.getResourcesForApplication(
-                    TetheringManager.resolvedService.serviceInfo.applicationInfo)
-            usbRegexs = tethering.getRegexs("config_tether_usb_regexs")
-            wifiRegexs = tethering.getRegexs("config_tether_wifi_regexs")
-            wigigRegexs = tethering.getRegexs("config_tether_wigig_regexs")
-            wifiP2pRegexs = tethering.getRegexs("config_tether_wifi_p2p_regexs")
-            bluetoothRegexs = tethering.getRegexs("config_tether_bluetooth_regexs")
-            ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs")
+            val info = TetheringManager.resolvedService.serviceInfo
+            val tethering = "com.android.networkstack.tethering" to
+                    app.packageManager.getResourcesForApplication(info.applicationInfo)
+            usbRegexs = tethering.getRegexs("config_tether_usb_regexs", info.packageName)
+            wifiRegexs = tethering.getRegexs("config_tether_wifi_regexs", info.packageName)
+            wigigRegexs = tethering.getRegexs("config_tether_wigig_regexs", info.packageName)
+            wifiP2pRegexs = tethering.getRegexs("config_tether_wifi_p2p_regexs", info.packageName)
+            bluetoothRegexs = tethering.getRegexs("config_tether_bluetooth_regexs", info.packageName)
+            ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs", info.packageName)
         }
 
         @RequiresApi(30)

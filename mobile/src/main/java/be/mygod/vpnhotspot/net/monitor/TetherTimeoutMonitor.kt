@@ -7,6 +7,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.SettingsGlobalPut
+import be.mygod.vpnhotspot.util.findIdentifier
 import kotlinx.coroutines.*
 import timber.log.Timber
 import kotlin.coroutines.CoroutineContext
@@ -41,10 +42,11 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
             val delay = if (Build.VERSION.SDK_INT >= 28) try {
                 if (Build.VERSION.SDK_INT < 30) Resources.getSystem().run {
                     getInteger(getIdentifier("config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))
-                } else app.packageManager.getResourcesForApplication(WifiApManager.resolvedActivity.activityInfo
-                        .applicationInfo).run {
-                    getInteger(getIdentifier("config_wifiFrameworkSoftApShutDownTimeoutMilliseconds", "integer",
-                            "com.android.wifi.resources"))
+                } else {
+                    val info = WifiApManager.resolvedActivity.activityInfo
+                    val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
+                    resources.getInteger(resources.findIdentifier("config_wifiFrameworkSoftApShutDownTimeoutMilliseconds",
+                        "integer", "com.android.wifi.resources", info.packageName))
                 }
             } catch (e: Resources.NotFoundException) {
                 Timber.w(e)
