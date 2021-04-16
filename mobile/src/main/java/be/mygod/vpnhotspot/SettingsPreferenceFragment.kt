@@ -118,7 +118,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         it.execute(Dump(logFile.absolutePath))
                     }
                 } catch (e: Exception) {
-                    Timber.w(e)
+                    if (e !is CancellationException) Timber.w(e)
                     PrintWriter(FileOutputStream(logFile, true)).use { e.printStackTrace(it) }
                 }
                 context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
