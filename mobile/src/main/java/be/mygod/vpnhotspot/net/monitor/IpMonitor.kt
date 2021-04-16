@@ -81,7 +81,7 @@ abstract class IpMonitor {
                 } else processLine(it)
             }
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
-            if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
+            if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF && e.message != "Stream closed") Timber.w(e)
         }
         err.join()
         Timber.d("Monitor process exited with ${process.waitFor()}")

@@ -303,7 +303,8 @@ class RootServer {
                 output.close()
                 process.outputStream.close()
             } catch (e: IOException) {
-                Logger.me.i("send Shutdown failed", e)
+                // Stream closed caused in NullOutputStream
+                if (e.message != "Stream closed") Logger.me.w("send Shutdown failed", e)
             }
             Logger.me.d("Client closed")
         }
