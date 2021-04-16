@@ -20,7 +20,7 @@ object Converters {
         p.unmarshall(data, 0, data.size)
         p.setDataPosition(0)
         try {
-            TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
+            TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)!!
         } catch (e: RuntimeException) {
             Timber.w(e)
             ""
