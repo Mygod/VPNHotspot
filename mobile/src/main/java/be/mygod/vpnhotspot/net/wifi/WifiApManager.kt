@@ -162,7 +162,9 @@ object WifiApManager {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
                         if (noArgs != 1) Timber.w("Unexpected args for $name: $args")
                         val softApInfo = args!![0]
-                        callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
+                        if (softApInfo != null && classSoftApInfo.isAssignableFrom(softApInfo.javaClass)) {
+                            callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
+                        } else Timber.w(Exception("Unexpected arg for $name: $softApInfo"))
                     }
                     "onCapabilityChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
