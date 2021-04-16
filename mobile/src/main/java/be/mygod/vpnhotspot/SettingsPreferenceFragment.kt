@@ -151,6 +151,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     setArguments(preference.key, Services.connectivity.allNetworks.mapNotNull {
                         Services.connectivity.getLinkProperties(it)?.allInterfaceNames
                     }.flatten().toTypedArray())
+                    setTargetFragment(this@SettingsPreferenceFragment, 0)
                 }.showAllowingStateLoss(parentFragmentManager, preference.key)
             else -> super.onDisplayPreferenceDialog(preference)
         }
