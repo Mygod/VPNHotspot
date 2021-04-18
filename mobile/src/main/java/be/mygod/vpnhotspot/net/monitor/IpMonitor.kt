@@ -70,7 +70,9 @@ abstract class IpMonitor {
             try {
                 process.errorStream.bufferedReader().forEachLine { Timber.e(it) }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF) Timber.w(e)
+                if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF && e.message != "Stream closed") {
+                    Timber.w(e)
+                }
             }
         }
         try {
