@@ -6,6 +6,8 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -51,15 +53,22 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            if (Build.VERSION.SDK_INT in 24..27) @TargetApi(24) {
-                Services.connectivity.registerDefaultNetworkCallback(networkCallback)
-            } else try {
-                Services.connectivity.requestNetwork(networkRequest, networkCallback)
-            } catch (e: SecurityException) {
-                // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
-                if (Build.VERSION.SDK_INT != 23) throw e
-                GlobalScope.launch { callback.onFallback() }
-                return
+            when (Build.VERSION.SDK_INT) {
+                in 31..Int.MAX_VALUE -> @TargetApi(31) {
+                    Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
+                        Handler(Looper.getMainLooper()))
+                }
+                in 24..27 -> @TargetApi(24) {
+                    Services.connectivity.registerDefaultNetworkCallback(networkCallback)
+                }
+                else -> try {
+                    Services.connectivity.requestNetwork(networkRequest, networkCallback)
+                } catch (e: SecurityException) {
+                    // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
+                    if (Build.VERSION.SDK_INT != 23) throw e
+                    GlobalScope.launch { callback.onFallback() }
+                    return
+                }
             }
             registered = true
         }
