@@ -1,10 +1,9 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.os.Build
-import android.system.ErrnoException
-import android.system.OsConstants
 import androidx.core.content.edit
 import be.mygod.librootkotlinx.RootServer
+import be.mygod.librootkotlinx.isEBADF
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.R
@@ -70,9 +69,7 @@ abstract class IpMonitor {
             try {
                 process.errorStream.bufferedReader().forEachLine { Timber.e(it) }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF && e.message != "Stream closed") {
-                    Timber.w(e)
-                }
+                if (!e.isEBADF) Timber.w(e)
             }
         }
         try {
@@ -83,7 +80,7 @@ abstract class IpMonitor {
                 } else processLine(it)
             }
         } catch (_: InterruptedIOException) { } catch (e: IOException) {
-            if ((e.cause as? ErrnoException)?.errno != OsConstants.EBADF && e.message != "Stream closed") Timber.w(e)
+            if (!e.isEBADF) Timber.w(e)
         }
         err.join()
         Timber.d("Monitor process exited with ${process.waitFor()}")
