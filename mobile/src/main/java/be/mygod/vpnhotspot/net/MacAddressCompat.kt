@@ -20,13 +20,13 @@ inline class MacAddressCompat(val addr: Long) {
         val ALL_ZEROS_ADDRESS = MacAddressCompat(0)
         val ANY_ADDRESS = MacAddressCompat(2)
 
-        fun bytesToString(addr: ByteArray): String {
-            require(addr.size == ETHER_ADDR_LEN) { addr.contentToString() + " was not a valid MAC address" }
-            return addr.joinToString(":") { "%02x".format(it) }
-        }
-        fun bytesToString(addr: Collection<Byte>): String {
-            require(addr.size == ETHER_ADDR_LEN) { addr.joinToString() + " was not a valid MAC address" }
-            return addr.joinToString(":") { "%02x".format(it) }
+        fun bytesToString(addr: ByteArray) = when (addr.size) {
+            ETHER_ADDR_LEN -> addr.joinToString(":") { "%02x".format(it) }
+            8 -> {
+                require(addr.take(2).all { it == 0.toByte() }) { "Unrecognized padding " + addr.contentToString() }
+                addr.drop(2).joinToString(":") { "%02x".format(it) }
+            }
+            else -> throw IllegalArgumentException(addr.contentToString() + " was not a valid MAC address")
         }
 
         /**
@@ -91,5 +91,5 @@ inline class MacAddressCompat(val addr: Long) {
     @RequiresApi(28)
     fun toPlatform() = MacAddress.fromBytes(toList().toByteArray())
 
-    override fun toString() = bytesToString(toList())
+    override fun toString() = toList().joinToString(":") { "%02x".format(it) }
 }
