@@ -19,7 +19,7 @@ This app is useful for:
 * Identifying, monitoring and blocking (unwanted) clients;
 * Bypassing tethering limits by:
     - (recommended) Use this app with a real VPN/socksifier;
-    - Use this app with some adblock/DNS apps that uses system VPN service APIs, i.e. fake VPNs; ([troubleshooting/a list of apps that work](https://github.com/Mygod/VPNHotspot/issues/139))
+    - Use this app with some adblock/DNS apps that uses system VPN service APIs, i.e. fake VPNs; ([troubleshooting/a list of apps that work](https://github.com/Mygod/VPNHotspot/discussions/216))
     - Try your luck and simply use this app.
 
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
