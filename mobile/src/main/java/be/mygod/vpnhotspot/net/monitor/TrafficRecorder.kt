@@ -126,7 +126,7 @@ object TrafficRecorder {
             check(record.receivedBytes >= 0)
             AppDatabase.instance.trafficRecordDao.insert(record)
         }
-        foregroundListeners(records.values, oldRecords)
+        foregroundListeners(records.values.toList(), oldRecords)
     }
     fun update(timeout: Boolean = false) {
         synchronized(this) {
