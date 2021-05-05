@@ -180,15 +180,13 @@ object TetheringManager {
         service
     }
 
-    private fun resolveSystemService(action: String): ResolveInfo? {
-        val result = app.packageManager.queryIntentServices(Intent(action), PackageManager.MATCH_SYSTEM_ONLY)
-        check(result.size <= 1) { "Multiple system services handle $action: ${result.joinToString()}" }
-        return result.firstOrNull()
-    }
     @get:RequiresApi(30)
     val resolvedService get() = sequence {
-        resolveSystemService(TETHERING_CONNECTOR_CLASS + IN_PROCESS_SUFFIX)?.let { yield(it) }
-        resolveSystemService(TETHERING_CONNECTOR_CLASS)?.let { yield(it) }
+        for (action in arrayOf(TETHERING_CONNECTOR_CLASS + IN_PROCESS_SUFFIX, TETHERING_CONNECTOR_CLASS)) {
+            val result = app.packageManager.queryIntentServices(Intent(action), PackageManager.MATCH_SYSTEM_ONLY)
+            check(result.size <= 1) { "Multiple system services handle $action: ${result.joinToString()}" }
+            result.firstOrNull()?.let { yield(it) }
+        }
     }.first()
 
     @get:RequiresApi(24)
