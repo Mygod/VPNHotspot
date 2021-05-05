@@ -48,7 +48,7 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
                     resources.getInteger(resources.findIdentifier("config_wifiFrameworkSoftApShutDownTimeoutMilliseconds",
                         "integer", "com.android.wifi.resources", info.packageName))
                 }
-            } catch (e: Resources.NotFoundException) {
+            } catch (e: RuntimeException) {
                 Timber.w(e)
                 MIN_SOFT_AP_TIMEOUT_DELAY_MS
             } else MIN_SOFT_AP_TIMEOUT_DELAY_MS
