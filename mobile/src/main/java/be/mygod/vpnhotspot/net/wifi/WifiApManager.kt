@@ -155,7 +155,7 @@ object WifiApManager {
                     "onConnectedClientsChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        callback.onConnectedClientsChanged((args!![0] as Iterable<*>)
+                        callback.onConnectedClientsChanged((args!![0] as? Iterable<*> ?: return null)
                                 .map { getMacAddress(it) as MacAddress })
                     }
                     "onInfoChanged" -> @TargetApi(30) {
@@ -164,7 +164,7 @@ object WifiApManager {
                         val softApInfo = args!![0]
                         if (softApInfo != null && classSoftApInfo.isAssignableFrom(softApInfo.javaClass)) {
                             callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
-                        } else Timber.w(Exception("Unexpected arg for $name: $softApInfo"))
+                        } else null
                     }
                     "onCapabilityChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
