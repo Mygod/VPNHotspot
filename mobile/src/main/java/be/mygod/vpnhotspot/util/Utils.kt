@@ -86,7 +86,8 @@ fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     }
 }
 fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    setSpan(CustomTabsUrlSpan("https://maclookup.app/search/result?mac=" + mac.substring(0, 13)),
+        0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {

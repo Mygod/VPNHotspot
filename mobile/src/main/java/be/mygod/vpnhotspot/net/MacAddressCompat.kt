@@ -96,4 +96,6 @@ value class MacAddressCompat(val addr: Long) {
     fun toPlatform() = MacAddress.fromBytes(toList().toByteArray())
 
     override fun toString() = toList().joinToString(":") { "%02x".format(it) }
+
+    fun toOui() = toList().joinToString("") { "%02x".format(it) }.substring(0, 9)
 }

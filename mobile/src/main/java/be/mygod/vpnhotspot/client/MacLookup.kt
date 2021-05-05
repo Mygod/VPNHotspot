@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -24,13 +25,12 @@ import java.net.URL
 object MacLookup {
     class UnexpectedError(val mac: MacAddressCompat, val error: String) : JSONException("") {
         private fun formatMessage(context: Context) =
-                context.getString(R.string.clients_mac_lookup_unexpected_error, mac.toString(), error)
+                context.getString(R.string.clients_mac_lookup_unexpected_error, mac.toOui(), error)
         override val message get() = formatMessage(app.english)
         override fun getLocalizedMessage() = formatMessage(app)
     }
 
     private val macLookupBusy = mutableMapOf<MacAddressCompat, Pair<HttpURLConnection, Job>>()
-    private val countryCodeRegex = "([A-Z]{2})\\s*\$".toRegex() // http://en.wikipedia.org/wiki/ISO_3166-1
 
     @MainThread
     fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { (conn, job) ->
@@ -41,40 +41,34 @@ object MacLookup {
     @MainThread
     fun perform(mac: MacAddressCompat, explicit: Boolean = false) {
         abort(mac)
-        val conn = URL("https://macvendors.co/api/$mac").openConnection() as HttpURLConnection
+        val conn = URL("https://api.maclookup.app/v2/macs/${mac.toOui()}").openConnection() as HttpURLConnection
         macLookupBusy[mac] = conn to GlobalScope.launch(Dispatchers.IO) {
             try {
                 val response = conn.inputStream.bufferedReader().readText()
-                val obj = JSONObject(response).getJSONObject("result")
-                obj.opt("error")?.also { throw UnexpectedError(mac, it.toString()) }
+                val obj = JSONObject(response)
+                if (!obj.getBoolean("success")) throw UnexpectedError(mac, response)
+                if (!obj.getBoolean("found")) {
+                    // no vendor found, we should not retry in the future
+                    AppDatabase.instance.clientRecordDao.upsert(mac) { macLookupPending = false }
+                    return@launch
+                }
+                val country = obj.getString("country")
                 val company = obj.getString("company")
-                val match = extractCountry(mac, response, obj)
-                val result = if (match != null) {
-                    String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' + company
-                } else company
+                val result = if (country.length != 2) {
+                    Timber.w(UnexpectedError(mac, response))
+                    company
+                } else String(country.flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' + company
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
                     nickname = result
                     macLookupPending = false
                 }
             } catch (e: JSONException) {
-                if ((e as? UnexpectedError)?.error == "no result") {
-                    // no vendor found, we should not retry in the future
-                    AppDatabase.instance.clientRecordDao.upsert(mac) { macLookupPending = false }
-                } else Timber.w(e)
+                Timber.w(e)
                 if (explicit) SmartSnackbar.make(e).show()
-            } catch (e: Throwable) {
+            } catch (e: IOException) {
                 Timber.d(e)
                 if (explicit) SmartSnackbar.make(e).show()
             }
         }
-    }
-
-    private fun extractCountry(mac: MacAddressCompat, response: String, obj: JSONObject): MatchResult? {
-        countryCodeRegex.matchEntire(obj.optString("country"))?.also { return it }
-        val address = obj.optString("address")
-        if (address.isBlank()) return null
-        countryCodeRegex.find(address)?.also { return it }
-        Timber.w(UnexpectedError(mac, response))
-        return null
     }
 }
