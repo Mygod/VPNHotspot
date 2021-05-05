@@ -10,9 +10,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.channels.consumeEach
-import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.channels.*
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
@@ -65,12 +63,11 @@ object WifiApCommands {
         override fun create(scope: CoroutineScope) = scope.produce<SoftApCallbackParcel>(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
             val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
-                private fun push(parcel: SoftApCallbackParcel) = check(try {
-                    offer(parcel)
-                } catch (closed: Throwable) {
-                    finish.completeExceptionally(closed)
-                    true
-                })
+                private fun push(parcel: SoftApCallbackParcel) {
+                    trySend(parcel).onClosed {
+                        finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
+                    }.onFailure { throw it!! }
+                }
 
                 override fun onStateChanged(state: Int, failureReason: Int) =
                         push(SoftApCallbackParcel.OnStateChanged(state, failureReason))

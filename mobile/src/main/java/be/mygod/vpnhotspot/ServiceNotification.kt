@@ -38,7 +38,7 @@ object ServiceNotification {
             lines += context.getString(R.string.notification_interfaces_inactive, inactive.joinToString())
         }
         return if (lines.size <= 1) builder.setContentText(lines.singleOrNull()).build() else {
-            val deviceCount = deviceCounts.sumBy { it.value }
+            val deviceCount = deviceCounts.sumOf { it.value }
             val interfaceCount = deviceCounts.size + inactive.size
             NotificationCompat.BigTextStyle(builder
                     .setContentText(context.resources.getQuantityString(R.plurals.notification_connected_devices,

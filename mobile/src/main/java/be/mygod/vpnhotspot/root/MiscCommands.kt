@@ -13,6 +13,8 @@ import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.onClosed
+import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.channels.produce
 import kotlinx.parcelize.Parcelize
 import java.io.File
@@ -101,7 +103,7 @@ class ProcessListener(private val terminateRegex: Regex,
             launch(parent) {
                 try {
                     process.inputStream.bufferedReader().forEachLine {
-                        check(offer(ProcessData.StdoutLine(it)))
+                        trySend(ProcessData.StdoutLine(it)).onClosed { return@forEachLine }.onFailure { throw it!! }
                         if (terminateRegex.containsMatchIn(it)) process.destroy()
                     }
                 } catch (_: InterruptedIOException) { }
@@ -111,7 +113,9 @@ class ProcessListener(private val terminateRegex: Regex,
                     process.errorStream.bufferedReader().forEachLine { check(offer(ProcessData.StderrLine(it))) }
                 } catch (_: InterruptedIOException) { }
             }
-            launch(parent) { check(offer(ProcessData.Exit(process.waitFor()))) }
+            launch(parent) {
+                trySend(ProcessData.Exit(process.waitFor())).onClosed { return@launch }.onFailure { throw it!! }
+            }
             parent.join()
         } finally {
             parent.cancel()

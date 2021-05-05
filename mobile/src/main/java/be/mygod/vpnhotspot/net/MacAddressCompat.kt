@@ -8,7 +8,8 @@ import java.nio.ByteOrder
 /**
  * Compat support class for [MacAddress].
  */
-inline class MacAddressCompat(val addr: Long) {
+@JvmInline
+value class MacAddressCompat(val addr: Long) {
     companion object {
         private const val ETHER_ADDR_LEN = 6
         /**

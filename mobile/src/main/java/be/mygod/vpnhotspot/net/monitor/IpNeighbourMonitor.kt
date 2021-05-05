@@ -5,9 +5,7 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.actor
-import kotlinx.coroutines.channels.sendBlocking
+import kotlinx.coroutines.channels.*
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
@@ -69,7 +67,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
             IpNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
             else -> neighbours.put(IpDev(neighbour), neighbour)
         }
-        if (neighbours != old) aggregator.sendBlocking(neighbours)
+        if (neighbours != old) aggregator.trySendBlocking(neighbours).onFailure { throw it!! }
     }
 
     override fun processLines(lines: Sequence<String>) {
@@ -78,6 +76,6 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
                 .associateByTo(persistentMapOf<IpDev, IpNeighbour>().builder()) { IpDev(it) }
                 .build()
-        aggregator.sendBlocking(neighbours)
+        aggregator.trySendBlocking(neighbours).onFailure { throw it!! }
     }
 }
