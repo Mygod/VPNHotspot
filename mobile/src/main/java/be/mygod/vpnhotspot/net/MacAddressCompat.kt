@@ -24,10 +24,13 @@ value class MacAddressCompat(val addr: Long) {
         fun bytesToString(addr: ByteArray) = when (addr.size) {
             ETHER_ADDR_LEN -> addr.joinToString(":") { "%02x".format(it) }
             8 -> {
-                require(addr.take(2).all { it == 0.toByte() }) { "Unrecognized padding " + addr.contentToString() }
+                require(addr.take(2).all { it == 0.toByte() }) {
+                    "Unrecognized padding " + addr.joinToString(":") { "%02x".format(it) }
+                }
                 addr.drop(2).joinToString(":") { "%02x".format(it) }
             }
-            else -> throw IllegalArgumentException(addr.contentToString() + " was not a valid MAC address")
+            else -> throw IllegalArgumentException(addr.joinToString(":") { "%02x".format(it) } +
+                    " was not a valid MAC address")
         }
 
         /**
