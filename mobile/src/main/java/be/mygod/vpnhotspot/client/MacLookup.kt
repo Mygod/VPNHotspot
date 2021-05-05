@@ -8,16 +8,14 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlin.math.max
 
 /**
  * This class generates a default nickname for new clients.
@@ -30,21 +28,32 @@ object MacLookup {
         override fun getLocalizedMessage() = formatMessage(app)
     }
 
-    private val macLookupBusy = mutableMapOf<MacAddressCompat, Pair<HttpURLConnection, Job>>()
+    private data class Work(@Volatile var conn: HttpURLConnection, var job: Job? = null)
+    private val macLookupBusy = mutableMapOf<MacAddressCompat, Work>()
 
     @MainThread
-    fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { (conn, job) ->
-        job.cancel()
-        if (Build.VERSION.SDK_INT >= 26) conn.disconnect() else GlobalScope.launch(Dispatchers.IO) { conn.disconnect() }
+    fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { work ->
+        work.job!!.cancel()
+        if (Build.VERSION.SDK_INT < 26) GlobalScope.launch(Dispatchers.IO) {
+            work.conn.disconnect()
+        } else work.conn.disconnect()
     }
 
     @MainThread
     fun perform(mac: MacAddressCompat, explicit: Boolean = false) {
         abort(mac)
-        val conn = URL("https://api.maclookup.app/v2/macs/${mac.toOui()}").openConnection() as HttpURLConnection
-        macLookupBusy[mac] = conn to GlobalScope.launch(Dispatchers.IO) {
+        val url = URL("https://api.maclookup.app/v2/macs/${mac.toOui()}")
+        val work = Work(url.openConnection() as HttpURLConnection)
+        work.job = GlobalScope.launch(Dispatchers.IO) {
             try {
-                val response = conn.inputStream.bufferedReader().readText()
+                while (work.conn.responseCode != 200) {
+                    if (work.conn.responseCode != 429) {
+                        throw UnexpectedError(mac, work.conn.inputStream.bufferedReader().readText())
+                    }
+                    work.conn = url.openConnection() as HttpURLConnection
+                    delay(max(1, work.conn.getHeaderField("Retry-After").toLongOrNull() ?: 1) * 1000)
+                }
+                val response = work.conn.inputStream.bufferedReader().readText()
                 val obj = JSONObject(response)
                 if (!obj.getBoolean("success")) throw UnexpectedError(mac, response)
                 if (!obj.getBoolean("found")) {
@@ -70,5 +79,6 @@ object MacLookup {
                 if (explicit) SmartSnackbar.make(e).show()
             }
         }
+        macLookupBusy[mac] = work
     }
 }
