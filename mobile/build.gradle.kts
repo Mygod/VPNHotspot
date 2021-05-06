@@ -18,10 +18,7 @@ android {
         targetCompatibility = javaVersion
     }
     compileSdkVersion(30)
-    kotlinOptions {
-        freeCompilerArgs = listOf("-XXLanguage:+InlineClasses")
-        jvmTarget = javaVersion.toString()
-    }
+    kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdkVersion(21)

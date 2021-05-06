@@ -5,7 +5,6 @@ plugins {
 buildscript {
     repositories {
         google()
-        jcenter()
         mavenCentral()
     }
 
