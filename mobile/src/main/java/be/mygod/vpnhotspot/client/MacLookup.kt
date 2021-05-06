@@ -51,7 +51,13 @@ object MacLookup {
                         throw UnexpectedError(mac, work.conn.inputStream.bufferedReader().readText())
                     }
                     work.conn = url.openConnection() as HttpURLConnection
-                    delay(max(1, work.conn.getHeaderField("Retry-After").toLongOrNull() ?: 1) * 1000)
+                    delay(max(1, work.conn.getHeaderField("Retry-After")?.toLongOrNull().let {
+                        if (it == null) {
+                            Timber.w(UnexpectedError(mac,
+                                work.conn.headerFields.entries.joinToString { (k, v) -> "$k: $v" }))
+                            1
+                        } else it
+                    }) * 1000)
                 }
                 val response = work.conn.inputStream.bufferedReader().readText()
                 val obj = JSONObject(response)
