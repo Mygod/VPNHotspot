@@ -96,8 +96,11 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
         true
     } catch (e: Exception) {
+        when (e) {
+            is Routing.InterfaceNotFoundException -> Timber.i(e)
+            !is CancellationException -> Timber.w(e)
+        }
         SmartSnackbar.make(e).show()
-        if (e !is CancellationException) Timber.w(e)
         routing = null
         false
     }

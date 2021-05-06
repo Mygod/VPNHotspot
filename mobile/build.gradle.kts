@@ -75,7 +75,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.appcompat:appcompat:1.3.0-rc01")   // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.3.0")
-    implementation("androidx.core:core-ktx:1.5.0-rc01")
+    implementation("androidx.core:core-ktx:1.5.0-rc02")
     implementation("androidx.emoji:emoji:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.3.3")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
