@@ -27,7 +27,8 @@ object MacLookup {
     }
 
     private val macLookupBusy = mutableMapOf<MacAddressCompat, Pair<HttpURLConnection, Job>>()
-    private val countryCodeRegex = "([A-Z]{2})\\s*\$".toRegex() // http://en.wikipedia.org/wiki/ISO_3166-1
+    // http://en.wikipedia.org/wiki/ISO_3166-1
+    private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
 
     @MainThread
     fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { (conn, job) ->
