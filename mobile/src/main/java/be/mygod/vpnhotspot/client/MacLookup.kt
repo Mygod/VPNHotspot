@@ -46,10 +46,13 @@ object MacLookup {
         val work = Work(url.openConnection() as HttpURLConnection)
         work.job = GlobalScope.launch(Dispatchers.IO) {
             try {
-                while (work.conn.responseCode != 200) {
-                    if (work.conn.responseCode != 429) {
-                        throw UnexpectedError(mac, work.conn.inputStream.bufferedReader().readText())
-                    }
+                var response: String
+                var obj: JSONObject
+                while (true) {
+                    response = work.conn.inputStream.bufferedReader().readText()
+                    obj = JSONObject(response)
+                    if (obj.getBoolean("success")) break
+                    if (obj.getInt("errorCode") != 429) throw UnexpectedError(mac, response)
                     work.conn = url.openConnection() as HttpURLConnection
                     delay(max(1, work.conn.getHeaderField("Retry-After")?.toLongOrNull().let {
                         if (it == null) {
@@ -59,9 +62,6 @@ object MacLookup {
                         } else it
                     }) * 1000)
                 }
-                val response = work.conn.inputStream.bufferedReader().readText()
-                val obj = JSONObject(response)
-                if (!obj.getBoolean("success")) throw UnexpectedError(mac, response)
                 if (!obj.getBoolean("found")) {
                     // no vendor found, we should not retry in the future
                     AppDatabase.instance.clientRecordDao.upsert(mac) { macLookupPending = false }
