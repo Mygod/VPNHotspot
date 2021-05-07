@@ -102,15 +102,21 @@ class ProcessListener(private val terminateRegex: Regex,
         try {
             launch(parent) {
                 try {
-                    process.inputStream.bufferedReader().forEachLine {
-                        trySend(ProcessData.StdoutLine(it)).onClosed { return@forEachLine }.onFailure { throw it!! }
-                        if (terminateRegex.containsMatchIn(it)) process.destroy()
+                    process.inputStream.bufferedReader().useLines {
+                        for (line in it) {
+                            trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
+                            if (terminateRegex.containsMatchIn(line)) process.destroy()
+                        }
                     }
                 } catch (_: InterruptedIOException) { }
             }
             launch(parent) {
                 try {
-                    process.errorStream.bufferedReader().forEachLine { check(offer(ProcessData.StderrLine(it))) }
+                    process.errorStream.bufferedReader().useLines {
+                        for (line in it) trySend(ProcessData.StdoutLine(line)).onClosed {
+                            return@useLines
+                        }.onFailure { throw it!! }
+                    }
                 } catch (_: InterruptedIOException) { }
             }
             launch(parent) {
