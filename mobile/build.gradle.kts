@@ -83,7 +83,7 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.android.billingclient:billing-ktx:3.0.3")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.3.0")
+    implementation("com.google.android.material:material:1.4.0-beta01")
     implementation("com.google.firebase:firebase-analytics-ktx:18.0.3")
     implementation("com.google.firebase:firebase-crashlytics:17.4.1")
     implementation("com.google.zxing:core:3.4.1")

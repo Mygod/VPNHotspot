@@ -15,17 +15,17 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.navigation.NavigationBarView
 import java.net.Inet4Address
 
-class MainActivity : AppCompatActivity(), BottomNavigationView.OnNavigationItemSelectedListener {
+class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListener {
     lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        binding.navigation.setOnNavigationItemSelectedListener(this)
+        binding.navigation.setOnItemSelectedListener(this)
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model by viewModels<ClientViewModel>()
         lifecycle.addObserver(model)
