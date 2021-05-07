@@ -8,7 +8,10 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
@@ -33,9 +36,7 @@ object MacLookup {
     @MainThread
     fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { (conn, job) ->
         job.cancel()
-        if (Build.VERSION.SDK_INT < 26) GlobalScope.launch(Dispatchers.IO) {
-            conn.disconnect()
-        } else conn.disconnect()
+        if (Build.VERSION.SDK_INT < 26) GlobalScope.launch(Dispatchers.IO) { conn.disconnect() } else conn.disconnect()
     }
 
     @MainThread
