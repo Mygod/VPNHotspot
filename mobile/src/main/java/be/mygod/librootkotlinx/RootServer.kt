@@ -88,6 +88,8 @@ class RootServer {
         }
     }
 
+    class UnexpectedExitException : RemoteException("Root process exited unexpectedly")
+
     private lateinit var process: Process
     /**
      * Thread safety: needs to be protected by mutex.
@@ -206,7 +208,7 @@ class RootServer {
             }
             try {
                 callbackSpin()
-                if (active) throw RemoteException("Root process exited unexpectedly")
+                if (active) throw UnexpectedExitException()
             } catch (e: Throwable) {
                 process.destroy()
                 throw e
@@ -317,6 +319,8 @@ class RootServer {
         } catch (e: TimeoutCancellationException) {
             Logger.me.w("Closing the instance has timed out", e)
             if (Build.VERSION.SDK_INT < 26) process.destroy() else if (process.isAlive) process.destroyForcibly()
+        } catch (e: UnexpectedExitException) {
+            Logger.me.w(e.message)
         }
     }
 
