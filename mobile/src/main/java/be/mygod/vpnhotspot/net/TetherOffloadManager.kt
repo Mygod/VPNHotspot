@@ -16,8 +16,17 @@ import timber.log.Timber
  */
 object TetherOffloadManager {
     val supported by lazy {
-        Build.VERSION.SDK_INT >= 27 || Settings.Global::class.java.getDeclaredField("TETHER_OFFLOAD_DISABLED")
-            .get(null).also { if (it != TETHER_OFFLOAD_DISABLED) Timber.w(Exception("Unknown field $it")) } != null
+        Build.VERSION.SDK_INT >= 27 || try {
+            Settings.Global::class.java.getDeclaredField("TETHER_OFFLOAD_DISABLED").get(null).let {
+                require(it == TETHER_OFFLOAD_DISABLED) { "Unknown field $it" }
+            }
+            true
+        } catch (_: NoSuchFieldException) {
+            false
+        } catch (e: Exception) {
+            Timber.w(e)
+            false
+        }
     }
     private const val TETHER_OFFLOAD_DISABLED = "tether_offload_disabled"
     val enabled get() = Settings.Global.getInt(app.contentResolver, TETHER_OFFLOAD_DISABLED, 0) == 0
