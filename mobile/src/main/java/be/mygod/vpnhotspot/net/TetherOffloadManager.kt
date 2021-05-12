@@ -1,9 +1,10 @@
 package be.mygod.vpnhotspot.net
 
+import android.os.Build
 import android.provider.Settings
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.SettingsGlobalPut
+import timber.log.Timber
 
 /**
  * It's hard to change tethering rules with Tethering hardware acceleration enabled for now.
@@ -13,8 +14,11 @@ import be.mygod.vpnhotspot.root.SettingsGlobalPut
  *   https://android.googlesource.com/platform/frameworks/base/+/android-8.1.0_r1/services/core/java/com/android/server/connectivity/tethering/OffloadHardwareInterface.java#45
  *   https://android.googlesource.com/platform/hardware/qcom/data/ipacfg-mgr/+/master/msm8998/ipacm/src/IPACM_OffloadManager.cpp
  */
-@RequiresApi(27)
 object TetherOffloadManager {
+    val supported by lazy {
+        Build.VERSION.SDK_INT >= 27 || Settings.Global::class.java.getDeclaredField("TETHER_OFFLOAD_DISABLED")
+            .get(null).also { if (it != TETHER_OFFLOAD_DISABLED) Timber.w(Exception("Unknown field $it")) } != null
+    }
     private const val TETHER_OFFLOAD_DISABLED = "tether_offload_disabled"
     val enabled get() = Settings.Global.getInt(app.contentResolver, TETHER_OFFLOAD_DISABLED, 0) == 0
     suspend fun setEnabled(value: Boolean) = SettingsGlobalPut.int(TETHER_OFFLOAD_DISABLED, if (value) 0 else 1)

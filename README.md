@@ -277,7 +277,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158296)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158320)
 * [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158330)
-* (since API 27) [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183757)
+* [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183757)
 
 </details>
 

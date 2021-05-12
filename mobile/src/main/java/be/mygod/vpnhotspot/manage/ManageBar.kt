@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.manage
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.view.View
 import androidx.databinding.BaseObservable
 import androidx.recyclerview.widget.RecyclerView
@@ -17,7 +16,7 @@ object ManageBar : Manager() {
     private const val SETTINGS_2 = "com.android.settings.TetherSettings"
 
     object Data : BaseObservable() {
-        val offloadEnabled get() = Build.VERSION.SDK_INT >= 27 && TetherOffloadManager.enabled
+        val offloadEnabled get() = TetherOffloadManager.supported && TetherOffloadManager.enabled
     }
     class ViewHolder(binding: ListitemManageBinding) : RecyclerView.ViewHolder(binding.root), View.OnClickListener {
         init {

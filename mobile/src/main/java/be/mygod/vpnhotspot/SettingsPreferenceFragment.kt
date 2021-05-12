@@ -48,7 +48,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
         SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
         findPreference<SwitchPreference>("system.enableTetherOffload")!!.apply {
-            if (Build.VERSION.SDK_INT >= 27) {
+            if (TetherOffloadManager.supported) {
                 isChecked = TetherOffloadManager.enabled
                 setOnPreferenceChangeListener { _, newValue ->
                     if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
