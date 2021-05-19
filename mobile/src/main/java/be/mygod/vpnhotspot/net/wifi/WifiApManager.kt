@@ -9,6 +9,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.ConstantLookup
@@ -140,6 +141,9 @@ object WifiApManager {
                         null    // no return value as of API 30
                     } else invokeActual(proxy, method, args)
 
+            @RequiresApi(30)
+            private fun dispatchInfoChanged(softApInfo: Any?) =
+                callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val noArgs = args?.size ?: 0
                 return when (val name = method.name) {
@@ -154,17 +158,29 @@ object WifiApManager {
                     }
                     "onConnectedClientsChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        callback.onConnectedClientsChanged((args!![0] as? Iterable<*> ?: return null)
-                                .map { getMacAddress(it) as MacAddress })
+                        callback.onConnectedClientsChanged(when (noArgs) {
+                            1 -> args!![0] as? Iterable<*> ?: return null
+                            2 -> {
+                                if (!BuildCompat.isAtLeastS()) Timber.w(Exception(
+                                    "Unexpected onConnectedClientsChanged API 31+"))
+                                dispatchInfoChanged(args!![0])
+                                args[1] as? Iterable<*> ?: return null
+                            }
+                            else -> {
+                                Timber.w("Unexpected args for $name: ${args?.contentToString()}")
+                                return null
+                            }
+                        }.map { getMacAddress(it) as MacAddress })
                     }
                     "onInfoChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        val softApInfo = args!![0]
-                        if (softApInfo != null && classSoftApInfo.isAssignableFrom(softApInfo.javaClass)) {
-                            callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
-                        } else null
+                        val arg = args!![0]
+                        if (arg is List<*>) {
+                            if (!BuildCompat.isAtLeastS()) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
+                            if (arg.size != 1) Timber.w("Unexpected args for $name: ${args.contentToString()}")
+                            else dispatchInfoChanged(arg[0])
+                        } else dispatchInfoChanged(arg)
                     }
                     "onCapabilityChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
