@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
-        this.targetSdk = targetSdk
+        if (targetSdk == 31) targetSdkPreview = "S" else this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 260
         versionName = "2.11.7"
