@@ -46,12 +46,13 @@ import kotlinx.parcelize.Parcelize
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
+    // FIXME: value class does not work with Parcelize
     @Parcelize
-    data class NicknameArg(val mac: MacAddressCompat, val nickname: CharSequence) : Parcelable
+    data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, arg.mac.toString()))
+            setTitle(getString(R.string.clients_nickname_title, MacAddressCompat(arg.mac)))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
             setNeutralButton(emojize(getText(R.string.clients_nickname_set_to_vendor)), listener)
@@ -63,15 +64,16 @@ class ClientsFragment : Fragment() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
+            val mac = MacAddressCompat(arg.mac)
             when (which) {
                 DialogInterface.BUTTON_POSITIVE -> {
                     val newNickname = this.dialog!!.findViewById<EditText>(android.R.id.edit).text
-                    MacLookup.abort(arg.mac)
+                    MacLookup.abort(mac)
                     GlobalScope.launch(Dispatchers.Unconfined) {
-                        AppDatabase.instance.clientRecordDao.upsert(arg.mac) { nickname = newNickname }
+                        AppDatabase.instance.clientRecordDao.upsert(mac) { nickname = newNickname }
                     }
                 }
-                DialogInterface.BUTTON_NEUTRAL -> MacLookup.perform(arg.mac, true)
+                DialogInterface.BUTTON_NEUTRAL -> MacLookup.perform(mac, true)
             }
         }
     }
@@ -132,7 +134,7 @@ class ClientsFragment : Fragment() {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
                     NicknameDialogFragment().apply {
-                        arg(NicknameArg(client.mac, client.nickname))
+                        arg(NicknameArg(client.mac.addr, client.nickname))
                     }.showAllowingStateLoss(parentFragmentManager)
                     true
                 }
