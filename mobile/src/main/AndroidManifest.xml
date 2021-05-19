@@ -69,6 +69,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:exported="true"
             android:label="@string/app_name"
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateAlwaysHidden">
@@ -100,6 +101,7 @@
         <service
             android:name=".manage.RepeaterTileService"
             android:directBootAware="true"
+            android:exported="true"
             android:icon="@drawable/ic_action_settings_input_antenna"
             android:label="@string/title_repeater"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -115,6 +117,7 @@
             android:name=".manage.LocalOnlyHotspotTileService"
             android:directBootAware="true"
             android:enabled="@bool/api_ge_26"
+            android:exported="true"
             android:icon="@drawable/ic_action_perm_scan_wifi"
             android:label="@string/tethering_temp_hotspot"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -129,6 +132,7 @@
         <service
             android:name=".manage.TetheringTileService$Wifi"
             android:directBootAware="true"
+            android:exported="true"
             android:icon="@drawable/ic_device_wifi_tethering"
             android:label="@string/tethering_manage_wifi"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -140,6 +144,7 @@
         <service
             android:name=".manage.TetheringTileService$Usb"
             android:directBootAware="true"
+            android:exported="true"
             android:icon="@drawable/ic_device_usb"
             android:label="@string/tethering_manage_usb"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -151,6 +156,7 @@
         <service
             android:name=".manage.TetheringTileService$Bluetooth"
             android:directBootAware="true"
+            android:exported="true"
             android:icon="@drawable/ic_device_bluetooth"
             android:label="@string/tethering_manage_bluetooth"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -163,6 +169,7 @@
             android:name=".manage.TetheringTileService$Ethernet"
             android:directBootAware="true"
             android:enabled="@bool/api_ge_30"
+            android:exported="true"
             android:icon="@drawable/ic_content_inbox"
             android:label="@string/tethering_manage_ethernet"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -175,6 +182,7 @@
             android:name=".manage.TetheringTileService$Ncm"
             android:directBootAware="true"
             android:enabled="@bool/api_ge_30"
+            android:exported="true"
             android:icon="@drawable/ic_action_settings_ethernet"
             android:label="@string/tethering_manage_ncm"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -187,6 +195,7 @@
             android:name=".manage.TetheringTileService$WiGig"
             android:directBootAware="true"
             android:enabled="@bool/api_ge_30"
+            android:exported="true"
             android:icon="@drawable/ic_image_flash_on"
             android:label="@string/tethering_manage_wigig"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -200,6 +209,7 @@
             android:name=".manage.TetheringTileService$WifiLegacy"
             android:directBootAware="true"
             android:enabled="@bool/api_lt_25"
+            android:exported="true"
             android:icon="@drawable/ic_device_wifi_tethering"
             android:label="@string/tethering_manage_wifi_legacy"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
@@ -212,7 +222,8 @@
         <receiver
             android:name=".BootReceiver"
             android:directBootAware="true"
-            android:enabled="false">
+            android:enabled="false"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
