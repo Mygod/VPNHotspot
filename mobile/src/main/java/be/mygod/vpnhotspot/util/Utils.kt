@@ -91,12 +91,10 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
     try {
-        val address = hardwareAddress
-        if (address != null && try {
-                MacAddressCompat.fromBytes(address) == MacAddressCompat.ANY_ADDRESS
-            } catch (_: IllegalArgumentException) { true }) {
-                appendLine(makeMacSpan(MacAddressCompat.bytesToString(address)))
-        }
+        val address = hardwareAddress?.let(MacAddressCompat::fromBytes)
+        if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
+    } catch (e: IllegalArgumentException) {
+        Timber.w(e)
     } catch (_: SocketException) { }
     if (!macOnly) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))

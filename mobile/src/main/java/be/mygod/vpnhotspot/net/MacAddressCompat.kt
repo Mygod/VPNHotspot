@@ -21,18 +21,6 @@ value class MacAddressCompat(val addr: Long) {
         val ALL_ZEROS_ADDRESS = MacAddressCompat(0)
         val ANY_ADDRESS = MacAddressCompat(2)
 
-        fun bytesToString(addr: ByteArray) = when (addr.size) {
-            ETHER_ADDR_LEN -> addr.joinToString(":") { "%02x".format(it) }
-            8 -> {
-                require(addr.take(2).all { it == 0.toByte() }) {
-                    "Unrecognized padding " + addr.joinToString(":") { "%02x".format(it) }
-                }
-                addr.drop(2).joinToString(":") { "%02x".format(it) }
-            }
-            else -> throw IllegalArgumentException(addr.joinToString(":") { "%02x".format(it) } +
-                    " was not a valid MAC address")
-        }
-
         /**
          * Creates a MacAddress from the given byte array representation.
          * A valid byte array representation for a MacAddress is a non-null array of length 6.
@@ -41,13 +29,21 @@ value class MacAddressCompat(val addr: Long) {
          * @return the MacAddress corresponding to the given byte array representation.
          * @throws IllegalArgumentException if the given byte array is not a valid representation.
          */
-        fun fromBytes(addr: ByteArray): MacAddressCompat {
-            require(addr.size == ETHER_ADDR_LEN) { addr.joinToString() + " was not a valid MAC address" }
-            return ByteBuffer.allocate(Long.SIZE_BYTES).run {
-                put(addr)
-                rewind()
-                MacAddressCompat(long)
-            }
+        fun fromBytes(addr: ByteArray) = ByteBuffer.allocate(Long.SIZE_BYTES).run {
+            order(ByteOrder.LITTLE_ENDIAN)
+            put(when (addr.size) {
+                ETHER_ADDR_LEN -> addr
+                8 -> {
+                    require(addr.take(2).all { it == 0.toByte() }) {
+                        "Unrecognized padding " + addr.joinToString(":") { "%02x".format(it) }
+                    }
+                    addr.drop(2).toByteArray()
+                }
+                else -> throw IllegalArgumentException(addr.joinToString(":") { "%02x".format(it) } +
+                        " was not a valid MAC address")
+            })
+            rewind()
+            MacAddressCompat(long)
         }
         /**
          * Creates a MacAddress from the given String representation. A valid String representation
