@@ -45,6 +45,8 @@
     <string name="repeater_failure_reason_no_service_requests">no service requests added</string>
     <string name="repeater_failure_reason_unsupported_operation">unsupported operation</string>
     <string name="repeater_failure_disconnected">Service unavailable. Try again later</string>
+    <string name="repeater_missing_location_permissions">Repeater requires permissions for accessing fine
+        location</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
     <string name="tethering_temp_hotspot_location">Temporary hotspot requires location to be turned on.</string>

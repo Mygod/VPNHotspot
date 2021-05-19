@@ -28,6 +28,7 @@
     <string name="repeater_failure_reason_no_service_requests">未添加服务请求</string>
     <string name="repeater_failure_reason_unsupported_operation">不支持此操作</string>
     <string name="repeater_failure_disconnected">服务不可用，请稍后重试</string>
+    <string name="repeater_missing_location_permissions">无线中继需要精确位置权限</string>
 
     <string name="tethering_temp_hotspot">临时 WLAN 热点</string>
     <string name="tethering_temp_hotspot_location">使用临时热点需要打开位置服务。</string>

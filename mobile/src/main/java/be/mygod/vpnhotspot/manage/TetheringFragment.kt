@@ -2,7 +2,6 @@
 
 package be.mygod.vpnhotspot.manage
 
-import android.Manifest
 import android.annotation.TargetApi
 import android.content.*
 import android.os.Build
@@ -12,7 +11,6 @@ import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
@@ -126,11 +124,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val activity = requireActivity()
-        if (granted) activity.startForegroundService(Intent(activity, RepeaterService::class.java))
-        else if (!activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)) {
-            Toast.makeText(activity, "Repeater requires LOCATION permission", Toast.LENGTH_SHORT).show()
-        }
+        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java))
     }
     @RequiresApi(26)
     val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
