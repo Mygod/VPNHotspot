@@ -11,25 +11,26 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     val targetSdk = 29
-    buildToolsVersion("30.0.3")
+    buildToolsVersion = "30.0.3"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdkVersion(30)
+    compileSdk = 30
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
-        minSdkVersion(21)
-        targetSdkVersion(targetSdk)
-        resConfigs(listOf("it", "ru", "zh-rCN", "zh-rTW"))
+        minSdk = 21
+        this.targetSdk = targetSdk
+        resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 259
         versionName = "2.11.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        javaCompileOptions.annotationProcessorOptions.arguments(mapOf(
-                "room.incremental" to "true",
-                "room.schemaLocation" to "$projectDir/schemas"))
+        kapt.arguments {
+            arg("room.incremental", true)
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
         buildConfigField("boolean", "DONATIONS", "true")
         buildConfigField("int", "TARGET_SDK", targetSdk.toString())
     }
@@ -47,14 +48,14 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
-    packagingOptions.exclude("**/*.kotlin_*")
-    flavorDimensions("freedom")
+    packagingOptions.resources.excludes.add("**/*.kotlin_*")
+    flavorDimensions.add("freedom")
     productFlavors {
         create("freedom") {
-            setDimension("freedom")
+            dimension = "freedom"
         }
         create("google") {
-            setDimension("freedom")
+            dimension = "freedom"
             buildConfigField("boolean", "DONATIONS", "false")
         }
     }
