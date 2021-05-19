@@ -15,12 +15,10 @@ import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.os.BuildCompat
 import androidx.core.view.updatePaddingRelative
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -223,11 +221,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
-        companion object {
-            // TODO: migrate to framework Manifest.permission when stable
-            private const val BLUETOOTH_CONNECT = "android.permission.BLUETOOTH_CONNECT"
-        }
-
         private val tethering = BluetoothTethering(parent.requireContext()) { data.notifyChange() }
 
         init {
@@ -236,11 +229,11 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         fun ensureInit(context: Context) = tethering.ensureInit(context)
         override fun onResume(owner: LifecycleOwner) {
-            if (!BuildCompat.isAtLeastS() || parent.requireContext().checkSelfPermission(BLUETOOTH_CONNECT) ==
-                PackageManager.PERMISSION_GRANTED) {
-                    ensureInit(parent.requireContext())
-            } else if (parent.shouldShowRequestPermissionRationale(BLUETOOTH_CONNECT)) {
-                parent.requestBluetooth.launch(BLUETOOTH_CONNECT)
+            if (!BuildCompat.isAtLeastS() || parent.requireContext().checkSelfPermission(
+                    Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                ensureInit(parent.requireContext())
+            } else if (parent.shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {
+                parent.requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
             }
         }
         override fun onDestroy(owner: LifecycleOwner) = tethering.close()
