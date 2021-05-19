@@ -149,13 +149,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
+    private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
         /**
          * The only case when upstream is null is on API 23- and we are using system default rules.
          */
         inner class Subrouting(priority: Int, val upstream: String) {
             val ifindex = if (upstream.isEmpty()) 0 else if_nametoindex(upstream).also {
-                if (it <= 0) throw IOException("Interface $upstream not found")
+                if (it <= 0) throw InterfaceGoneException(upstream)
             }
             val transaction = RootSession.beginTransaction().safeguard {
                 if (upstream.isEmpty()) {
@@ -195,7 +196,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     subrouting[ifname] = Subrouting(priority, ifname)
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
-                    if (e !is CancellationException) Timber.w(e)
+                    if (e !is CancellationException && e !is InterfaceGoneException) Timber.w(e)
                 }
             }
             for (ifname in toRemove) {
