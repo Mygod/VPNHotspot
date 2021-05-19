@@ -24,8 +24,8 @@ android {
         minSdk = 21
         this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 259
-        versionName = "2.11.6"
+        versionCode = 260
+        versionName = "2.11.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         kapt.arguments {
             arg("room.incremental", true)
