@@ -32,13 +32,12 @@ class EBegFragment : AppCompatDialogFragment() {
         }
 
         override fun onBillingSetupFinished(billingResult: BillingResult) {
-            if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) GlobalScope.launch(Dispatchers.IO) {
-                billingClient.queryPurchases(BillingClient.SkuType.INAPP).apply {
-                    if (responseCode == BillingClient.BillingResponseCode.OK) {
-                        onPurchasesUpdated(this.billingResult, purchasesList)
-                    }
-                }
-            } else Timber.e("onBillingSetupFinished: ${billingResult.responseCode}")
+            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                Timber.e("onBillingSetupFinished: ${billingResult.responseCode}")
+            } else GlobalScope.launch(Dispatchers.Main.immediate) {
+                val result = billingClient.queryPurchasesAsync(BillingClient.SkuType.INAPP)
+                onPurchasesUpdated(result.billingResult, result.purchasesList)
+            }
         }
 
         override fun onBillingServiceDisconnected() {
@@ -46,7 +45,7 @@ class EBegFragment : AppCompatDialogFragment() {
             billingClient.startConnection(this)
         }
 
-        override fun onPurchasesUpdated(billingResult: BillingResult, purchases: MutableList<Purchase>?) {
+        override fun onPurchasesUpdated(billingResult: BillingResult, purchases: List<Purchase>?) {
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
                 // directly consume in-app purchase, so that people can donate multiple times
                 purchases.filter { it.purchaseState == Purchase.PurchaseState.PURCHASED }.map(this::consumePurchase)
