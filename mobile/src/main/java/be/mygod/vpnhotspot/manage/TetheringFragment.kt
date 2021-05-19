@@ -46,11 +46,12 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         @get:RequiresApi(26)
         internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
+        internal val bluetoothManager by lazy @TargetApi(24) { TetherManager.Bluetooth(this@TetheringFragment) }
         @get:RequiresApi(24)
         private val tetherManagers by lazy @TargetApi(24) {
             listOf(TetherManager.Wifi(this@TetheringFragment),
                     TetherManager.Usb(this@TetheringFragment),
-                    TetherManager.Bluetooth(this@TetheringFragment))
+                    bluetoothManager)
         }
         @get:RequiresApi(30)
         private val tetherManagers30 by lazy @TargetApi(30) {
@@ -129,6 +130,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     @RequiresApi(26)
     val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         adapter.localOnlyHotspotManager.start(requireContext())
+    }
+    @RequiresApi(31)
+    val requestBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) adapter.bluetoothManager.ensureInit(requireContext())
     }
 
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()

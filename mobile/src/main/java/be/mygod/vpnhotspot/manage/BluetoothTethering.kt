@@ -13,6 +13,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
@@ -64,11 +65,15 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         fun start(callback: TetheringManager.StartTetheringCallback) {
             if (pendingCallback != null) return
             val adapter = BluetoothAdapter.getDefaultAdapter()
-            if (adapter?.state == BluetoothAdapter.STATE_OFF) {
-                registerBluetoothStateListener(this)
-                pendingCallback = callback
-                adapter.enable()
-            } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
+            try {
+                if (adapter?.state == BluetoothAdapter.STATE_OFF) {
+                    registerBluetoothStateListener(this)
+                    pendingCallback = callback
+                    adapter.enable()
+                } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
+            } catch (e: SecurityException) {
+                SmartSnackbar.make(e.readableMessage).shortToast().show()
+            }
         }
     }
 
@@ -94,13 +99,16 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
 
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
-    init {
-        if (BluetoothAdapter.getDefaultAdapter() != null) try {
+    fun ensureInit(context: Context) {
+        if (pan == null && BluetoothAdapter.getDefaultAdapter() != null) try {
             pan = pan(context, this)
         } catch (e: InvocationTargetException) {
             Timber.w(e)
             activeFailureCause = e
         }
+    }
+    init {
+        ensureInit(context)
         registerBluetoothStateListener(receiver)
     }
 

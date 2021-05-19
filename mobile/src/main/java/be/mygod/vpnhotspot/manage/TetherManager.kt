@@ -1,8 +1,11 @@
 package be.mygod.vpnhotspot.manage
 
+import android.Manifest
 import android.annotation.TargetApi
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.MacAddress
 import android.os.Build
 import android.provider.Settings
@@ -10,11 +13,14 @@ import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
+import androidx.core.os.BuildCompat
 import androidx.core.view.updatePaddingRelative
+import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -215,12 +221,26 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
     @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
+        companion object {
+            // TODO: migrate to framework Manifest.permission when stable
+            private const val BLUETOOTH_CONNECT = "android.permission.BLUETOOTH_CONNECT"
+        }
+
         private val tethering = BluetoothTethering(parent.requireContext()) { data.notifyChange() }
 
         init {
             parent.viewLifecycleOwner.lifecycle.addObserver(this)
         }
 
+        fun ensureInit(context: Context) = tethering.ensureInit(context)
+        override fun onResume(owner: LifecycleOwner) {
+            if (!BuildCompat.isAtLeastS() || parent.requireContext().checkSelfPermission(BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED) {
+                    ensureInit(parent.requireContext())
+            } else if (parent.shouldShowRequestPermissionRationale(BLUETOOTH_CONNECT)) {
+                parent.requestBluetooth.launch(BLUETOOTH_CONNECT)
+            }
+        }
         override fun onDestroy(owner: LifecycleOwner) = tethering.close()
 
         override val title get() = parent.getString(R.string.tethering_manage_bluetooth)

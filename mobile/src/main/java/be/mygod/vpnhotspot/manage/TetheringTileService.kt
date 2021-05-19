@@ -186,7 +186,11 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                         state = Tile.STATE_INACTIVE
                         icon = tileOff
                     }
-                    null -> return
+                    null -> {
+                        state = Tile.STATE_UNAVAILABLE
+                        icon = tileOff
+                        subtitle(tethering?.activeFailureCause?.readableMessage)
+                    }
                 }
                 label = getText(labelString)
                 updateTile()

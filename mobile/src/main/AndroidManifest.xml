@@ -52,6 +52,8 @@
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <!-- Required since API 29 -->
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <!-- Required since API 31 -->
+    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_CONNECT"/>
 
     <application
         android:name=".App"
