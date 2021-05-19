@@ -52,7 +52,7 @@ class ClientsFragment : Fragment() {
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, MacAddressCompat(arg.mac)))
+            setTitle(getString(R.string.clients_nickname_title, MacAddressCompat(arg.mac).toString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
             setNeutralButton(emojize(getText(R.string.clients_nickname_set_to_vendor)), listener)
