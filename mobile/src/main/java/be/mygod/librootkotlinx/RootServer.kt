@@ -245,13 +245,14 @@ class RootServer {
     @Throws(RemoteException::class)
     suspend fun <T : Parcelable?> execute(command: RootCommand<T>, classLoader: ClassLoader?): T {
         val future = CompletableDeferred<T>()
-        @Suppress("UNCHECKED_CAST")
-        val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
-        mutex.withLock {
+        val callback = mutex.withLock {
+            @Suppress("UNCHECKED_CAST")
+            val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
             if (active) {
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else future.cancel()
+            callback
         }
         try {
             return future.await()
@@ -275,13 +276,14 @@ class RootServer {
                     else -> throw IllegalArgumentException("Unsupported channel capacity $it")
                 }
             }) {
-        @Suppress("UNCHECKED_CAST")
-        val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
-        mutex.withLock {
+        val callback = mutex.withLock {
+            @Suppress("UNCHECKED_CAST")
+            val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
             if (active) {
                 callbackLookup[counter] = callback
                 sendLocked(command)
             } else callback.finish.cancel()
+            callback
         }
         try {
             callback.finish.await()
