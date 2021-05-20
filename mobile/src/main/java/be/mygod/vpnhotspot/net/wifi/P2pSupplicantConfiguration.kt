@@ -67,7 +67,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
                     block.add(parser.line)
                     while (parser.next() && !parser.trimmed.startsWith('}')) {
                         if (parser.trimmed.startsWith("ssid=")) {
-                            check(block.ssidLine == null)
+                            check(block.ssidLine == null) { "Duplicated SSID" }
                             block.ssidLine = block.size
                         } else if (parser.trimmed.startsWith("mode=3")) block.groupOwner = true else {
                             val match = networkParser.find(parser.trimmed)
@@ -89,7 +89,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
                     block.add(parser.line)
                     result.add(block)
                     if (block.bssid != null && block.groupOwner && target == null) {    // keep first only
-                        check(block.ssidLine != null && block.pskLine != null)
+                        check(block.ssidLine != null && block.pskLine != null) { "Missing SSID/PSK" }
                         target = block
                     }
                 } else {
