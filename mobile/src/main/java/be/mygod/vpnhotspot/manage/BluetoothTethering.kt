@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -103,7 +104,8 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         if (pan == null && BluetoothAdapter.getDefaultAdapter() != null) try {
             pan = pan(context, this)
         } catch (e: InvocationTargetException) {
-            Timber.w(e)
+            if (e.cause is SecurityException && BuildCompat.isAtLeastS()) Timber.d(e.readableMessage)
+            else Timber.w(e)
             activeFailureCause = e
         }
     }
