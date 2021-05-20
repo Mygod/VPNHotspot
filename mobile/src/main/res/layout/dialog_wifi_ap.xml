@@ -21,7 +21,6 @@
               android:layout_width="300sp"
               android:layout_height="wrap_content"
               android:orientation="vertical">
-
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
@@ -67,9 +66,10 @@
                     android:text="@string/wifi_security" />
                 <Spinner
                     android:id="@+id/security"
+                    style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/wifi_item_content"
+                    android:minHeight="@dimen/touch_target_min"
                     android:prompt="@string/wifi_security" />
             </LinearLayout>
             <com.google.android.material.textfield.TextInputLayout
@@ -95,10 +95,11 @@
             </com.google.android.material.textfield.TextInputLayout>
             <Switch
                 android:id="@+id/auto_shutdown"
+                style="@style/wifi_item_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
-                style="@style/wifi_item_label"
+                android:minHeight="@dimen/touch_target_min"
                 android:text="@string/wifi_hotspot_auto_off"/>
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/timeout_wrapper"
@@ -131,9 +132,10 @@
                     android:text="@string/wifi_hotspot_ap_band_title" />
                 <Spinner
                     android:id="@+id/band"
+                    style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/wifi_item_content"
+                    android:minHeight="@dimen/touch_target_min"
                     android:prompt="@string/wifi_hotspot_ap_band_title" />
             </LinearLayout>
             <com.google.android.material.textfield.TextInputLayout
@@ -155,11 +157,12 @@
             </com.google.android.material.textfield.TextInputLayout>
             <Switch
                 android:id="@+id/hidden_ssid"
+                style="@style/wifi_item_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
-                style="@style/wifi_item_label"
-                android:text="@string/wifi_hidden_network"/>
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_hidden_network" />
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/max_client_wrapper"
                 android:layout_width="match_parent"
@@ -179,11 +182,12 @@
             </com.google.android.material.textfield.TextInputLayout>
             <Switch
                 android:id="@+id/client_user_control"
+                style="@style/wifi_item_label"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
-                style="@style/wifi_item_label"
-                android:text="@string/wifi_client_user_control"/>
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_client_user_control" />
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/blocked_list_wrapper"
                 android:layout_width="match_parent"

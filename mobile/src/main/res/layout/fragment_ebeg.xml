@@ -56,6 +56,8 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:contentDescription="@string/donations__google_android_market_text"
                     android:prompt="@string/donations__google_android_market_text" />
 
                 <Button

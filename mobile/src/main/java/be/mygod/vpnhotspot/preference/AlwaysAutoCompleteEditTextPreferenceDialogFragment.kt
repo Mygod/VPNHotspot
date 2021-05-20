@@ -6,6 +6,7 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.core.os.bundleOf
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.widget.AlwaysAutoCompleteEditText
 
 class AlwaysAutoCompleteEditTextPreferenceDialogFragment : EditTextPreferenceDialogFragmentCompat() {
@@ -20,7 +21,10 @@ class AlwaysAutoCompleteEditTextPreferenceDialogFragment : EditTextPreferenceDia
     private lateinit var editText: AlwaysAutoCompleteEditText
 
     override fun onCreateDialogView(context: Context) = super.onCreateDialogView(context).apply {
-        editText = AlwaysAutoCompleteEditText(context).apply { id = android.R.id.edit }
+        editText = AlwaysAutoCompleteEditText(context).apply {
+            id = android.R.id.edit
+            minHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
+        }
         val oldEditText = findViewById<View>(android.R.id.edit)!!
         val container = oldEditText.parent as ViewGroup
         container.removeView(oldEditText)
