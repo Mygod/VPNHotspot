@@ -9,7 +9,9 @@ import android.net.LinkProperties
 import android.net.RouteInfo
 import android.os.Build
 import android.os.RemoteException
+import android.system.ErrnoException
 import android.system.Os
+import android.system.OsConstants
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -29,6 +31,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
+import java.io.IOException
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -184,4 +187,6 @@ fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
     File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().trim().toInt() }
 } catch (_: FileNotFoundException) {
     NetworkInterface.getByName(ifname)?.index ?: 0
+} catch (e: IOException) {
+    if ((e.cause as? ErrnoException)?.errno == OsConstants.ENODEV) -1 else throw e
 }
