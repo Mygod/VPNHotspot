@@ -182,10 +182,11 @@ abstract class IpMonitor {
         }
     }
 
-    private fun poll() {
-        val process = ProcessBuilder(Routing.IP, monitoredObject)
-                .redirectErrorStream(true)
-                .start()
+    @Suppress("BlockingMethodInNonBlockingContext")
+    private suspend fun poll() {
+        val process = ProcessBuilder(Routing.IP, monitoredObject).apply {
+            redirectErrorStream(true)
+        }.start()
         process.waitFor()
         thread(name = "${javaClass.simpleName}-flush-error") {
             val err = process.errorStream.bufferedReader().readText()
