@@ -109,7 +109,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
             iface == null -> NONE
             iface == p2pDev -> WIFI_P2P
             requiresUpdate -> {
-                Timber.d("requiresUpdate")
                 if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
                 ofInterfaceImpl(iface, p2pDev)
             }
