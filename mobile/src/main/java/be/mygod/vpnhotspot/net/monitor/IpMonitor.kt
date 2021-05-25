@@ -75,11 +75,12 @@ abstract class IpMonitor {
                 }
             }
             try {
-                process.inputStream.bufferedReader().forEachLine {
-                    if (errorMatcher.containsMatchIn(it)) {
-                        Timber.w(it)
-                        process.destroy()   // move on to next mode
-                    } else processLine(it)
+                process.inputStream.bufferedReader().useLines { lines ->
+                    for (line in lines) if (errorMatcher.containsMatchIn(line)) {
+                        Timber.w(line)
+                        process.destroy()
+                        break   // move on to next mode
+                    } else processLine(line)
                 }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 if (!e.isEBADF) Timber.w(e)
