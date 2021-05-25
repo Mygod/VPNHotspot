@@ -188,5 +188,5 @@ fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
 } catch (_: FileNotFoundException) {
     NetworkInterface.getByName(ifname)?.index ?: 0
 } catch (e: IOException) {
-    if ((e.cause as? ErrnoException)?.errno == OsConstants.ENODEV) -1 else throw e
+    if ((e.cause as? ErrnoException)?.errno == OsConstants.ENODEV) 0 else throw e
 }
