@@ -8,7 +8,6 @@ import be.mygod.vpnhotspot.root.ReadArp
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
@@ -47,7 +46,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
             return setOf(dev)
         }
 
-        fun parse(line: String, fullMode: Boolean): List<IpNeighbour> {
+        suspend fun parse(line: String, fullMode: Boolean): List<IpNeighbour> {
             return if (line.isBlank()) emptyList() else try {
                 val match = parser.matchEntire(line)!!
                 val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
@@ -118,15 +117,13 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                 .drop(1)
                 .filter { it.size >= 6 && mac.matcher(it[ARP_HW_ADDRESS]).matches() }
                 .toList()
-        private fun arp(): List<List<String>> {
+        private suspend fun arp(): List<List<String>> {
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
                 arpCache = File("/proc/net/arp").bufferedReader().useLines { it.makeArp() }
             } catch (e: IOException) {
                 if (e is FileNotFoundException && Build.VERSION.SDK_INT >= 29 &&
                         (e.cause as? ErrnoException)?.errno == OsConstants.EACCES) try {
-                    arpCache = runBlocking {
-                        RootManager.use { it.execute(ReadArp()) }
-                    }.value.lineSequence().makeArp()
+                    arpCache = RootManager.use { it.execute(ReadArp()) }.value.lineSequence().makeArp()
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)
                     if (eRoot !is CancellationException) Timber.w(eRoot)

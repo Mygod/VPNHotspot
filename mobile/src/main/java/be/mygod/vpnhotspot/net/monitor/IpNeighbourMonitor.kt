@@ -61,7 +61,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
     override val monitoredObject: String get() = "neigh"
 
-    override fun processLine(line: String) {
+    override suspend fun processLine(line: String) {
         val old = neighbours
         for (neighbour in IpNeighbour.parse(line, fullMode)) neighbours = when (neighbour.state) {
             IpNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
@@ -70,7 +70,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         if (neighbours != old) aggregator.trySendBlocking(neighbours).onFailure { throw it!! }
     }
 
-    override fun processLines(lines: Sequence<String>) {
+    override suspend fun processLines(lines: Sequence<String>) {
         neighbours = lines
                 .flatMap { IpNeighbour.parse(it, fullMode).asSequence() }
                 .filter { it.state != IpNeighbour.State.DELETING }  // skip entries without lladdr
