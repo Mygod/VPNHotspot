@@ -107,12 +107,16 @@ class RootServer {
         if (!this::process.isInitialized) return null
         var available = process.errorStream.available()
         return if (available <= 0) null else String(ByteArrayOutputStream().apply {
-            while (available > 0) {
-                val bytes = ByteArray(available)
-                val len = process.errorStream.read(bytes)
-                if (len < 0) throw EOFException()   // should not happen
-                write(bytes, 0, len)
-                available = process.errorStream.available()
+            try {
+                while (available > 0) {
+                    val bytes = ByteArray(available)
+                    val len = process.errorStream.read(bytes)
+                    if (len < 0) throw EOFException()   // should not happen
+                    write(bytes, 0, len)
+                    available = process.errorStream.available()
+                }
+            } catch (e: IOException) {
+                Logger.me.w("Reading stderr was cut short", e)
             }
         }.toByteArray())
     }
