@@ -99,7 +99,7 @@ class RootServer {
     @Volatile
     var active = false
     private var counter = 0L
-    private lateinit var callbackListenerExit: Deferred<Unit>
+    private var callbackListenerExit: Deferred<Unit>? = null
     private val callbackLookup = LongSparseArray<Callback>()
     private val mutex = Mutex()
 
@@ -195,16 +195,19 @@ class RootServer {
      * @param context Any [Context] from the app.
      * @param niceName Name to call the rooted Java process.
      */
-    suspend fun init(context: Context, niceName: String = "${context.packageName}:root") = try {
-        val future = CompletableDeferred<Unit>()
-        callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
+    suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
+        withContext(Dispatchers.IO) {
             try {
                 doInit(context, niceName)
-                future.complete(Unit)
-            } catch (e: Throwable) {
-                future.completeExceptionally(e)
-                return@async
+            } finally {
+                try {
+                    readUnexpectedStderr()?.let { Logger.me.e(it) }
+                } catch (e: IOException) {
+                    Logger.me.e("Failed to read from stderr", e)    // avoid the real exception being swallowed
+                }
             }
+        }
+        callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
             val errorReader = async(Dispatchers.IO) {
                 try {
                     process.errorStream.bufferedReader().forEachLine(Logger.me::w)
@@ -222,13 +225,6 @@ class RootServer {
                 process.waitFor()
                 withContext(NonCancellable) { closeInternal(true) }
             }
-        }
-        future.await()
-    } finally {
-        try {
-            readUnexpectedStderr()?.let { Logger.me.e(it) }
-        } catch (e: IOException) {
-            Logger.me.e("Failed to read from stderr", e)    // avoid the real exception being swallowed
         }
     }
 
@@ -320,6 +316,7 @@ class RootServer {
      */
     suspend fun close() {
         closeInternal()
+        val callbackListenerExit = callbackListenerExit ?: return
         try {
             withTimeout(10000) { callbackListenerExit.await() }
         } catch (e: TimeoutCancellationException) {
