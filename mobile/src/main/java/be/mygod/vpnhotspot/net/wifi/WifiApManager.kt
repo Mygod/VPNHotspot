@@ -161,10 +161,9 @@ object WifiApManager {
                         callback.onConnectedClientsChanged(when (noArgs) {
                             1 -> args!![0] as? Iterable<*> ?: return null
                             2 -> {
-                                if (!BuildCompat.isAtLeastS()) Timber.w(Exception(
-                                    "Unexpected onConnectedClientsChanged API 31+"))
-                                dispatchInfoChanged(args!![0])
-                                args[1] as? Iterable<*> ?: return null
+                                Timber.w(Exception("Unexpected onConnectedClientsChanged API 31+"))
+                                // dispatchInfoChanged(args!![0])
+                                args!![1] as? Iterable<*> ?: return null
                             }
                             else -> {
                                 Timber.w("Unexpected args for $name: ${args?.contentToString()}")
