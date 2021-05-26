@@ -144,140 +144,142 @@ You can also use WPS to connect your 2.4GHz-only device to force the repeater to
 _a.k.a. things that can go wrong if this app doesn't work._
 
 This is a list of stuff that might impact this app's functionality if unavailable.
-This is only meant to be an index. You can read more in the source code.
+This is only meant to be an index.
+You can read more in the source code.
+API restrictions are updated up to [commit `ebe7044`](https://android.googlesource.com/platform/prebuilts/runtime/+/ebe7044/appcompat/hiddenapi-flags.csv).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
-* (prior to API 30) [`Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144306)
+* (prior to API 30) `Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148899)
-* (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIGIG:I`
-* (prior to API 30) [`Landroid/net/wifi/WifiConfiguration$KeyMgmt;->FT_PSK:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153923)
-* (prior to API 30) [`Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA_PSK_SHA256:I,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153936)
-* (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->AP_BAND_2GHZ:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154057)
-* (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->AP_BAND_5GHZ:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154058)
-* (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->AP_BAND_ANY:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154059)
-* (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->apBand:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154101)
-* (since API 23, prior to API 30) [`Landroid/net/wifi/WifiConfiguration;->apChannel:I,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154102)
-* (since API 28, prior to API 30) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#132005)
-* (since API 26) [`Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154947s)
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIGIG:I,blocked`
+* (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->FT_PSK:I,lo-prio,max-target-o`
+* (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA_PSK_SHA256:I,blocked`
+* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_2GHZ:I,lo-prio,max-target-o`
+* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_5GHZ:I,lo-prio,max-target-o`
+* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_ANY:I,lo-prio,max-target-o`
+* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apBand:I,unsupported`
+* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
+* (since API 28, prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`
+* (since API 26) `Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,unsupported`
 * (prior to API 26) `Landroid/net/wifi/WifiManager;->setWifiApEnabled(Landroid/net/wifi/WifiConfiguration;Z)Z`
-* [`Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blacklist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#157883)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158332)
-* (since API 28) [`Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183735)
-* (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272546)
-* (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_usb_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272549)
-* (prior to API 30) [`Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,greylist-max-q`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#272551)
-* (since API 28, prior to API 30) [`Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/3d07e5c/appcompat/hiddenapi-flags.csv#245007)
-* [`Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#276573)
+* `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blocked`
+* `Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,max-target-r`
+* (since API 28, prior to API 30) `Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,lo-prio,max-target-o`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,max-target-q`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_usb_regexs:I,max-target-q`
+* (prior to API 30) `Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,max-target-q`
+* (since API 28, prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
+* `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
 * (since API 27) `Lcom/android/server/connectivity/tethering/OffloadHardwareInterface;->DEFAULT_TETHER_OFFLOAD_DISABLED:I`
 * (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
-* (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,greylist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#370415)
-* (since API 26) [`Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,greylist-max-o`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#370416)
-* (prior to API 29) [`Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,greylist-max-p`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#372578)
+* (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
+* (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
+* (prior to API 29) `Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,max-target-p`
 
 <details>
 <summary>Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)</summary>
 
-* (since API 24) [`Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#35264)
-* (since API 24) [`Landroid/bluetooth/BluetoothProfile;->PAN:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#35361)
-* (since API 30) [`Landroid/content/Context;->TETHERING_SERVICE:Ljava/lang/String;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#41038)
-* (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144095)
-* (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144096)
-* (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144097)
-* (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144406)
-* (since API 24, prior to API 30) [`Landroid/net/ConnectivityManager;->stopTethering(I)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#144408)
-* [`Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#146558)
-* [`Landroid/net/LinkProperties;->getAllRoutes()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#146560)
-* (since API 30) [`Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringFailed(I)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148881)
-* (since API 30) [`Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringStarted()V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148882)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148896)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onError(Ljava/lang/String;I)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148897)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onOffloadStatusChanged(I)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148898)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfacesChanged(Ljava/util/List;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148900)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onTetheredInterfacesChanged(Ljava/util/List;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148901)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onTetheringSupported(Z)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148902)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringEventCallback;->onUpstreamChanged(Landroid/net/Network;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148903)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringRequest$Builder;-><init>(I)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148913)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringRequest$Builder;->build()Landroid/net/TetheringManager$TetheringRequest;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148914)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringRequest$Builder;->setExemptFromEntitlementCheck(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148916)
-* (since API 30) [`Landroid/net/TetheringManager$TetheringRequest$Builder;->setShouldShowEntitlementUi(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148917)
-* [`Landroid/net/TetheringManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148932)
-* (since API 26) [`Landroid/net/TetheringManager;->EXTRA_ACTIVE_LOCAL_ONLY:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148935)
-* [`Landroid/net/TetheringManager;->EXTRA_ACTIVE_TETHER:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148936)
-* [`Landroid/net/TetheringManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148938)
-* (since API 24) [`Landroid/net/TetheringManager;->TETHERING_BLUETOOTH:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148940)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148941)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHERING_NCM:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148943)
-* (since API 24) [`Landroid/net/TetheringManager;->TETHERING_USB:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148944)
-* (since API 24) [`Landroid/net/TetheringManager;->TETHERING_WIFI:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148945)
-* [`Landroid/net/TetheringManager;->TETHER_ERROR_*:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148947)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148954)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_FAILED:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148964)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STARTED:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148965)
-* (since API 30) [`Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STOPPED:I,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#148966)
-* (since API 30) [`Landroid/net/TetheringManager;->registerTetheringEventCallback(Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$TetheringEventCallback;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#149003)
-* (since API 30) [`Landroid/net/TetheringManager;->startTethering(Landroid/net/TetheringManager$TetheringRequest;Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$StartTetheringCallback;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#149009)
-* (since API 30) [`Landroid/net/TetheringManager;->stopTethering(I)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#149011)
-* (since API 30) [`Landroid/net/TetheringManager;->unregisterTetheringEventCallback(Landroid/net/TetheringManager$TetheringEventCallback;)V,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#149014)
-* (since API 30) [`Landroid/net/wifi/SoftApCapability;->SOFTAP_FEATURE_*:J,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153656)
-* (since API 30) [`Landroid/net/wifi/SoftApCapability;->areFeaturesSupported(J)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153660)
-* (since API 30) [`Landroid/net/wifi/SoftApCapability;->getMaxSupportedClients()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153663)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;-><init>()V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153707)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;-><init>(Landroid/net/wifi/SoftApConfiguration;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153708)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->build()Landroid/net/wifi/SoftApConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153709)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setAllowedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153723)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setAutoShutdownEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153724)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setBand(I)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153725)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setBlockedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153726)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setBssid(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153727)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setChannel(II)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153728)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setClientControlByUserEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153729)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setHiddenSsid(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153730)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setMaxNumberOfClients(I)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153731)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setPassphrase(Ljava/lang/String;I)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153732)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setShutdownTimeoutMillis(J)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153733)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration$Builder;->setSsid(Ljava/lang/String;)Landroid/net/wifi/SoftApConfiguration$Builder;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153734)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->BAND_2GHZ:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153738)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->BAND_5GHZ:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153739)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->BAND_6GHZ:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153740)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->BAND_ANY:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153741)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getAllowedClientList()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153773)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getBand()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153774)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getBlockedClientList()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153775)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getChannel()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153777)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getMaxNumberOfClients()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153778)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->getShutdownTimeoutMillis()J,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153781)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->isAutoShutdownEnabled()Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153784)
-* (since API 30) [`Landroid/net/wifi/SoftApConfiguration;->isClientControlByUserEnabled()Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153787)
-* (since API 30) [`Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_*:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153813)
-* (since API 30) [`Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153819)
-* (since API 30) [`Landroid/net/wifi/SoftApInfo;->getBandwidth()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153825)
-* (since API 30) [`Landroid/net/wifi/SoftApInfo;->getFrequency()I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153826)
-* (since API 30) [`Landroid/net/wifi/WifiClient;->getMacAddress()Landroid/net/MacAddress;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153881)
-* (prior to API 30) [`Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA2_PSK:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#153932)
-* (since API 30) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onBlockedClientConnecting(Landroid/net/wifi/WifiClient;I)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154681)
-* (since API 30) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onCapabilityChanged(Landroid/net/wifi/SoftApCapability;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154682)
-* (since API 30) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onConnectedClientsChanged(Ljava/util/List;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154683)
-* (since API 30) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onInfoChanged(Landroid/net/wifi/SoftApInfo;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154684)
-* (since API 28) [`Landroid/net/wifi/WifiManager$SoftApCallback;->onStateChanged(II)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154685)
-* (since API 30) [`Landroid/net/wifi/WifiManager;->SAP_CLIENT_BLOCK_REASON_CODE_*:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154840)
-* (since API 28) [`Landroid/net/wifi/WifiManager;->SAP_START_FAILURE_*:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154843)
-* (since API 28) [`Landroid/net/wifi/WifiManager;->WIFI_AP_STATE_FAILED:I,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154868)
-* (since API 30) [`Landroid/net/wifi/WifiManager;->getSoftApConfiguration()Landroid/net/wifi/SoftApConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154985)
-* (prior to API 30) [`Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#154989)
-* (since API 28) [`Landroid/net/wifi/WifiManager;->registerSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#155042)
-* (since API 30) [`Landroid/net/wifi/WifiManager;->setSoftApConfiguration(Landroid/net/wifi/SoftApConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#155063)
-* (prior to API 30) [`Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#155067)
-* (since API 28) [`Landroid/net/wifi/WifiManager;->unregisterSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#155087)
-* [`Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/List;,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158079)
-* [`Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;->onPersistentGroupInfoAvailable(Landroid/net/wifi/p2p/WifiP2pGroupList;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158156)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158296)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158320)
-* [`Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,system-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#158330)
-* [`Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,system-api,test-api,whitelist`](https://android.googlesource.com/platform/prebuilts/runtime/+/4601d91/appcompat/hiddenapi-flags.csv#183757)
+* (since API 24) `Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,sdk,system-api,test-api`
+* (since API 24) `Landroid/bluetooth/BluetoothProfile;->PAN:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/content/Context;->TETHERING_SERVICE:Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 24, prior to API 30) `Landroid/net/ConnectivityManager$OnStartTetheringCallback;-><init>()V,sdk,system-api,test-api`
+* (since API 24, prior to API 30) `Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringFailed()V,sdk,system-api,test-api`
+* (since API 24, prior to API 30) `Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,sdk,system-api,test-api`
+* (since API 24, prior to API 30) `Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,sdk,system-api,test-api`
+* (since API 24, prior to API 30) `Landroid/net/ConnectivityManager;->stopTethering(I)V,sdk,system-api,test-api`
+* `Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,sdk,system-api,test-api`
+* `Landroid/net/LinkProperties;->getAllRoutes()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringFailed(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringStarted()V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Ljava/lang/String;I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onOffloadStatusChanged(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfacesChanged(Ljava/util/List;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetheredInterfacesChanged(Ljava/util/List;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetheringSupported(Z)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onUpstreamChanged(Landroid/net/Network;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;-><init>(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->build()Landroid/net/TetheringManager$TetheringRequest;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setExemptFromEntitlementCheck(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager$TetheringRequest$Builder;->setShouldShowEntitlementUi(Z)Landroid/net/TetheringManager$TetheringRequest$Builder;,sdk,system-api,test-api`
+* `Landroid/net/TetheringManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 26) `Landroid/net/TetheringManager;->EXTRA_ACTIVE_LOCAL_ONLY:Ljava/lang/String;,sdk,system-api,test-api`
+* `Landroid/net/TetheringManager;->EXTRA_ACTIVE_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
+* `Landroid/net/TetheringManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 24) `Landroid/net/TetheringManager;->TETHERING_BLUETOOTH:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_NCM:I,sdk,system-api,test-api`
+* (since API 24) `Landroid/net/TetheringManager;->TETHERING_USB:I,sdk,system-api,test-api`
+* (since API 24) `Landroid/net/TetheringManager;->TETHERING_WIFI:I,sdk,system-api,test-api`
+* `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_FAILED:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STARTED:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STOPPED:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->registerTetheringEventCallback(Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$TetheringEventCallback;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->startTethering(Landroid/net/TetheringManager$TetheringRequest;Ljava/util/concurrent/Executor;Landroid/net/TetheringManager$StartTetheringCallback;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->stopTethering(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->unregisterTetheringEventCallback(Landroid/net/TetheringManager$TetheringEventCallback;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApCapability;->SOFTAP_FEATURE_*:J,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApCapability;->areFeaturesSupported(J)Z,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApCapability;->getMaxSupportedClients()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;-><init>()V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;-><init>(Landroid/net/wifi/SoftApConfiguration;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->build()Landroid/net/wifi/SoftApConfiguration;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setAllowedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setAutoShutdownEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBand(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBlockedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBssid(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setChannel(II)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setClientControlByUserEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setHiddenSsid(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setMaxNumberOfClients(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setPassphrase(Ljava/lang/String;I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setShutdownTimeoutMillis(J)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setSsid(Ljava/lang/String;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_2GHZ:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_5GHZ:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_6GHZ:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_ANY:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getAllowedClientList()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getBand()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getBlockedClientList()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getChannel()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getMaxNumberOfClients()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getShutdownTimeoutMillis()J,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->isAutoShutdownEnabled()Z,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApConfiguration;->isClientControlByUserEnabled()Z,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_*:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,system-api,whitelist`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->getFrequency()I,system-api,whitelist`
+* (since API 30) `Landroid/net/wifi/WifiClient;->getMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
+* (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA2_PSK:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onBlockedClientConnecting(Landroid/net/wifi/WifiClient;I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onCapabilityChanged(Landroid/net/wifi/SoftApCapability;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onConnectedClientsChanged(Ljava/util/List;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onInfoChanged(Landroid/net/wifi/SoftApInfo;)V,sdk,system-api,test-api`
+* (since API 28) `Landroid/net/wifi/WifiManager$SoftApCallback;->onStateChanged(II)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager;->SAP_CLIENT_BLOCK_REASON_CODE_*:I,sdk,system-api,test-api`
+* (since API 28) `Landroid/net/wifi/WifiManager;->SAP_START_FAILURE_*:I,sdk,system-api,test-api`
+* (since API 28) `Landroid/net/wifi/WifiManager;->WIFI_AP_STATE_FAILED:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager;->getSoftApConfiguration()Landroid/net/wifi/SoftApConfiguration;,sdk,system-api,test-api`
+* (prior to API 30) `Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,sdk,system-api,test-api`
+* (since API 28) `Landroid/net/wifi/WifiManager;->registerSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager;->setSoftApConfiguration(Landroid/net/wifi/SoftApConfiguration;)Z,sdk,system-api,test-api`
+* (prior to API 30) `Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,sdk,system-api,test-api`
+* (since API 28) `Landroid/net/wifi/WifiManager;->unregisterSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
+* `Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/List;,sdk,system-api,test-api`
+* `Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;->onPersistentGroupInfoAvailable(Landroid/net/wifi/p2p/WifiP2pGroupList;)V,sdk,system-api,test-api`
+* `Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
+* `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,sdk,system-api,test-api`
+* `Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
+* `Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,sdk,system-api,test-api`
 
 </details>
 
