@@ -27,9 +27,10 @@ android {
         versionCode = 260
         versionName = "2.11.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        kapt.arguments {
-            arg("room.incremental", true)
-            arg("room.schemaLocation", "$projectDir/schemas")
+        javaCompileOptions.annotationProcessorOptions.arguments.apply {
+            put("room.expandProjection", "true")
+            put("room.incremental", "true")
+            put("room.schemaLocation", "$projectDir/schemas")
         }
         buildConfigField("boolean", "DONATIONS", "true")
         buildConfigField("int", "TARGET_SDK", targetSdk.toString())
