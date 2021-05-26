@@ -13,8 +13,8 @@ import androidx.preference.Preference
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
-import be.mygod.vpnhotspot.util.SpanFormatter
 import be.mygod.vpnhotspot.util.allRoutes
+import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.parseNumericAddress
 import timber.log.Timber
 
@@ -72,7 +72,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     }
 
     private fun onUpdate() = (context as LifecycleOwner).lifecycleScope.launchWhenStarted {
-        summary = SpanFormatter.format(context.getText(R.string.settings_service_upstream_monitor_summary),
-                primary.charSequence, fallback.charSequence)
+        summary = context.getText(R.string.settings_service_upstream_monitor_summary).format(
+            context.resources.configuration.locale, primary.charSequence, fallback.charSequence)
     }
 }
