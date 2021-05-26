@@ -38,9 +38,8 @@ object WifiApCommands {
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnInfoChanged(val frequency: Int, val bandwidth: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onInfoChanged(frequency, bandwidth)
+        data class OnInfoChanged(val info: List<Parcelable>) : SoftApCallbackParcel() {
+            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) = callback.onInfoChanged(info)
         }
         @Parcelize
         @RequiresApi(30)
@@ -78,8 +77,7 @@ object WifiApCommands {
                 override fun onConnectedClientsChanged(clients: List<MacAddress>) =
                         push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
                 @RequiresApi(30)
-                override fun onInfoChanged(frequency: Int, bandwidth: Int) =
-                        push(SoftApCallbackParcel.OnInfoChanged(frequency, bandwidth))
+                override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
                 @RequiresApi(30)
                 override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) =
                         push(SoftApCallbackParcel.OnCapabilityChanged(maxSupportedClients, supportedFeatures))

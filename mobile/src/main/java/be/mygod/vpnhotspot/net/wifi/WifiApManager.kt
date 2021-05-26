@@ -8,6 +8,7 @@ import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
+import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -87,7 +88,7 @@ object WifiApManager {
         }
 
         @RequiresApi(30)
-        fun onInfoChanged(frequency: Int, bandwidth: Int) { }
+        fun onInfoChanged(info: List<Parcelable>) { }
 
         @RequiresApi(30)
         fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) { }
@@ -116,13 +117,6 @@ object WifiApManager {
         Class.forName("android.net.wifi.WifiClient").getDeclaredMethod("getMacAddress")
     }
 
-    private val classSoftApInfo by lazy { Class.forName("android.net.wifi.SoftApInfo") }
-    private val getFrequency by lazy { classSoftApInfo.getDeclaredMethod("getFrequency") }
-    private val getBandwidth by lazy { classSoftApInfo.getDeclaredMethod("getBandwidth") }
-    @RequiresApi(30)
-    val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { classSoftApInfo }
-    const val CHANNEL_WIDTH_INVALID = 0
-
     private val classSoftApCapability by lazy { Class.forName("android.net.wifi.SoftApCapability") }
     private val getMaxSupportedClients by lazy { classSoftApCapability.getDeclaredMethod("getMaxSupportedClients") }
     private val areFeaturesSupported by lazy {
@@ -141,9 +135,6 @@ object WifiApManager {
                         null    // no return value as of API 30
                     } else invokeActual(proxy, method, args)
 
-            @RequiresApi(30)
-            private fun dispatchInfoChanged(softApInfo: Any?) =
-                callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 val noArgs = args?.size ?: 0
                 return when (val name = method.name) {
@@ -172,14 +163,22 @@ object WifiApManager {
                         }.map { getMacAddress(it) as MacAddress })
                     }
                     "onInfoChanged" -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         val arg = args!![0]
                         if (arg is List<*>) {
                             if (!BuildCompat.isAtLeastS()) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
-                            if (arg.size != 1) Timber.w("Unexpected args for $name: ${args.contentToString()}")
-                            else dispatchInfoChanged(arg[0])
-                        } else dispatchInfoChanged(arg)
+                            @Suppress("UNCHECKED_CAST")
+                            callback.onInfoChanged(arg as List<Parcelable>)
+                        } else {
+                            when (Build.VERSION.SDK_INT) {
+                                30 -> { }
+                                in 31..Int.MAX_VALUE -> return null    // ignore old version calls
+                                else -> Timber.w(Exception("Unexpected onInfoChanged API 30"))
+                            }
+                            val info = SoftApInfo(arg as Parcelable)
+                            callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
+                                if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
+                        }
                     }
                     "onCapabilityChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))

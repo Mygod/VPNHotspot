@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.MacAddress
 import android.os.Build
+import android.os.Parcelable
 import android.provider.Settings
 import android.view.View
 import android.widget.Toast
@@ -25,6 +26,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.readableMessage
@@ -137,8 +139,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             WifiApManager.SoftApCallbackCompat {
         private var failureReason: Int? = null
         private var numClients: Int? = null
-        private var frequency = 0
-        private var bandwidth = WifiApManager.CHANNEL_WIDTH_INVALID
+        private var info = emptyList<Parcelable>()
         private var capability: Pair<Int, Long>? = null
 
         init {
@@ -166,9 +167,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             this.numClients = numClients
             if (Build.VERSION.SDK_INT >= 30) data.notifyChange()    // only emits when onCapabilityChanged can be called
         }
-        override fun onInfoChanged(frequency: Int, bandwidth: Int) {
-            this.frequency = frequency
-            this.bandwidth = bandwidth
+        override fun onInfoChanged(info: List<Parcelable>) {
+            this.info = info
             data.notifyChange()
         }
         override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) {
@@ -189,11 +189,15 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
         override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError,
-                if (frequency != 0 || bandwidth != WifiApManager.CHANNEL_WIDTH_INVALID) {
-                    parent.getString(R.string.tethering_manage_wifi_info, frequency,
+                info.run {
+                    if (isEmpty()) null else joinToString("\n") @TargetApi(30) {
+                        val info = SoftApInfo(it)
+                        val frequency = info.frequency
+                        parent.getString(R.string.tethering_manage_wifi_info, frequency,
                             SoftApConfigurationCompat.frequencyToChannel(frequency),
-                            WifiApManager.channelWidthLookup(bandwidth, true))
-                } else null,
+                            SoftApInfo.channelWidthLookup(info.bandwidth, true))
+                    }
+                },
                 capability?.let { (maxSupportedClients, supportedFeatures) ->
                     app.resources.getQuantityString(R.plurals.tethering_manage_wifi_capabilities, maxSupportedClients,
                             numClients ?: "?", maxSupportedClients, sequence {
