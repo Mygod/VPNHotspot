@@ -27,6 +27,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -41,6 +42,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
+import java.util.*
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         TetheringManager.StartTetheringCallback {
@@ -145,7 +147,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         private var failureReason: Int? = null
         private var numClients: Int? = null
         private var info = emptyList<Parcelable>()
-        private var capability: Pair<Int, Long>? = null
+        private var capability: Parcelable? = null
 
         init {
             if (Build.VERSION.SDK_INT >= 28) parent.viewLifecycleOwner.lifecycle.addObserver(this)
@@ -176,8 +178,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             this.info = info
             data.notifyChange()
         }
-        override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) {
-            capability = maxSupportedClients to supportedFeatures
+        override fun onCapabilityChanged(capability: Parcelable) {
+            this.capability = capability
             data.notifyChange()
         }
         override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) {
@@ -193,6 +195,22 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
+
+        @TargetApi(30)
+        private fun formatCapability(locale: Locale) = capability?.let {
+            val capability = SoftApCapability(it)
+            val maxClients = capability.maxSupportedClients
+            val supportedFeatures = capability.supportedFeatures
+            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, maxClients).format(locale,
+                numClients ?: "?", maxClients, sequence {
+                    var features = supportedFeatures
+                    if (features != 0L) while (features != 0L) {
+                        val bit = features.takeLowestOneBit()
+                        yield(SoftApCapability.featureLookup(bit, true))
+                        features = features and bit.inv()
+                    } else yield(parent.getText(R.string.tethering_manage_wifi_no_features))
+                }.joinToSpanned())
+        }
         override val text get() = parent.resources.configuration.locale.let { locale ->
             listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError, info.run {
                 if (isEmpty()) null else joinToSpanned("\n") @TargetApi(30) { parcel ->
@@ -215,17 +233,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     } else parent.getText(R.string.tethering_manage_wifi_info).format(locale,
                         frequency, channel, bandwidth)
                 }
-            }, capability?.let { (maxSupportedClients, supportedFeatures) ->
-                app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities,
-                    maxSupportedClients).format(locale, numClients ?: "?", maxSupportedClients, sequence {
-                    var features = supportedFeatures
-                    if (features != 0L) while (features != 0L) {
-                        val bit = features.takeLowestOneBit()
-                        yield(WifiApManager.featureLookup(bit, true))
-                        features = features and bit.inv()
-                    } else yield(parent.getText(R.string.tethering_manage_wifi_no_features))
-                }.joinToSpanned())
-            }).joinToSpanned("\n")
+            }, formatCapability(locale)).joinToSpanned("\n")
         }
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)

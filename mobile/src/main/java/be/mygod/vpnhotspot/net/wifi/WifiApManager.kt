@@ -14,7 +14,6 @@ import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.ConstantLookup
-import be.mygod.vpnhotspot.util.LongConstantLookup
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.callSuper
 import timber.log.Timber
@@ -91,7 +90,7 @@ object WifiApManager {
         fun onInfoChanged(info: List<Parcelable>) { }
 
         @RequiresApi(30)
-        fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) { }
+        fun onCapabilityChanged(capability: Parcelable) { }
 
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) { }
@@ -116,14 +115,6 @@ object WifiApManager {
     private val getMacAddress by lazy {
         Class.forName("android.net.wifi.WifiClient").getDeclaredMethod("getMacAddress")
     }
-
-    private val classSoftApCapability by lazy { Class.forName("android.net.wifi.SoftApCapability") }
-    private val getMaxSupportedClients by lazy { classSoftApCapability.getDeclaredMethod("getMaxSupportedClients") }
-    private val areFeaturesSupported by lazy {
-        classSoftApCapability.getDeclaredMethod("areFeaturesSupported", Long::class.java)
-    }
-    @get:RequiresApi(30)
-    val featureLookup by lazy { LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_") }
 
     @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
@@ -183,16 +174,7 @@ object WifiApManager {
                     "onCapabilityChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        val softApCapability = args!![0]
-                        var supportedFeatures = 0L
-                        var probe = 1L
-                        while (probe != 0L) {
-                            if (areFeaturesSupported(softApCapability, probe) as Boolean) {
-                                supportedFeatures = supportedFeatures or probe
-                            }
-                            probe += probe
-                        }
-                        callback.onCapabilityChanged(getMaxSupportedClients(softApCapability) as Int, supportedFeatures)
+                        callback.onCapabilityChanged(args!![0] as Parcelable)
                     }
                     "onBlockedClientConnecting" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onBlockedClientConnecting"))

@@ -43,10 +43,9 @@ object WifiApCommands {
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnCapabilityChanged(val maxSupportedClients: Int,
-                                       val supportedFeatures: Long) : SoftApCallbackParcel() {
+        data class OnCapabilityChanged(val capability: Parcelable) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onCapabilityChanged(maxSupportedClients, supportedFeatures)
+                    callback.onCapabilityChanged(capability)
         }
         @Parcelize
         @RequiresApi(30)
@@ -79,8 +78,8 @@ object WifiApCommands {
                 @RequiresApi(30)
                 override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
                 @RequiresApi(30)
-                override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) =
-                        push(SoftApCallbackParcel.OnCapabilityChanged(maxSupportedClients, supportedFeatures))
+                override fun onCapabilityChanged(capability: Parcelable) =
+                        push(SoftApCallbackParcel.OnCapabilityChanged(capability))
                 @RequiresApi(30)
                 override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) =
                         push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
