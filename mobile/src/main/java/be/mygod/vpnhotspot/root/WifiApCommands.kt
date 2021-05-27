@@ -32,7 +32,7 @@ object WifiApCommands {
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnConnectedClientsChanged(val clients: List<MacAddress>) : SoftApCallbackParcel() {
+        data class OnConnectedClientsChanged(val clients: List<Parcelable>) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onConnectedClientsChanged(clients)
         }
@@ -49,7 +49,7 @@ object WifiApCommands {
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnBlockedClientConnecting(val client: MacAddress, val blockedReason: Int) : SoftApCallbackParcel() {
+        data class OnBlockedClientConnecting(val client: Parcelable, val blockedReason: Int) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onBlockedClientConnecting(client, blockedReason)
         }
@@ -73,7 +73,7 @@ object WifiApCommands {
                 override fun onNumClientsChanged(numClients: Int) =
                         push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
                 @RequiresApi(30)
-                override fun onConnectedClientsChanged(clients: List<MacAddress>) =
+                override fun onConnectedClientsChanged(clients: List<Parcelable>) =
                         push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
                 @RequiresApi(30)
                 override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
@@ -81,7 +81,7 @@ object WifiApCommands {
                 override fun onCapabilityChanged(capability: Parcelable) =
                         push(SoftApCallbackParcel.OnCapabilityChanged(capability))
                 @RequiresApi(30)
-                override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) =
+                override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) =
                         push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
             }) {
                 scope.launch {

@@ -81,7 +81,7 @@ object WifiApManager {
         fun onNumClientsChanged(numClients: Int) { }
 
         @RequiresApi(30)
-        fun onConnectedClientsChanged(clients: List<MacAddress>) {
+        fun onConnectedClientsChanged(clients: List<Parcelable>) {
             @Suppress("DEPRECATION")
             onNumClientsChanged(clients.size)
         }
@@ -93,7 +93,7 @@ object WifiApManager {
         fun onCapabilityChanged(capability: Parcelable) { }
 
         @RequiresApi(30)
-        fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) { }
+        fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
     @RequiresApi(28)
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
@@ -110,10 +110,6 @@ object WifiApManager {
     }
     private val unregisterSoftApCallback by lazy {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", interfaceSoftApCallback)
-    }
-
-    private val getMacAddress by lazy {
-        Class.forName("android.net.wifi.WifiClient").getDeclaredMethod("getMacAddress")
     }
 
     @RequiresApi(28)
@@ -140,18 +136,19 @@ object WifiApManager {
                     }
                     "onConnectedClientsChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
+                        @Suppress("UNCHECKED_CAST")
                         callback.onConnectedClientsChanged(when (noArgs) {
-                            1 -> args!![0] as? Iterable<*> ?: return null
+                            1 -> args!![0] as List<Parcelable>
                             2 -> {
                                 Timber.w(Exception("Unexpected onConnectedClientsChanged API 31+"))
                                 // dispatchInfoChanged(args!![0])
-                                args!![1] as? Iterable<*> ?: return null
+                                args!![1] as List<Parcelable>
                             }
                             else -> {
                                 Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                                 return null
                             }
-                        }.map { getMacAddress(it) as MacAddress })
+                        })
                     }
                     "onInfoChanged" -> @TargetApi(30) {
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
@@ -179,7 +176,7 @@ object WifiApManager {
                     "onBlockedClientConnecting" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onBlockedClientConnecting"))
                         if (noArgs != 2) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        callback.onBlockedClientConnecting(getMacAddress(args!![0]) as MacAddress, args[1] as Int)
+                        callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
                     }
                     else -> callSuper(interfaceSoftApCallback, proxy, method, args)
                 }

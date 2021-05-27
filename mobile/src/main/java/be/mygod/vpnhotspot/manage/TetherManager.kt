@@ -6,7 +6,6 @@ import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.MacAddress
 import android.os.Build
 import android.os.Parcelable
 import android.provider.Settings
@@ -27,10 +26,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.wifi.SoftApCapability
-import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApInfo
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.*
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.joinToSpanned
@@ -182,12 +178,18 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             this.capability = capability
             data.notifyChange()
         }
-        override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) {
+        @RequiresApi(30)
+        override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) {
+            @Suppress("NAME_SHADOWING")
+            val client = WifiClient(client)
+            val macAddress = client.macAddress
+            var name = macAddress.toString()
+            if (BuildCompat.isAtLeastS()) client.apInstanceIdentifier?.let { name += "%$it" }
             val reason = WifiApManager.clientBlockLookup(blockedReason, true)
-            Timber.i("$client blocked from connecting: $reason ($blockedReason)")
-            SmartSnackbar.make(parent.getString(R.string.tethering_manage_wifi_client_blocked, client, reason)).apply {
+            Timber.i("$name blocked from connecting: $reason ($blockedReason)")
+            SmartSnackbar.make(parent.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
                 action(R.string.tethering_manage_wifi_copy_mac) {
-                    app.clipboard.setPrimaryClip(ClipData.newPlainText(null, client.toString()))
+                    app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
                 }
             }.show()
         }

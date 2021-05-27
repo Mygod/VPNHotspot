@@ -26,7 +26,5 @@ object UnblockCentral {
     }
 
     @RequiresApi(31)
-    fun SoftApInfo_getApInstanceIdentifier(clazz: Class<*>) = init.let {
-        clazz.getDeclaredMethod("getApInstanceIdentifier")
-    }
+    fun getApInstanceIdentifier(clazz: Class<*>) = init.let { clazz.getDeclaredMethod("getApInstanceIdentifier") }
 }

@@ -20,28 +20,26 @@ value class SoftApInfo(val inner: Parcelable) {
         @get:RequiresApi(31)
         private val getWifiStandard by lazy { clazz.getDeclaredMethod("getWifiStandard") }
         @get:RequiresApi(31)
-        private val getApInstanceIdentifier by lazy @TargetApi(31) {
-            UnblockCentral.SoftApInfo_getApInstanceIdentifier(clazz)
-        }
+        private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
         @get:RequiresApi(31)
         private val getAutoShutdownTimeoutMillis by lazy { clazz.getDeclaredMethod("getAutoShutdownTimeoutMillis") }
 
         val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { clazz }
     }
 
-    val frequency get() = getFrequency.invoke(inner) as Int
-    val bandwidth get() = getBandwidth.invoke(inner) as Int
+    val frequency get() = getFrequency(inner) as Int
+    val bandwidth get() = getBandwidth(inner) as Int
     @get:RequiresApi(31)
-    val bssid get() = getBssid.invoke(inner) as MacAddress
+    val bssid get() = getBssid(inner) as MacAddress
     @get:RequiresApi(31)
-    val wifiStandard get() = getWifiStandard.invoke(inner) as Int
+    val wifiStandard get() = getWifiStandard(inner) as Int
     @get:RequiresApi(31)
     val apInstanceIdentifier get() = try {
-        getApInstanceIdentifier.invoke(inner) as? String
+        getApInstanceIdentifier(inner) as? String
     } catch (e: ReflectiveOperationException) {
         Timber.w(e)
         null
     }
     @get:RequiresApi(31)
-    val autoShutdownTimeoutMillis get() = getAutoShutdownTimeoutMillis.invoke(inner) as Long
+    val autoShutdownTimeoutMillis get() = getAutoShutdownTimeoutMillis(inner) as Long
 }
