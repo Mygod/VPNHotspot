@@ -21,14 +21,14 @@ object ServiceNotification {
 
     private fun buildNotification(context: Context): Notification {
         val builder = NotificationCompat.Builder(context, CHANNEL)
-                .setWhen(0)
-                .setCategory(NotificationCompat.CATEGORY_SERVICE)
-                .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
-                .setContentTitle(context.getText(R.string.notification_tethering_title))
-                .setSmallIcon(R.drawable.ic_quick_settings_tile_on)
-                .setContentIntent(PendingIntent.getActivity(context, 0,
-                        Intent(context, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT))
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setWhen(0)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setColor(ContextCompat.getColor(context, R.color.colorPrimary))
+            .setContentTitle(context.getText(R.string.notification_tethering_title))
+            .setSmallIcon(R.drawable.ic_quick_settings_tile_on)
+            .setContentIntent(PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         val deviceCounts = deviceCountsMap.values.flatMap { it.entries }.sortedBy { it.key }
         val inactive = inactiveMap.values.flatten()
         var lines = deviceCounts.map { (dev, size) ->
