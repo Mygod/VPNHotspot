@@ -19,9 +19,8 @@ value class SoftApInfo(val inner: Parcelable) {
         private val getBssid by lazy { clazz.getDeclaredMethod("getBssid") }
         @get:RequiresApi(31)
         private val getWifiStandard by lazy { clazz.getDeclaredMethod("getWifiStandard") }
-        @delegate:TargetApi(31)
         @get:RequiresApi(31)
-        private val getApInstanceIdentifier by lazy { UnblockCentral.getApInstanceIdentifier(clazz) }
+        private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
         @get:RequiresApi(31)
         private val getAutoShutdownTimeoutMillis by lazy { clazz.getDeclaredMethod("getAutoShutdownTimeoutMillis") }
 

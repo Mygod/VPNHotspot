@@ -172,9 +172,8 @@ object TetheringManager {
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
-    @delegate:TargetApi(30)
     @get:RequiresApi(30)
-    private val instance by lazy {
+    private val instance by lazy @TargetApi(30) {
         @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
         val service = Services.context.getSystemService(TETHERING_SERVICE)
         service

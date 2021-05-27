@@ -159,8 +159,7 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
     }
 }.trimEnd()
 
-@delegate:SuppressLint("SoonBlockedPrivateApi")
-private val parseNumericAddress by lazy {
+private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
         isAccessible = true
     }
@@ -201,9 +200,8 @@ fun Resources.findIdentifier(name: String, defType: String, defPackage: String, 
         if (alternativePackage != null && it == 0) getIdentifier(name, defType, alternativePackage) else it
     }
 
-@delegate:TargetApi(26)
 @get:RequiresApi(26)
-private val newLookup by lazy {
+private val newLookup by lazy @TargetApi(26) {
     MethodHandles.Lookup::class.java.getDeclaredConstructor(Class::class.java, Int::class.java).apply {
         isAccessible = true
     }

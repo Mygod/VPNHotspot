@@ -50,8 +50,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
         var persistentSupported = false
 
-        @delegate:TargetApi(29)
-        private val hasP2pValidateName by lazy {
+        private val hasP2pValidateName by lazy @TargetApi(29) {
             val array = Build.VERSION.SECURITY_PATCH.split('-', limit = 3)
             val y = array.getOrNull(0)?.toIntOrNull()
             val m = array.getOrNull(1)?.toIntOrNull()

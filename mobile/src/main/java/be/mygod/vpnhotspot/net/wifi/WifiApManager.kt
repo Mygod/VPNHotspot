@@ -42,9 +42,8 @@ object WifiApManager {
     }
     @get:RequiresApi(30)
     private val getSoftApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getSoftApConfiguration") }
-    @delegate:TargetApi(30)
     @get:RequiresApi(30)
-    private val setSoftApConfiguration by lazy {
+    private val setSoftApConfiguration by lazy @TargetApi(30) {
         WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
     }
 
