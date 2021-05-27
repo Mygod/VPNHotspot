@@ -10,6 +10,8 @@ import android.net.MacAddress
 import android.os.Build
 import android.os.Parcelable
 import android.provider.Settings
+import android.text.SpannableStringBuilder
+import android.text.format.DateUtils
 import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -29,6 +31,9 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.util.format
+import be.mygod.vpnhotspot.util.joinToSpanned
+import be.mygod.vpnhotspot.util.makeMacSpan
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
@@ -188,28 +193,40 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_wifi)
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
-        override val text get() = listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError,
-                info.run {
-                    if (isEmpty()) null else joinToString("\n") @TargetApi(30) {
-                        val info = SoftApInfo(it)
-                        val frequency = info.frequency
-                        parent.getString(R.string.tethering_manage_wifi_info, frequency,
-                            SoftApConfigurationCompat.frequencyToChannel(frequency),
-                            SoftApInfo.channelWidthLookup(info.bandwidth, true))
-                    }
-                },
-                capability?.let { (maxSupportedClients, supportedFeatures) ->
-                    app.resources.getQuantityString(R.plurals.tethering_manage_wifi_capabilities, maxSupportedClients,
-                            numClients ?: "?", maxSupportedClients, sequence {
-                        var features = supportedFeatures
-                        if (features == 0L) yield(parent.getString(R.string.tethering_manage_wifi_no_features))
-                        else while (features != 0L) {
-                            val bit = features.takeLowestOneBit()
-                            yield(WifiApManager.featureLookup(bit, true))
-                            features = features and bit.inv()
+        override val text get() = parent.resources.configuration.locale.let { locale ->
+            listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError, info.run {
+                if (isEmpty()) null else joinToSpanned("\n") @TargetApi(30) { parcel ->
+                    val info = SoftApInfo(parcel)
+                    val frequency = info.frequency
+                    val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
+                    val bandwidth = SoftApInfo.channelWidthLookup(info.bandwidth, true)
+                    if (BuildCompat.isAtLeastS()) {
+                        var bssid = makeMacSpan(info.bssid.toString())
+                        info.apInstanceIdentifier?.let {    // take the fast route if possible
+                            bssid = if (bssid is String) "$bssid%$it" else SpannableStringBuilder(bssid).append("%$it")
                         }
-                    }.joinToString())
-                }).joinToString("\n")
+                        val timeout = info.autoShutdownTimeoutMillis
+                        parent.getText(if (timeout == 0L) {
+                            R.string.tethering_manage_wifi_info_timeout_disabled
+                        } else R.string.tethering_manage_wifi_info_timeout_enabled).format(locale,
+                            frequency, channel, bandwidth, bssid, info.wifiStandard,
+                            // http://unicode.org/cldr/trac/ticket/3407
+                            DateUtils.formatElapsedTime(timeout / 1000))
+                    } else parent.getText(R.string.tethering_manage_wifi_info).format(locale,
+                        frequency, channel, bandwidth)
+                }
+            }, capability?.let { (maxSupportedClients, supportedFeatures) ->
+                app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities,
+                    maxSupportedClients).format(locale, numClients ?: "?", maxSupportedClients, sequence {
+                    var features = supportedFeatures
+                    if (features != 0L) while (features != 0L) {
+                        val bit = features.takeLowestOneBit()
+                        yield(WifiApManager.featureLookup(bit, true))
+                        features = features and bit.inv()
+                    } else yield(parent.getText(R.string.tethering_manage_wifi_no_features))
+                }.joinToSpanned())
+            }).joinToSpanned("\n")
+        }
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)

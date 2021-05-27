@@ -70,6 +70,10 @@
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
     <string name="tethering_manage_wigig">WiGig hotspot</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
+        width %3$s, idle timeout in %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
+        width %3$s, idle timeout disabled</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="one">%1$s/%2$d client connected\nSupported features: %3$s</item>
         <item quantity="other">%1$s/%2$d clients connected\nSupported features: %3$s</item>

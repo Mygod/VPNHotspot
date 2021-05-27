@@ -126,6 +126,15 @@ fun CharSequence.format(locale: Locale, vararg args: Any) = SpannableStringBuild
     }
 }
 
+fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
+                                  limit: Int = -1, truncated: CharSequence = "...",
+                                  transform: ((T) -> CharSequence)? = null) =
+    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
+fun <T> Sequence<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
+                                  limit: Int = -1, truncated: CharSequence = "...",
+                                  transform: ((T) -> CharSequence)? = null) =
+    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
+
 fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     // exclude all bogon IP addresses supported by Android APIs
     if (!app.hasTouch || ip.isMulticastAddress || ip.isAnyLocalAddress || ip.isLoopbackAddress ||

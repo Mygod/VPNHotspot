@@ -59,6 +59,10 @@
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
     <string name="tethering_manage_wigig">WiGig 热点</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
+        关闭延迟 %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
+        不自动关闭</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</item>
     </plurals>
