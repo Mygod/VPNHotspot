@@ -90,7 +90,6 @@ private val formatSequence = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[t
  *
  * @param locale
  * the locale to apply; `null` value means no localization.
- * @param format the format string (see [java.util.Formatter.format])
  * @param args
  * the list of arguments passed to the formatter.
  * @return the formatted string (with spans).
@@ -160,7 +159,8 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
     }
 }.trimEnd()
 
-private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
+@delegate:SuppressLint("SoonBlockedPrivateApi")
+private val parseNumericAddress by lazy {
     InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
         isAccessible = true
     }
@@ -201,8 +201,9 @@ fun Resources.findIdentifier(name: String, defType: String, defPackage: String, 
         if (alternativePackage != null && it == 0) getIdentifier(name, defType, alternativePackage) else it
     }
 
+@delegate:TargetApi(26)
 @get:RequiresApi(26)
-private val newLookup by lazy @TargetApi(26) {
+private val newLookup by lazy {
     MethodHandles.Lookup::class.java.getDeclaredConstructor(Class::class.java, Int::class.java).apply {
         isAccessible = true
     }

@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.root
 
 import android.os.Parcelable
-import android.util.Log
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandOneWay
 import be.mygod.vpnhotspot.net.Routing
@@ -10,6 +9,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 
 object RoutingCommands {
     @Parcelize
@@ -20,7 +20,7 @@ object RoutingCommands {
             process.outputStream.bufferedWriter().use(Routing.Companion::appendCleanCommands)
             when (val code = process.waitFor()) {
                 0 -> { }
-                else -> Log.d("RoutingCommands.Clean", "Unexpected exit code $code")
+                else -> Timber.w("Unexpected exit code $code")
             }
             check(process.waitFor() == 0)
         }

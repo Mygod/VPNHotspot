@@ -45,24 +45,27 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
         TetheringManager.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
+        @delegate:TargetApi(26)
         @get:RequiresApi(26)
-        internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
-        internal val bluetoothManager by lazy @TargetApi(24) { TetherManager.Bluetooth(this@TetheringFragment) }
+        internal val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
+        @delegate:TargetApi(24)
         @get:RequiresApi(24)
-        private val tetherManagers by lazy @TargetApi(24) {
+        internal val bluetoothManager by lazy { TetherManager.Bluetooth(this@TetheringFragment) }
+        @delegate:TargetApi(24)
+        @get:RequiresApi(24)
+        private val tetherManagers by lazy {
             listOf(TetherManager.Wifi(this@TetheringFragment),
                     TetherManager.Usb(this@TetheringFragment),
                     bluetoothManager)
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val tetherManagers30 by lazy @TargetApi(30) {
+        private val tetherManagers30 by lazy {
             listOf(TetherManager.Ethernet(this@TetheringFragment),
                     TetherManager.Ncm(this@TetheringFragment),
                     TetherManager.WiGig(this@TetheringFragment))
         }
-        private val wifiManagerLegacy by lazy @Suppress("Deprecation") {
-            TetherManager.WifiLegacy(this@TetheringFragment)
-        }
+        private val wifiManagerLegacy by lazy { TetherManager.WifiLegacy(this@TetheringFragment) }
 
         private var enabledIfaces = emptyList<String>()
         private var listDeferred = CompletableDeferred<List<Manager>>(emptyList())
@@ -225,7 +228,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                 val configuration = ret!!.configuration

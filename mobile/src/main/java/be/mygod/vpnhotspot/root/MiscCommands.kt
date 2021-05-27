@@ -102,8 +102,8 @@ class ProcessListener(private val terminateRegex: Regex,
         try {
             launch(parent) {
                 try {
-                    process.inputStream.bufferedReader().useLines {
-                        for (line in it) {
+                    process.inputStream.bufferedReader().useLines { lines ->
+                        for (line in lines) {
                             trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
                             if (terminateRegex.containsMatchIn(line)) process.destroy()
                         }
@@ -112,8 +112,8 @@ class ProcessListener(private val terminateRegex: Regex,
             }
             launch(parent) {
                 try {
-                    process.errorStream.bufferedReader().useLines {
-                        for (line in it) trySend(ProcessData.StdoutLine(line)).onClosed {
+                    process.errorStream.bufferedReader().useLines { lines ->
+                        for (line in lines) trySend(ProcessData.StdoutLine(line)).onClosed {
                             return@useLines
                         }.onFailure { throw it!! }
                     }

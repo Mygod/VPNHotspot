@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
@@ -173,8 +172,9 @@ object TetheringManager {
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
+    @delegate:TargetApi(30)
     @get:RequiresApi(30)
-    private val instance by lazy @TargetApi(30) {
+    private val instance by lazy {
         @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
         val service = Services.context.getSystemService(TETHERING_SERVICE)
         service

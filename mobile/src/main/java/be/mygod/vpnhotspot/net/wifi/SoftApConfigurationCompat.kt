@@ -108,41 +108,48 @@ data class SoftApConfigurationCompat(
             android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apChannel")
         }
 
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getAllowedClientList by lazy @TargetApi(30) {
+        private val getAllowedClientList by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("getAllowedClientList")
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getBand by lazy @TargetApi(30) { SoftApConfiguration::class.java.getDeclaredMethod("getBand") }
+        private val getBand by lazy { SoftApConfiguration::class.java.getDeclaredMethod("getBand") }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getBlockedClientList by lazy @TargetApi(30) {
+        private val getBlockedClientList by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("getBlockedClientList")
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getChannel by lazy @TargetApi(30) {
-            SoftApConfiguration::class.java.getDeclaredMethod("getChannel")
-        }
+        private val getChannel by lazy { SoftApConfiguration::class.java.getDeclaredMethod("getChannel") }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getMaxNumberOfClients by lazy @TargetApi(30) {
+        private val getMaxNumberOfClients by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("getMaxNumberOfClients")
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val getShutdownTimeoutMillis by lazy @TargetApi(30) {
+        private val getShutdownTimeoutMillis by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("getShutdownTimeoutMillis")
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val isAutoShutdownEnabled by lazy @TargetApi(30) {
+        private val isAutoShutdownEnabled by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("isAutoShutdownEnabled")
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val isClientControlByUserEnabled by lazy @TargetApi(30) {
+        private val isClientControlByUserEnabled by lazy {
             SoftApConfiguration::class.java.getDeclaredMethod("isClientControlByUserEnabled")
         }
 
         @get:RequiresApi(30)
         private val classBuilder by lazy { Class.forName("android.net.wifi.SoftApConfiguration\$Builder") }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val newBuilder by lazy @TargetApi(30) { classBuilder.getConstructor(SoftApConfiguration::class.java) }
+        private val newBuilder by lazy { classBuilder.getConstructor(SoftApConfiguration::class.java) }
         @get:RequiresApi(30)
         private val build by lazy { classBuilder.getDeclaredMethod("build") }
         @get:RequiresApi(30)
@@ -159,10 +166,9 @@ data class SoftApConfigurationCompat(
         private val setBlockedClientList by lazy {
             classBuilder.getDeclaredMethod("setBlockedClientList", java.util.List::class.java)
         }
+        @delegate:TargetApi(30)
         @get:RequiresApi(30)
-        private val setBssid by lazy @TargetApi(30) {
-            classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java)
-        }
+        private val setBssid by lazy { classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java) }
         @get:RequiresApi(30)
         private val setChannel by lazy {
             classBuilder.getDeclaredMethod("setChannel", Int::class.java, Int::class.java)

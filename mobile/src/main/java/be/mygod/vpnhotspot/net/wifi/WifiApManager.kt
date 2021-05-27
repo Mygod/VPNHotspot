@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -43,8 +42,9 @@ object WifiApManager {
     }
     @get:RequiresApi(30)
     private val getSoftApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getSoftApConfiguration") }
+    @delegate:TargetApi(30)
     @get:RequiresApi(30)
-    private val setSoftApConfiguration by lazy @TargetApi(30) {
+    private val setSoftApConfiguration by lazy {
         WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
     }
 

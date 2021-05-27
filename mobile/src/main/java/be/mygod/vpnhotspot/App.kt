@@ -61,6 +61,7 @@ class App : Application() {
             }
         }
         Timber.plant(object : Timber.DebugTree() {
+            @SuppressLint("LogNotTimber")
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
                 if (t == null) {
                     if (priority != Log.DEBUG || BuildConfig.DEBUG) Log.println(priority, tag, message)

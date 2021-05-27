@@ -13,8 +13,9 @@ value class WifiClient(val inner: Parcelable) {
     companion object {
         private val clazz by lazy { Class.forName("android.net.wifi.WifiClient") }
         private val getMacAddress by lazy { clazz.getDeclaredMethod("getMacAddress") }
+        @delegate:TargetApi(31)
         @get:RequiresApi(31)
-        private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
+        private val getApInstanceIdentifier by lazy { UnblockCentral.getApInstanceIdentifier(clazz) }
     }
 
     val macAddress get() = getMacAddress(inner) as MacAddress

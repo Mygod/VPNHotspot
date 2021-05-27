@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root
 
+import android.annotation.SuppressLint
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.*
@@ -13,6 +14,7 @@ object RootManager : RootSession(), Logger {
     class RootInit : RootCommandNoResult {
         override suspend fun execute(): Parcelable? {
             Timber.plant(object : Timber.DebugTree() {
+                @SuppressLint("LogNotTimber")
                 override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
                     if (priority >= Log.WARN) {
                         System.err.println("$priority/$tag: $message")

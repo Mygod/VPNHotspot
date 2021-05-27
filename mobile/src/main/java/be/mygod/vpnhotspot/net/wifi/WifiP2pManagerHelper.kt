@@ -95,10 +95,10 @@ object WifiP2pManagerHelper {
         return result.future.await()
     }
 
-    private val interfacePersistentGroupInfoListener by lazy @SuppressLint("PrivateApi") {
+    private val interfacePersistentGroupInfoListener by lazy {
         Class.forName("android.net.wifi.p2p.WifiP2pManager\$PersistentGroupInfoListener")
     }
-    private val getGroupList by lazy @SuppressLint("PrivateApi") {
+    private val getGroupList by lazy {
         Class.forName("android.net.wifi.p2p.WifiP2pGroupList").getDeclaredMethod("getGroupList")
     }
     private val requestPersistentGroupInfo by lazy {
@@ -111,7 +111,6 @@ object WifiP2pManagerHelper {
      * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
      *
      * @param c is the channel created at {@link #initialize}
-     * @param listener for callback when persistent group info list is available. Can be null.
      */
     suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel): Collection<WifiP2pGroup> {
         val result = CompletableDeferred<Collection<WifiP2pGroup>>()

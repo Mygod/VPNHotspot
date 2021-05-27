@@ -389,7 +389,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     setDeviceAddress(deviceAddress?.toPlatform())
                 }.build(), listener)
             }
-        } catch (e: RuntimeException) {
+        } catch (e: SecurityException) {
+            Timber.w(e)
+            startFailure(e.readableMessage)
+        } catch (e: IllegalArgumentException) {
             Timber.w(e)
             startFailure(e.readableMessage)
         }

@@ -218,9 +218,9 @@ class RootServer {
                 throw e
             } finally {
                 Logger.me.d("Waiting for exit")
-                errorReader.await()
+                withContext(NonCancellable) { errorReader.await() }
                 process.waitFor()
-                withContext(NonCancellable) { closeInternal(true) }
+                closeInternal(true)
             }
         }
     }
@@ -290,7 +290,7 @@ class RootServer {
         }
     }
 
-    private suspend fun closeInternal(fromWorker: Boolean = false) = synchronized(callbackLookup) {
+    private fun closeInternal(fromWorker: Boolean = false) = synchronized(callbackLookup) {
         if (active) {
             active = false
             Logger.me.d(if (fromWorker) "Shutting down from worker" else "Shutting down from client")

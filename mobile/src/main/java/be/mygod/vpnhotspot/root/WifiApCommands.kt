@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.root
 
-import android.net.MacAddress
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
@@ -58,7 +57,7 @@ object WifiApCommands {
     @Parcelize
     @RequiresApi(28)
     class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
-        override fun create(scope: CoroutineScope) = scope.produce<SoftApCallbackParcel>(capacity = capacity) {
+        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
             val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
                 private fun push(parcel: SoftApCallbackParcel) {
