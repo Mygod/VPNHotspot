@@ -78,6 +78,10 @@
         <item quantity="one">%1$s/%2$d client connected\nSupported features: %3$s</item>
         <item quantity="other">%1$s/%2$d clients connected\nSupported features: %3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="one">%d client connected</item>
+        <item quantity="other">%1d clients connected</item>
+    </plurals>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>

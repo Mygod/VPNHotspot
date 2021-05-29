@@ -66,6 +66,9 @@
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="other">已连接 %d 个设备</item>
+    </plurals>
     <string name="tethering_manage_wifi_no_features">无</string>
     <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>

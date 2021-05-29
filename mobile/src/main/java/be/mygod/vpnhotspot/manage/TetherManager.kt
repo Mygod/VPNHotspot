@@ -168,7 +168,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         }
         override fun onNumClientsChanged(numClients: Int) {
             this.numClients = numClients
-            if (Build.VERSION.SDK_INT >= 30) data.notifyChange()    // only emits when onCapabilityChanged can be called
+            data.notifyChange()
         }
         override fun onInfoChanged(info: List<Parcelable>) {
             this.info = info
@@ -213,6 +213,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         features = features and bit.inv()
                     } else yield(parent.getText(R.string.tethering_manage_wifi_no_features))
                 }.joinToSpanned())
+        } ?: numClients?.let { numClients ->
+            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, numClients).format(locale,
+                numClients)
         }
         override val text get() = parent.resources.configuration.locale.let { locale ->
             listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError, info.run {
