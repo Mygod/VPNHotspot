@@ -26,9 +26,9 @@ data class SoftApConfigurationCompat(
         var isHiddenSsid: Boolean = false,
         @TargetApi(23)
         var channels: SparseIntArray = SparseIntArray(1).apply { put(BAND_2GHZ, 0) },
+        var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
         @TargetApi(30)
         var maxNumberOfClients: Int = 0,
-        var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
         @TargetApi(28)
         var isAutoShutdownEnabled: Boolean = true,
         @TargetApi(28)
@@ -237,7 +237,6 @@ data class SoftApConfigurationCompat(
                         else -> throw IllegalArgumentException("Unexpected band $band")
                     }, apChannel.getInt(this))
                 },
-                0,
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
                         "More than 1 key managements supplied: $allowedKeyManagement"
@@ -258,7 +257,7 @@ data class SoftApConfigurationCompat(
                         }
                     }
                 },
-                if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
+                isAutoShutdownEnabled = if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
                 underlying = this)
 
         @RequiresApi(30)
@@ -271,8 +270,8 @@ data class SoftApConfigurationCompat(
                 if (BuildCompat.isAtLeastS()) getChannels(this) as SparseIntArray else SparseIntArray(1).apply {
                     put(getBand(this) as Int, getChannel(this) as Int)
                 },
-                getMaxNumberOfClients(this) as Int,
                 securityType,
+                getMaxNumberOfClients(this) as Int,
                 isAutoShutdownEnabled(this) as Boolean,
                 getShutdownTimeoutMillis(this) as Long,
                 isClientControlByUserEnabled(this) as Boolean,
