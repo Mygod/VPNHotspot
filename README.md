@@ -180,7 +180,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
-* (since API 31) `Ldalvik/system/VMDebug;->allowHiddenApiReflectionFrom(Ljava/lang/Class;)V,unsupported`
+* (since API 29) `Ldalvik/system/VMDebug;->allowHiddenApiReflectionFrom(Ljava/lang/Class;)V,unsupported`
 * (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
 * (prior to API 29) `Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,max-target-p`
