@@ -199,13 +199,23 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val type get() = VIEW_TYPE_WIFI
 
         @TargetApi(30)
-        private fun formatCapability(locale: Locale) = capability?.let {
-            val capability = SoftApCapability(it)
+        private fun formatCapability(locale: Locale) = capability?.let { parcel ->
+            val capability = SoftApCapability(parcel)
             val numClients = numClients
             val maxClients = capability.maxSupportedClients
-            val supportedFeatures = capability.supportedFeatures
-            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0).format(locale,
-                numClients ?: "?", maxClients, sequence {
+            var supportedFeatures = capability.supportedFeatures
+            if (BuildCompat.isAtLeastS()) for ((flag, band) in arrayOf(
+                SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfigurationCompat.BAND_2GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfigurationCompat.BAND_5GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfigurationCompat.BAND_6GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfigurationCompat.BAND_60GHZ,
+            )) {
+                if (capability.getSupportedChannelList(band).isEmpty()) continue
+                // reduce double reporting
+                supportedFeatures = supportedFeatures and flag.inv()
+            }
+            val result = parent.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0)
+                .format(locale, numClients ?: "?", maxClients, sequence {
                     var features = supportedFeatures
                     if (features != 0L) while (features != 0L) {
                         val bit = features.takeLowestOneBit()
@@ -213,6 +223,39 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         features = features and bit.inv()
                     } else yield(parent.getText(R.string.tethering_manage_wifi_no_features))
                 }.joinToSpanned())
+            if (BuildCompat.isAtLeastS()) {
+                val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
+                    val channels = capability.getSupportedChannelList(band)
+                    if (channels.isNotEmpty()) StringBuilder().apply {
+                        append(SoftApConfigurationCompat.bandLookup(band, true))
+                        append(" (")
+                        channels.sort()
+                        var pending: Int? = null
+                        var last = channels[0]
+                        append(last)
+                        for (channel in channels.asSequence().drop(1)) {
+                            if (channel == last + 1) pending = channel else {
+                                pending?.let {
+                                    append('-')
+                                    append(it)
+                                    pending = null
+                                }
+                                append(',')
+                                append(channel)
+                            }
+                            last = channel
+                        }
+                        pending?.let {
+                            append('-')
+                            append(it)
+                        }
+                        append(')')
+                    } else null
+                }.filterNotNull()
+                if (list.isNotEmpty()) result.append(parent.getText(R.string.tethering_manage_wifi_supported_channels)
+                    .format(locale, list.joinToString("; ")))
+            }
+            result
         } ?: numClients?.let { numClients ->
             app.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, numClients).format(locale,
                 numClients)

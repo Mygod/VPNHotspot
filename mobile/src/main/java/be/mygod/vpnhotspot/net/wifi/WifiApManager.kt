@@ -122,8 +122,7 @@ object WifiApManager {
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
     @RequiresApi(28)
-    val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
-            "SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
+    val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
 

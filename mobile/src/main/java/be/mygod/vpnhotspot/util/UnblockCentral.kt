@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import androidx.annotation.RequiresApi
 import timber.log.Timber
@@ -26,6 +27,11 @@ object UnblockCentral {
             Timber.w(e)
             false
         }
+    }
+
+    @get:RequiresApi(31)
+    val SoftApConfiguration_BAND_TYPES get() = init.let {
+        SoftApConfiguration::class.java.getField("BAND_TYPES").get(null) as IntArray
     }
 
     @RequiresApi(31)

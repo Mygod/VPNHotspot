@@ -12,7 +12,10 @@ import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 
 @Parcelize
 data class SoftApConfigurationCompat(
@@ -40,10 +43,21 @@ data class SoftApConfigurationCompat(
     companion object {
         const val BAND_2GHZ = 1
         const val BAND_5GHZ = 2
+        @TargetApi(30)
         const val BAND_6GHZ = 4
+        @TargetApi(31)
         const val BAND_60GHZ = 8
         private const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
         const val BAND_ANY = BAND_LEGACY or BAND_6GHZ
+        val BAND_TYPES by lazy {
+            if (BuildCompat.isAtLeastS()) try {
+                return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+            }
+            intArrayOf(BAND_2GHZ, BAND_5GHZ, BAND_6GHZ, BAND_60GHZ)
+        }
+        val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_", null, "2GHZ", "5GHZ")
 
         fun isLegacyEitherBand(band: Int) = band and BAND_LEGACY == BAND_LEGACY
 
