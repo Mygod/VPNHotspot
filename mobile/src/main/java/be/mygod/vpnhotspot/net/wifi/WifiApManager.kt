@@ -96,6 +96,7 @@ object WifiApManager {
          * Called when information of softap changes.
          *
          * @param info is the softap information. {@link SoftApInfo}
+         *             At most one will be returned on API 30.
          */
         @RequiresApi(30)
         fun onInfoChanged(info: List<Parcelable>) { }
