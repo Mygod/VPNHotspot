@@ -118,8 +118,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
                 val bandOption = dialogView.band.selectedItem as BandOption
-                band = bandOption.band
-                channel = bandOption.channel
+                setChannel(bandOption.channel, bandOption.band)
             }
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.text.toString())

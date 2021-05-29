@@ -192,20 +192,17 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 return SoftApConfigurationCompat(
                         ssid = networkName,
                         passphrase = passphrase,
-                        band = RepeaterService.operatingBand,
-                        channel = RepeaterService.operatingChannel,
                         securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                         isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                         shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).apply {
                     bssid = RepeaterService.deviceAddress
+                    setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
                 } to false
             }
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat(
                     ssid = group.networkName,
-                    channel = RepeaterService.operatingChannel,
-                    band = SoftApConfigurationCompat.BAND_ANY,
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                     isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                     shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
@@ -215,6 +212,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     holder.config = config
                     passphrase = config.psk
                     bssid = config.bssid
+                    setChannel(RepeaterService.operatingChannel)
                     this to false
                 } catch (e: Exception) {
                     if (e !is CancellationException) Timber.w(e)
@@ -230,6 +228,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         return null
     }
     private suspend fun updateConfiguration(config: SoftApConfigurationCompat) {
+        config.requireSingleBand()
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.ssid
             RepeaterService.deviceAddress = config.bssid

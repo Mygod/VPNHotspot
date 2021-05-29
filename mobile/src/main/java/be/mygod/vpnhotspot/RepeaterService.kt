@@ -378,10 +378,12 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                     setPassphrase(passphrase)
                     when (val oc = operatingChannel) {
                         0 -> setGroupOperatingBand(when (val band = operatingBand) {
-                            SoftApConfigurationCompat.BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                             SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
                             SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                            else -> throw IllegalArgumentException("Unknown band $band")
+                            else -> {
+                                require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
+                                WifiP2pConfig.GROUP_OWNER_BAND_AUTO
+                            }
                         })
                         else -> {
                             setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
