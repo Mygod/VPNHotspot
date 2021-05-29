@@ -95,7 +95,7 @@ object WifiApManager {
         /**
          * Called when information of softap changes.
          *
-         * @param info is the softap information. {@link SoftApInfo}
+         * @param info is the softap information. [SoftApInfo]
          *             At most one will be returned on API 30.
          */
         @RequiresApi(30)
@@ -104,7 +104,7 @@ object WifiApManager {
         /**
          * Called when capability of softap changes.
          *
-         * @param capability is the softap capability. {@link SoftApCapability}
+         * @param capability is the softap capability. [SoftApCapability]
          */
         @RequiresApi(30)
         fun onCapabilityChanged(capability: Parcelable) { }
@@ -118,7 +118,7 @@ object WifiApManager {
          * {@link SAP_CLIENT_BLOCK_REASON_CODE_NO_MORE_STAS}.
          *
          * @param client the currently blocked client.
-         * @param blockedReason one of blocked reason from {@link SapClientBlockedReason}
+         * @param blockedReason one of blocked reason from [SapClientBlockedReason]
          */
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
@@ -165,18 +165,14 @@ object WifiApManager {
                     "onConnectedClientsChanged" -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
                         @Suppress("UNCHECKED_CAST")
-                        callback.onConnectedClientsChanged(when (noArgs) {
-                            1 -> args!![0] as List<Parcelable>
-                            2 -> {
-                                Timber.w(Exception("Unexpected onConnectedClientsChanged API 31+"))
-                                // dispatchInfoChanged(args!![0])
-                                args!![1] as List<Parcelable>
-                            }
+                        when (noArgs) {
+                            1 -> callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
+                            2 -> null   // we use the old method which returns all clients in one call
                             else -> {
                                 Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                                return null
+                                null
                             }
-                        })
+                        }
                     }
                     "onInfoChanged" -> @TargetApi(30) {
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
