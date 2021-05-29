@@ -201,9 +201,10 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         @TargetApi(30)
         private fun formatCapability(locale: Locale) = capability?.let {
             val capability = SoftApCapability(it)
+            val numClients = numClients
             val maxClients = capability.maxSupportedClients
             val supportedFeatures = capability.supportedFeatures
-            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, maxClients).format(locale,
+            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0).format(locale,
                 numClients ?: "?", maxClients, sequence {
                     var features = supportedFeatures
                     if (features != 0L) while (features != 0L) {

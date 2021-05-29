@@ -68,7 +68,6 @@ object WifiApCommands {
 
                 override fun onStateChanged(state: Int, failureReason: Int) =
                         push(SoftApCallbackParcel.OnStateChanged(state, failureReason))
-                @Suppress("OverridingDeprecatedMember")
                 override fun onNumClientsChanged(numClients: Int) =
                         push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
                 @RequiresApi(30)

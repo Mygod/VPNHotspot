@@ -76,9 +76,10 @@ object WifiApManager {
         /**
          * Called when number of connected clients to soft AP changes.
          *
+         * It is not recommended to use this legacy method on API 30+.
+         *
          * @param numClients number of connected clients
          */
-        @Deprecated("onConnectedClientsChanged")
         fun onNumClientsChanged(numClients: Int) { }
 
         /**
