@@ -88,10 +88,7 @@ object WifiApManager {
          * @param clients the currently connected clients
          */
         @RequiresApi(30)
-        fun onConnectedClientsChanged(clients: List<Parcelable>) {
-            @Suppress("DEPRECATION")
-            onNumClientsChanged(clients.size)
-        }
+        fun onConnectedClientsChanged(clients: List<Parcelable>) = onNumClientsChanged(clients.size)
 
         /**
          * Called when information of softap changes.

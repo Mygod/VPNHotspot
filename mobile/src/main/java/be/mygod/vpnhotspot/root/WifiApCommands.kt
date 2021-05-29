@@ -25,7 +25,6 @@ object WifiApCommands {
         }
         @Parcelize
         data class OnNumClientsChanged(val numClients: Int) : SoftApCallbackParcel() {
-            @Suppress("DEPRECATION")
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onNumClientsChanged(numClients)
         }
@@ -121,7 +120,7 @@ object WifiApCommands {
             is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
         }
-        for (callback in synchronized(callbacks) { callbacks }) parcel.dispatch(callback)
+        for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
     @RequiresApi(28)
     fun registerSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
@@ -137,8 +136,8 @@ object WifiApCommands {
                     SmartSnackbar.make(e).show()
                 }
             }
-            lastCallback
-        } else null
+            null
+        } else lastCallback
     }?.toSequence()?.forEach { it?.dispatch(callback) }
     @RequiresApi(28)
     fun unregisterSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
