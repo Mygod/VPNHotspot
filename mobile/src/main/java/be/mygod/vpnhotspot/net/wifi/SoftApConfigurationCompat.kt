@@ -39,6 +39,14 @@ data class SoftApConfigurationCompat(
         var blockedClientList: List<MacAddress> = emptyList(),
         @RequiresApi(30)
         var allowedClientList: List<MacAddress> = emptyList(),
+        @TargetApi(31)
+        var macRandomizationSetting: Int = RANDOMIZATION_PERSISTENT,
+        @TargetApi(31)
+        var isBridgedModeOpportunisticShutdownEnabled: Boolean = true,
+        @TargetApi(31)
+        var isIeee80211axEnabled: Boolean = true,
+        @TargetApi(31)
+        var isUserConfiguration: Boolean = true,
         var underlying: Parcelable? = null) : Parcelable {
     companion object {
         const val BAND_2GHZ = 1
@@ -58,6 +66,11 @@ data class SoftApConfigurationCompat(
             intArrayOf(BAND_2GHZ, BAND_5GHZ, BAND_6GHZ, BAND_60GHZ)
         }
         val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_", null, "2GHZ", "5GHZ")
+
+        @TargetApi(31)
+        const val RANDOMIZATION_NONE = 0
+        @TargetApi(31)
+        const val RANDOMIZATION_PERSISTENT = 1
 
         fun isLegacyEitherBand(band: Int) = band and BAND_LEGACY == BAND_LEGACY
 
@@ -151,6 +164,10 @@ data class SoftApConfigurationCompat(
         private val getChannels by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("getChannels")
         }
+        @get:RequiresApi(31)
+        private val getMacRandomizationSetting by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("getMacRandomizationSetting")
+        }
         @get:RequiresApi(30)
         private val getMaxNumberOfClients by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getMaxNumberOfClients")
@@ -163,9 +180,21 @@ data class SoftApConfigurationCompat(
         private val isAutoShutdownEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isAutoShutdownEnabled")
         }
+        @get:RequiresApi(31)
+        private val isBridgedModeOpportunisticShutdownEnabled by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isBridgedModeOpportunisticShutdownEnabled")
+        }
         @get:RequiresApi(30)
         private val isClientControlByUserEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isClientControlByUserEnabled")
+        }
+        @get:RequiresApi(31)
+        private val isIeee80211axEnabled by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isIeee80211axEnabled")
+        }
+        @get:RequiresApi(31)
+        private val isUserConfiguration by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isUserConfiguration")
         }
 
         @get:RequiresApi(30)
@@ -188,6 +217,10 @@ data class SoftApConfigurationCompat(
         private val setBlockedClientList by lazy {
             classBuilder.getDeclaredMethod("setBlockedClientList", java.util.List::class.java)
         }
+        @get:RequiresApi(31)
+        private val setBridgedModeOpportunisticShutdownEnabled by lazy {
+            classBuilder.getDeclaredMethod("setBridgedModeOpportunisticShutdownEnabled", Boolean::class.java)
+        }
         @get:RequiresApi(30)
         private val setBssid by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java)
@@ -206,6 +239,14 @@ data class SoftApConfigurationCompat(
         }
         @get:RequiresApi(30)
         private val setHiddenSsid by lazy { classBuilder.getDeclaredMethod("setHiddenSsid", Boolean::class.java) }
+        @get:RequiresApi(31)
+        private val setIeee80211axEnabled by lazy {
+            classBuilder.getDeclaredMethod("setIeee80211axEnabled", Boolean::class.java)
+        }
+        @get:RequiresApi(31)
+        private val setMacRandomizationSetting by lazy {
+            classBuilder.getDeclaredMethod("setMacRandomizationSetting", Int::class.java)
+        }
         @get:RequiresApi(30)
         private val setMaxNumberOfClients by lazy {
             classBuilder.getDeclaredMethod("setMaxNumberOfClients", Int::class.java)
@@ -220,6 +261,8 @@ data class SoftApConfigurationCompat(
         }
         @get:RequiresApi(30)
         private val setSsid by lazy { classBuilder.getDeclaredMethod("setSsid", String::class.java) }
+        @get:RequiresApi(31)
+        private val setUserConfiguration by lazy @TargetApi(31) { UnblockCentral.setUserConfiguration(classBuilder) }
 
         @Deprecated("Class deprecated in framework")
         @Suppress("DEPRECATION")
@@ -277,6 +320,10 @@ data class SoftApConfigurationCompat(
                 isClientControlByUserEnabled(this) as Boolean,
                 getBlockedClientList(this) as List<MacAddress>,
                 getAllowedClientList(this) as List<MacAddress>,
+                getMacRandomizationSetting(this) as Int,
+                isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
+                isIeee80211axEnabled(this) as Boolean,
+                isUserConfiguration(this) as Boolean,
                 this)
     }
 
@@ -366,6 +413,16 @@ data class SoftApConfigurationCompat(
         setHiddenSsid(builder, isHiddenSsid)
         setAllowedClientList(builder, allowedClientList)
         setBlockedClientList(builder, blockedClientList)
+        if (BuildCompat.isAtLeastS()) {
+            setMacRandomizationSetting(builder, macRandomizationSetting)
+            setBridgedModeOpportunisticShutdownEnabled(builder, isBridgedModeOpportunisticShutdownEnabled)
+            setIeee80211axEnabled(builder, isIeee80211axEnabled)
+            if (sac?.let { isUserConfiguration(it) as Boolean } != false != isUserConfiguration) try {
+                setUserConfiguration(builder, isUserConfiguration)
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e) // as far as we are concerned, this field is not used anywhere so ignore for now
+            }
+        }
         return build(builder) as SoftApConfiguration
     }
 
