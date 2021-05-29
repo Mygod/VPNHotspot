@@ -11,6 +11,7 @@ import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
@@ -50,7 +51,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
         var persistentSupported = false
 
-        private val hasP2pValidateName by lazy @TargetApi(29) {
+        @get:RequiresApi(29)
+        private val hasP2pValidateName by lazy {
             val array = Build.VERSION.SECURITY_PATCH.split('-', limit = 3)
             val y = array.getOrNull(0)?.toIntOrNull()
             val m = array.getOrNull(1)?.toIntOrNull()
