@@ -63,11 +63,13 @@ object WifiApManager {
         /**
          * Called when soft AP state changes.
          *
-         * @param state new new AP state. One of {@link #WIFI_AP_STATE_DISABLED},
-         *        {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
-         *        {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+         * @param state         the new AP state. One of {@link #WIFI_AP_STATE_DISABLED},
+         *                      {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+         *                      {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
          * @param failureReason reason when in failed state. One of
-         *        {@link #SAP_START_FAILURE_GENERAL}, {@link #SAP_START_FAILURE_NO_CHANNEL}
+         *                      {@link #SAP_START_FAILURE_GENERAL},
+         *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
+         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
          */
         fun onStateChanged(state: Int, failureReason: Int) { }
 
@@ -79,18 +81,44 @@ object WifiApManager {
         @Deprecated("onConnectedClientsChanged")
         fun onNumClientsChanged(numClients: Int) { }
 
+        /**
+         * Called when the connected clients to soft AP changes.
+         *
+         * @param clients the currently connected clients
+         */
         @RequiresApi(30)
         fun onConnectedClientsChanged(clients: List<Parcelable>) {
             @Suppress("DEPRECATION")
             onNumClientsChanged(clients.size)
         }
 
+        /**
+         * Called when information of softap changes.
+         *
+         * @param info is the softap information. {@link SoftApInfo}
+         */
         @RequiresApi(30)
         fun onInfoChanged(info: List<Parcelable>) { }
 
+        /**
+         * Called when capability of softap changes.
+         *
+         * @param capability is the softap capability. {@link SoftApCapability}
+         */
         @RequiresApi(30)
         fun onCapabilityChanged(capability: Parcelable) { }
 
+        /**
+         * Called when client trying to connect but device blocked the client with specific reason.
+         *
+         * Can be used to ask user to update client to allowed list or blocked list
+         * when reason is {@link SAP_CLIENT_BLOCK_REASON_CODE_BLOCKED_BY_USER}, or
+         * indicate the block due to maximum supported client number limitation when reason is
+         * {@link SAP_CLIENT_BLOCK_REASON_CODE_NO_MORE_STAS}.
+         *
+         * @param client the currently blocked client.
+         * @param blockedReason one of blocked reason from {@link SapClientBlockedReason}
+         */
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
