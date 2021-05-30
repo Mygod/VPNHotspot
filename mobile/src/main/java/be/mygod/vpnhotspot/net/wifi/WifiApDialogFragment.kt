@@ -284,7 +284,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     else -> option5G is ChannelOption.Disabled
                 }
             }
-            Build.VERSION.SDK_INT == 30 -> {
+            Build.VERSION.SDK_INT == 30 && !BuildCompat.isAtLeastS() -> {
                 var expected = 1
                 var set = 0
                 for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {
