@@ -111,9 +111,10 @@ data class SoftApConfigurationCompat(
                 in 1..233 -> 5950 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 6GHz channel $chan")
             }
-            BAND_60GHZ -> if (chan in 1 until 7) {
+            BAND_60GHZ -> {
+                require(chan in 1 until 7) { "Invalid 60GHz channel $chan" }
                 56160 + chan * 2160
-            } else throw IllegalArgumentException("Invalid 60GHz channel $chan")
+            }
             else -> throw IllegalArgumentException("Invalid band $band")
         }
         fun frequencyToChannel(freq: Int) = when (freq) {
@@ -392,9 +393,10 @@ data class SoftApConfigurationCompat(
             apBand.setInt(result, when (band) {
                 BAND_2GHZ -> 0
                 BAND_5GHZ -> 1
-                else -> (-1).also {
+                else -> {
                     require(Build.VERSION.SDK_INT >= 28) { "A band must be specified on this platform" }
                     require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
+                    -1
                 }
             })
             apChannel.setInt(result, channel)
