@@ -162,7 +162,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA_PSK_SHA256:I,blocked`
 * (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_2GHZ:I,lo-prio,max-target-o`
 * (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_5GHZ:I,lo-prio,max-target-o`
-* (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_ANY:I,lo-prio,max-target-o`
+* (since API 28, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_ANY:I,lo-prio,max-target-o`
 * (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apBand:I,unsupported`
 * (since API 23, prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
 * (since API 28, prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`
