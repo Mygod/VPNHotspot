@@ -146,7 +146,9 @@ class RootServer {
         try {
             val token2 = UUID.randomUUID().toString()
             val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-            val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
+            val uuid = context.packageName + '@' + try {
+                persistence.readText()
+            } catch (_: FileNotFoundException) {
                 UUID.randomUUID().toString().also { persistence.writeText(it) }
             }
             val (script, relocated) = AppProcess.relocateScript(uuid)
