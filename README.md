@@ -175,6 +175,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,max-target-q`
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_usb_regexs:I,max-target-q`
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_wifi_regexs:I,max-target-q`
+* (on API 29) `Lcom/android/internal/R$bool;->config_wifi_p2p_mac_randomization_supported:I,blacklist`
 * (since API 28, prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
 * (since API 27) `Lcom/android/server/connectivity/tethering/OffloadHardwareInterface;->DEFAULT_TETHER_OFFLOAD_DISABLED:I`
@@ -319,6 +320,7 @@ Nonexported system resources:
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_p2p_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wigig_regexs`
+* (since API 30) `@com.android.wifi.resources:bool/config_wifi_p2p_mac_randomization_supported`
 * (since API 30) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownTimeoutMilliseconds`
 
 Other: Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
