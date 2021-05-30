@@ -30,6 +30,7 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
@@ -197,6 +198,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                         shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).apply {
                     bssid = RepeaterService.deviceAddress
                     setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
+                    setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 } to false
             }
         } else binder?.let { binder ->
@@ -206,13 +208,14 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                     isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                     shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
+                setChannel(RepeaterService.operatingChannel)
+                setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 try {
                     val config = P2pSupplicantConfiguration(group)
                     config.init(binder.obtainDeviceAddress()?.toString())
                     holder.config = config
                     passphrase = config.psk
                     bssid = config.bssid
-                    setChannel(RepeaterService.operatingChannel)
                     this to false
                 } catch (e: Exception) {
                     if (e !is CancellationException) Timber.w(e)

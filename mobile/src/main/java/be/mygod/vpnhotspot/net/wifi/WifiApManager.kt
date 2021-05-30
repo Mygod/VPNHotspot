@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Resources
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -15,6 +16,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.findIdentifier
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -27,12 +29,28 @@ object WifiApManager {
      */
     @RequiresApi(30)
     private const val ACTION_RESOURCES_APK = "com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK"
+    @RequiresApi(30)
+    const val RESOURCES_PACKAGE = "com.android.wifi.resources"
     /**
      * Based on: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/000ad45/service/java/com/android/server/wifi/WifiContext.java#66
      */
     @get:RequiresApi(30)
     val resolvedActivity get() = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
             PackageManager.MATCH_SYSTEM_ONLY).single()
+
+    private const val CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED = "config_wifi_p2p_mac_randomization_supported"
+    val p2pMacRandomizationSupported get() = when (Build.VERSION.SDK_INT) {
+        29 -> Resources.getSystem().run {
+            getBoolean(getIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool", "android"))
+        }
+        in 30..Int.MAX_VALUE -> @TargetApi(30) {
+            val info = resolvedActivity.activityInfo
+            val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
+            resources.getBoolean(resources.findIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool",
+                RESOURCES_PACKAGE, info.packageName))
+        }
+        else -> false
+    }
 
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")

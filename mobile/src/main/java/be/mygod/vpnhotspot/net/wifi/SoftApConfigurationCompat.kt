@@ -343,6 +343,10 @@ data class SoftApConfigurationCompat(
         channels = SparseIntArray(1).apply { put(band, channel) }
     }
 
+    fun setMacRandomizationEnabled(enabled: Boolean) {
+        macRandomizationSetting = if (enabled) RANDOMIZATION_PERSISTENT else RANDOMIZATION_NONE
+    }
+
     /**
      * Only single band/channel can be supplied on API 23-30
      */
