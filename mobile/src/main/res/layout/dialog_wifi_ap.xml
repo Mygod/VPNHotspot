@@ -213,6 +213,14 @@
                     android:maxLength="17" />
             </com.google.android.material.textfield.TextInputLayout>
             <Switch
+                android:id="@+id/mac_randomization"
+                style="@style/wifi_item_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_mac_randomization" />
+            <Switch
                 android:id="@+id/hidden_ssid"
                 style="@style/wifi_item_label"
                 android:layout_width="match_parent"
@@ -273,14 +281,6 @@
                     style="@style/wifi_item_edit_content"
                     android:inputType="textMultiLine|textNoSuggestions" />
             </com.google.android.material.textfield.TextInputLayout>
-            <Switch
-                android:id="@+id/mac_randomization"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_mac_randomization" />
             <Switch
                 android:id="@+id/bridged_mode_opportunistic_shutdown"
                 style="@style/wifi_item_label"
