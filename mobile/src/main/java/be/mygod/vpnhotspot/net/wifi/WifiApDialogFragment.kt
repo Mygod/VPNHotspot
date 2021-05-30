@@ -10,13 +10,16 @@ import android.os.Parcelable
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Base64
+import android.util.SparseIntArray
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.Spinner
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
@@ -32,6 +35,7 @@ import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 
 /**
  * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/39b4674/src/com/android/settings/wifi/WifiApDialog.java
@@ -40,27 +44,30 @@ import kotlinx.parcelize.Parcelize
  * Related: https://android.googlesource.com/platform/packages/apps/Settings/+/defb1183ecb00d6231bac7d934d07f58f90261ea
  */
 class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiApDialogFragment.Arg>(), TextWatcher,
-        Toolbar.OnMenuItemClickListener {
+        Toolbar.OnMenuItemClickListener, AdapterView.OnItemSelectedListener {
     companion object {
         private const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
         private val nonMacChars = "[^0-9a-fA-F:]+".toRegex()
-        private val channels by lazy {
-            val list = ArrayList<BandOption.Channel>()
-            for (chan in 1..14) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_2GHZ, chan))
-            for (chan in 1..196) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_5GHZ, chan))
-            if (Build.VERSION.SDK_INT >= 30) {
-                for (chan in 1..253) list.add(BandOption.Channel(SoftApConfigurationCompat.BAND_6GHZ, chan))
-            }
-            list
+        private val baseOptions by lazy { listOf(ChannelOption.Disabled, ChannelOption.Auto) }
+        private val channels2G by lazy {
+            baseOptions + (1..14).map { ChannelOption(it, SoftApConfigurationCompat.BAND_2GHZ) }
+        }
+        private val channels5G by lazy {
+            baseOptions + (1..196).map { ChannelOption(it, SoftApConfigurationCompat.BAND_5GHZ) }
+        }
+        @get:RequiresApi(30)
+        private val channels6G by lazy {
+            baseOptions + (1..233).map { ChannelOption(it, SoftApConfigurationCompat.BAND_6GHZ) }
+        }
+        @get:RequiresApi(31)
+        private val channels60G by lazy {
+            baseOptions + (1..6).map { ChannelOption(it, SoftApConfigurationCompat.BAND_60GHZ) }
         }
         /**
          * Source: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/c2fc6a1/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHal.java#1396
          */
         private val p2pChannels by lazy {
-            (1..165).map {
-                val band = if (it <= 14) SoftApConfigurationCompat.BAND_2GHZ else SoftApConfigurationCompat.BAND_5GHZ
-                BandOption.Channel(band, it)
-            }
+            baseOptions + (15..165).map { ChannelOption(it, SoftApConfigurationCompat.BAND_5GHZ) }
         }
     }
 
@@ -73,35 +80,20 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     */
                    val p2pMode: Boolean = false) : Parcelable
 
-    private sealed class BandOption {
-        open val band get() = SoftApConfigurationCompat.BAND_ANY
-        open val channel get() = 0
-
-        object BandAny : BandOption() {
+    private open class ChannelOption(val channel: Int = 0, val band: Int = 0) {
+        object Disabled : ChannelOption(-1) {
+            override fun toString() = app.getString(R.string.wifi_ap_choose_disabled)
+        }
+        object Auto : ChannelOption() {
             override fun toString() = app.getString(R.string.wifi_ap_choose_auto)
         }
-        object Band2GHz : BandOption() {
-            override val band get() = SoftApConfigurationCompat.BAND_2GHZ
-            override fun toString() = app.getString(R.string.wifi_ap_choose_2G)
-        }
-        object Band5GHz : BandOption() {
-            override val band get() = SoftApConfigurationCompat.BAND_5GHZ
-            override fun toString() = app.getString(R.string.wifi_ap_choose_5G)
-        }
-        @RequiresApi(30)
-        object Band6GHz : BandOption() {
-            override val band get() = SoftApConfigurationCompat.BAND_6GHZ
-            override fun toString() = app.getString(R.string.wifi_ap_choose_6G)
-        }
-        class Channel(override val band: Int, override val channel: Int) : BandOption() {
-            override fun toString() = "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
-        }
+        override fun toString() = "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
     }
 
     private lateinit var dialogView: DialogWifiApBinding
-    private lateinit var bandOptions: MutableList<BandOption>
     private lateinit var base: SoftApConfigurationCompat
     private var started = false
+    private val currentChannels5G get() = if (arg.p2pMode && !RepeaterService.safeMode) p2pChannels else channels5G
     override val ret get() = Arg(generateConfig())
 
     private fun generateConfig(full: Boolean = true) = base.copy(
@@ -117,8 +109,15 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 if (text.isNullOrEmpty()) 0 else text.toString().toLong()
             }
             if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-                val bandOption = dialogView.band.selectedItem as BandOption
-                setChannel(bandOption.channel, bandOption.band)
+                val channels = SparseIntArray(4)
+                for ((band, spinner) in arrayOf(SoftApConfigurationCompat.BAND_2GHZ to dialogView.band2G,
+                    SoftApConfigurationCompat.BAND_5GHZ to dialogView.band5G,
+                    SoftApConfigurationCompat.BAND_6GHZ to dialogView.band6G,
+                    SoftApConfigurationCompat.BAND_60GHZ to dialogView.band60G)) {
+                    val channel = (spinner.selectedItem as ChannelOption?)?.channel
+                    if (channel != null && channel >= 0) channels.put(band, channel)
+                }
+                optimizeChannels(channels)
             }
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.text.toString())
@@ -131,6 +130,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
             blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
                     .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
+            setMacRandomizationEnabled(dialogView.macRandomization.isChecked)
+            isBridgedModeOpportunisticShutdownEnabled = dialogView.bridgedModeOpportunisticShutdown.isChecked
+            isIeee80211axEnabled = dialogView.ieee80211ax.isChecked
+            isUserConfiguration = dialogView.userConfig.isChecked
         }
     }
 
@@ -163,27 +166,23 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     TetherTimeoutMonitor.defaultTimeout)
             dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         } else dialogView.timeoutWrapper.isGone = true
-        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) dialogView.band.apply {
-            bandOptions = mutableListOf<BandOption>().apply {
-                if (arg.p2pMode) {
-                    add(BandOption.BandAny)
-                    if (RepeaterService.safeMode) {
-                        add(BandOption.Band2GHz)
-                        add(BandOption.Band5GHz)
-                        addAll(channels)
-                    } else addAll(p2pChannels)
-                } else {
-                    if (Build.VERSION.SDK_INT >= 28) add(BandOption.BandAny)
-                    add(BandOption.Band2GHz)
-                    add(BandOption.Band5GHz)
-                    if (Build.VERSION.SDK_INT >= 30) add(BandOption.Band6GHz)
-                    addAll(channels)
-                }
-            }
-            adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, bandOptions).apply {
+        fun Spinner.configure(options: List<ChannelOption>) {
+            adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, options).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-        } else dialogView.bandWrapper.isGone = true
+            onItemSelectedListener = this@WifiApDialogFragment
+        }
+        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
+            dialogView.band2G.configure(channels2G)
+            dialogView.band5G.configure(currentChannels5G)
+        } else {
+            dialogView.bandWrapper2G.isGone = true
+            dialogView.bandWrapper5G.isGone = true
+        }
+        if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) dialogView.band6G.configure(channels6G)
+        else dialogView.bandWrapper6G.isGone = true
+        if (BuildCompat.isAtLeastS() && !arg.p2pMode) dialogView.band60G.configure(channels60G)
+        else dialogView.bandWrapper60G.isGone = true
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode || Build.VERSION.SDK_INT < 30) {
@@ -196,10 +195,25 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
         }
+        if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
+        else if (arg.p2pMode || !BuildCompat.isAtLeastS()) dialogView.macRandomization.isGone = true
+        if (arg.p2pMode || !BuildCompat.isAtLeastS()) {
+            dialogView.bridgedModeOpportunisticShutdown.isGone = true
+            dialogView.ieee80211ax.isGone = true
+            dialogView.userConfig.isGone = true
+        }
         base = arg.configuration
         populateFromConfiguration()
     }
 
+    private fun locate(band: Int, channels: List<ChannelOption>): Int {
+        val channel = base.getChannel(band)
+        val selection = channels.indexOfFirst { it.channel == channel }
+        return if (selection == -1) {
+            Timber.w(Exception("Unable to locate $band, $channel, ${arg.p2pMode && !RepeaterService.safeMode}"))
+            0
+        } else selection
+    }
     private fun populateFromConfiguration() {
         dialogView.ssid.setText(base.ssid)
         if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
@@ -207,10 +221,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
         dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it == 0L) "" else it.toString() })
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-            val selection = if (base.channel != 0) {
-                bandOptions.indexOfFirst { it.channel == base.channel }
-            } else bandOptions.indexOfFirst { it.band == base.band }
-            dialogView.band.setSelection(if (selection == -1) 0 else selection)
+            dialogView.band2G.setSelection(locate(SoftApConfigurationCompat.BAND_2GHZ, channels2G))
+            dialogView.band5G.setSelection(locate(SoftApConfigurationCompat.BAND_5GHZ, currentChannels5G))
+            dialogView.band6G.setSelection(locate(SoftApConfigurationCompat.BAND_6GHZ, channels6G))
+            dialogView.band60G.setSelection(locate(SoftApConfigurationCompat.BAND_60GHZ, channels60G))
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid
@@ -218,6 +232,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.clientUserControl.isChecked = base.isClientControlByUserEnabled
         dialogView.blockedList.setText(base.blockedClientList.joinToString("\n"))
         dialogView.allowedList.setText(base.allowedClientList.joinToString("\n"))
+        dialogView.macRandomization.isChecked =
+            base.macRandomizationSetting == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT
+        dialogView.bridgedModeOpportunisticShutdown.isChecked = base.isBridgedModeOpportunisticShutdownEnabled
+        dialogView.ieee80211ax.isChecked = base.isIeee80211axEnabled
+        dialogView.userConfig.isChecked = base.isUserConfiguration
     }
 
     override fun onStart() {
@@ -253,6 +272,29 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         dialogView.timeoutWrapper.error = timeoutError
+        val isBandValid = when {
+            arg.p2pMode || Build.VERSION.SDK_INT in 23 until 30 -> {
+                val option5G = dialogView.band5G.selectedItem
+                when (dialogView.band2G.selectedItem) {
+                    is ChannelOption.Disabled -> option5G !is ChannelOption.Disabled &&
+                            (!arg.p2pMode || RepeaterService.safeMode || option5G !is ChannelOption.Auto)
+                    is ChannelOption.Auto ->
+                        (arg.p2pMode || Build.VERSION.SDK_INT >= 28) && option5G is ChannelOption.Auto ||
+                                (!arg.p2pMode || RepeaterService.safeMode) && option5G is ChannelOption.Disabled
+                    else -> option5G is ChannelOption.Disabled
+                }
+            }
+            Build.VERSION.SDK_INT == 30 -> {
+                var expected = 1
+                var set = 0
+                for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {
+                    is ChannelOption.Auto -> expected = 0
+                    !is ChannelOption.Disabled -> ++set
+                }
+                set == expected
+            }
+            else -> true
+        }
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
             MacAddressCompat.fromString(dialogView.bssid.text.toString())
@@ -289,13 +331,16 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val canCopy = timeoutError == null && bssidValid && maxClientError == null && blockedListError == null &&
                 allowedListError == null
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLength in 1..32 && passwordValid && canCopy
+                ssidLength in 1..32 && passwordValid && isBandValid && canCopy
         dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }
     override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) { }
     override fun afterTextChanged(editable: Editable) = validate()
+
+    override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = validate()
+    override fun onNothingSelected(parent: AdapterView<*>?) = error("unreachable")
 
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         return when (item?.itemId) {

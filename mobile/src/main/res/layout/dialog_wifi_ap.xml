@@ -120,7 +120,7 @@
                     android:maxLength="19" />
             </com.google.android.material.textfield.TextInputLayout>
             <LinearLayout
-                android:id="@+id/band_wrapper"
+                android:id="@+id/band_wrapper_2G"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dip"
@@ -129,14 +129,71 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     style="@style/wifi_item_label"
-                    android:text="@string/wifi_hotspot_ap_band_title" />
+                    android:text="@string/wifi_ap_choose_2G" />
                 <Spinner
-                    android:id="@+id/band"
+                    android:id="@+id/band_2G"
                     style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_hotspot_ap_band_title" />
+                    android:prompt="@string/wifi_ap_choose_2G" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/band_wrapper_5G"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_label"
+                    android:text="@string/wifi_ap_choose_5G" />
+                <Spinner
+                    android:id="@+id/band_5G"
+                    style="@style/wifi_item_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:prompt="@string/wifi_ap_choose_5G" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/band_wrapper_6G"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_label"
+                    android:text="@string/wifi_ap_choose_6G" />
+                <Spinner
+                    android:id="@+id/band_6G"
+                    style="@style/wifi_item_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:prompt="@string/wifi_ap_choose_6G" />
+            </LinearLayout>
+            <LinearLayout
+                android:id="@+id/band_wrapper_60G"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:orientation="vertical">
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_label"
+                    android:text="@string/wifi_ap_choose_60G" />
+                <Spinner
+                    android:id="@+id/band_60G"
+                    style="@style/wifi_item_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:prompt="@string/wifi_ap_choose_60G" />
             </LinearLayout>
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/bssid_wrapper"
@@ -216,6 +273,38 @@
                     style="@style/wifi_item_edit_content"
                     android:inputType="textMultiLine|textNoSuggestions" />
             </com.google.android.material.textfield.TextInputLayout>
+            <Switch
+                android:id="@+id/mac_randomization"
+                style="@style/wifi_item_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_mac_randomization" />
+            <Switch
+                android:id="@+id/bridged_mode_opportunistic_shutdown"
+                style="@style/wifi_item_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
+            <Switch
+                android:id="@+id/ieee_80211ax"
+                style="@style/wifi_item_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_ieee_80211ax" />
+            <Switch
+                android:id="@+id/user_config"
+                style="@style/wifi_item_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
+                android:minHeight="@dimen/touch_target_min"
+                android:text="@string/wifi_user_config" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

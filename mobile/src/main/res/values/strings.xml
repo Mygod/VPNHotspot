@@ -194,16 +194,22 @@
     <string name="wifi_hotspot_timeout">Inactive timeout</string>
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
+    <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_auto">Auto</string>
     <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
-    <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
-    <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
+    <string name="wifi_ap_choose_5G">5 GHz Band</string>
+    <string name="wifi_ap_choose_6G">6 GHz Band</string>
+    <string name="wifi_ap_choose_60G">60 GHz Band</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
     <string name="wifi_client_user_control">Control which client can use hotspot</string>
     <string name="wifi_blocked_list">Blocked list of clients</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
+    <string name="wifi_mac_randomization">Use randomized MAC</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable bridged mode opportunistic shutdown</string>
+    <string name="wifi_ieee_80211ax">Enable Wi\u2011Fi 6</string>
+    <string name="wifi_user_config">User Supplied Configuration</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

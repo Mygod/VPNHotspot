@@ -231,7 +231,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         return null
     }
     private suspend fun updateConfiguration(config: SoftApConfigurationCompat) {
-        config.requireSingleBand()
+        val (band, channel) = config.requireSingleBand()
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.ssid
             RepeaterService.deviceAddress = config.bssid
@@ -248,8 +248,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             holder.config = null
         }
-        RepeaterService.operatingBand = config.band
-        RepeaterService.operatingChannel = config.channel
+        RepeaterService.operatingBand = band
+        RepeaterService.operatingChannel = channel
         RepeaterService.isAutoShutdownEnabled = config.isAutoShutdownEnabled
         RepeaterService.shutdownTimeoutMillis = config.shutdownTimeoutMillis
     }

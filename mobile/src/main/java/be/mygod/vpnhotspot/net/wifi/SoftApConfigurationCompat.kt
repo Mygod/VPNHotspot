@@ -9,6 +9,7 @@ import android.os.Parcelable
 import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
 import androidx.core.os.BuildCompat
+import androidx.core.util.keyIterator
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -24,6 +25,11 @@ data class SoftApConfigurationCompat(
         var bssidAddr: Long? = null,
         var passphrase: String? = null,
         var isHiddenSsid: Boolean = false,
+        /**
+         * To read legacy band/channel pair, use [requireSingleBand]. For easy access, see [getChannel].
+         *
+         * You should probably not set or modify this field directly. Use [optimizeChannels] or [setChannel].
+         */
         @TargetApi(23)
         var channels: SparseIntArray = SparseIntArray(1).apply { put(BAND_2GHZ, 0) },
         var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
@@ -333,24 +339,37 @@ data class SoftApConfigurationCompat(
         set(value) {
             bssidAddr = value?.addr
         }
-    @get:Deprecated("Use channels", ReplaceWith("channels.keyAt(0)"))
-    @get:TargetApi(23)
-    val band get() = channels.keyAt(0)
-    @get:Deprecated("Use channels", ReplaceWith("channels.valueAt(0)"))
-    @get:TargetApi(23)
-    val channel get() = channels.valueAt(0)
+
+    /**
+     * Only single band/channel can be supplied on API 23-30
+     */
+    fun requireSingleBand(): Pair<Int, Int> {
+        require(channels.size() == 1) { "Unsupported number of bands configured" }
+        return channels.keyAt(0) to channels.valueAt(0)
+    }
+    fun getChannel(band: Int): Int {
+        var result = -1
+        for (b in channels.keyIterator()) if (band and b == band) {
+            require(result == -1) { "Duplicate band found" }
+            result = channels[b]
+        }
+        return result
+    }
     fun setChannel(channel: Int, band: Int = BAND_ANY) {
         channels = SparseIntArray(1).apply { put(band, channel) }
+    }
+    fun optimizeChannels(channels: SparseIntArray = this.channels) {
+        this.channels = SparseIntArray(channels.size()).apply {
+            var setBand = 0
+            for (band in channels.keyIterator()) if (channels[band] == 0) setBand = setBand or band
+            if (setBand != 0) put(setBand, 0)   // merge all bands into one
+            for (band in channels.keyIterator()) if (band and setBand == 0) put(band, channels[band])
+        }
     }
 
     fun setMacRandomizationEnabled(enabled: Boolean) {
         macRandomizationSetting = if (enabled) RANDOMIZATION_PERSISTENT else RANDOMIZATION_NONE
     }
-
-    /**
-     * Only single band/channel can be supplied on API 23-30
-     */
-    fun requireSingleBand() = require(channels.size() == 1) { "Unsupported number of bands configured" }
 
     /**
      * Based on:
@@ -362,7 +381,7 @@ data class SoftApConfigurationCompat(
     @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
     @Suppress("DEPRECATION")
     fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {
-        requireSingleBand()
+        val (band, channel) = requireSingleBand()
         val wc = underlying as? android.net.wifi.WifiConfiguration
         val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
         val original = wc?.toCompat()
@@ -373,8 +392,10 @@ data class SoftApConfigurationCompat(
             apBand.setInt(result, when (band) {
                 BAND_2GHZ -> 0
                 BAND_5GHZ -> 1
-                BAND_2GHZ or BAND_5GHZ, BAND_ANY -> -1
-                else -> throw IllegalArgumentException("Convert fail, unsupported band setting :$band")
+                else -> (-1).also {
+                    require(Build.VERSION.SDK_INT >= 28) { "A band must be specified on this platform" }
+                    require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
+                }
             })
             apChannel.setInt(result, channel)
         } else require(isLegacyEitherBand(band)) { "Specifying band is unsupported on this platform" }
@@ -405,8 +426,7 @@ data class SoftApConfigurationCompat(
         setPassphrase(builder, if (securityType == SoftApConfiguration.SECURITY_TYPE_OPEN) null else passphrase,
                 securityType)
         if (BuildCompat.isAtLeastS()) setChannels(builder, channels) else {
-            requireSingleBand()
-            @Suppress("DEPRECATION")
+            val (band, channel) = requireSingleBand()
             if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
         }
         setBssid(builder, bssid?.toPlatform())

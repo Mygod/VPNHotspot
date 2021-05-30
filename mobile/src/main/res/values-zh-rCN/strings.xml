@@ -172,16 +172,22 @@
     <string name="wifi_hotspot_timeout">关闭延迟</string>
     <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
+    <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5.0 GHz 频段"</string>
-    <string name="wifi_ap_choose_6G">6.0 GHz 频段</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 GHz 频段"</string>
+    <string name="wifi_ap_choose_6G">6 GHz 频段</string>
+    <string name="wifi_ap_choose_60G">60 GHz 频段</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
     <string name="wifi_max_clients">允许连接设备数上限</string>
     <string name="wifi_client_user_control">过滤可以连接的设备</string>
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
+    <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
+    <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
+    <string name="wifi_user_config">用户提供配置</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
