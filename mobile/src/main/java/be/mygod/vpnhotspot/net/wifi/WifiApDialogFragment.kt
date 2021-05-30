@@ -80,7 +80,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     */
                    val p2pMode: Boolean = false) : Parcelable
 
-    private open class ChannelOption(val channel: Int = 0, val band: Int = 0) {
+    private open class ChannelOption(val channel: Int = 0, private val band: Int = 0) {
         object Disabled : ChannelOption(-1) {
             override fun toString() = app.getString(R.string.wifi_ap_choose_disabled)
         }
@@ -117,7 +117,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     val channel = (spinner.selectedItem as ChannelOption?)?.channel
                     if (channel != null && channel >= 0) channels.put(band, channel)
                 }
-                optimizeChannels(channels)
+                if (!arg.p2pMode && BuildCompat.isAtLeastS() && dialogView.bridgedMode.isChecked) {
+                    this.channels = channels
+                } else optimizeChannels(channels)
             }
             bssid = if (dialogView.bssid.length() != 0) {
                 MacAddressCompat.fromString(dialogView.bssid.text.toString())
@@ -198,6 +200,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || !BuildCompat.isAtLeastS()) dialogView.macRandomization.isGone = true
         if (arg.p2pMode || !BuildCompat.isAtLeastS()) {
+            dialogView.bridgedMode.isGone = true
             dialogView.bridgedModeOpportunisticShutdown.isGone = true
             dialogView.ieee80211ax.isGone = true
             dialogView.userConfig.isGone = true
@@ -214,6 +217,26 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             0
         } else selection
     }
+    private var userBridgedMode = false
+    private fun setBridgedMode() {
+        var auto = 0
+        var set = 0
+        for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {
+            is ChannelOption.Auto -> auto = 1
+            !is ChannelOption.Disabled -> ++set
+        }
+        if (auto + set > 1) {
+            if (dialogView.bridgedMode.isEnabled) {
+                userBridgedMode = dialogView.bridgedMode.isChecked
+                dialogView.bridgedMode.isEnabled = false
+                dialogView.bridgedMode.isChecked = true
+            }
+        } else if (!dialogView.bridgedMode.isEnabled) {
+            dialogView.bridgedMode.isEnabled = true
+            dialogView.bridgedMode.isChecked = userBridgedMode
+        }
+
+    }
     private fun populateFromConfiguration() {
         dialogView.ssid.setText(base.ssid)
         if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
@@ -225,6 +248,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.band5G.setSelection(locate(SoftApConfigurationCompat.BAND_5GHZ, currentChannels5G))
             dialogView.band6G.setSelection(locate(SoftApConfigurationCompat.BAND_6GHZ, channels6G))
             dialogView.band60G.setSelection(locate(SoftApConfigurationCompat.BAND_60GHZ, channels60G))
+            userBridgedMode = base.channels.size() > 1
+            dialogView.bridgedMode.isChecked = userBridgedMode
+            setBridgedMode()
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid
@@ -295,6 +321,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             else -> true
         }
+        setBridgedMode()
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
             MacAddressCompat.fromString(dialogView.bssid.text.toString())

@@ -28,7 +28,9 @@ data class SoftApConfigurationCompat(
         /**
          * To read legacy band/channel pair, use [requireSingleBand]. For easy access, see [getChannel].
          *
-         * You should probably not set or modify this field directly. Use [optimizeChannels] or [setChannel].
+         * You should probably set or modify this field directly only when you want to use bridged AP,
+         * see also [android.net.wifi.WifiManager.isBridgedApConcurrencySupported].
+         * Otherwise, use [optimizeChannels] or [setChannel].
          */
         @TargetApi(23)
         var channels: SparseIntArray = SparseIntArray(1).apply { put(BAND_2GHZ, 0) },
