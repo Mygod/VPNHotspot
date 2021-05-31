@@ -359,7 +359,13 @@ data class SoftApConfigurationCompat(
         return result
     }
     fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
-        channels = SparseIntArray(1).apply { append(band, channel) }
+        channels = SparseIntArray(1).apply {
+            append(when {
+                channel <= 0 || band != BAND_LEGACY -> band
+                channel > 14 -> BAND_5GHZ
+                else -> BAND_2GHZ
+            }, channel)
+        }
     }
     fun optimizeChannels(channels: SparseIntArray = this.channels) {
         this.channels = SparseIntArray(channels.size()).apply {
