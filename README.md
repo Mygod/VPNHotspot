@@ -279,7 +279,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->isIeee80211axEnabled()Z,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->isUserConfiguration()Z,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_*:I,sdk,system-api,test-api`
-* (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
+* (on API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getAutoShutdownTimeoutMillis()J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getBssid()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,system-api,whitelist`
