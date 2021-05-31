@@ -115,7 +115,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     SoftApConfigurationCompat.BAND_6GHZ to dialogView.band6G,
                     SoftApConfigurationCompat.BAND_60GHZ to dialogView.band60G)) {
                     val channel = (spinner.selectedItem as ChannelOption?)?.channel
-                    if (channel != null && channel >= 0) channels.put(band, channel)
+                    if (channel != null && channel >= 0) channels.append(band, channel)
                 }
                 if (!arg.p2pMode && BuildCompat.isAtLeastS() && dialogView.bridgedMode.isChecked) {
                     this.channels = channels

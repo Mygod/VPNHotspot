@@ -32,7 +32,7 @@ data class SoftApConfigurationCompat(
          * Otherwise, use [optimizeChannels] or [setChannel].
          */
         @TargetApi(23)
-        var channels: SparseIntArray = SparseIntArray(1).apply { put(BAND_2GHZ, 0) },
+        var channels: SparseIntArray = SparseIntArray(1).apply { append(BAND_2GHZ, 0) },
         var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
         @TargetApi(30)
         var maxNumberOfClients: Int = 0,
@@ -281,12 +281,12 @@ data class SoftApConfigurationCompat(
                 hiddenSSID,
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
                 SparseIntArray(1).apply {
-                    if (Build.VERSION.SDK_INT < 23) put(BAND_LEGACY, 0) else put(when (val band = apBand.getInt(this)) {
+                    if (Build.VERSION.SDK_INT >= 23) append(when (val band = apBand.getInt(this)) {
                         0 -> BAND_2GHZ
                         1 -> BAND_5GHZ
                         -1 -> BAND_LEGACY
                         else -> throw IllegalArgumentException("Unexpected band $band")
-                    }, apChannel.getInt(this))
+                    }, apChannel.getInt(this)) else append(BAND_LEGACY, 0)
                 },
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
@@ -319,7 +319,7 @@ data class SoftApConfigurationCompat(
                 passphrase,
                 isHiddenSsid,
                 if (BuildCompat.isAtLeastS()) getChannels(this) as SparseIntArray else SparseIntArray(1).apply {
-                    put(getBand(this) as Int, getChannel(this) as Int)
+                    append(getBand(this) as Int, getChannel(this) as Int)
                 },
                 securityType,
                 getMaxNumberOfClients(this) as Int,
@@ -359,13 +359,13 @@ data class SoftApConfigurationCompat(
         return result
     }
     fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
-        channels = SparseIntArray(1).apply { put(band, channel) }
+        channels = SparseIntArray(1).apply { append(band, channel) }
     }
     fun optimizeChannels(channels: SparseIntArray = this.channels) {
         this.channels = SparseIntArray(channels.size()).apply {
             var setBand = 0
             repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
-            if (setBand != 0) put(setBand, 0)   // merge all bands into one
+            if (setBand != 0) append(setBand, 0)    // merge all bands into one
             repeat(channels.size()) { i ->
                 val band = channels.keyAt(i)
                 if (band and setBand == 0) put(band, channels.valueAt(i))

@@ -8,7 +8,6 @@ import android.os.RemoteException
 import android.system.Os
 import android.system.OsConstants
 import androidx.collection.LongSparseArray
-import androidx.collection.set
 import androidx.collection.valueIterator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
@@ -248,7 +247,7 @@ class RootServer {
             @Suppress("UNCHECKED_CAST")
             val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
             if (active) {
-                callbackLookup[counter] = callback
+                callbackLookup.append(counter, callback)
                 sendLocked(command)
             } else future.cancel()
             callback
@@ -279,7 +278,7 @@ class RootServer {
             @Suppress("UNCHECKED_CAST")
             val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
             if (active) {
-                callbackLookup[counter] = callback
+                callbackLookup.append(counter, callback)
                 sendLocked(command)
             } else callback.finish.cancel()
             callback
@@ -434,7 +433,7 @@ class RootServer {
                     }
                     is RootCommand<*> -> {
                         val commandJob = Job()
-                        cancellables[callback] = { commandJob.cancel() }
+                        cancellables.append(callback) { commandJob.cancel() }
                         defaultWorker.launch(commandJob) {
                             val result = try {
                                 val result = command.execute();
@@ -452,7 +451,7 @@ class RootServer {
                         val result = try {
                             coroutineScope {
                                 command.create(this).also {
-                                    cancellables[callback] = { it.cancel() }
+                                    cancellables.append(callback) { it.cancel() }
                                 }.consumeEach { result ->
                                     withContext(callbackWorker) { output.pushResult(callback, result) }
                                 }
