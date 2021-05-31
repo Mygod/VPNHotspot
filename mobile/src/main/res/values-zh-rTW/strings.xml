@@ -176,7 +176,7 @@
     <string name="wifi_hotspot_timeout">關閉延遲時間</string>
     <string name="wifi_hotspot_timeout_default">默認延遲：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">AP 頻帶</string>
-    <string name="wifi_ap_choose_disabled">Disabled</string>
+    <string name="wifi_ap_choose_disabled">停用</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">自動</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">2.4 GHz 頻帶</string>
     <string name="wifi_ap_choose_5G" msgid="8813128641914385634">5 GHz 頻帶</string>
