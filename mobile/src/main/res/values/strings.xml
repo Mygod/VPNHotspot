@@ -83,6 +83,10 @@
         <item quantity="other">%1d clients connected</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %s</string>
+    <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
+    <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>
+    <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP concurrency</string>
+    <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA + Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>

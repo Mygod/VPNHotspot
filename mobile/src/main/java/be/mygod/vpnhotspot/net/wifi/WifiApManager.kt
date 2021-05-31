@@ -52,6 +52,13 @@ object WifiApManager {
         else -> false
     }
 
+    @get:RequiresApi(30)
+    private val apMacRandomizationSupported by lazy {
+        WifiManager::class.java.getDeclaredMethod("isApMacRandomizationSupported")
+    }
+    @get:RequiresApi(30)
+    val isApMacRandomizationSupported get() = apMacRandomizationSupported(Services.wifi) as Boolean
+
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")
     private val setWifiApConfiguration by lazy {
