@@ -101,6 +101,7 @@ class RootServer {
 
     private fun readUnexpectedStderr(): String? {
         if (!this::process.isInitialized) return null
+        Logger.me.d("Attempting to read stderr")
         var available = process.errorStream.available()
         return if (available <= 0) null else String(ByteArrayOutputStream().apply {
             try {
