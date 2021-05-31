@@ -9,7 +9,6 @@ import android.os.Parcelable
 import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
 import androidx.core.os.BuildCompat
-import androidx.core.util.keyIterator
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -351,9 +350,10 @@ data class SoftApConfigurationCompat(
     }
     fun getChannel(band: Int): Int {
         var result = -1
-        for (b in channels.keyIterator()) if (band and b == band) {
+        repeat(channels.size()) { i ->
+            if (band and channels.keyAt(i) != band) return@repeat
             require(result == -1) { "Duplicate band found" }
-            result = channels[b]
+            result = channels.valueAt(i)
         }
         return result
     }
@@ -363,9 +363,12 @@ data class SoftApConfigurationCompat(
     fun optimizeChannels(channels: SparseIntArray = this.channels) {
         this.channels = SparseIntArray(channels.size()).apply {
             var setBand = 0
-            for (band in channels.keyIterator()) if (channels[band] == 0) setBand = setBand or band
+            repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
             if (setBand != 0) put(setBand, 0)   // merge all bands into one
-            for (band in channels.keyIterator()) if (band and setBand == 0) put(band, channels[band])
+            repeat(channels.size()) { i ->
+                val band = channels.keyAt(i)
+                if (band and setBand == 0) put(band, channels.valueAt(i))
+            }
         }
     }
 
