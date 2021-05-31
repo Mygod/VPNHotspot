@@ -71,7 +71,8 @@ data class SoftApConfigurationCompat(
             }
             intArrayOf(BAND_2GHZ, BAND_5GHZ, BAND_6GHZ, BAND_60GHZ)
         }
-        val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_", null, "2GHZ", "5GHZ")
+        @RequiresApi(31)
+        val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_")
 
         @TargetApi(31)
         const val RANDOMIZATION_NONE = 0
