@@ -63,8 +63,7 @@ data class SoftApConfigurationCompat(
         const val BAND_6GHZ = 4
         @TargetApi(31)
         const val BAND_60GHZ = 8
-        private const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
-        const val BAND_ANY = BAND_LEGACY or BAND_6GHZ
+        const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
         val BAND_TYPES by lazy {
             if (BuildCompat.isAtLeastS()) try {
                 return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
@@ -282,7 +281,7 @@ data class SoftApConfigurationCompat(
                 hiddenSSID,
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
                 SparseIntArray(1).apply {
-                    if (Build.VERSION.SDK_INT < 23) put(BAND_ANY, 0) else put(when (val band = apBand.getInt(this)) {
+                    if (Build.VERSION.SDK_INT < 23) put(BAND_LEGACY, 0) else put(when (val band = apBand.getInt(this)) {
                         0 -> BAND_2GHZ
                         1 -> BAND_5GHZ
                         -1 -> BAND_LEGACY
@@ -358,7 +357,7 @@ data class SoftApConfigurationCompat(
         }
         return result
     }
-    fun setChannel(channel: Int, band: Int = BAND_ANY) {
+    fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
         channels = SparseIntArray(1).apply { put(band, channel) }
     }
     fun optimizeChannels(channels: SparseIntArray = this.channels) {
