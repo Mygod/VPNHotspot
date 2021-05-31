@@ -68,6 +68,11 @@
             app:title="@string/settings_service_repeater_safe_mode"
             app:summary="@string/settings_service_repeater_safe_mode_summary"
             app:defaultValue="true"/>
+        <SwitchPreference
+            app:key="service.tempHotspot.useSystem"
+            app:icon="@drawable/ic_content_file_copy"
+            app:title="@string/settings_service_temp_hotspot_use_system"
+            app:summary="@string/settings_service_temp_hotspot_use_system_summary"/>
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.ipMonitor"
             app:icon="@drawable/ic_hardware_device_hub"

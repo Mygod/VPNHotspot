@@ -131,6 +131,9 @@
         not work with short network names.</string>
     <string name="settings_service_repeater_safe_mode_warning">Short network names might require turning off safe
         mode.</string>
+    <string name="settings_service_temp_hotspot_use_system">Use system configuration for temporary hotspot</string>
+    <string name="settings_service_temp_hotspot_use_system_summary">Will conflict with other apps using local only
+        hotspot</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_full">On</string>

@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.annotation.TargetApi
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -38,6 +39,8 @@ import java.io.PrintWriter
 import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
+    private fun Preference.remove() = parent!!.removePreference(this)
+    @TargetApi(26)
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         // handle complicated default value and possible system upgrades
         WifiDoubleLock.mode = WifiDoubleLock.mode
@@ -65,7 +68,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     }
                     false
                 }
-            } else parent!!.removePreference(this)
+            } else remove()
         }
         val boot = findPreference<SwitchPreference>("service.repeater.startOnBoot")!!
         if (Services.p2p != null) {
@@ -74,11 +77,12 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 true
             }
             boot.isChecked = BootReceiver.enabled
-        } else boot.parent!!.removePreference(boot)
+        } else boot.remove()
         if (Services.p2p == null || !RepeaterService.safeModeConfigurable) {
             val safeMode = findPreference<Preference>(RepeaterService.KEY_SAFE_MODE)!!
-            safeMode.parent!!.removePreference(safeMode)
+            safeMode.remove()
         }
+        if (Build.VERSION.SDK_INT < 30) findPreference<Preference>(LocalOnlyHotspotService.KEY_USE_SYSTEM)!!.remove()
         findPreference<Preference>("service.clean")!!.setOnPreferenceClickListener {
             GlobalScope.launch { RoutingManager.clean() }
             true

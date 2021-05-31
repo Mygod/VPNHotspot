@@ -191,7 +191,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 apConfigurationRunning = true
                 viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                     try {
-                        WifiApManager.configuration
+                        WifiApManager.configurationCompat
                     } catch (e: InvocationTargetException) {
                         if (e.targetException !is SecurityException) Timber.w(e)
                         try {
@@ -237,7 +237,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                     SmartSnackbar.make(e).show()
                 }
                 val success = try {
-                    WifiApManager.setConfiguration(configuration)
+                    WifiApManager.setConfigurationCompat(configuration)
                 } catch (e: InvocationTargetException) {
                     try {
                         RootManager.use { it.execute(WifiApCommands.SetConfiguration(configuration)) }

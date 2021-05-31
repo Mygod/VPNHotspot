@@ -72,16 +72,20 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("setSoftApConfiguration", SoftApConfiguration::class.java)
     }
 
+    @get:RequiresApi(30)
+    val configuration get() = getSoftApConfiguration(Services.wifi) as SoftApConfiguration
     /**
      * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29-.
      */
-    val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+    val configurationCompat get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
         (getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
                 ?: SoftApConfigurationCompat()
-    } else (getSoftApConfiguration(Services.wifi) as SoftApConfiguration).toCompat()
-    fun setConfiguration(value: SoftApConfigurationCompat) = (if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+    } else configuration.toCompat()
+    fun setConfigurationCompat(value: SoftApConfigurationCompat) = (if (Build.VERSION.SDK_INT >= 30) {
+        setSoftApConfiguration(Services.wifi, value.toPlatform())
+    } else @Suppress("DEPRECATION") {
         setWifiApConfiguration(Services.wifi, value.toWifiConfiguration())
-    } else setSoftApConfiguration(Services.wifi, value.toPlatform())) as Boolean
+    }) as Boolean
 
     @RequiresApi(28)
     interface SoftApCallbackCompat {
@@ -235,6 +239,16 @@ object WifiApManager {
     }
     @RequiresApi(28)
     fun unregisterSoftApCallback(key: Any) = unregisterSoftApCallback(Services.wifi, key)
+
+    @get:RequiresApi(30)
+    private val startLocalOnlyHotspot by lazy @TargetApi(30) {
+        WifiManager::class.java.getDeclaredMethod("startLocalOnlyHotspot", SoftApConfiguration::class.java,
+            Executor::class.java, WifiManager.LocalOnlyHotspotCallback::class.java)
+    }
+    @RequiresApi(30)
+    fun startLocalOnlyHotspot(config: SoftApConfiguration, callback: WifiManager.LocalOnlyHotspotCallback?,
+                              executor: Executor? = null) =
+        startLocalOnlyHotspot(Services.wifi, config, executor, callback)
 
     private val cancelLocalOnlyHotspotRequest by lazy {
         WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")

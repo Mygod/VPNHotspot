@@ -113,6 +113,8 @@
     <string name="settings_service_repeater_safe_mode">中继安全模式</string>
     <string name="settings_service_repeater_safe_mode_summary">不对系统配置进行修改，但是可能须要较长的网络名称。</string>
     <string name="settings_service_repeater_safe_mode_warning">使用短名称可能需要关闭安全模式。</string>
+    <string name="settings_service_temp_hotspot_use_system">临时 WLAN 热点使用系统配置</string>
+    <string name="settings_service_temp_hotspot_use_system_summary">这将与其他使用本地热点的应用冲突</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 开启</string>
     <string name="settings_service_wifi_lock_none">系统默认</string>
     <string name="settings_service_wifi_lock_full">开</string>

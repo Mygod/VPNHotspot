@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root
 
+import android.net.wifi.WifiManager
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
@@ -62,6 +63,7 @@ object WifiApCommands {
                 private fun push(parcel: SoftApCallbackParcel) {
                     trySend(parcel).onClosed {
                         finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
+                        return
                     }.onFailure { throw it!! }
                 }
 
@@ -149,11 +151,60 @@ object WifiApCommands {
 
     @Parcelize
     class GetConfiguration : RootCommand<SoftApConfigurationCompat> {
-        override suspend fun execute() = WifiApManager.configuration
+        override suspend fun execute() = WifiApManager.configurationCompat
     }
 
     @Parcelize
     data class SetConfiguration(val configuration: SoftApConfigurationCompat) : RootCommand<ParcelableBoolean> {
-        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
+        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfigurationCompat(configuration))
+    }
+
+    @Parcelize
+    @RequiresApi(30)
+    class StartLocalOnlyHotspot : RootCommandChannel<LocalOnlyHotspotCallbacks> {
+        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
+            val finish = CompletableDeferred<Unit>()
+            var lohr: WifiManager.LocalOnlyHotspotReservation? = null
+            WifiApManager.startLocalOnlyHotspot(WifiApManager.configuration, object :
+                WifiManager.LocalOnlyHotspotCallback() {
+                private fun push(parcel: LocalOnlyHotspotCallbacks) {
+                    trySend(parcel).onClosed {
+                        finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
+                        return
+                    }.onFailure { throw it!! }
+                }
+                override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
+                    if (reservation == null) onFailed(-3) else {
+                        require(lohr == null)
+                        lohr = reservation
+                        push(LocalOnlyHotspotCallbacks.OnStarted(reservation.softApConfiguration))
+                    }
+                }
+                override fun onStopped() {
+                    push(LocalOnlyHotspotCallbacks.OnStopped())
+                    finish.complete(Unit)
+                }
+                override fun onFailed(reason: Int) {
+                    push(LocalOnlyHotspotCallbacks.OnFailed(reason))
+                    finish.complete(Unit)
+                }
+            }) {
+                scope.launch {
+                    try {
+                        it.run()
+                    } catch (e: Throwable) {
+                        finish.completeExceptionally(e)
+                    }
+                }
+            }
+            try {
+                finish.await()
+            } catch (e: Exception) {
+                WifiApManager.cancelLocalOnlyHotspotRequest()
+                throw e
+            } finally {
+                lohr?.close()
+            }
+        }
     }
 }
