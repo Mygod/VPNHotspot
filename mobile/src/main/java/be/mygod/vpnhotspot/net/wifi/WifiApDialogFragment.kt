@@ -235,7 +235,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bridgedMode.isEnabled = true
             dialogView.bridgedMode.isChecked = userBridgedMode
         }
-
     }
     private fun populateFromConfiguration() {
         dialogView.ssid.setText(base.ssid)
@@ -319,9 +318,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 }
                 set == expected
             }
-            else -> true
+            else -> {
+                setBridgedMode()
+                true
+            }
         }
-        setBridgedMode()
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
             MacAddressCompat.fromString(dialogView.bssid.text.toString())
