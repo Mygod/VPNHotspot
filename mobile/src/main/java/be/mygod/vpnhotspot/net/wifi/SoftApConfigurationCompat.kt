@@ -280,13 +280,13 @@ data class SoftApConfigurationCompat(
                 preSharedKey,
                 hiddenSSID,
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
-                SparseIntArray(1).apply {
-                    if (Build.VERSION.SDK_INT >= 23) append(when (val band = apBand.getInt(this)) {
+                SparseIntArray(1).also {
+                    if (Build.VERSION.SDK_INT >= 23) it.append(when (val band = apBand.getInt(this)) {
                         0 -> BAND_2GHZ
                         1 -> BAND_5GHZ
                         -1 -> BAND_LEGACY
                         else -> throw IllegalArgumentException("Unexpected band $band")
-                    }, apChannel.getInt(this)) else append(BAND_LEGACY, 0)
+                    }, apChannel.getInt(this)) else it.append(BAND_LEGACY, 0)
                 },
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
