@@ -318,8 +318,8 @@ data class SoftApConfigurationCompat(
                 bssid?.toCompat()?.addr,
                 passphrase,
                 isHiddenSsid,
-                if (BuildCompat.isAtLeastS()) getChannels(this) as SparseIntArray else SparseIntArray(1).apply {
-                    append(getBand(this) as Int, getChannel(this) as Int)
+                if (BuildCompat.isAtLeastS()) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
+                    it.append(getBand(this) as Int, getChannel(this) as Int)
                 },
                 securityType,
                 getMaxNumberOfClients(this) as Int,

@@ -24,7 +24,7 @@ android {
         minSdk = 21
         if (targetSdk == 31) targetSdkPreview = "S" else this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 270
+        versionCode = 271
         versionName = "2.12.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
