@@ -1,12 +1,18 @@
 package be.mygod.vpnhotspot.root
 
+import android.annotation.TargetApi
+import android.content.ClipData
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
+import androidx.core.os.BuildCompat
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
@@ -119,6 +125,19 @@ object WifiApCommands {
             }
             is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
+            is SoftApCallbackParcel.OnBlockedClientConnecting -> @TargetApi(30) {   // passively consume events
+                val client = WifiClient(parcel.client)
+                val macAddress = client.macAddress
+                var name = macAddress.toString()
+                if (BuildCompat.isAtLeastS()) client.apInstanceIdentifier?.let { name += "%$it" }
+                val reason = WifiApManager.clientBlockLookup(parcel.blockedReason, true)
+                Timber.i("$name blocked from connecting: $reason (${parcel.blockedReason})")
+                SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
+                    action(R.string.tethering_manage_wifi_copy_mac) {
+                        app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+                    }
+                }.show()
+            }
         }
         for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
