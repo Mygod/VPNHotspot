@@ -328,10 +328,10 @@ data class SoftApConfigurationCompat(
                 isClientControlByUserEnabled(this) as Boolean,
                 getBlockedClientList(this) as List<MacAddress>,
                 getAllowedClientList(this) as List<MacAddress>,
-                getMacRandomizationSetting(this) as Int,
-                isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
-                isIeee80211axEnabled(this) as Boolean,
-                isUserConfiguration(this) as Boolean,
+                if (BuildCompat.isAtLeastS()) getMacRandomizationSetting(this) as Int else RANDOMIZATION_PERSISTENT,
+                !BuildCompat.isAtLeastS() || isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
+                !BuildCompat.isAtLeastS() || isIeee80211axEnabled(this) as Boolean,
+                !BuildCompat.isAtLeastS() || isUserConfiguration(this) as Boolean,
                 this)
     }
 
