@@ -394,41 +394,39 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
         val networkName = networkName
         val passphrase = passphrase
-        try {
-            if (!safeMode || networkName == null || passphrase == null) {
-                persistNextGroup = true
-                p2pManager.createGroup(channel, listener)
-            } else @TargetApi(29) {
-                p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+        @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
+        if (!safeMode || networkName == null || passphrase == null) {
+            persistNextGroup = true
+            p2pManager.createGroup(channel, listener)
+        } else @TargetApi(29) {
+            p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+                try {
+                    mNetworkName.set(this, networkName) // bypass networkName check
+                } catch (e: ReflectiveOperationException) {
+                    Timber.w(e)
                     try {
-                        mNetworkName.set(this, networkName) // bypass networkName check
-                    } catch (e: ReflectiveOperationException) {
-                        Timber.w(e)
                         setNetworkName(networkName)
+                    } catch (e: IllegalArgumentException) {
+                        Timber.w(e)
+                        return startFailure(e.readableMessage)
                     }
-                    setPassphrase(passphrase)
-                    when (val oc = operatingChannel) {
-                        0 -> setGroupOperatingBand(when (val band = operatingBand) {
-                            SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                            SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                            else -> {
-                                require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
-                                WifiP2pConfig.GROUP_OWNER_BAND_AUTO
-                            }
-                        })
+                }
+                setPassphrase(passphrase)
+                when (val oc = operatingChannel) {
+                    0 -> setGroupOperatingBand(when (val band = operatingBand) {
+                        SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                        SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                         else -> {
-                            setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+                            require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
+                            WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                         }
+                    })
+                    else -> {
+                        setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
                     }
-                    setDeviceAddress(deviceAddress?.toPlatform())
-                }.build(), listener)
-            }
-        } catch (e: SecurityException) {
-            Timber.w(e)
-            startFailure(e.readableMessage)
-        } catch (e: IllegalArgumentException) {
-            Timber.w(e)
-            startFailure(e.readableMessage)
+                }
+                setDeviceAddress(deviceAddress?.toPlatform())
+            }.build(), listener)
         }
     }
     /**
@@ -481,19 +479,17 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
             if (group == null) emptyMap() else mapOf(Pair(group.`interface`, group.clientList?.size ?: 0)))
 
-    private fun removeGroup() {
-        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                launch { cleanLocked() }
-            }
-            override fun onFailure(reason: Int) {
-                if (reason != WifiP2pManager.BUSY) {
-                    SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
-                }   // else assuming it's already gone
-                launch { cleanLocked() }
-            }
-        })
-    }
+    private fun removeGroup() = p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+        override fun onSuccess() {
+            launch { cleanLocked() }
+        }
+        override fun onFailure(reason: Int) {
+            if (reason != WifiP2pManager.BUSY) {
+                SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
+            }   // else assuming it's already gone
+            onSuccess()
+        }
+    })
     private fun cleanLocked() {
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
