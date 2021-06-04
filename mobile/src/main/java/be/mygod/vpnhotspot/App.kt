@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ClipboardManager
 import android.content.res.Configuration
+import android.location.LocationManager
 import android.os.Build
 import android.util.Log
 import androidx.annotation.Size
@@ -124,6 +125,7 @@ class App : Application() {
     }
     val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
+    val location by lazy { getSystemService<LocationManager>() }
 
     val hasTouch by lazy { packageManager.hasSystemFeature("android.hardware.faketouch") }
     val customTabsIntent by lazy {

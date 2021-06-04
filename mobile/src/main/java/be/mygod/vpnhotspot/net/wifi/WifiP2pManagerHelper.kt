@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.SuppressLint
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -128,7 +129,9 @@ object WifiP2pManagerHelper {
         return result.await()
     }
 
-    @SuppressLint("MissingPermission")
+    suspend fun WifiP2pManager.requestConnectionInfo(c: WifiP2pManager.Channel) =
+        CompletableDeferred<WifiP2pInfo?>().apply { requestConnectionInfo(c) { complete(it) } }.await()
+    @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     @RequiresApi(29)
     suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddressCompat? {
         val future = CompletableDeferred<String?>()
@@ -138,4 +141,10 @@ object WifiP2pManagerHelper {
             if (address == MacAddressCompat.ANY_ADDRESS) null else address
         }
     }
+    @SuppressLint("MissingPermission")  // missing permission simply leads to null result
+    suspend fun WifiP2pManager.requestGroupInfo(c: WifiP2pManager.Channel) =
+        CompletableDeferred<WifiP2pGroup?>().apply { requestGroupInfo(c) { complete(it) } }.await()
+    @RequiresApi(29)
+    suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =
+        CompletableDeferred<Int>().apply { requestP2pState(c) { complete(it) } }.await()
 }
