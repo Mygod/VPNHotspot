@@ -66,7 +66,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
                     Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
                             Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
-                } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) try {
+                } else app.location?.isLocationEnabled != true) try {
             context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
         } catch (e: ActivityNotFoundException) {

@@ -6,6 +6,7 @@ import android.app.Service
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
 import android.os.Build
@@ -20,7 +21,10 @@ import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestConnectionInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestGroupInfo
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestP2pState
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
@@ -215,6 +219,9 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
+            LocationManager.MODE_CHANGED_ACTION -> @TargetApi(30) {
+                onLocationModeChanged(intent.getBooleanExtra(LocationManager.EXTRA_LOCATION_ENABLED, false))
+            }
         }
     }
     private val deviceListener = broadcastReceiver { _, intent ->
@@ -311,6 +318,30 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
     }
 
+    private var p2pPoller: Job? = null
+    @RequiresApi(30)
+    private fun onLocationModeChanged(enabled: Boolean) = if (enabled) p2pPoller?.cancel() else {
+        SmartSnackbar.make(R.string.repeater_location_off).apply {
+            action(R.string.repeater_location_off_configure) {
+                it.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            }
+        }.show()
+        p2pPoller = launch(start = CoroutineStart.UNDISPATCHED) {
+            while (true) {
+                delay(1000)
+                val channel = channel ?: return@launch
+                coroutineScope {
+                    launch(start = CoroutineStart.UNDISPATCHED) {
+                        if (p2pManager.requestP2pState(channel) == WifiP2pManager.WIFI_P2P_STATE_DISABLED) cleanLocked()
+                    }
+                    val info = async(start = CoroutineStart.UNDISPATCHED) { p2pManager.requestConnectionInfo(channel) }
+                    val group = p2pManager.requestGroupInfo(channel)
+                    onP2pConnectionChanged(info.await(), group)
+                }
+            }
+        }
+    }
+
     /**
      * startService Step 1
      */
@@ -321,29 +352,25 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         // bump self to foreground location service (API 29+) to use location later, also to avoid getting killed
         if (Build.VERSION.SDK_INT >= 26) showNotification()
         launch {
-            registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
-                    WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+            val filter = intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
+                WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
+            if (Build.VERSION.SDK_INT >= 30) filter.addAction(LocationManager.MODE_CHANGED_ACTION)
+            registerReceiver(receiver, filter)
             receiverRegistered = true
-            try {
-                p2pManager.requestGroupInfo(channel) {
-                    when {
-                        it == null -> doStart()
-                        it.isGroupOwner -> launch { if (routingManager == null) doStartLocked(it) }
-                        else -> {
-                            Timber.i("Removing old group ($it)")
-                            p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                                override fun onSuccess() {
-                                    doStart()
-                                }
-                                override fun onFailure(reason: Int) =
-                                        startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                            })
+            val group = p2pManager.requestGroupInfo(channel)
+            when {
+                group == null -> doStart()
+                group.isGroupOwner -> if (routingManager == null) doStartLocked(group)
+                else -> {
+                    Timber.i("Removing old group ($group)")
+                    p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+                        override fun onSuccess() {
+                            launch { doStart() }
                         }
-                    }
+                        override fun onFailure(reason: Int) =
+                            startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+                    })
                 }
-            } catch (e: SecurityException) {
-                Timber.w(e)
-                startFailure(e.readableMessage)
             }
         }
         return START_NOT_STICKY
@@ -351,15 +378,19 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * startService Step 2 (if a group isn't already available)
      */
-    private fun doStart() = launch {
+    private suspend fun doStart() {
         val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
                 startFailure(formatReason(R.string.repeater_create_group_failure, reason),
                         showWifiEnable = reason == WifiP2pManager.BUSY)
             }
-            override fun onSuccess() { }    // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
+            override fun onSuccess() {
+                // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
+                // in order for this to happen, we need to make sure that the callbacks are firing
+                if (Build.VERSION.SDK_INT >= 30) onLocationModeChanged(app.location?.isLocationEnabled == true)
+            }
         }
-        val channel = channel ?: return@launch listener.onFailure(WifiP2pManager.BUSY)
+        val channel = channel ?: return listener.onFailure(WifiP2pManager.BUSY)
         if (!safeMode) {
             binder.fetchPersistentGroup()
             setOperatingChannel()
@@ -487,6 +518,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun cleanLocked() {
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
+            p2pPoller?.cancel()
             receiverRegistered = false
         }
         if (Build.VERSION.SDK_INT >= 28) {

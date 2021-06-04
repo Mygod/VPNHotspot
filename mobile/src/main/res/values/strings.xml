@@ -47,6 +47,9 @@
     <string name="repeater_failure_disconnected">Service unavailable. Try again later</string>
     <string name="repeater_missing_location_permissions">Repeater requires permissions for accessing fine
         location</string>
+    <string name="repeater_location_off">Due to system restrictions, turning Location off may lead to things not working
+        properly and increased battery usage</string>
+    <string name="repeater_location_off_configure">Configure</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
     <string name="tethering_temp_hotspot_location">Temporary hotspot requires location to be turned on.</string>

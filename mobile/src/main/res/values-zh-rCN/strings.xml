@@ -29,6 +29,8 @@
     <string name="repeater_failure_reason_unsupported_operation">不支持此操作</string>
     <string name="repeater_failure_disconnected">服务不可用，请稍后重试</string>
     <string name="repeater_missing_location_permissions">无线中继需要精确位置权限</string>
+    <string name="repeater_location_off">由于系统限制，关闭位置信息服务可能产生问题并导致续航缩短</string>
+    <string name="repeater_location_off_configure">进入设置</string>
 
     <string name="tethering_temp_hotspot">临时 WLAN 热点</string>
     <string name="tethering_temp_hotspot_location">使用临时热点需要打开位置服务。</string>
