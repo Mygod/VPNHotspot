@@ -12,6 +12,7 @@ import android.net.wifi.p2p.*
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
 import be.mygod.librootkotlinx.useParcel
