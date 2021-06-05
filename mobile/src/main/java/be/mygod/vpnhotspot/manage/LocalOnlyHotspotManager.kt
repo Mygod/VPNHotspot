@@ -3,13 +3,11 @@ package be.mygod.vpnhotspot.manage
 import android.Manifest
 import android.annotation.TargetApi
 import android.content.*
-import android.location.LocationManager
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.View
 import android.widget.Toast
-import androidx.core.content.getSystemService
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
