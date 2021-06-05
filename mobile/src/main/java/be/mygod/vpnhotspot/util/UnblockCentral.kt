@@ -3,8 +3,9 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
+import android.os.Build
 import androidx.annotation.RequiresApi
-import timber.log.Timber
+import java.lang.reflect.Method
 
 /**
  * The central object for accessing all the useful blocked APIs. Thanks Google!
@@ -17,16 +18,15 @@ object UnblockCentral {
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    @get:RequiresApi(28)
     private val init by lazy {
-        try {
-            Class.forName("dalvik.system.VMDebug").getDeclaredMethod("allowHiddenApiReflectionFrom", Class::class.java)
-                .invoke(null, UnblockCentral::class.java)
-            true
-        } catch (e: ReflectiveOperationException) {
-            Timber.w(e)
-            false
-        }
+        if (Build.VERSION.SDK_INT < 28) return@lazy
+        // TODO: fix this not working when targeting API 30+
+        val getDeclaredMethod = Class::class.java.getDeclaredMethod("getDeclaredMethod",
+            String::class.java, arrayOf<Class<*>>()::class.java)
+        val clazz = Class.forName("dalvik.system.VMRuntime")
+        val setHiddenApiExemptions = getDeclaredMethod(clazz, "setHiddenApiExemptions",
+            arrayOf(Array<String>::class.java)) as Method
+        setHiddenApiExemptions(clazz.getDeclaredMethod("getRuntime")(null), arrayOf(""))
     }
 
     @RequiresApi(31)
