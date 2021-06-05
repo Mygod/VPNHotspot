@@ -65,6 +65,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
+                    android:minHeight="@dimen/touch_target_min"
                     android:text="@string/donations__google_android_market_donate_button" />
             </LinearLayout>
 
