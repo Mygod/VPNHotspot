@@ -12,6 +12,7 @@ import android.util.*
 import androidx.annotation.RequiresApi
 import kotlinx.parcelize.Parcelize
 import java.io.IOException
+import java.util.*
 
 class NoShellException(cause: Throwable) : Exception("Root missing", cause)
 
@@ -252,4 +253,5 @@ inline fun <reified T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoa
     }
 
 // Stream closed caused in NullOutputStream
-val IOException.isEBADF get() = message == "Stream closed" || (cause as? ErrnoException)?.errno == OsConstants.EBADF
+val IOException.isEBADF get() = (cause as? ErrnoException)?.errno == OsConstants.EBADF ||
+        message?.lowercase(Locale.ENGLISH) == "stream closed"
