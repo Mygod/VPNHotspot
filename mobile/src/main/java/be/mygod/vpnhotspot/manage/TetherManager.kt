@@ -319,10 +319,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
                 baseError).joinToString("\n")
 
-        override fun start() = BluetoothTethering.start(this)
+        override fun start() = tethering.start(this)
         override fun stop() {
-            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, this::onException)
-            Thread.sleep(1)         // give others a room to breathe
+            tethering.stop(this::onException)
             onTetheringStarted()    // force flush state
         }
     }
