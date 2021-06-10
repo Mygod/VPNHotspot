@@ -192,6 +192,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 <details>
 <summary>Hidden whitelisted APIs: (same catch as above, however, things in this list are less likely to be broken)</summary>
 
+* (since API 24, prior to API 31) `Landroid/bluetooth/BluetoothPan;-><init>(Landroid/content/Context;Landroid/bluetooth/BluetoothProfile$ServiceListener;)V,unsupported`
+* (since API 31) `Landroid/bluetooth/BluetoothPan;-><init>(Landroid/content/Context;Landroid/bluetooth/BluetoothProfile$ServiceListener;Landroid/bluetooth/BluetoothAdapter;)V,unsupported`
 * (since API 24) `Landroid/bluetooth/BluetoothPan;->isTetheringOn()Z,sdk,system-api,test-api`
 * (since API 24) `Landroid/bluetooth/BluetoothProfile;->PAN:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/content/Context;->TETHERING_SERVICE:Ljava/lang/String;,sdk,system-api,test-api`

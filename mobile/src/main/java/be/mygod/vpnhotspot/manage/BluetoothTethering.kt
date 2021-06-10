@@ -27,14 +27,21 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         private const val PAN = 5
         private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
         private val constructor by lazy {
-            clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java).apply {
+            (if (BuildCompat.isAtLeastS()) {
+                clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java,
+                    BluetoothAdapter::class.java)
+            } else {
+                clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java)
+            }).apply {
                 isAccessible = true
             }
         }
         private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
 
-        fun pan(context: Context, serviceListener: BluetoothProfile.ServiceListener) =
-                constructor.newInstance(context, serviceListener) as BluetoothProfile
+        fun pan(context: Context, serviceListener: BluetoothProfile.ServiceListener, adapter: BluetoothAdapter) =
+            (if (BuildCompat.isAtLeastS()) {
+                constructor.newInstance(context, serviceListener, adapter)
+            } else constructor.newInstance(context, serviceListener)) as BluetoothProfile
         val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
         fun BluetoothProfile.closePan() = BluetoothAdapter.getDefaultAdapter()!!.closeProfileProxy(PAN, this)
 
@@ -101,8 +108,8 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     fun ensureInit(context: Context) {
-        if (pan == null && BluetoothAdapter.getDefaultAdapter() != null) try {
-            pan = pan(context, this)
+        if (pan == null) try {
+            pan = pan(context, this, BluetoothAdapter.getDefaultAdapter() ?: return)
         } catch (e: ReflectiveOperationException) {
             if (e.cause is SecurityException && BuildCompat.isAtLeastS()) Timber.d(e.readableMessage)
             else Timber.w(e)
