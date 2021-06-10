@@ -186,7 +186,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                         icon = tileOff
                     }
                     null -> {
-                        state = Tile.STATE_UNAVAILABLE
+                        state = Tile.STATE_INACTIVE
                         icon = tileOff
                         subtitle(tethering?.activeFailureCause?.readableMessage)
                     }
@@ -197,7 +197,8 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         }
 
         override fun onClick() {
-            when (tethering?.active) {
+            val tethering = tethering
+            if (tethering == null) tapPending = true else when (tethering.active) {
                 true -> {
                     val binder = binder
                     if (binder == null) tapPending = true else {
@@ -211,7 +212,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     }
                 }
                 false -> start()
-                else -> tapPending = true
+                else -> ManageBar.start(this)
             }
         }
     }

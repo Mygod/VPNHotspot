@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
@@ -123,6 +124,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     /**
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
      */
+    @SuppressLint("MissingPermission")
     @RequiresApi(24)
     fun start(callback: TetheringManager.StartTetheringCallback) {
         if (pendingCallback == null) try {

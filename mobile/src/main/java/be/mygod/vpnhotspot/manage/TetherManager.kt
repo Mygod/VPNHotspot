@@ -62,12 +62,16 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             } catch (e: RuntimeException) {
                 app.logEvent("manage_write_settings") { param("message", e.toString()) }
             }
-            if (manager.isStarted) try {
-                manager.stop()
-            } catch (e: InvocationTargetException) {
-                if (e.targetException !is SecurityException) Timber.w(e)
-                manager.onException(e)
-            } else manager.start()
+            when (manager.isStarted) {
+                true -> try {
+                    manager.stop()
+                } catch (e: InvocationTargetException) {
+                    if (e.targetException !is SecurityException) Timber.w(e)
+                    manager.onException(e)
+                }
+                false -> manager.start()
+                null -> manager.onClickNull()
+            }
         }
     }
 
@@ -78,13 +82,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val icon get() = tetherType.icon
         override val title get() = this@TetherManager.title
         override val text get() = this@TetherManager.text
-        override val active get() = isStarted
+        override val active get() = isStarted == true
     }
 
     val data = Data()
     abstract val title: CharSequence
     abstract val tetherType: TetherType
-    open val isStarted get() = parent.enabledTypes.contains(tetherType)
+    open val isStarted: Boolean? get() = parent.enabledTypes.contains(tetherType)
     protected open val text: CharSequence get() = baseError ?: ""
 
     protected var baseError: String? = null
@@ -92,6 +96,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
     protected abstract fun start()
     protected abstract fun stop()
+    protected open fun onClickNull(): Unit = throw UnsupportedOperationException()
 
     override fun onTetheringStarted() = data.notifyChange()
     override fun onTetheringFailed(error: Int?) {
@@ -314,7 +319,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val title get() = parent.getString(R.string.tethering_manage_bluetooth)
         override val tetherType get() = TetherType.BLUETOOTH
         override val type get() = VIEW_TYPE_BLUETOOTH
-        override val isStarted get() = tethering.active == true
+        override val isStarted get() = tethering.active
         override val text get() = listOfNotNull(
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
                 baseError).joinToString("\n")
@@ -324,6 +329,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             tethering.stop(this::onException)
             onTetheringStarted()    // force flush state
         }
+        override fun onClickNull() = ManageBar.start(parent.requireContext())
     }
     @RequiresApi(30)
     class Ethernet(parent: TetheringFragment) : TetherManager(parent) {
