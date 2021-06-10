@@ -60,6 +60,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
 
     init {
         (context as LifecycleOwner).lifecycle.addObserver(this)
+        onUpdate()
     }
 
     override fun onStart(owner: LifecycleOwner) {
