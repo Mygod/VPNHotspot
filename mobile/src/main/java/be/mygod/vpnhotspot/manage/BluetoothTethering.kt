@@ -103,7 +103,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     fun ensureInit(context: Context) {
         if (pan == null && BluetoothAdapter.getDefaultAdapter() != null) try {
             pan = pan(context, this)
-        } catch (e: InvocationTargetException) {
+        } catch (e: ReflectiveOperationException) {
             if (e.cause is SecurityException && BuildCompat.isAtLeastS()) Timber.d(e.readableMessage)
             else Timber.w(e)
             activeFailureCause = e
