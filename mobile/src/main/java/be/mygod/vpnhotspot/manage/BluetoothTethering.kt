@@ -125,8 +125,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
      */
     @RequiresApi(24)
     fun start(callback: TetheringManager.StartTetheringCallback) {
-        if (pendingCallback != null) return
-        try {
+        if (pendingCallback == null) try {
             if (adapter?.state == BluetoothAdapter.STATE_OFF) {
                 registerBluetoothStateListener(BluetoothTethering)
                 pendingCallback = callback
@@ -134,6 +133,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
             } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
         } catch (e: SecurityException) {
             SmartSnackbar.make(e.readableMessage).shortToast().show()
+            pendingCallback = null
         }
     }
     @RequiresApi(24)
