@@ -109,6 +109,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     fun ensureInit(context: Context) {
+        activeFailureCause = null
         if (pan == null) try {
             pan = pan(context, this)
         } catch (e: ReflectiveOperationException) {

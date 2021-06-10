@@ -297,11 +297,14 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             parent.viewLifecycleOwner.lifecycle.addObserver(this)
         }
 
-        fun ensureInit(context: Context) = tethering.ensureInit(context)
+        fun ensureInit(context: Context) {
+            tethering.ensureInit(context)
+            onTetheringStarted()    // force flush
+        }
         override fun onResume(owner: LifecycleOwner) {
             if (!BuildCompat.isAtLeastS() || parent.requireContext().checkSelfPermission(
                     Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
-                ensureInit(parent.requireContext())
+                tethering.ensureInit(parent.requireContext())
             } else if (parent.shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {
                 parent.requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
             }
