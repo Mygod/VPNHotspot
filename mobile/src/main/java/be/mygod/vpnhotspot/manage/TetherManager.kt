@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.TargetApi
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Parcelable
@@ -141,22 +142,32 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     @RequiresApi(24)
     class Wifi(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver,
             WifiApManager.SoftApCallbackCompat {
+        private val receiver = broadcastReceiver { _, intent ->
+            failureReason = if (intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_STATE, 0) ==
+                WifiApManager.WIFI_AP_STATE_FAILED) {
+                intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)
+            } else null
+            data.notifyChange()
+        }
         private var failureReason: Int? = null
         private var numClients: Int? = null
         private var info = emptyList<Parcelable>()
         private var capability: Parcelable? = null
 
         init {
-            if (Build.VERSION.SDK_INT >= 28) parent.viewLifecycleOwner.lifecycle.addObserver(this)
+            if (Build.VERSION.SDK_INT >= 23) parent.viewLifecycleOwner.lifecycle.addObserver(this)
         }
 
-        @TargetApi(28)
         override fun onStart(owner: LifecycleOwner) {
-            WifiApCommands.registerSoftApCallback(this)
+            if (Build.VERSION.SDK_INT < 28) {
+                parent.requireContext().registerReceiver(receiver,
+                    IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
+            } else WifiApCommands.registerSoftApCallback(this)
         }
-        @TargetApi(28)
         override fun onStop(owner: LifecycleOwner) {
-            WifiApCommands.unregisterSoftApCallback(this)
+            if (Build.VERSION.SDK_INT < 28) {
+                parent.requireContext().unregisterReceiver(receiver)
+            } else WifiApCommands.unregisterSoftApCallback(this)
         }
 
         override fun onStateChanged(state: Int, failureReason: Int) {
