@@ -183,8 +183,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
-* (since API 29) `Ldalvik/system/VMRuntime;->getRuntime()Ldalvik/system/VMRuntime;,core-platform-api,greylist`
-* (since API 29) `Ldalvik/system/VMRuntime;->setHiddenApiExemptions([Ljava/lang/String;)V,blacklist,core-platform-api`
+* (since API 29) `Ldalvik/system/VMRuntime;->getRuntime()Ldalvik/system/VMRuntime;,core-platform-api,unsupported`
+* (since API 29) `Ldalvik/system/VMRuntime;->setHiddenApiExemptions([Ljava/lang/String;)V,blocked,core-platform-api`
 * (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * (since API 26) `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
 * (prior to API 29) `Ljava/net/InetAddress;->parseNumericAddress(Ljava/lang/String;)Ljava/net/InetAddress;,core-platform-api,max-target-p`
@@ -284,8 +284,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (on API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getAutoShutdownTimeoutMillis()J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getBssid()Landroid/net/MacAddress;,sdk,system-api,test-api`
-* (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,system-api,whitelist`
-* (since API 30) `Landroid/net/wifi/SoftApInfo;->getFrequency()I,system-api,whitelist`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/SoftApInfo;->getFrequency()I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getWifiStandard()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiClient;->getMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA2_PSK:I,sdk,system-api,test-api`
