@@ -176,9 +176,8 @@ object WifiApManager {
         /**
          * Called when soft AP state changes.
          *
-         * @param state         the new AP state. One of [WIFI_AP_STATE_DISABLED],
-         *                      {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
-         *                      {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+         * @param state         the new AP state. One of [WIFI_AP_STATE_DISABLED], [WIFI_AP_STATE_DISABLING],
+         *   [WIFI_AP_STATE_ENABLED], [WIFI_AP_STATE_ENABLING], [WIFI_AP_STATE_FAILED]
          * @param failureReason reason when in failed state. One of
          *                      {@link #SAP_START_FAILURE_GENERAL},
          *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
