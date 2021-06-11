@@ -29,24 +29,10 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
          */
         private const val PAN = 5
         private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
-        private val constructor by lazy {
-            (if (BuildCompat.isAtLeastS()) {
-                clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java,
-                    BluetoothAdapter::class.java)
-            } else {
-                clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java)
-            }).apply {
-                isAccessible = true
-            }
-        }
         private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
 
         private val adapter = app.getSystemService<BluetoothManager>()?.adapter
-        fun pan(context: Context, serviceListener: BluetoothProfile.ServiceListener) = (if (BuildCompat.isAtLeastS()) {
-            constructor.newInstance(context, serviceListener, adapter)
-        } else constructor.newInstance(context, serviceListener)) as BluetoothProfile
-        val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
-        fun BluetoothProfile.closePan() = adapter!!.closeProfileProxy(PAN, this)
+        private val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
 
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
@@ -70,6 +56,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         }
     }
 
+    private var proxyCreated = false
     private var connected = false
     private var pan: BluetoothProfile? = null
     private var stoppedByUser = false
@@ -98,12 +85,13 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     fun ensureInit(context: Context) {
+        val adapter = adapter ?: return
         activeFailureCause = null
-        if (pan == null) try {
-            pan = pan(context, this)
-        } catch (e: ReflectiveOperationException) {
-            if (e.cause is SecurityException && BuildCompat.isAtLeastS()) Timber.d(e.readableMessage)
-            else Timber.w(e)
+        if (!proxyCreated) try {
+            check(adapter.getProfileProxy(context, this, PAN))
+            proxyCreated = true
+        } catch (e: SecurityException) {
+            if (BuildCompat.isAtLeastS()) Timber.d(e.readableMessage) else Timber.w(e)
             activeFailureCause = e
         }
     }
@@ -117,6 +105,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         stoppedByUser = false
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+        pan = proxy
         connected = true
         stateListener()
     }
@@ -146,6 +135,6 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
 
     override fun close() {
         app.unregisterReceiver(receiver)
-        pan?.closePan()
+        adapter!!.closeProfileProxy(PAN, pan)
     }
 }
