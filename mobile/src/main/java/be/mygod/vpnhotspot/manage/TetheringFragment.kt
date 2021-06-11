@@ -34,6 +34,7 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
@@ -130,7 +131,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java))
+        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java)) else {
+            Snackbar.make((activity as MainActivity).binding.fragmentHolder,
+                R.string.repeater_missing_location_permissions, Snackbar.LENGTH_LONG).show()
+        }
     }
     @RequiresApi(26)
     val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
