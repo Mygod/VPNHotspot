@@ -200,6 +200,10 @@ object WifiApManager {
     private val cancelLocalOnlyHotspotRequest by lazy {
         WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
     }
+    /**
+     * This is the only way to unregister requests besides app exiting.
+     * Therefore, we are happy with crashing the app if reflection fails.
+     */
     @RequiresApi(26)
     fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
 

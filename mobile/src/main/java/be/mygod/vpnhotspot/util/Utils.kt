@@ -159,10 +159,14 @@ private val newLookup by lazy @TargetApi(26) {
  * See also: https://stackoverflow.com/a/49532463/2245107
  */
 fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?) = when {
-    Build.VERSION.SDK_INT >= 26 && method.isDefault -> newLookup.newInstance(interfaceClass, 0xf)   // ALL_MODES
-            .`in`(interfaceClass).unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
-                if (args == null) invokeWithArguments() else invokeWithArguments(*args)
-            }
+    Build.VERSION.SDK_INT >= 26 && method.isDefault -> try {
+        newLookup.newInstance(interfaceClass, 0xf)   // ALL_MODES
+    } catch (e: ReflectiveOperationException) {
+        Timber.w(e)
+        MethodHandles.lookup().`in`(interfaceClass)
+    }.unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
+        if (args == null) invokeWithArguments() else invokeWithArguments(*args)
+    }
     // otherwise, we just redispatch it to InvocationHandler
     method.declaringClass.isAssignableFrom(javaClass) -> when {
         method.declaringClass == Object::class.java -> when (method.name) {
