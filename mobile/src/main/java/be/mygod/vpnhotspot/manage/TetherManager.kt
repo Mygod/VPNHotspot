@@ -27,6 +27,7 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.*
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -143,8 +144,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     class Wifi(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver,
             WifiApManager.SoftApCallbackCompat {
         private val receiver = broadcastReceiver { _, intent ->
-            failureReason = if (intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_STATE, 0) ==
-                WifiApManager.WIFI_AP_STATE_FAILED) {
+            failureReason = if (intent.wifiApState == WifiApManager.WIFI_AP_STATE_FAILED) {
                 intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)
             } else null
             data.notifyChange()
@@ -171,10 +171,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         }
 
         override fun onStateChanged(state: Int, failureReason: Int) {
-            if (state < WifiApManager.WIFI_AP_STATE_DISABLING || state > WifiApManager.WIFI_AP_STATE_FAILED) {
-                Timber.w(Exception("Unknown state $state, $failureReason"))
-                return
-            }
+            if (!WifiApManager.checkWifiApState(state)) return
             this.failureReason = if (state == WifiApManager.WIFI_AP_STATE_FAILED) failureReason else null
             data.notifyChange()
         }

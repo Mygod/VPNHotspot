@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -73,7 +74,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                         }
                         // based on: https://android.googlesource.com/platform/packages/services/Car/+/df5cd06/service/src/com/android/car/CarProjectionService.java#160
                         val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
-                        val apState = sticky.getIntExtra(WifiApManager.EXTRA_WIFI_AP_STATE, 0)
+                        val apState = sticky.wifiApState
                         val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)
                         if (apState != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
                             if (apState == WifiApManager.WIFI_AP_STATE_FAILED) {

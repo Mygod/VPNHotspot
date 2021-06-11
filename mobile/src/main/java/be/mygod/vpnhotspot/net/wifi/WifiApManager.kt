@@ -74,7 +74,7 @@ object WifiApManager {
      * @see WIFI_AP_STATE_ENABLING
      * @see WIFI_AP_STATE_FAILED
      */
-    const val EXTRA_WIFI_AP_STATE = "wifi_state"
+    private const val EXTRA_WIFI_AP_STATE = "wifi_state"
     /**
      * An extra containing the int error code for Soft AP start failure.
      * Can be obtained from the [WIFI_AP_STATE_CHANGED_ACTION] using [Intent.getIntExtra].
@@ -101,6 +101,13 @@ object WifiApManager {
     @get:RequiresApi(26)
     val EXTRA_WIFI_AP_INTERFACE_NAME get() =
         if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_INTERFACE_NAME" else "wifi_ap_interface_name"
+
+    fun checkWifiApState(state: Int) = if (state < WIFI_AP_STATE_DISABLING || state > WIFI_AP_STATE_FAILED) {
+        Timber.w(Exception("Unknown state $state"))
+        false
+    } else true
+    val Intent.wifiApState get() =
+        getIntExtra(EXTRA_WIFI_AP_STATE, WIFI_AP_STATE_DISABLED).also { checkWifiApState(it) }
     /**
      * Wi-Fi AP is currently being disabled. The state will change to
      * [WIFI_AP_STATE_DISABLED] if it finishes successfully.
