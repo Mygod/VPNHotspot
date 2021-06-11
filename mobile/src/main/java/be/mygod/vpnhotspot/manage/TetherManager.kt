@@ -160,11 +160,11 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         }
 
         override fun onStateChanged(state: Int, failureReason: Int) {
-            if (state < 10 || state > 14) {
+            if (state < WifiApManager.WIFI_AP_STATE_DISABLING || state > WifiApManager.WIFI_AP_STATE_FAILED) {
                 Timber.w(Exception("Unknown state $state, $failureReason"))
                 return
             }
-            this.failureReason = if (state == 14) failureReason else null   // WIFI_AP_STATE_FAILED
+            this.failureReason = if (state == WifiApManager.WIFI_AP_STATE_FAILED) failureReason else null
             data.notifyChange()
         }
         override fun onNumClientsChanged(numClients: Int) {

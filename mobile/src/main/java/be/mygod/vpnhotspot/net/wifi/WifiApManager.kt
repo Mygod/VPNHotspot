@@ -59,6 +59,87 @@ object WifiApManager {
     @get:RequiresApi(30)
     val isApMacRandomizationSupported get() = apMacRandomizationSupported(Services.wifi) as Boolean
 
+    /**
+     * Broadcast intent action indicating that Wi-Fi AP has been enabled, disabled,
+     * enabling, disabling, or failed.
+     */
+    const val WIFI_AP_STATE_CHANGED_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+    /**
+     * The lookup key for an int that indicates whether Wi-Fi AP is enabled,
+     * disabled, enabling, disabling, or failed.  Retrieve it with [Intent.getIntExtra].
+     *
+     * @see WIFI_AP_STATE_DISABLED
+     * @see WIFI_AP_STATE_DISABLING
+     * @see WIFI_AP_STATE_ENABLED
+     * @see WIFI_AP_STATE_ENABLING
+     * @see WIFI_AP_STATE_FAILED
+     */
+    const val EXTRA_WIFI_AP_STATE = "wifi_state"
+    /**
+     * An extra containing the int error code for Soft AP start failure.
+     * Can be obtained from the [WIFI_AP_STATE_CHANGED_ACTION] using [Intent.getIntExtra].
+     * This extra will only be attached if [EXTRA_WIFI_AP_STATE] is
+     * attached and is equal to [WIFI_AP_STATE_FAILED].
+     *
+     * The error code will be one of:
+     * {@link #SAP_START_FAILURE_GENERAL},
+     * {@link #SAP_START_FAILURE_NO_CHANNEL},
+     * {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+     *
+     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-6.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#210
+     */
+    @get:RequiresApi(23)
+    val EXTRA_WIFI_AP_FAILURE_REASON get() =
+        if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_FAILURE_REASON" else "wifi_ap_error_code"
+    /**
+     * The lookup key for a String extra that stores the interface name used for the Soft AP.
+     * This extra is included in the broadcast [WIFI_AP_STATE_CHANGED_ACTION].
+     * Retrieve its value with [Intent.getStringExtra].
+     *
+     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#413
+     */
+    @get:RequiresApi(26)
+    val EXTRA_WIFI_AP_INTERFACE_NAME get() =
+        if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_INTERFACE_NAME" else "wifi_ap_interface_name"
+    /**
+     * Wi-Fi AP is currently being disabled. The state will change to
+     * [WIFI_AP_STATE_DISABLED] if it finishes successfully.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_DISABLING = 10
+    /**
+     * Wi-Fi AP is disabled.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiState()
+     */
+    const val WIFI_AP_STATE_DISABLED = 11
+    /**
+     * Wi-Fi AP is currently being enabled. The state will change to
+     * {@link #WIFI_AP_STATE_ENABLED} if it finishes successfully.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_ENABLING = 12
+    /**
+     * Wi-Fi AP is enabled.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_ENABLED = 13
+    /**
+     * Wi-Fi AP is in a failed state. This state will occur when an error occurs during
+     * enabling or disabling
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_FAILED = 14
+
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")
     private val setWifiApConfiguration by lazy {
@@ -88,7 +169,7 @@ object WifiApManager {
         /**
          * Called when soft AP state changes.
          *
-         * @param state         the new AP state. One of {@link #WIFI_AP_STATE_DISABLED},
+         * @param state         the new AP state. One of [WIFI_AP_STATE_DISABLED],
          *                      {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
          *                      {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
          * @param failureReason reason when in failed state. One of
@@ -146,7 +227,7 @@ object WifiApManager {
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
-    @RequiresApi(28)
+    @RequiresApi(23)
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }

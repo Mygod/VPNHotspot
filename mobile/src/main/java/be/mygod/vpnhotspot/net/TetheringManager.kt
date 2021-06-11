@@ -134,7 +134,7 @@ object TetheringManager {
      * Requires MANAGE_USB permission, unfortunately.
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/7ca5d3a/services/usb/java/com/android/server/usb/UsbService.java#389
-     * @see [startTethering].
+     * @see startTethering
      */
     @RequiresApi(24)
     const val TETHERING_USB = 1
@@ -142,14 +142,14 @@ object TetheringManager {
      * Bluetooth tethering type.
      *
      * Requires BLUETOOTH permission.
-     * @see [startTethering].
+     * @see startTethering
      */
     @RequiresApi(24)
     const val TETHERING_BLUETOOTH = 2
     /**
      * Ncm local tethering type.
      *
-     * @see [startTethering]
+     * @see startTethering
      */
     @RequiresApi(30)
     const val TETHERING_NCM = 4
@@ -157,7 +157,7 @@ object TetheringManager {
      * Ethernet tethering type.
      *
      * Requires MANAGE_USB permission, also.
-     * @see [startTethering]
+     * @see startTethering
      */
     @RequiresApi(30)
     const val TETHERING_ETHERNET = 5
