@@ -170,8 +170,9 @@
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
-    <string name="notification_tethering_title">VPN tethering active</string>
+    <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
+    <string name="notification_channel_monitor">Monitor Inactive Interfaces</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d device connected to %s</item>
         <item quantity="other">%d devices connected to %s</item>

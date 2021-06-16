@@ -152,6 +152,7 @@
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
+    <string name="notification_channel_monitor">监视不活跃接口</string>
     <plurals name="notification_connected_devices">
         <item quantity="other">%d 个设备已连接到 %s</item>
     </plurals>
