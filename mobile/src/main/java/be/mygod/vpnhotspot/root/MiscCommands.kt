@@ -213,8 +213,8 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
     override suspend fun execute() = withContext(Dispatchers.IO) {
         val process = ProcessBuilder("settings", "put", "global", name, value).fixPath(true).start()
         val error = process.inputStream.bufferedReader().readText()
-        check(process.waitFor() == 0)
-        if (error.isNotEmpty()) throw RemoteException(error)
+        val exit = process.waitFor()
+        if (exit != 0 || error.isNotEmpty()) throw RemoteException("Process exited with $exit: $error")
         null
     }
 }

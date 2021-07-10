@@ -479,17 +479,19 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
             if (group == null) emptyMap() else mapOf(Pair(group.`interface`, group.clientList?.size ?: 0)))
 
-    private fun removeGroup() = p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-        override fun onSuccess() {
-            launch { cleanLocked() }
-        }
-        override fun onFailure(reason: Int) {
-            if (reason != WifiP2pManager.BUSY) {
-                SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
-            }   // else assuming it's already gone
-            onSuccess()
-        }
-    })
+    private fun removeGroup() {
+        p2pManager.removeGroup(channel ?: return, object : WifiP2pManager.ActionListener {
+            override fun onSuccess() {
+                launch { cleanLocked() }
+            }
+            override fun onFailure(reason: Int) {
+                if (reason != WifiP2pManager.BUSY) {
+                    SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
+                }   // else assuming it's already gone
+                onSuccess()
+            }
+        })
+    }
     private fun cleanLocked() {
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
