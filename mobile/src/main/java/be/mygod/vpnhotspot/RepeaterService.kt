@@ -504,7 +504,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             if (group == null) emptyMap() else mapOf(Pair(group.`interface`, group.clientList?.size ?: 0)))
 
     private fun removeGroup() {
-        p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
+        p2pManager.removeGroup(channel ?: return, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
                 launch { cleanLocked() }
             }
