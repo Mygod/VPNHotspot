@@ -317,7 +317,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     }
                 }
                 true
-            } catch (e: IllegalArgumentException) {
+            } catch (e: RuntimeException) {
                 SmartSnackbar.make(e).show()
                 false
             }
