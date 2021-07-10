@@ -16,6 +16,7 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
@@ -33,7 +34,6 @@ import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
@@ -390,7 +390,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 }
                 true
             } catch (e: RuntimeException) {
-                SmartSnackbar.make(e).show()
+                Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
                 false
             }
             R.id.share_qr -> {
