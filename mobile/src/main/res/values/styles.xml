@@ -43,5 +43,16 @@
         <item name="android:layout_marginStart">4dip</item>
         <item name="android:textSize">18sp</item>
     </style>
+    <style name="wifi_item_divider">
+        <item name="dividerInsetStart">8dip</item>
+        <item name="android:layout_marginTop">8dip</item>
+    </style>
+    <style name="wifi_item_subhead">
+        <item name="android:layout_marginTop">8dip</item>
+        <item name="android:paddingStart">8dip</item>
+        <item name="android:textAppearance">@style/TextAppearance.MaterialComponents.Subtitle1</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textStyle">bold</item>
+    </style>
 
 </resources>

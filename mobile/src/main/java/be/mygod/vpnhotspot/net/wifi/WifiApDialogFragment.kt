@@ -177,31 +177,24 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
             dialogView.band2G.configure(channels2G)
             dialogView.band5G.configure(currentChannels5G)
-        } else {
-            dialogView.bandWrapper2G.isGone = true
-            dialogView.bandWrapper5G.isGone = true
-        }
-        if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) dialogView.band6G.configure(channels6G)
-        else dialogView.bandWrapper6G.isGone = true
-        if (BuildCompat.isAtLeastS() && !arg.p2pMode) dialogView.band60G.configure(channels60G)
-        else dialogView.bandWrapper60G.isGone = true
-        dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
-        if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
-        if (arg.p2pMode || Build.VERSION.SDK_INT < 30) {
-            dialogView.maxClientWrapper.isGone = true
-            dialogView.clientUserControl.isGone = true
-            dialogView.blockedListWrapper.isGone = true
-            dialogView.allowedListWrapper.isGone = true
-        } else {
+            if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) dialogView.band6G.configure(channels6G)
+            else dialogView.bandWrapper6G.isGone = true
+            if (BuildCompat.isAtLeastS() && !arg.p2pMode) dialogView.band60G.configure(channels60G) else {
+                dialogView.bandWrapper60G.isGone = true
+                dialogView.bridgedMode.isGone = true
+                dialogView.bridgedModeOpportunisticShutdown.isGone = true
+            }
+        } else dialogView.bandGroup.isGone = true
+        if (!arg.p2pMode && Build.VERSION.SDK_INT >= 30) {
             dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
-        }
+        } else dialogView.accessControlGroup.isGone = true
+        dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
+        if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || !BuildCompat.isAtLeastS()) dialogView.macRandomization.isGone = true
         if (arg.p2pMode || !BuildCompat.isAtLeastS()) {
-            dialogView.bridgedMode.isGone = true
-            dialogView.bridgedModeOpportunisticShutdown.isGone = true
             dialogView.ieee80211ax.isGone = true
             dialogView.userConfig.isGone = true
         }

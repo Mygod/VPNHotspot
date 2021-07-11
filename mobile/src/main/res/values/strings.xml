@@ -208,6 +208,8 @@
     <string name="wifi_ap_choose_5G">5 GHz Band</string>
     <string name="wifi_ap_choose_6G">6 GHz Band</string>
     <string name="wifi_ap_choose_60G">60 GHz Band</string>
+    <string name="wifi_hotspot_access_control_title">Access Control</string>
+    <string name="wifi_hotspot_ap_advanced_title">Advanced AP Options</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>

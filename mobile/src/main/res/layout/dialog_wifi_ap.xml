@@ -121,15 +121,25 @@
                     android:inputType="number"
                     android:maxLength="19" />
             </com.google.android.material.textfield.TextInputLayout>
+
             <LinearLayout
-                android:id="@+id/band_wrapper_2G"
+                android:id="@+id/band_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
                 android:orientation="vertical">
+                <com.google.android.material.divider.MaterialDivider
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_divider" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    style="@style/wifi_item_subhead"
+                    android:text="@string/wifi_hotspot_ap_band_title" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
                     style="@style/wifi_item_label"
                     android:text="@string/wifi_ap_choose_2G" />
                 <Spinner
@@ -139,16 +149,10 @@
                     android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_target_min"
                     android:prompt="@string/wifi_ap_choose_2G" />
-            </LinearLayout>
-            <LinearLayout
-                android:id="@+id/band_wrapper_5G"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:orientation="vertical">
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
                     style="@style/wifi_item_label"
                     android:text="@string/wifi_ap_choose_5G" />
                 <Spinner
@@ -158,163 +162,195 @@
                     android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_target_min"
                     android:prompt="@string/wifi_ap_choose_5G" />
+                <LinearLayout
+                    android:id="@+id/band_wrapper_6G"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_label"
+                        android:text="@string/wifi_ap_choose_6G" />
+                    <Spinner
+                        android:id="@+id/band_6G"
+                        style="@style/wifi_item_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:prompt="@string/wifi_ap_choose_6G" />
+                </LinearLayout>
+                <LinearLayout
+                    android:id="@+id/band_wrapper_60G"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_label"
+                        android:text="@string/wifi_ap_choose_60G" />
+                    <Spinner
+                        android:id="@+id/band_60G"
+                        style="@style/wifi_item_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:prompt="@string/wifi_ap_choose_60G" />
+                </LinearLayout>
+                <Switch
+                    android:id="@+id/bridged_mode"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_bridged_mode" />
+                <Switch
+                    android:id="@+id/bridged_mode_opportunistic_shutdown"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
             </LinearLayout>
+
             <LinearLayout
-                android:id="@+id/band_wrapper_6G"
+                android:id="@+id/access_control_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
                 android:orientation="vertical">
+                <com.google.android.material.divider.MaterialDivider
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_divider" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/wifi_item_label"
-                    android:text="@string/wifi_ap_choose_6G" />
-                <Spinner
-                    android:id="@+id/band_6G"
-                    style="@style/wifi_item_content"
+                    style="@style/wifi_item_subhead"
+                    android:text="@string/wifi_hotspot_access_control_title" />
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/max_client_wrapper"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    app:counterEnabled="true"
+                    app:counterMaxLength="10"
+                    app:errorEnabled="true"
+                    android:hint="@string/wifi_max_clients">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/max_client"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_edit_content"
+                        android:inputType="number"
+                        android:maxLength="10" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <Switch
+                    android:id="@+id/client_user_control"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_ap_choose_6G" />
+                    android:text="@string/wifi_client_user_control" />
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/blocked_list_wrapper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:hint="@string/wifi_blocked_list"
+                    app:errorEnabled="true">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/blocked_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_edit_content"
+                        android:inputType="textMultiLine|textNoSuggestions" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/allowed_list_wrapper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:hint="@string/wifi_allowed_list"
+                    app:errorEnabled="true">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/allowed_list"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_edit_content"
+                        android:inputType="textMultiLine|textNoSuggestions" />
+                </com.google.android.material.textfield.TextInputLayout>
             </LinearLayout>
+
             <LinearLayout
-                android:id="@+id/band_wrapper_60G"
+                android:id="@+id/advanced_ap_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
                 android:orientation="vertical">
+                <com.google.android.material.divider.MaterialDivider
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    style="@style/wifi_item_divider" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    style="@style/wifi_item_subhead"
+                    android:text="@string/wifi_hotspot_ap_advanced_title" />
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/bssid_wrapper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    app:counterEnabled="true"
+                    app:counterMaxLength="17"
+                    app:errorEnabled="true"
+                    android:hint="@string/wifi_advanced_mac_address_title">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/bssid"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_edit_content"
+                        android:inputType="textNoSuggestions"
+                        android:maxLength="17" />
+                </com.google.android.material.textfield.TextInputLayout>
+                <Switch
+                    android:id="@+id/mac_randomization"
                     style="@style/wifi_item_label"
-                    android:text="@string/wifi_ap_choose_60G" />
-                <Spinner
-                    android:id="@+id/band_60G"
-                    style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_ap_choose_60G" />
+                    android:text="@string/wifi_mac_randomization" />
+                <Switch
+                    android:id="@+id/hidden_ssid"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_hidden_network" />
+                <Switch
+                    android:id="@+id/ieee_80211ax"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_ieee_80211ax" />
+                <Switch
+                    android:id="@+id/user_config"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_user_config" />
             </LinearLayout>
-            <Switch
-                android:id="@+id/bridged_mode"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_bridged_mode" />
-            <Switch
-                android:id="@+id/bridged_mode_opportunistic_shutdown"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/bssid_wrapper"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                app:counterEnabled="true"
-                app:counterMaxLength="17"
-                app:errorEnabled="true"
-                android:hint="@string/wifi_advanced_mac_address_title">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/bssid"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_edit_content"
-                    android:inputType="textNoSuggestions"
-                    android:maxLength="17" />
-            </com.google.android.material.textfield.TextInputLayout>
-            <Switch
-                android:id="@+id/mac_randomization"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_mac_randomization" />
-            <Switch
-                android:id="@+id/hidden_ssid"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_hidden_network" />
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/max_client_wrapper"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                app:counterEnabled="true"
-                app:counterMaxLength="10"
-                app:errorEnabled="true"
-                android:hint="@string/wifi_max_clients">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/max_client"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_edit_content"
-                    android:inputType="number"
-                    android:maxLength="10" />
-            </com.google.android.material.textfield.TextInputLayout>
-            <Switch
-                android:id="@+id/client_user_control"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_client_user_control" />
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/blocked_list_wrapper"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:hint="@string/wifi_blocked_list"
-                app:errorEnabled="true">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/blocked_list"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_edit_content"
-                    android:inputType="textMultiLine|textNoSuggestions" />
-            </com.google.android.material.textfield.TextInputLayout>
-            <com.google.android.material.textfield.TextInputLayout
-                android:id="@+id/allowed_list_wrapper"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:hint="@string/wifi_allowed_list"
-                app:errorEnabled="true">
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/allowed_list"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_edit_content"
-                    android:inputType="textMultiLine|textNoSuggestions" />
-            </com.google.android.material.textfield.TextInputLayout>
-            <Switch
-                android:id="@+id/ieee_80211ax"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_ieee_80211ax" />
-            <Switch
-                android:id="@+id/user_config"
-                style="@style/wifi_item_label"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dip"
-                android:minHeight="@dimen/touch_target_min"
-                android:text="@string/wifi_user_config" />
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

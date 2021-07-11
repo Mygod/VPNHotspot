@@ -185,6 +185,8 @@
     <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 GHz 频段"</string>
     <string name="wifi_ap_choose_6G">6 GHz 频段</string>
     <string name="wifi_ap_choose_60G">60 GHz 频段</string>
+    <string name="wifi_hotspot_access_control_title">访问控制</string>
+    <string name="wifi_hotspot_ap_advanced_title">高级接入点设置</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
     <string name="wifi_max_clients">允许连接设备数上限</string>
