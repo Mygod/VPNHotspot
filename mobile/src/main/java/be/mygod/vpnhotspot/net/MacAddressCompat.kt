@@ -29,21 +29,19 @@ value class MacAddressCompat(val addr: Long) {
          * @return the MacAddress corresponding to the given byte array representation.
          * @throws IllegalArgumentException if the given byte array is not a valid representation.
          */
-        fun fromBytes(addr: ByteArray) = ByteBuffer.allocate(Long.SIZE_BYTES).run {
-            order(ByteOrder.LITTLE_ENDIAN)
-            put(when (addr.size) {
-                ETHER_ADDR_LEN -> addr
+        fun fromBytes(addr: ByteArray): MacAddressCompat {
+            val buffer = when (addr.size) {
+                ETHER_ADDR_LEN -> ByteBuffer.allocate(Long.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN).put(addr)
                 8 -> {
                     require(addr.take(2).all { it == 0.toByte() }) {
                         "Unrecognized padding " + addr.joinToString(":") { "%02x".format(it) }
                     }
-                    addr.drop(2).toByteArray()
+                    ByteBuffer.allocate(Long.SIZE_BYTES).order(ByteOrder.LITTLE_ENDIAN).put(addr, 2, ETHER_ADDR_LEN)
                 }
-                else -> throw IllegalArgumentException(addr.joinToString(":") { "%02x".format(it) } +
-                        " was not a valid MAC address")
-            })
-            rewind()
-            MacAddressCompat(long)
+                else -> return fromString(String(addr))
+            }
+            buffer.rewind()
+            return MacAddressCompat(buffer.long)
         }
         /**
          * Creates a MacAddress from the given String representation. A valid String representation
