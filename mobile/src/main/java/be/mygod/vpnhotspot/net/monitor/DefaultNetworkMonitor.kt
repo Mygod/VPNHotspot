@@ -63,7 +63,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 }
                 else -> try {
                     Services.connectivity.requestNetwork(networkRequest, networkCallback)
-                } catch (e: SecurityException) {
+                } catch (e: RuntimeException) {
                     // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
                     if (Build.VERSION.SDK_INT != 23) throw e
                     GlobalScope.launch { callback.onFallback() }
