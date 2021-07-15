@@ -11,18 +11,18 @@ plugins {
 android {
     val javaVersion = JavaVersion.VERSION_1_8
     val targetSdk = 29
-    buildToolsVersion = "31.0.0-rc5"
+    buildToolsVersion = "31.0.0"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdkPreview = "android-S"
+    compileSdk = 31
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
-        if (targetSdk == 31) targetSdkPreview = "S" else this.targetSdk = targetSdk
+        this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 275
         versionName = "2.12.4"
