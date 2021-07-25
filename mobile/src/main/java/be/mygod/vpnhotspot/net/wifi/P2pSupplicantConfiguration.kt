@@ -75,7 +75,13 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
                                 if (matchedBssid.isEmpty()) {
                                     check(block.pskLine == null && block.psk == null)
                                     if (match.groups[5] != null) {
-                                        block.psk = match.groupValues[5].apply { check(length in 8..63) }
+                                        block.psk = match.groupValues[5].apply {
+                                            when (length) {
+                                                in 8..63 -> { }
+                                                64 -> error("WPA-PSK hex not supported")
+                                                else -> error("Unknown length $length")
+                                            }
+                                        }
                                     }
                                     block.pskLine = block.size
                                 } else if (bssids.any { matchedBssid.equals(it, true) }) {
