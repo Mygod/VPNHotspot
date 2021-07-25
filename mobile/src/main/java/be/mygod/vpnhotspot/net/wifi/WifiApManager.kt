@@ -257,10 +257,10 @@ object WifiApManager {
 
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                 return when {
-                    method.matches2<Int, Int>("onStateChanged") -> {
+                    method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> {
                         callback.onStateChanged(args!![0] as Int, args[1] as Int)
                     }
-                    method.matches1<Int>("onNumClientsChanged") -> @Suppress("DEPRECATION") {
+                    method.matches("onNumClientsChanged", Integer.TYPE) -> @Suppress("DEPRECATION") {
                         if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
                         callback.onNumClientsChanged(args!![0] as Int)
                     }

@@ -280,7 +280,9 @@ object TetheringManager {
                 @Suppress("NAME_SHADOWING") val callback = reference.get()
                 return when {
                     method.matches("onTetheringStarted") -> callback?.onTetheringStarted()
-                    method.matches1<Int>("onTetheringFailed") -> callback?.onTetheringFailed(args?.get(0) as Int)
+                    method.matches("onTetheringFailed", Integer.TYPE) -> {
+                        callback?.onTetheringFailed(args?.get(0) as Int)
+                    }
                     else -> callSuper(interfaceStartTetheringCallback, proxy, method, args)
                 }
             }
@@ -539,7 +541,7 @@ object TetheringManager {
                         @Suppress("NAME_SHADOWING")
                         val callback = reference.get()
                         return when {
-                            method.matches1<Boolean>("onTetheringSupported") -> {
+                            method.matches("onTetheringSupported", Boolean::class.java) -> {
                                 callback?.onTetheringSupported(args!![0] as Boolean)
                             }
                             method.matches1<Network>("onUpstreamChanged") -> {
@@ -559,13 +561,13 @@ object TetheringManager {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetheredInterfacesChanged(args!![0] as List<String?>)
                             }
-                            method.matches2<String, Int>("onError") -> {
+                            method.matches("onError", String::class.java, Integer.TYPE) -> {
                                 callback?.onError(args!![0] as String, args[1] as Int)
                             }
                             method.matches1<java.util.Collection<*>>("onClientsChanged") -> {
                                 callback?.onClientsChanged(args!![0] as Collection<*>)
                             }
-                            method.matches1<Int>("onOffloadStatusChanged") -> {
+                            method.matches("onOffloadStatusChanged", Integer.TYPE) -> {
                                 callback?.onOffloadStatusChanged(args!![0] as Int)
                             }
                             else -> callSuper(interfaceTetheringEventCallback, proxy, method, args)
