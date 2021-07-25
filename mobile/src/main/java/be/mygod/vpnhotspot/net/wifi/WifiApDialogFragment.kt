@@ -210,7 +210,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else selection
     }
     private var userBridgedMode = false
-    private fun setBridgedMode() {
+    private fun setBridgedMode(): Boolean {
         var auto = 0
         var set = 0
         for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {
@@ -227,6 +227,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bridgedMode.isEnabled = true
             dialogView.bridgedMode.isChecked = userBridgedMode
         }
+        return auto + set > 0
     }
     private fun populateFromConfiguration() {
         dialogView.ssid.setText(base.ssid)
@@ -310,10 +311,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 }
                 set == expected
             }
-            else -> {
-                setBridgedMode()
-                true
-            }
+            else -> setBridgedMode()
         }
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
