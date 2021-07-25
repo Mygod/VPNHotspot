@@ -62,11 +62,9 @@ object ServiceNotification {
         }
     }
     fun stopForeground(service: Service) = synchronized(this) {
-        deviceCountsMap.remove(service)
-        if (deviceCountsMap.isEmpty()) service.stopForeground(true) else {
-            service.stopForeground(false)
-            manager.notify(NOTIFICATION_ID, buildNotification(service))
-        }
+        val shutdown = deviceCountsMap.remove(service) != null && deviceCountsMap.isEmpty()
+        service.stopForeground(shutdown)
+        if (shutdown) manager.cancel(NOTIFICATION_ID) else manager.notify(NOTIFICATION_ID, buildNotification(service))
     }
 
     fun updateNotificationChannels() {
