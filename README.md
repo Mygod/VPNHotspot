@@ -147,7 +147,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [commit `ebe7044`](https://android.googlesource.com/platform/prebuilts/runtime/+/ebe7044/appcompat/hiddenapi-flags.csv).
+API restrictions are updated up to [SHA-256 checksum `156715dfa705a048926dca876d731d72604df32e8bcac055af32866b50bc2cc8`](https://dl.google.com/developers/android/sc/non-sdk/hiddenapi-flags.csv).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
@@ -283,8 +283,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_*:I,sdk,system-api,test-api`
 * (on API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getAutoShutdownTimeoutMillis()J,sdk,system-api,test-api`
-* (since API 31) `Landroid/net/wifi/SoftApInfo;->getBssid()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,sdk,system-api,test-api`
+* (since API 31) `Landroid/net/wifi/SoftApInfo;->getBssid()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->getFrequency()I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getWifiStandard()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiClient;->getMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
