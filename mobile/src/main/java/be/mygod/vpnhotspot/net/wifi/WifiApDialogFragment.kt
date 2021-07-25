@@ -213,7 +213,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private fun setBridgedMode(): Boolean {
         var auto = 0
         var set = 0
-        for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {
+        for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G,
+            dialogView.band60G)) when (s.selectedItem) {
             is ChannelOption.Auto -> auto = 1
             !is ChannelOption.Disabled -> ++set
         }
