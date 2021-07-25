@@ -53,6 +53,14 @@ fun Long.toPluralInt(): Int {
     return (this % 1000000000).toInt() + 1000000000
 }
 
+@RequiresApi(26)
+fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
+        (0 until parameterCount).all { i -> parameters[i].type == classes[i] }
+@RequiresApi(26)
+inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+@RequiresApi(26)
+inline fun <reified T0, reified T1> Method.matches2(name: String) = matches(name, T0::class.java, T1::class.java)
+
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
         unregisterReceiver(receiver)

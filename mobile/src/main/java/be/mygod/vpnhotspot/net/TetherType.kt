@@ -71,9 +71,9 @@ enum class TetherType(@DrawableRes val icon: Int) {
         }
 
         @RequiresApi(30)
-        override fun onTetherableInterfaceRegexpsChanged(args: Array<out Any?>?) = synchronized(this) {
+        override fun onTetherableInterfaceRegexpsChanged(reg: Any?) = synchronized(this) {
             if (requiresUpdate) return@synchronized
-            Timber.i("onTetherableInterfaceRegexpsChanged: ${args?.contentDeepToString()}")
+            Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
             TetheringManager.unregisterTetheringEventCallback(this)
             requiresUpdate = true
             listener()

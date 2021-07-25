@@ -8,7 +8,7 @@ import be.mygod.vpnhotspot.util.LongConstantLookup
 @RequiresApi(30)
 value class SoftApCapability(val inner: Parcelable) {
     companion object {
-        private val clazz by lazy { Class.forName("android.net.wifi.SoftApCapability") }
+        val clazz by lazy { Class.forName("android.net.wifi.SoftApCapability") }
         private val getMaxSupportedClients by lazy { clazz.getDeclaredMethod("getMaxSupportedClients") }
         private val areFeaturesSupported by lazy { clazz.getDeclaredMethod("areFeaturesSupported", Long::class.java) }
         @get:RequiresApi(31)

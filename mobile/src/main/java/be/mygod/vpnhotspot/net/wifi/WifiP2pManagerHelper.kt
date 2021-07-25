@@ -9,8 +9,8 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.matches1
 import kotlinx.coroutines.CompletableDeferred
-import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -117,9 +117,8 @@ object WifiP2pManagerHelper {
         val result = CompletableDeferred<Collection<WifiP2pGroup>>()
         requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when (method.name) {
-                "onPersistentGroupInfoAvailable" -> {
-                    if (args?.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when {
+                method.matches1<java.util.Collection<*>>("onPersistentGroupInfoAvailable") -> {
                     @Suppress("UNCHECKED_CAST")
                     result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }

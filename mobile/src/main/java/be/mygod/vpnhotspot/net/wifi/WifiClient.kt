@@ -11,7 +11,7 @@ import timber.log.Timber
 @RequiresApi(30)
 value class WifiClient(val inner: Parcelable) {
     companion object {
-        private val clazz by lazy { Class.forName("android.net.wifi.WifiClient") }
+        val clazz by lazy { Class.forName("android.net.wifi.WifiClient") }
         private val getMacAddress by lazy { clazz.getDeclaredMethod("getMacAddress") }
         @get:RequiresApi(31)
         private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }

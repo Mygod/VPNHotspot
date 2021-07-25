@@ -10,13 +10,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
-import be.mygod.vpnhotspot.util.ConstantLookup
-import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.findIdentifier
+import be.mygod.vpnhotspot.util.*
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -260,55 +256,41 @@ object WifiApManager {
                     } else invokeActual(proxy, method, args)
 
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                val noArgs = args?.size ?: 0
-                return when (val name = method.name) {
-                    "onStateChanged" -> {
-                        if (noArgs != 2) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
+                return when {
+                    method.matches2<Int, Int>("onStateChanged") -> {
                         callback.onStateChanged(args!![0] as Int, args[1] as Int)
                     }
-                    "onNumClientsChanged" -> @Suppress("DEPRECATION") {
+                    method.matches1<Int>("onNumClientsChanged") -> @Suppress("DEPRECATION") {
                         if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         callback.onNumClientsChanged(args!![0] as Int)
                     }
-                    "onConnectedClientsChanged" -> @TargetApi(30) {
+                    method.matches1<java.util.List<*>>("onConnectedClientsChanged") -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
                         @Suppress("UNCHECKED_CAST")
-                        when (noArgs) {
-                            1 -> callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
-                            2 -> null   // we use the old method which returns all clients in one call
-                            else -> {
-                                Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                                null
-                            }
-                        }
+                        callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
                     }
-                    "onInfoChanged" -> @TargetApi(30) {
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
+                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(31) {
+                        if (Build.VERSION.SDK_INT < 31) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
+                        @Suppress("UNCHECKED_CAST")
+                        callback.onInfoChanged(args!![0] as List<Parcelable>)
+                    }
+                    method.matches("onInfoChanged", SoftApInfo.clazz) -> @TargetApi(30) {
+                        when (Build.VERSION.SDK_INT) {
+                            30 -> { }
+                            in 31..Int.MAX_VALUE -> return null    // ignore old version calls
+                            else -> Timber.w(Exception("Unexpected onInfoChanged API 30"))
+                        }
                         val arg = args!![0]
-                        if (arg is List<*>) {
-                            if (Build.VERSION.SDK_INT < 31) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
-                            @Suppress("UNCHECKED_CAST")
-                            callback.onInfoChanged(arg as List<Parcelable>)
-                        } else {
-                            when (Build.VERSION.SDK_INT) {
-                                30 -> { }
-                                in 31..Int.MAX_VALUE -> return null    // ignore old version calls
-                                else -> Timber.w(Exception("Unexpected onInfoChanged API 30"))
-                            }
-                            val info = SoftApInfo(arg as Parcelable)
-                            callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
-                                if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
-                        }
+                        val info = SoftApInfo(arg as Parcelable)
+                        callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
+                            if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
                     }
-                    "onCapabilityChanged" -> @TargetApi(30) {
+                    method.matches("onCapabilityChanged", SoftApCapability.clazz) -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         callback.onCapabilityChanged(args!![0] as Parcelable)
                     }
-                    "onBlockedClientConnecting" -> @TargetApi(30) {
+                    method.matches("onBlockedClientConnecting", WifiClient.clazz, Int::class.java) -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onBlockedClientConnecting"))
-                        if (noArgs != 2) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
                     }
                     else -> callSuper(interfaceSoftApCallback, proxy, method, args)
