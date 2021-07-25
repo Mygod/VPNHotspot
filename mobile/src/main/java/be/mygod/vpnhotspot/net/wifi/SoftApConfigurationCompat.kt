@@ -8,7 +8,6 @@ import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -64,7 +63,7 @@ data class SoftApConfigurationCompat(
         const val BAND_60GHZ = 8
         const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
         val BAND_TYPES by lazy {
-            if (BuildCompat.isAtLeastS()) try {
+            if (Build.VERSION.SDK_INT >= 31) try {
                 return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
             } catch (e: ReflectiveOperationException) {
                 Timber.w(e)
@@ -314,25 +313,26 @@ data class SoftApConfigurationCompat(
         @RequiresApi(30)
         @Suppress("UNCHECKED_CAST")
         fun SoftApConfiguration.toCompat() = SoftApConfigurationCompat(
-                ssid,
-                bssid?.toCompat()?.addr,
-                passphrase,
-                isHiddenSsid,
-                if (BuildCompat.isAtLeastS()) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
-                    it.append(getBand(this) as Int, getChannel(this) as Int)
-                },
-                securityType,
-                getMaxNumberOfClients(this) as Int,
-                isAutoShutdownEnabled(this) as Boolean,
-                getShutdownTimeoutMillis(this) as Long,
-                isClientControlByUserEnabled(this) as Boolean,
-                getBlockedClientList(this) as List<MacAddress>,
-                getAllowedClientList(this) as List<MacAddress>,
-                if (BuildCompat.isAtLeastS()) getMacRandomizationSetting(this) as Int else RANDOMIZATION_PERSISTENT,
-                !BuildCompat.isAtLeastS() || isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
-                !BuildCompat.isAtLeastS() || isIeee80211axEnabled(this) as Boolean,
-                !BuildCompat.isAtLeastS() || isUserConfiguration(this) as Boolean,
-                this)
+            ssid,
+            bssid?.toCompat()?.addr,
+            passphrase,
+            isHiddenSsid,
+            if (Build.VERSION.SDK_INT >= 31) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
+                it.append(getBand(this) as Int, getChannel(this) as Int)
+            },
+            securityType,
+            getMaxNumberOfClients(this) as Int,
+            isAutoShutdownEnabled(this) as Boolean,
+            getShutdownTimeoutMillis(this) as Long,
+            isClientControlByUserEnabled(this) as Boolean,
+            getBlockedClientList(this) as List<MacAddress>,
+            getAllowedClientList(this) as List<MacAddress>,
+            if (Build.VERSION.SDK_INT >= 31) getMacRandomizationSetting(this) as Int else RANDOMIZATION_PERSISTENT,
+            Build.VERSION.SDK_INT < 31 || isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
+            Build.VERSION.SDK_INT < 31 || isIeee80211axEnabled(this) as Boolean,
+            Build.VERSION.SDK_INT < 31 || isUserConfiguration(this) as Boolean,
+            this,
+        )
     }
 
     @Suppress("DEPRECATION")
@@ -438,7 +438,7 @@ data class SoftApConfigurationCompat(
         setSsid(builder, ssid)
         setPassphrase(builder, if (securityType == SoftApConfiguration.SECURITY_TYPE_OPEN) null else passphrase,
                 securityType)
-        if (BuildCompat.isAtLeastS()) setChannels(builder, channels) else {
+        if (Build.VERSION.SDK_INT >= 31) setChannels(builder, channels) else {
             val (band, channel) = requireSingleBand()
             if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
         }
@@ -450,7 +450,7 @@ data class SoftApConfigurationCompat(
         setHiddenSsid(builder, isHiddenSsid)
         setAllowedClientList(builder, allowedClientList)
         setBlockedClientList(builder, blockedClientList)
-        if (BuildCompat.isAtLeastS()) {
+        if (Build.VERSION.SDK_INT >= 31) {
             setMacRandomizationSetting(builder, macRandomizationSetting)
             setBridgedModeOpportunisticShutdownEnabled(builder, isBridgedModeOpportunisticShutdownEnabled)
             setIeee80211axEnabled(builder, isIeee80211axEnabled)

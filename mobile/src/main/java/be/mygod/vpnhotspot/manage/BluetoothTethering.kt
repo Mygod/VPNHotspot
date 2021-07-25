@@ -12,7 +12,6 @@ import android.content.IntentFilter
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -91,7 +90,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
             check(adapter.getProfileProxy(context, this, PAN))
             proxyCreated = true
         } catch (e: SecurityException) {
-            if (BuildCompat.isAtLeastS()) Timber.d(e.readableMessage) else Timber.w(e)
+            if (Build.VERSION.SDK_INT >= 31) Timber.d(e.readableMessage) else Timber.w(e)
             activeFailureCause = e
         }
     }

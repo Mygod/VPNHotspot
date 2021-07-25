@@ -2,9 +2,9 @@ package be.mygod.vpnhotspot.root
 
 import android.annotation.TargetApi
 import android.content.ClipData
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandChannel
@@ -129,7 +129,7 @@ object WifiApCommands {
                 val client = WifiClient(parcel.client)
                 val macAddress = client.macAddress
                 var name = macAddress.toString()
-                if (BuildCompat.isAtLeastS()) client.apInstanceIdentifier?.let { name += "%$it" }
+                if (Build.VERSION.SDK_INT >= 31) client.apInstanceIdentifier?.let { name += "%$it" }
                 val reason = WifiApManager.clientBlockLookup(parcel.blockedReason, true)
                 Timber.i("$name blocked from connecting: $reason (${parcel.blockedReason})")
                 SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {

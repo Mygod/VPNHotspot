@@ -20,7 +20,6 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.BuildCompat
 import androidx.core.view.isGone
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
@@ -117,7 +116,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     val channel = (spinner.selectedItem as ChannelOption?)?.channel
                     if (channel != null && channel >= 0) channels.append(band, channel)
                 }
-                if (!arg.p2pMode && BuildCompat.isAtLeastS() && dialogView.bridgedMode.isChecked) {
+                if (!arg.p2pMode && Build.VERSION.SDK_INT >= 31 && dialogView.bridgedMode.isChecked) {
                     this.channels = channels
                 } else optimizeChannels(channels)
             }
@@ -179,7 +178,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.band5G.configure(currentChannels5G)
             if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) dialogView.band6G.configure(channels6G)
             else dialogView.bandWrapper6G.isGone = true
-            if (BuildCompat.isAtLeastS() && !arg.p2pMode) dialogView.band60G.configure(channels60G) else {
+            if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) dialogView.band60G.configure(channels60G) else {
                 dialogView.bandWrapper60G.isGone = true
                 dialogView.bridgedMode.isGone = true
                 dialogView.bridgedModeOpportunisticShutdown.isGone = true
@@ -193,8 +192,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
-        else if (arg.p2pMode || !BuildCompat.isAtLeastS()) dialogView.macRandomization.isGone = true
-        if (arg.p2pMode || !BuildCompat.isAtLeastS()) {
+        else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomization.isGone = true
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 31) {
             dialogView.ieee80211ax.isGone = true
             dialogView.userConfig.isGone = true
         }
@@ -302,7 +301,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     else -> option5G is ChannelOption.Disabled
                 }
             }
-            Build.VERSION.SDK_INT == 30 && !BuildCompat.isAtLeastS() -> {
+            Build.VERSION.SDK_INT == 30 -> {
                 var expected = 1
                 var set = 0
                 for (s in arrayOf(dialogView.band2G, dialogView.band5G, dialogView.band6G)) when (s.selectedItem) {

@@ -15,7 +15,6 @@ import android.view.View
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
-import androidx.core.os.BuildCompat
 import androidx.core.view.updatePaddingRelative
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -198,7 +197,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             val numClients = numClients
             val maxClients = capability.maxSupportedClients
             var features = capability.supportedFeatures
-            if (BuildCompat.isAtLeastS()) for ((flag, band) in arrayOf(
+            if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
                 SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfigurationCompat.BAND_2GHZ,
                 SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfigurationCompat.BAND_5GHZ,
                 SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfigurationCompat.BAND_6GHZ,
@@ -214,7 +213,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         R.string.tethering_manage_wifi_feature_ap_mac_randomization))
                     if (Services.wifi.isStaApConcurrencySupported) yield(parent.getText(
                         R.string.tethering_manage_wifi_feature_sta_ap_concurrency))
-                    if (BuildCompat.isAtLeastS()) {
+                    if (Build.VERSION.SDK_INT >= 31) {
                         if (Services.wifi.isBridgedApConcurrencySupported) yield(parent.getText(
                             R.string.tethering_manage_wifi_feature_bridged_ap_concurrency))
                         if (Services.wifi.isStaBridgedApConcurrencySupported) yield(parent.getText(
@@ -228,7 +227,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 }.joinToSpanned().let {
                     if (it.isEmpty()) parent.getText(R.string.tethering_manage_wifi_no_features) else it
                 })
-            if (BuildCompat.isAtLeastS()) {
+            if (Build.VERSION.SDK_INT >= 31) {
                 val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
                     val channels = capability.getSupportedChannelList(band)
                     if (channels.isNotEmpty()) StringBuilder().apply {
@@ -272,7 +271,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     val frequency = info.frequency
                     val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
                     val bandwidth = SoftApInfo.channelWidthLookup(info.bandwidth, true)
-                    if (BuildCompat.isAtLeastS()) {
+                    if (Build.VERSION.SDK_INT >= 31) {
                         var bssid = makeMacSpan(info.bssid.toString())
                         info.apInstanceIdentifier?.let {    // take the fast route if possible
                             bssid = if (bssid is String) "$bssid%$it" else SpannableStringBuilder(bssid).append("%$it")
@@ -315,7 +314,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             onTetheringStarted()    // force flush
         }
         override fun onResume(owner: LifecycleOwner) {
-            if (!BuildCompat.isAtLeastS() || parent.requireContext().checkSelfPermission(
+            if (Build.VERSION.SDK_INT < 31 || parent.requireContext().checkSelfPermission(
                     Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
                 tethering.ensureInit(parent.requireContext())
             } else if (parent.shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {

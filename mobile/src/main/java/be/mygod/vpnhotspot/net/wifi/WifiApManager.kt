@@ -287,7 +287,7 @@ object WifiApManager {
                         if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         val arg = args!![0]
                         if (arg is List<*>) {
-                            if (!BuildCompat.isAtLeastS()) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
+                            if (Build.VERSION.SDK_INT < 31) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
                             @Suppress("UNCHECKED_CAST")
                             callback.onInfoChanged(arg as List<Parcelable>)
                         } else {

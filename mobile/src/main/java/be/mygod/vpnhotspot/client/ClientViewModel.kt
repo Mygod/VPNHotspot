@@ -4,10 +4,10 @@ import android.content.ComponentName
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.net.wifi.p2p.WifiP2pDevice
+import android.os.Build
 import android.os.IBinder
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
@@ -87,10 +87,10 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     override fun onStart(owner: LifecycleOwner) {
         app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         IpNeighbourMonitor.registerCallback(this, false)
-        if (BuildCompat.isAtLeastS()) WifiApCommands.registerSoftApCallback(this)
+        if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
-        if (BuildCompat.isAtLeastS()) WifiApCommands.unregisterSoftApCallback(this)
+        if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
         IpNeighbourMonitor.unregisterCallback(this)
         app.unregisterReceiver(receiver)
     }
