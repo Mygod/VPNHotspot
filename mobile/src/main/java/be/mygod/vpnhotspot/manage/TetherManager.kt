@@ -272,15 +272,19 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
                     val bandwidth = SoftApInfo.channelWidthLookup(info.bandwidth, true)
                     if (Build.VERSION.SDK_INT >= 31) {
-                        var bssid = makeMacSpan(info.bssid.toString())
-                        info.apInstanceIdentifier?.let {    // take the fast route if possible
-                            bssid = if (bssid is String) "$bssid%$it" else SpannableStringBuilder(bssid).append("%$it")
-                        }
+                        val bssid = info.bssid.let { if (it == null) null else makeMacSpan(it.toString()) }
+                        val bssidAp = info.apInstanceIdentifier?.let {
+                            when (bssid) {
+                                null -> it
+                                is String -> "$bssid%$it"   // take the fast route if possible
+                                else -> SpannableStringBuilder(bssid).append("%$it")
+                            }
+                        } ?: bssid ?: "?"
                         val timeout = info.autoShutdownTimeoutMillis
                         parent.getText(if (timeout == 0L) {
                             R.string.tethering_manage_wifi_info_timeout_disabled
                         } else R.string.tethering_manage_wifi_info_timeout_enabled).format(locale,
-                            frequency, channel, bandwidth, bssid, info.wifiStandard,
+                            frequency, channel, bandwidth, bssidAp, info.wifiStandard,
                             // http://unicode.org/cldr/trac/ticket/3407
                             DateUtils.formatElapsedTime(timeout / 1000))
                     } else parent.getText(R.string.tethering_manage_wifi_info).format(locale,

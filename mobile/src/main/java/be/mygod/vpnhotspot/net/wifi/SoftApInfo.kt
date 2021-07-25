@@ -30,7 +30,7 @@ value class SoftApInfo(val inner: Parcelable) {
     val frequency get() = getFrequency(inner) as Int
     val bandwidth get() = getBandwidth(inner) as Int
     @get:RequiresApi(31)
-    val bssid get() = getBssid(inner) as MacAddress
+    val bssid get() = getBssid(inner) as MacAddress?
     @get:RequiresApi(31)
     val wifiStandard get() = getWifiStandard(inner) as Int
     @get:RequiresApi(31)
