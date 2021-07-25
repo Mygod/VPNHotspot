@@ -274,23 +274,18 @@ object WifiApManager {
                         @Suppress("UNCHECKED_CAST")
                         callback.onInfoChanged(args!![0] as List<Parcelable>)
                     }
-                    method.matches("onInfoChanged", SoftApInfo.clazz) -> @TargetApi(30) {
-                        when (Build.VERSION.SDK_INT) {
-                            30 -> { }
-                            in 31..Int.MAX_VALUE -> return null    // ignore old version calls
-                            else -> Timber.w(Exception("Unexpected onInfoChanged API 30"))
-                        }
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onInfoChanged", SoftApInfo.clazz) -> {
+                        if (Build.VERSION.SDK_INT >= 31) return null    // ignore old version calls
                         val arg = args!![0]
                         val info = SoftApInfo(arg as Parcelable)
                         callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
                             if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
                     }
-                    method.matches("onCapabilityChanged", SoftApCapability.clazz) -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onCapabilityChanged", SoftApCapability.clazz) -> {
                         callback.onCapabilityChanged(args!![0] as Parcelable)
                     }
-                    method.matches("onBlockedClientConnecting", WifiClient.clazz, Int::class.java) -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onBlockedClientConnecting"))
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onBlockedClientConnecting", WifiClient.clazz,
+                        Int::class.java) -> {
                         callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
                     }
                     else -> callSuper(interfaceSoftApCallback, proxy, method, args)
