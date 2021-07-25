@@ -66,7 +66,11 @@ object TetheringManager {
     }
 
     private object InPlaceExecutor : Executor {
-        override fun execute(command: Runnable) = command.run()
+        override fun execute(command: Runnable) = try {
+            command.run()
+        } catch (e: Exception) {
+            Timber.w(e) // prevent Binder stub swallowing the exception
+        }
     }
 
     /**
