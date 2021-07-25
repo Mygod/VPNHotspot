@@ -4,9 +4,7 @@ import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.*
 import android.content.res.Resources
-import android.net.InetAddresses
-import android.net.LinkProperties
-import android.net.RouteInfo
+import android.net.*
 import android.os.Build
 import android.os.RemoteException
 import android.system.ErrnoException
@@ -235,6 +233,14 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
     else -> {
         Timber.w("Unhandled method: $method(${args?.contentDeepToString()})")
         null
+    }
+}
+
+fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
+    if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true) else if (Build.VERSION.SDK_INT == 23) {
+        // workarounds for OEM bugs
+        removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
     }
 }
 

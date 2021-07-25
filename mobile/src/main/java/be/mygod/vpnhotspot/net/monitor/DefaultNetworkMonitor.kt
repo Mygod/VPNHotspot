@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
@@ -20,10 +21,10 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
      * Unfortunately registerDefaultNetworkCallback is going to return VPN interface since Android P DP1:
      * https://android.googlesource.com/platform/frameworks/base/+/dda156ab0c5d66ad82bdcf76cda07cbc0a9c8a2e
      */
-    private val networkRequest = networkRequestBuilder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            .build()
+    private val networkRequest = globalNetworkRequestBuilder().apply {
+        addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+    }.build()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
