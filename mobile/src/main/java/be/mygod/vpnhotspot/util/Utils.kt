@@ -55,9 +55,16 @@ fun Long.toPluralInt(): Int {
 
 @RequiresApi(26)
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
-        (0 until parameterCount).all { i -> parameters[i].type == classes[i] }
+        classes.indices.all { i -> parameters[i].type == classes[i] }
 @RequiresApi(26)
 inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+fun Method.matchesCompat(name: String, args: Array<out Any?>?, vararg classes: Class<*>) =
+    if (Build.VERSION.SDK_INT < 26) {
+        this.name == name && args?.size ?: 0 == classes.size && classes.indices.all { i ->
+            args!![i]?.let { classes[i].isInstance(it) } != false
+        }
+    } else matches(name, *classes)
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {

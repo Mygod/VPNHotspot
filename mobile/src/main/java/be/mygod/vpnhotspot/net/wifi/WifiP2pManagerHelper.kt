@@ -9,7 +9,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.matches1
+import be.mygod.vpnhotspot.util.matchesCompat
 import kotlinx.coroutines.CompletableDeferred
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -99,9 +99,8 @@ object WifiP2pManagerHelper {
     private val interfacePersistentGroupInfoListener by lazy {
         Class.forName("android.net.wifi.p2p.WifiP2pManager\$PersistentGroupInfoListener")
     }
-    private val getGroupList by lazy {
-        Class.forName("android.net.wifi.p2p.WifiP2pGroupList").getDeclaredMethod("getGroupList")
-    }
+    private val classWifiP2pGroupList by lazy { Class.forName("android.net.wifi.p2p.WifiP2pGroupList") }
+    private val getGroupList by lazy { classWifiP2pGroupList.getDeclaredMethod("getGroupList") }
     private val requestPersistentGroupInfo by lazy {
         WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
                 WifiP2pManager.Channel::class.java, interfacePersistentGroupInfoListener)
@@ -118,7 +117,7 @@ object WifiP2pManagerHelper {
         requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when {
-                method.matches1<java.util.Collection<*>>("onPersistentGroupInfoAvailable") -> {
+                method.matchesCompat("onPersistentGroupInfoAvailable", args, classWifiP2pGroupList) -> {
                     @Suppress("UNCHECKED_CAST")
                     result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }
