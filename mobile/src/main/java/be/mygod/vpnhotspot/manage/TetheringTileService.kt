@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -158,7 +160,9 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         }
 
         override fun onStartListening() {
-            tethering = BluetoothTethering(this) { updateTile() }
+            tethering = getSystemService<BluetoothManager>()?.adapter?.let {
+                BluetoothTethering(this, it) { updateTile() }
+            }
             super.onStartListening()
         }
         override fun onStopListening() {

@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.manage
 
 import android.Manifest
 import android.annotation.TargetApi
+import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -306,8 +307,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
     }
     @RequiresApi(24)
-    class Bluetooth(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver {
-        private val tethering = BluetoothTethering(parent.requireContext()) { data.notifyChange() }
+    class Bluetooth(parent: TetheringFragment, adapter: BluetoothAdapter) :
+        TetherManager(parent), DefaultLifecycleObserver {
+        private val tethering = BluetoothTethering(parent.requireContext(), adapter) { data.notifyChange() }
 
         init {
             parent.viewLifecycleOwner.lifecycle.addObserver(this)

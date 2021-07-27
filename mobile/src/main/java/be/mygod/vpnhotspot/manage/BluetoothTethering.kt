@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.manage
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -11,7 +10,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -20,7 +18,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
-class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
+class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter, val stateListener: () -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
     companion object : BroadcastReceiver() {
         /**
@@ -30,7 +28,6 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
         private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
 
-        private val adapter = app.getSystemService<BluetoothManager>()?.adapter
         private val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
 
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
@@ -67,7 +64,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         val pan = pan ?: return null
         if (!connected) return null
         activeFailureCause = null
-        val on = adapter?.state == BluetoothAdapter.STATE_ON && try {
+        val on = adapter.state == BluetoothAdapter.STATE_ON && try {
             pan.isTetheringOn
         } catch (e: InvocationTargetException) {
             activeFailureCause = e.cause ?: e
@@ -84,7 +81,6 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     fun ensureInit(context: Context) {
-        val adapter = adapter ?: return
         activeFailureCause = null
         if (!proxyCreated) try {
             check(adapter.getProfileProxy(context, this, PAN))
@@ -116,7 +112,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
     @RequiresApi(24)
     fun start(callback: TetheringManager.StartTetheringCallback) {
         if (pendingCallback == null) try {
-            if (adapter?.state == BluetoothAdapter.STATE_OFF) {
+            if (adapter.state == BluetoothAdapter.STATE_OFF) {
                 registerBluetoothStateListener(BluetoothTethering)
                 pendingCallback = callback
                 adapter.enable()
@@ -134,6 +130,6 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
 
     override fun close() {
         app.unregisterReceiver(receiver)
-        adapter!!.closeProfileProxy(PAN, pan)
+        adapter.closeProfileProxy(PAN, pan)
     }
 }
