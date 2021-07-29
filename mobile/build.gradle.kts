@@ -9,7 +9,7 @@ plugins {
 }
 
 android {
-    val javaVersion = JavaVersion.VERSION_1_8
+    val javaVersion = JavaVersion.VERSION_11
     val targetSdk = 29
     buildToolsVersion = "31.0.0"
     compileOptions {
