@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.core.os.bundleOf
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Services
@@ -32,12 +33,12 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             interfaceNames[network] = properties.allInterfaceNames
-            updateAdapter()
+            lifecycleScope.launchWhenStarted { updateAdapter() }
         }
 
         override fun onLost(network: Network) {
             interfaceNames.remove(network)
-            updateAdapter()
+            lifecycleScope.launchWhenStarted { updateAdapter() }
         }
     }
 
