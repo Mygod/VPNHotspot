@@ -6,11 +6,15 @@ import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
+import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 
 @Parcelize
 data class SoftApConfigurationCompat(
@@ -19,13 +23,18 @@ data class SoftApConfigurationCompat(
         var bssidAddr: Long? = null,
         var passphrase: String? = null,
         var isHiddenSsid: Boolean = false,
+        /**
+         * To read legacy band/channel pair, use [requireSingleBand]. For easy access, see [getChannel].
+         *
+         * You should probably set or modify this field directly only when you want to use bridged AP,
+         * see also [android.net.wifi.WifiManager.isBridgedApConcurrencySupported].
+         * Otherwise, use [optimizeChannels] or [setChannel].
+         */
         @TargetApi(23)
-        var band: Int = BAND_2GHZ,
-        @TargetApi(23)
-        var channel: Int = 0,
+        var channels: SparseIntArray = SparseIntArray(1).apply { append(BAND_2GHZ, 0) },
+        var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
         @TargetApi(30)
         var maxNumberOfClients: Int = 0,
-        var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
         @TargetApi(28)
         var isAutoShutdownEnabled: Boolean = true,
         @TargetApi(28)
@@ -36,12 +45,41 @@ data class SoftApConfigurationCompat(
         var blockedClientList: List<MacAddress> = emptyList(),
         @RequiresApi(30)
         var allowedClientList: List<MacAddress> = emptyList(),
+        @TargetApi(31)
+        var macRandomizationSetting: Int = RANDOMIZATION_PERSISTENT,
+        @TargetApi(31)
+        var isBridgedModeOpportunisticShutdownEnabled: Boolean = true,
+        @TargetApi(31)
+        var isIeee80211axEnabled: Boolean = true,
+        @TargetApi(31)
+        var isUserConfiguration: Boolean = true,
         var underlying: Parcelable? = null) : Parcelable {
     companion object {
         const val BAND_2GHZ = 1
         const val BAND_5GHZ = 2
+        @TargetApi(30)
         const val BAND_6GHZ = 4
-        const val BAND_ANY = 7
+        @TargetApi(31)
+        const val BAND_60GHZ = 8
+        const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
+        val BAND_TYPES by lazy {
+            if (Build.VERSION.SDK_INT >= 31) try {
+                return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+            }
+            intArrayOf(BAND_2GHZ, BAND_5GHZ, BAND_6GHZ, BAND_60GHZ)
+        }
+        @RequiresApi(31)
+        val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_")
+
+        @TargetApi(31)
+        const val RANDOMIZATION_NONE = 0
+        @TargetApi(31)
+        const val RANDOMIZATION_PERSISTENT = 1
+
+        fun isLegacyEitherBand(band: Int) = band and BAND_LEGACY == BAND_LEGACY
+
         /**
          * [android.net.wifi.WifiConfiguration.KeyMgmt.WPA2_PSK]
          */
@@ -53,7 +91,8 @@ data class SoftApConfigurationCompat(
 
         /**
          * Based on:
-         * https://elixir.bootlin.com/linux/v5.7.6/source/net/wireless/util.c#L75
+         * https://elixir.bootlin.com/linux/v5.12.8/source/net/wireless/util.c#L75
+         * TODO: update for Android 12
          * https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/ScanResult.java;l=624;drc=f7ccda05642b55700d67a288462bada488fc7f5e
          */
         fun channelToFrequency(band: Int, chan: Int) = when (band) {
@@ -67,18 +106,24 @@ data class SoftApConfigurationCompat(
                 in 1..Int.MAX_VALUE -> 5000 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 5GHz channel $chan")
             }
-            BAND_6GHZ -> if (chan in 1..253) {
-                5940 + chan * 5
-            } else throw IllegalArgumentException("Invalid 6GHz channel $chan")
-            // BAND_60GHZ -> if (chan in 1 until 7) 56160 + chan * 2160
+            BAND_6GHZ -> when (chan) {
+                2 -> 5935
+                in 1..233 -> 5950 + chan * 5
+                else -> throw IllegalArgumentException("Invalid 6GHz channel $chan")
+            }
+            BAND_60GHZ -> {
+                require(chan in 1 until 7) { "Invalid 60GHz channel $chan" }
+                56160 + chan * 2160
+            }
             else -> throw IllegalArgumentException("Invalid band $band")
         }
         fun frequencyToChannel(freq: Int) = when (freq) {
             2484 -> 14
             in Int.MIN_VALUE until 2484 -> (freq - 2407) / 5
             in 4910..4980 -> (freq - 4000) / 5
-            in Int.MIN_VALUE until 5945 -> (freq - 5000) / 5
-            in Int.MIN_VALUE..45000 -> (freq - 5940) / 5
+            in Int.MIN_VALUE until 5925 -> (freq - 5000) / 5
+            5935 -> 2
+            in Int.MIN_VALUE..45000 -> (freq - 5950) / 5
             in 58320..70200 -> (freq - 56160) / 2160
             else -> throw IllegalArgumentException("Invalid frequency $freq")
         }
@@ -122,6 +167,14 @@ data class SoftApConfigurationCompat(
         private val getChannel by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getChannel")
         }
+        @get:RequiresApi(31)
+        private val getChannels by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("getChannels")
+        }
+        @get:RequiresApi(31)
+        private val getMacRandomizationSetting by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("getMacRandomizationSetting")
+        }
         @get:RequiresApi(30)
         private val getMaxNumberOfClients by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("getMaxNumberOfClients")
@@ -134,9 +187,21 @@ data class SoftApConfigurationCompat(
         private val isAutoShutdownEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isAutoShutdownEnabled")
         }
+        @get:RequiresApi(31)
+        private val isBridgedModeOpportunisticShutdownEnabled by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isBridgedModeOpportunisticShutdownEnabled")
+        }
         @get:RequiresApi(30)
         private val isClientControlByUserEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isClientControlByUserEnabled")
+        }
+        @get:RequiresApi(31)
+        private val isIeee80211axEnabled by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isIeee80211axEnabled")
+        }
+        @get:RequiresApi(31)
+        private val isUserConfiguration by lazy @TargetApi(31) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isUserConfiguration")
         }
 
         @get:RequiresApi(30)
@@ -159,6 +224,10 @@ data class SoftApConfigurationCompat(
         private val setBlockedClientList by lazy {
             classBuilder.getDeclaredMethod("setBlockedClientList", java.util.List::class.java)
         }
+        @get:RequiresApi(31)
+        private val setBridgedModeOpportunisticShutdownEnabled by lazy {
+            classBuilder.getDeclaredMethod("setBridgedModeOpportunisticShutdownEnabled", Boolean::class.java)
+        }
         @get:RequiresApi(30)
         private val setBssid by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java)
@@ -167,12 +236,24 @@ data class SoftApConfigurationCompat(
         private val setChannel by lazy {
             classBuilder.getDeclaredMethod("setChannel", Int::class.java, Int::class.java)
         }
+        @get:RequiresApi(31)
+        private val setChannels by lazy {
+            classBuilder.getDeclaredMethod("setChannels", SparseIntArray::class.java)
+        }
         @get:RequiresApi(30)
         private val setClientControlByUserEnabled by lazy {
             classBuilder.getDeclaredMethod("setClientControlByUserEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
         private val setHiddenSsid by lazy { classBuilder.getDeclaredMethod("setHiddenSsid", Boolean::class.java) }
+        @get:RequiresApi(31)
+        private val setIeee80211axEnabled by lazy {
+            classBuilder.getDeclaredMethod("setIeee80211axEnabled", Boolean::class.java)
+        }
+        @get:RequiresApi(31)
+        private val setMacRandomizationSetting by lazy {
+            classBuilder.getDeclaredMethod("setMacRandomizationSetting", Int::class.java)
+        }
         @get:RequiresApi(30)
         private val setMaxNumberOfClients by lazy {
             classBuilder.getDeclaredMethod("setMaxNumberOfClients", Int::class.java)
@@ -187,6 +268,8 @@ data class SoftApConfigurationCompat(
         }
         @get:RequiresApi(30)
         private val setSsid by lazy { classBuilder.getDeclaredMethod("setSsid", String::class.java) }
+        @get:RequiresApi(31)
+        private val setUserConfiguration by lazy @TargetApi(31) { UnblockCentral.setUserConfiguration(classBuilder) }
 
         @Deprecated("Class deprecated in framework")
         @Suppress("DEPRECATION")
@@ -196,14 +279,14 @@ data class SoftApConfigurationCompat(
                 preSharedKey,
                 hiddenSSID,
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
-                if (Build.VERSION.SDK_INT >= 23) when (val band = apBand.getInt(this)) {
-                    0 -> BAND_2GHZ
-                    1 -> BAND_5GHZ
-                    -1 -> BAND_2GHZ or BAND_5GHZ
-                    else -> throw IllegalArgumentException("Unexpected band $band")
-                } else BAND_ANY,
-                if (Build.VERSION.SDK_INT >= 23) apChannel.getInt(this) else 0,
-                0,
+                SparseIntArray(1).also {
+                    if (Build.VERSION.SDK_INT >= 23) it.append(when (val band = apBand.getInt(this)) {
+                        0 -> BAND_2GHZ
+                        1 -> BAND_5GHZ
+                        -1 -> BAND_LEGACY
+                        else -> throw IllegalArgumentException("Unexpected band $band")
+                    }, apChannel.getInt(this)) else it.append(BAND_LEGACY, 0)
+                },
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
                         "More than 1 key managements supplied: $allowedKeyManagement"
@@ -224,26 +307,32 @@ data class SoftApConfigurationCompat(
                         }
                     }
                 },
-                if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
+                isAutoShutdownEnabled = if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
                 underlying = this)
 
         @RequiresApi(30)
         @Suppress("UNCHECKED_CAST")
         fun SoftApConfiguration.toCompat() = SoftApConfigurationCompat(
-                ssid,
-                bssid?.toCompat()?.addr,
-                passphrase,
-                isHiddenSsid,
-                getBand(this) as Int,
-                getChannel(this) as Int,
-                getMaxNumberOfClients(this) as Int,
-                securityType,
-                isAutoShutdownEnabled(this) as Boolean,
-                getShutdownTimeoutMillis(this) as Long,
-                isClientControlByUserEnabled(this) as Boolean,
-                getBlockedClientList(this) as List<MacAddress>,
-                getAllowedClientList(this) as List<MacAddress>,
-                this)
+            ssid,
+            bssid?.toCompat()?.addr,
+            passphrase,
+            isHiddenSsid,
+            if (Build.VERSION.SDK_INT >= 31) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
+                it.append(getBand(this) as Int, getChannel(this) as Int)
+            },
+            securityType,
+            getMaxNumberOfClients(this) as Int,
+            isAutoShutdownEnabled(this) as Boolean,
+            getShutdownTimeoutMillis(this) as Long,
+            isClientControlByUserEnabled(this) as Boolean,
+            getBlockedClientList(this) as List<MacAddress>,
+            getAllowedClientList(this) as List<MacAddress>,
+            if (Build.VERSION.SDK_INT >= 31) getMacRandomizationSetting(this) as Int else RANDOMIZATION_PERSISTENT,
+            Build.VERSION.SDK_INT < 31 || isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
+            Build.VERSION.SDK_INT < 31 || isIeee80211axEnabled(this) as Boolean,
+            Build.VERSION.SDK_INT < 31 || isUserConfiguration(this) as Boolean,
+            this,
+        )
     }
 
     @Suppress("DEPRECATION")
@@ -252,6 +341,47 @@ data class SoftApConfigurationCompat(
         set(value) {
             bssidAddr = value?.addr
         }
+
+    /**
+     * Only single band/channel can be supplied on API 23-30
+     */
+    fun requireSingleBand(): Pair<Int, Int> {
+        require(channels.size() == 1) { "Unsupported number of bands configured" }
+        return channels.keyAt(0) to channels.valueAt(0)
+    }
+    fun getChannel(band: Int): Int {
+        var result = -1
+        repeat(channels.size()) { i ->
+            if (band and channels.keyAt(i) != band) return@repeat
+            require(result == -1) { "Duplicate band found" }
+            result = channels.valueAt(i)
+        }
+        return result
+    }
+    fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
+        channels = SparseIntArray(1).apply {
+            append(when {
+                channel <= 0 || band != BAND_LEGACY -> band
+                channel > 14 -> BAND_5GHZ
+                else -> BAND_2GHZ
+            }, channel)
+        }
+    }
+    fun optimizeChannels(channels: SparseIntArray = this.channels) {
+        this.channels = SparseIntArray(channels.size()).apply {
+            var setBand = 0
+            repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
+            if (setBand != 0) append(setBand, 0)    // merge all bands into one
+            repeat(channels.size()) { i ->
+                val band = channels.keyAt(i)
+                if (band and setBand == 0) put(band, channels.valueAt(i))
+            }
+        }
+    }
+
+    fun setMacRandomizationEnabled(enabled: Boolean) {
+        macRandomizationSetting = if (enabled) RANDOMIZATION_PERSISTENT else RANDOMIZATION_NONE
+    }
 
     /**
      * Based on:
@@ -263,6 +393,7 @@ data class SoftApConfigurationCompat(
     @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
     @Suppress("DEPRECATION")
     fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {
+        val (band, channel) = requireSingleBand()
         val wc = underlying as? android.net.wifi.WifiConfiguration
         val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
         val original = wc?.toCompat()
@@ -273,11 +404,14 @@ data class SoftApConfigurationCompat(
             apBand.setInt(result, when (band) {
                 BAND_2GHZ -> 0
                 BAND_5GHZ -> 1
-                BAND_2GHZ or BAND_5GHZ, BAND_ANY -> -1
-                else -> throw IllegalArgumentException("Convert fail, unsupported band setting :$band")
+                else -> {
+                    require(Build.VERSION.SDK_INT >= 28) { "A band must be specified on this platform" }
+                    require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
+                    -1
+                }
             })
             apChannel.setInt(result, channel)
-        } else require(band == BAND_ANY) { "Specifying band is unsupported on this platform" }
+        } else require(isLegacyEitherBand(band)) { "Specifying band is unsupported on this platform" }
         if (original?.securityType != securityType) {
             result.allowedKeyManagement.clear()
             result.allowedKeyManagement.set(when (securityType) {
@@ -304,7 +438,10 @@ data class SoftApConfigurationCompat(
         setSsid(builder, ssid)
         setPassphrase(builder, if (securityType == SoftApConfiguration.SECURITY_TYPE_OPEN) null else passphrase,
                 securityType)
-        if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
+        if (Build.VERSION.SDK_INT >= 31) setChannels(builder, channels) else {
+            val (band, channel) = requireSingleBand()
+            if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
+        }
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
         setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)
@@ -313,6 +450,16 @@ data class SoftApConfigurationCompat(
         setHiddenSsid(builder, isHiddenSsid)
         setAllowedClientList(builder, allowedClientList)
         setBlockedClientList(builder, blockedClientList)
+        if (Build.VERSION.SDK_INT >= 31) {
+            setMacRandomizationSetting(builder, macRandomizationSetting)
+            setBridgedModeOpportunisticShutdownEnabled(builder, isBridgedModeOpportunisticShutdownEnabled)
+            setIeee80211axEnabled(builder, isIeee80211axEnabled)
+            if (sac?.let { isUserConfiguration(it) as Boolean } != false != isUserConfiguration) try {
+                setUserConfiguration(builder, isUserConfiguration)
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e) // as far as we are concerned, this field is not used anywhere so ignore for now
+            }
+        }
         return build(builder) as SoftApConfiguration
     }
 

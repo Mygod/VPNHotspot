@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -11,6 +12,7 @@ import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
@@ -151,15 +153,16 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val labelString get() = R.string.tethering_manage_bluetooth
         override val tetherType get() = TetherType.BLUETOOTH
 
-        override fun start() = BluetoothTethering.start(this)
+        override fun start() = tethering!!.start(this)
         override fun stop() {
-            TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, this::onException)
-            Thread.sleep(1)         // give others a room to breathe
+            tethering!!.stop(this::onException)
             onTetheringStarted()    // force flush state
         }
 
         override fun onStartListening() {
-            tethering = BluetoothTethering(this) { updateTile() }
+            tethering = getSystemService<BluetoothManager>()?.adapter?.let {
+                BluetoothTethering(this, it) { updateTile() }
+            }
             super.onStartListening()
         }
         override fun onStopListening() {
@@ -187,7 +190,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                         icon = tileOff
                     }
                     null -> {
-                        state = Tile.STATE_UNAVAILABLE
+                        state = Tile.STATE_INACTIVE
                         icon = tileOff
                         subtitle(tethering?.activeFailureCause?.readableMessage)
                     }
@@ -198,7 +201,8 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         }
 
         override fun onClick() {
-            when (tethering?.active) {
+            val tethering = tethering
+            if (tethering == null) tapPending = true else when (tethering.active) {
                 true -> {
                     val binder = binder
                     if (binder == null) tapPending = true else {
@@ -212,7 +216,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     }
                 }
                 false -> start()
-                else -> tapPending = true
+                else -> ManageBar.start(this)
             }
         }
     }

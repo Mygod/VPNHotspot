@@ -9,23 +9,23 @@ plugins {
 }
 
 android {
-    val javaVersion = JavaVersion.VERSION_1_8
+    val javaVersion = JavaVersion.VERSION_11
     val targetSdk = 29
-    buildToolsVersion = "30.0.3"
+    buildToolsVersion = "31.0.0"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdk = 30
+    compileSdk = 31
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
         this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 262
-        versionName = "2.11.9"
+        versionCode = 277
+        versionName = "2.12.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -70,11 +70,11 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.appcompat:appcompat:1.3.0")    // https://issuetracker.google.com/issues/151603528
+    implementation("androidx.appcompat:appcompat:1.3.1")    // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.3.0")
     implementation("androidx.core:core-ktx:1.6.0")
     implementation("androidx.emoji:emoji:1.1.0")
-    implementation("androidx.fragment:fragment-ktx:1.3.5")
+    implementation("androidx.fragment:fragment-ktx:1.3.6")
     implementation("androidx.lifecycle:lifecycle-common-java8:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
@@ -83,9 +83,9 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("com.android.billingclient:billing-ktx:4.0.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.4.0")
+    implementation("com.google.android.material:material:1.5.0-alpha01")
     implementation("com.google.firebase:firebase-analytics-ktx:19.0.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.1.0")
+    implementation("com.google.firebase:firebase-crashlytics:18.2.0")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:4.7.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.1")

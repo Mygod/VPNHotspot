@@ -3,18 +3,16 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.MacAddress
+import android.content.res.Resources
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
+import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
-import be.mygod.vpnhotspot.util.ConstantLookup
-import be.mygod.vpnhotspot.util.LongConstantLookup
-import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.*
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -27,12 +25,123 @@ object WifiApManager {
      */
     @RequiresApi(30)
     private const val ACTION_RESOURCES_APK = "com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK"
+    @RequiresApi(30)
+    const val RESOURCES_PACKAGE = "com.android.wifi.resources"
     /**
      * Based on: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/000ad45/service/java/com/android/server/wifi/WifiContext.java#66
      */
     @get:RequiresApi(30)
     val resolvedActivity get() = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
             PackageManager.MATCH_SYSTEM_ONLY).single()
+
+    private const val CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED = "config_wifi_p2p_mac_randomization_supported"
+    val p2pMacRandomizationSupported get() = when (Build.VERSION.SDK_INT) {
+        29 -> Resources.getSystem().run {
+            getBoolean(getIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool", "android"))
+        }
+        in 30..Int.MAX_VALUE -> @TargetApi(30) {
+            val info = resolvedActivity.activityInfo
+            val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
+            resources.getBoolean(resources.findIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool",
+                RESOURCES_PACKAGE, info.packageName))
+        }
+        else -> false
+    }
+
+    @get:RequiresApi(30)
+    private val apMacRandomizationSupported by lazy {
+        WifiManager::class.java.getDeclaredMethod("isApMacRandomizationSupported")
+    }
+    @get:RequiresApi(30)
+    val isApMacRandomizationSupported get() = apMacRandomizationSupported(Services.wifi) as Boolean
+
+    /**
+     * Broadcast intent action indicating that Wi-Fi AP has been enabled, disabled,
+     * enabling, disabling, or failed.
+     */
+    const val WIFI_AP_STATE_CHANGED_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+    /**
+     * The lookup key for an int that indicates whether Wi-Fi AP is enabled,
+     * disabled, enabling, disabling, or failed.  Retrieve it with [Intent.getIntExtra].
+     *
+     * @see WIFI_AP_STATE_DISABLED
+     * @see WIFI_AP_STATE_DISABLING
+     * @see WIFI_AP_STATE_ENABLED
+     * @see WIFI_AP_STATE_ENABLING
+     * @see WIFI_AP_STATE_FAILED
+     */
+    private const val EXTRA_WIFI_AP_STATE = "wifi_state"
+    /**
+     * An extra containing the int error code for Soft AP start failure.
+     * Can be obtained from the [WIFI_AP_STATE_CHANGED_ACTION] using [Intent.getIntExtra].
+     * This extra will only be attached if [EXTRA_WIFI_AP_STATE] is
+     * attached and is equal to [WIFI_AP_STATE_FAILED].
+     *
+     * The error code will be one of:
+     * {@link #SAP_START_FAILURE_GENERAL},
+     * {@link #SAP_START_FAILURE_NO_CHANNEL},
+     * {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
+     *
+     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-6.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#210
+     */
+    @get:RequiresApi(23)
+    val EXTRA_WIFI_AP_FAILURE_REASON get() =
+        if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_FAILURE_REASON" else "wifi_ap_error_code"
+    /**
+     * The lookup key for a String extra that stores the interface name used for the Soft AP.
+     * This extra is included in the broadcast [WIFI_AP_STATE_CHANGED_ACTION].
+     * Retrieve its value with [Intent.getStringExtra].
+     *
+     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#413
+     */
+    @get:RequiresApi(26)
+    val EXTRA_WIFI_AP_INTERFACE_NAME get() =
+        if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_INTERFACE_NAME" else "wifi_ap_interface_name"
+
+    fun checkWifiApState(state: Int) = if (state < WIFI_AP_STATE_DISABLING || state > WIFI_AP_STATE_FAILED) {
+        Timber.w(Exception("Unknown state $state"))
+        false
+    } else true
+    val Intent.wifiApState get() =
+        getIntExtra(EXTRA_WIFI_AP_STATE, WIFI_AP_STATE_DISABLED).also { checkWifiApState(it) }
+    /**
+     * Wi-Fi AP is currently being disabled. The state will change to
+     * [WIFI_AP_STATE_DISABLED] if it finishes successfully.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_DISABLING = 10
+    /**
+     * Wi-Fi AP is disabled.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiState()
+     */
+    const val WIFI_AP_STATE_DISABLED = 11
+    /**
+     * Wi-Fi AP is currently being enabled. The state will change to
+     * {@link #WIFI_AP_STATE_ENABLED} if it finishes successfully.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_ENABLING = 12
+    /**
+     * Wi-Fi AP is enabled.
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_ENABLED = 13
+    /**
+     * Wi-Fi AP is in a failed state. This state will occur when an error occurs during
+     * enabling or disabling
+     *
+     * @see WIFI_AP_STATE_CHANGED_ACTION
+     * @see #getWifiApState()
+     */
+    const val WIFI_AP_STATE_FAILED = 14
 
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")
@@ -63,40 +172,65 @@ object WifiApManager {
         /**
          * Called when soft AP state changes.
          *
-         * @param state new new AP state. One of {@link #WIFI_AP_STATE_DISABLED},
-         *        {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
-         *        {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+         * @param state         the new AP state. One of [WIFI_AP_STATE_DISABLED], [WIFI_AP_STATE_DISABLING],
+         *   [WIFI_AP_STATE_ENABLED], [WIFI_AP_STATE_ENABLING], [WIFI_AP_STATE_FAILED]
          * @param failureReason reason when in failed state. One of
-         *        {@link #SAP_START_FAILURE_GENERAL}, {@link #SAP_START_FAILURE_NO_CHANNEL}
+         *                      {@link #SAP_START_FAILURE_GENERAL},
+         *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
+         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
          */
         fun onStateChanged(state: Int, failureReason: Int) { }
 
         /**
          * Called when number of connected clients to soft AP changes.
          *
+         * It is not recommended to use this legacy method on API 30+.
+         *
          * @param numClients number of connected clients
          */
-        @Deprecated("onConnectedClientsChanged")
         fun onNumClientsChanged(numClients: Int) { }
 
+        /**
+         * Called when the connected clients to soft AP changes.
+         *
+         * @param clients the currently connected clients
+         */
         @RequiresApi(30)
-        fun onConnectedClientsChanged(clients: List<MacAddress>) {
-            @Suppress("DEPRECATION")
-            onNumClientsChanged(clients.size)
-        }
+        fun onConnectedClientsChanged(clients: List<Parcelable>) = onNumClientsChanged(clients.size)
 
+        /**
+         * Called when information of softap changes.
+         *
+         * @param info is the softap information. [SoftApInfo]
+         *             At most one will be returned on API 30.
+         */
         @RequiresApi(30)
-        fun onInfoChanged(frequency: Int, bandwidth: Int) { }
+        fun onInfoChanged(info: List<Parcelable>) { }
 
+        /**
+         * Called when capability of softap changes.
+         *
+         * @param capability is the softap capability. [SoftApCapability]
+         */
         @RequiresApi(30)
-        fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) { }
+        fun onCapabilityChanged(capability: Parcelable) { }
 
+        /**
+         * Called when client trying to connect but device blocked the client with specific reason.
+         *
+         * Can be used to ask user to update client to allowed list or blocked list
+         * when reason is {@link SAP_CLIENT_BLOCK_REASON_CODE_BLOCKED_BY_USER}, or
+         * indicate the block due to maximum supported client number limitation when reason is
+         * {@link SAP_CLIENT_BLOCK_REASON_CODE_NO_MORE_STAS}.
+         *
+         * @param client the currently blocked client.
+         * @param blockedReason one of blocked reason from [SapClientBlockedReason]
+         */
         @RequiresApi(30)
-        fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) { }
+        fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
-    @RequiresApi(28)
-    val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_",
-            "SAP_START_FAILURE_GENERAL", "SAP_START_FAILURE_NO_CHANNEL")
+    @RequiresApi(23)
+    val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
 
@@ -111,25 +245,6 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", interfaceSoftApCallback)
     }
 
-    private val getMacAddress by lazy {
-        Class.forName("android.net.wifi.WifiClient").getDeclaredMethod("getMacAddress")
-    }
-
-    private val classSoftApInfo by lazy { Class.forName("android.net.wifi.SoftApInfo") }
-    private val getFrequency by lazy { classSoftApInfo.getDeclaredMethod("getFrequency") }
-    private val getBandwidth by lazy { classSoftApInfo.getDeclaredMethod("getBandwidth") }
-    @RequiresApi(30)
-    val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { classSoftApInfo }
-    const val CHANNEL_WIDTH_INVALID = 0
-
-    private val classSoftApCapability by lazy { Class.forName("android.net.wifi.SoftApCapability") }
-    private val getMaxSupportedClients by lazy { classSoftApCapability.getDeclaredMethod("getMaxSupportedClients") }
-    private val areFeaturesSupported by lazy {
-        classSoftApCapability.getDeclaredMethod("areFeaturesSupported", Long::class.java)
-    }
-    @get:RequiresApi(30)
-    val featureLookup by lazy { LongConstantLookup(classSoftApCapability, "SOFTAP_FEATURE_") }
-
     @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
@@ -141,49 +256,37 @@ object WifiApManager {
                     } else invokeActual(proxy, method, args)
 
             private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                val noArgs = args?.size ?: 0
-                return when (val name = method.name) {
-                    "onStateChanged" -> {
-                        if (noArgs != 2) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
+                return when {
+                    method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> {
                         callback.onStateChanged(args!![0] as Int, args[1] as Int)
                     }
-                    "onNumClientsChanged" -> @Suppress("DEPRECATION") {
+                    method.matches("onNumClientsChanged", Integer.TYPE) -> @Suppress("DEPRECATION") {
                         if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
                         callback.onNumClientsChanged(args!![0] as Int)
                     }
-                    "onConnectedClientsChanged" -> @TargetApi(30) {
+                    method.matches1<java.util.List<*>>("onConnectedClientsChanged") -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        callback.onConnectedClientsChanged((args!![0] as? Iterable<*> ?: return null)
-                                .map { getMacAddress(it) as MacAddress })
+                        @Suppress("UNCHECKED_CAST")
+                        callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
                     }
-                    "onInfoChanged" -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        val softApInfo = args!![0]
-                        if (softApInfo != null && classSoftApInfo.isAssignableFrom(softApInfo.javaClass)) {
-                            callback.onInfoChanged(getFrequency(softApInfo) as Int, getBandwidth(softApInfo) as Int)
-                        } else null
+                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(31) {
+                        if (Build.VERSION.SDK_INT < 31) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
+                        @Suppress("UNCHECKED_CAST")
+                        callback.onInfoChanged(args!![0] as List<Parcelable>)
                     }
-                    "onCapabilityChanged" -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onCapabilityChanged"))
-                        if (noArgs != 1) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        val softApCapability = args!![0]
-                        var supportedFeatures = 0L
-                        var probe = 1L
-                        while (probe != 0L) {
-                            if (areFeaturesSupported(softApCapability, probe) as Boolean) {
-                                supportedFeatures = supportedFeatures or probe
-                            }
-                            probe += probe
-                        }
-                        callback.onCapabilityChanged(getMaxSupportedClients(softApCapability) as Int, supportedFeatures)
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onInfoChanged", SoftApInfo.clazz) -> {
+                        if (Build.VERSION.SDK_INT >= 31) return null    // ignore old version calls
+                        val arg = args!![0]
+                        val info = SoftApInfo(arg as Parcelable)
+                        callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
+                            if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
                     }
-                    "onBlockedClientConnecting" -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onBlockedClientConnecting"))
-                        if (noArgs != 2) Timber.w("Unexpected args for $name: ${args?.contentToString()}")
-                        callback.onBlockedClientConnecting(getMacAddress(args!![0]) as MacAddress, args[1] as Int)
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onCapabilityChanged", SoftApCapability.clazz) -> {
+                        callback.onCapabilityChanged(args!![0] as Parcelable)
+                    }
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onBlockedClientConnecting", WifiClient.clazz,
+                        Int::class.java) -> {
+                        callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
                     }
                     else -> callSuper(interfaceSoftApCallback, proxy, method, args)
                 }

@@ -71,6 +71,9 @@
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">已連接 %1$s/%2$d 個設備\n支持功能：%3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="other">已連接 %d 個設備</item>
+    </plurals>
     <string name="tethering_manage_wifi_no_features">無</string>
     <string name="tethering_manage_wifi_client_blocked">已隱藏 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">複製 MAC</string>
@@ -173,16 +176,20 @@
     <string name="wifi_hotspot_timeout">關閉延遲時間</string>
     <string name="wifi_hotspot_timeout_default">默認延遲：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">AP 頻帶</string>
+    <string name="wifi_ap_choose_disabled">停用</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">自動</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">2.4 GHz 頻帶</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">5.0 GHz 頻帶</string>
-    <string name="wifi_ap_choose_6G">6.0 GHz 頻帶</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">5 GHz 頻帶</string>
+    <string name="wifi_ap_choose_6G">6 GHz 頻帶</string>
+    <string name="wifi_ap_choose_60G">60 GHz 頻帶</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隱藏的網路"</string>
     <string name="wifi_max_clients">允許的連接裝置數量</string>
     <string name="wifi_client_user_control">過濾可以連接的裝置</string>
     <string name="wifi_blocked_list">裝置黑名單</string>
     <string name="wifi_allowed_list">裝置白名單</string>
+    <string name="wifi_mac_randomization">隨機化 MAC 位址</string>
+    <string name="wifi_ieee_80211ax">啟用 Wi\u2011Fi 6</string>
     <string name="wifi_save" msgid="3331121567988522826">儲存</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->

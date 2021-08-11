@@ -15,7 +15,6 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import androidx.core.content.edit
-import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -53,14 +52,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         private const val KEY_AUTO_SHUTDOWN = "service.repeater.autoShutdown"
         private const val KEY_SHUTDOWN_TIMEOUT = "service.repeater.shutdownTimeout"
         private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"
-        /**
-         * Placeholder for bypassing networkName check.
-         */
-        private const val PLACEHOLDER_NETWORK_NAME = "DIRECT-00-VPNHotspot"
 
         var persistentSupported = false
 
-        @delegate:TargetApi(29)
+        @get:RequiresApi(29)
         private val hasP2pValidateName by lazy {
             val array = Build.VERSION.SECURITY_PATCH.split('-', limit = 3)
             val y = array.getOrNull(0)?.toIntOrNull()
@@ -70,6 +65,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         val safeModeConfigurable get() = Build.VERSION.SDK_INT >= 29 && hasP2pValidateName
         val safeMode get() = Build.VERSION.SDK_INT >= 29 &&
                 (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
+        private val mNetworkName by lazy { UnblockCentral.WifiP2pConfig_Builder_mNetworkName }
 
         var networkName: String?
             get() = app.pref.getString(KEY_NETWORK_NAME, null)
@@ -79,7 +75,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
             @SuppressLint("InlinedApi")
-            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_ANY)
+            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_LEGACY)
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
@@ -398,59 +394,39 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
         val networkName = networkName
         val passphrase = passphrase
-        try {
-            if (!safeMode || networkName == null || passphrase == null) {
-                persistNextGroup = true
-                p2pManager.createGroup(channel, listener)
-            } else @TargetApi(29) {
-                p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
-                    setNetworkName(PLACEHOLDER_NETWORK_NAME)
-                    setPassphrase(passphrase)
-                    when (val oc = operatingChannel) {
-                        0 -> setGroupOperatingBand(when (val band = operatingBand) {
-                            SoftApConfigurationCompat.BAND_ANY -> WifiP2pConfig.GROUP_OWNER_BAND_AUTO
-                            SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                            SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                            else -> throw IllegalArgumentException("Unknown band $band")
-                        })
+        @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
+        if (!safeMode || networkName == null || passphrase == null) {
+            persistNextGroup = true
+            p2pManager.createGroup(channel, listener)
+        } else @TargetApi(29) {
+            p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+                try {
+                    mNetworkName.set(this, networkName) // bypass networkName check
+                } catch (e: ReflectiveOperationException) {
+                    Timber.w(e)
+                    try {
+                        setNetworkName(networkName)
+                    } catch (e: IllegalArgumentException) {
+                        Timber.w(e)
+                        return startFailure(e.readableMessage)
+                    }
+                }
+                setPassphrase(passphrase)
+                when (val oc = operatingChannel) {
+                    0 -> setGroupOperatingBand(when (val band = operatingBand) {
+                        SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                        SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
                         else -> {
-                            setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+                            require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
+                            WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                         }
+                    })
+                    else -> {
+                        setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
                     }
-                    setDeviceAddress(deviceAddress?.toPlatform())
-                }.build().run {
-                    useParcel { p ->
-                        p.writeParcelable(this, 0)
-                        val end = p.dataPosition()
-                        p.setDataPosition(0)
-                        val creator = p.readString()
-                        val deviceAddress = p.readString()
-                        val wps = p.readParcelable<WpsInfo>(javaClass.classLoader)
-                        val long = p.readLong()
-                        check(p.readString() == PLACEHOLDER_NETWORK_NAME)
-                        check(p.readString() == passphrase)
-                        val extrasLength = end - p.dataPosition()
-                        check(extrasLength and 3 == 0)  // parcel should be padded
-                        if (extrasLength != 4) app.logEvent("p2p_config_extras_unexpected_length") {
-                            param("length", extrasLength.toLong())
-                        }
-                        val extras = (0 until extrasLength / 4).map { p.readInt() }
-                        p.setDataPosition(0)
-                        p.writeString(creator)
-                        p.writeString(deviceAddress)
-                        p.writeParcelable(wps, 0)
-                        p.writeLong(long)
-                        p.writeString(networkName)
-                        p.writeString(passphrase)
-                        extras.forEach(p::writeInt)
-                        p.setDataPosition(0)
-                        p.readParcelable(javaClass.classLoader)
-                    }
-                }, listener)
-            }
-        } catch (e: SecurityException) {
-            Timber.w(e)
-            startFailure(e.readableMessage)
+                }
+                setDeviceAddress(deviceAddress?.toPlatform())
+            }.build(), listener)
         }
     }
     /**
@@ -512,7 +488,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 if (reason != WifiP2pManager.BUSY) {
                     SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                 }   // else assuming it's already gone
-                launch { cleanLocked() }
+                onSuccess()
             }
         })
     }

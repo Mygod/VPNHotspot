@@ -2,9 +2,6 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.content.SharedPreferences
 import android.net.LinkProperties
-import android.net.NetworkCapabilities
-import android.net.NetworkRequest
-import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -22,13 +19,6 @@ abstract class UpstreamMonitor {
             return if (upstream.isNullOrEmpty()) VpnMonitor else InterfaceMonitor(upstream)
         }
         private var monitor = generateMonitor()
-
-        fun networkRequestBuilder() = NetworkRequest.Builder().apply {
-            if (Build.VERSION.SDK_INT == 23) {  // workarounds for OEM bugs
-                removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-                removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-            }
-        }
 
         fun registerCallback(callback: Callback) = synchronized(this) { monitor.registerCallback(callback) }
         fun unregisterCallback(callback: Callback) = synchronized(this) { monitor.unregisterCallback(callback) }

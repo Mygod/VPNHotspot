@@ -37,7 +37,7 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.util.SpanFormatter
+import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -82,10 +82,11 @@ class ClientsFragment : Fragment() {
     data class StatsArg(val title: CharSequence, val stats: ClientStats) : Parcelable
     class StatsDialogFragment : AlertDialogFragment<StatsArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
-            setTitle(SpanFormatter.format(getText(R.string.clients_stats_title), arg.title))
             val context = context
             val resources = resources
-            val format = NumberFormat.getIntegerInstance(resources.configuration.locale)
+            val locale = resources.configuration.locale
+            setTitle(getText(R.string.clients_stats_title).format(locale, arg.title))
+            val format = NumberFormat.getIntegerInstance(locale)
             setMessage("%s\n%s\n%s".format(
                     resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),
                             format.format(arg.stats.count), DateUtils.formatDateTime(context, arg.stats.timestamp,

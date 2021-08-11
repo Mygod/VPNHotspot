@@ -61,7 +61,9 @@
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"Диапазон частот Wi-Fi"</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Авто"</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2,4 ГГц"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5,0 ГГц"</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 ГГц"</string>
+    <string name="wifi_ap_choose_6G">"6 ГГц"</string>
+    <string name="wifi_ap_choose_60G">"60 ГГц"</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC-адрес"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"Скрытая сеть"</string>
     <string name="wifi_save" msgid="3331121567988522826">"Сохранить"</string>

@@ -6,16 +6,13 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.IpNeighbour
-import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
-import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import timber.log.Timber
@@ -43,7 +40,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                 null -> return  // stopped
                 "" -> WifiApManager.cancelLocalOnlyHotspotRequest()
             }
-            reservation?.close() ?: stopService()
+            reservation?.close()
+            stopService()
         }
     }
 
@@ -56,24 +54,6 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var timeoutMonitor: TetherTimeoutMonitor? = null
-    private var receiverRegistered = false
-    private val receiver = broadcastReceiver { _, intent ->
-        val ifaces = (intent.localOnlyTetheredIfaces ?: return@broadcastReceiver).filter {
-            TetherType.ofInterface(it) != TetherType.WIFI_P2P
-        }
-        Timber.d("onTetherStateChangedLocked: $ifaces")
-        check(ifaces.size <= 1)
-        val iface = ifaces.singleOrNull()
-        binder.iface = iface
-        if (iface.isNullOrEmpty()) stopService() else launch {
-            val routingManager = routingManager
-            if (routingManager == null) {
-                this@LocalOnlyHotspotService.routingManager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService,
-                        iface).apply { start() }
-                IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
-            } else check(iface == routingManager.downstream)
-        }
-    }
     override val activeIfaces get() = binder.iface.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
     override fun onBind(intent: Intent?) = binder
@@ -87,20 +67,36 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) onFailed(-2) else {
                         this@LocalOnlyHotspotService.reservation = reservation
-                        if (!receiverRegistered) {
-                            val configuration = binder.configuration!!
-                            if (Build.VERSION.SDK_INT < 30 && configuration.isAutoShutdownEnabled) {
-                                timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis,
-                                        coroutineContext) { reservation.close() }
+                        val configuration = binder.configuration!!
+                        if (Build.VERSION.SDK_INT < 30 && configuration.isAutoShutdownEnabled) {
+                            timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis,
+                                coroutineContext) { reservation.close() }
+                        }
+                        // based on: https://android.googlesource.com/platform/packages/services/Car/+/df5cd06/service/src/com/android/car/CarProjectionService.java#160
+                        val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
+                        val apState = sticky.wifiApState
+                        val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)
+                        if (apState != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
+                            if (apState == WifiApManager.WIFI_AP_STATE_FAILED) {
+                                SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
+                                    WifiApManager.failureReasonLookup(sticky.getIntExtra(
+                                        WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)))).show()
                             }
-                            registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-                            receiverRegistered = true
+                            return stopService()
+                        }
+                        binder.iface = iface
+                        launch {
+                            check(routingManager == null)
+                            routingManager = RoutingManager.LocalOnly(
+                                this@LocalOnlyHotspotService, iface).apply { start() }
+                            IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
                         }
                     }
                 }
 
                 override fun onStopped() {
                     Timber.d("LOHCallback.onStopped")
+                    reservation?.close()
                     reservation = null
                 }
 
@@ -152,14 +148,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     private fun unregisterReceiver(exit: Boolean = false) {
-        if (receiverRegistered) {
-            unregisterReceiver(receiver)
-            IpNeighbourMonitor.unregisterCallback(this)
-            if (Build.VERSION.SDK_INT >= 28) {
-                timeoutMonitor?.close()
-                timeoutMonitor = null
-            }
-            receiverRegistered = false
+        IpNeighbourMonitor.unregisterCallback(this)
+        if (Build.VERSION.SDK_INT >= 28) {
+            timeoutMonitor?.close()
+            timeoutMonitor = null
         }
         launch {
             routingManager?.stop()

@@ -61,9 +61,21 @@
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
     <string name="tethering_manage_wigig">WiGig 热点</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
+        关闭延迟 %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
+        不自动关闭</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="other">已连接 %d 个设备</item>
+    </plurals>
+    <string name="tethering_manage_wifi_supported_channels">\n支持频道: %s</string>
+    <string name="tethering_manage_wifi_feature_ap_mac_randomization">随机接入点 MAC</string>
+    <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">桥接 AP 并发</string>
+    <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA/AP 并发</string>
+    <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA/桥接 AP 并发</string>
     <string name="tethering_manage_wifi_no_features">无</string>
     <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>
@@ -140,6 +152,7 @@
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
+    <string name="notification_channel_monitor">监视不活跃接口</string>
     <plurals name="notification_connected_devices">
         <item quantity="other">%d 个设备已连接到 %s</item>
     </plurals>
@@ -166,16 +179,25 @@
     <string name="wifi_hotspot_timeout">关闭延迟</string>
     <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
+    <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
     <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5.0 GHz 频段"</string>
-    <string name="wifi_ap_choose_6G">6.0 GHz 频段</string>
+    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 GHz 频段"</string>
+    <string name="wifi_ap_choose_6G">6 GHz 频段</string>
+    <string name="wifi_ap_choose_60G">60 GHz 频段</string>
+    <string name="wifi_hotspot_access_control_title">访问控制</string>
+    <string name="wifi_hotspot_ap_advanced_title">高级接入点设置</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
     <string name="wifi_max_clients">允许连接设备数上限</string>
     <string name="wifi_client_user_control">过滤可以连接的设备</string>
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
+    <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
+    <string name="wifi_bridged_mode">启用无线接入点桥接模式</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
+    <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
+    <string name="wifi_user_config">用户提供配置</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->

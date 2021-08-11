@@ -3,6 +3,7 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
+import android.bluetooth.BluetoothManager
 import android.content.*
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
+import androidx.core.content.getSystemService
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.DefaultItemAnimator
@@ -34,6 +36,7 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import timber.log.Timber
@@ -42,16 +45,24 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
-    inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager) {
+    inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
+        TetheringManager.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         @get:RequiresApi(26)
         internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
-        internal val bluetoothManager by lazy @TargetApi(24) { TetherManager.Bluetooth(this@TetheringFragment) }
+        @get:RequiresApi(24)
+        internal val bluetoothManager by lazy {
+            if (Build.VERSION.SDK_INT >= 24) requireContext().getSystemService<BluetoothManager>()?.adapter?.let {
+                TetherManager.Bluetooth(this@TetheringFragment, it)
+            } else null
+        }
         @get:RequiresApi(24)
         private val tetherManagers by lazy @TargetApi(24) {
-            listOf(TetherManager.Wifi(this@TetheringFragment),
-                    TetherManager.Usb(this@TetheringFragment),
-                    bluetoothManager)
+            listOfNotNull(
+                TetherManager.Wifi(this@TetheringFragment),
+                TetherManager.Usb(this@TetheringFragment),
+                bluetoothManager,
+            )
         }
         @get:RequiresApi(30)
         private val tetherManagers30 by lazy @TargetApi(30) {
@@ -59,30 +70,32 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                     TetherManager.Ncm(this@TetheringFragment),
                     TetherManager.WiGig(this@TetheringFragment))
         }
-        private val wifiManagerLegacy by lazy @Suppress("Deprecation") {
-            TetherManager.WifiLegacy(this@TetheringFragment)
-        }
+        private val wifiManagerLegacy by lazy { TetherManager.WifiLegacy(this@TetheringFragment) }
 
-        private var enabledIfaces = emptyList<String>()
+        var activeIfaces = emptyList<String>()
+        var localOnlyIfaces = emptyList<String>()
+        var erroredIfaces = emptyList<String>()
         private var listDeferred = CompletableDeferred<List<Manager>>(emptyList())
-        private fun updateEnabledTypes() {
-            this@TetheringFragment.enabledTypes = enabledIfaces.map { TetherType.ofInterface(it) }.toSet()
+        fun updateEnabledTypes() {
+            this@TetheringFragment.enabledTypes =
+                (activeIfaces + localOnlyIfaces).map { TetherType.ofInterface(it) }.toSet()
         }
 
-        suspend fun notifyInterfaceChanged(lastList: List<Manager>? = null) {
-            @Suppress("NAME_SHADOWING") val lastList = lastList ?: listDeferred.await()
-            val first = lastList.indexOfFirst { it is InterfaceManager }
-            if (first >= 0) notifyItemRangeChanged(first, lastList.indexOfLast { it is InterfaceManager } - first + 1)
+        val lastErrors = mutableMapOf<String, Int>()
+        override fun onError(ifName: String, error: Int) {
+            if (error == 0) lastErrors.remove(ifName) else lastErrors[ifName] = error
         }
+
         suspend fun notifyTetherTypeChanged() {
             updateEnabledTypes()
             val lastList = listDeferred.await()
-            notifyInterfaceChanged(lastList)
-            val first = lastList.indexOfLast { it !is TetherManager } + 1
+            var first = lastList.indexOfFirst { it is InterfaceManager }
+            if (first >= 0) notifyItemRangeChanged(first, lastList.indexOfLast { it is InterfaceManager } - first + 1)
+            first = lastList.indexOfLast { it !is TetherManager } + 1
             notifyItemRangeChanged(first, lastList.size - first)
         }
 
-        fun update(activeIfaces: List<String>, localOnlyIfaces: List<String>, erroredIfaces: List<String>) {
+        fun update() {
             val deferred = CompletableDeferred<List<Manager>>()
             listDeferred = deferred
             ifaceLookup = try {
@@ -91,8 +104,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 Timber.d(e)
                 emptyMap()
             }
-            enabledIfaces = activeIfaces + localOnlyIfaces
-            updateEnabledTypes()
 
             val list = ArrayList<Manager>()
             if (Services.p2p != null) list.add(repeaterManager)
@@ -104,11 +115,11 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             list.add(ManageBar)
             if (Build.VERSION.SDK_INT >= 24) {
                 list.addAll(tetherManagers)
-                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces) }
+                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             }
             if (Build.VERSION.SDK_INT >= 30) {
                 list.addAll(tetherManagers30)
-                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces) }
+                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             }
             if (Build.VERSION.SDK_INT < 26) {
                 list.add(wifiManagerLegacy)
@@ -125,7 +136,10 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java))
+        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java)) else {
+            Snackbar.make((activity as MainActivity).binding.fragmentHolder,
+                R.string.repeater_missing_location_permissions, Snackbar.LENGTH_LONG).show()
+        }
     }
     @RequiresApi(26)
     val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -133,7 +147,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
     @RequiresApi(31)
     val requestBluetooth = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) adapter.bluetoothManager.ensureInit(requireContext())
+        if (granted) adapter.bluetoothManager!!.ensureInit(requireContext())
     }
 
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()
@@ -142,9 +156,12 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     var binder: TetheringService.Binder? = null
     private val adapter = ManagerAdapter()
     private val receiver = broadcastReceiver { _, intent ->
-        adapter.update(intent.tetheredIfaces ?: return@broadcastReceiver,
-                intent.localOnlyTetheredIfaces ?: return@broadcastReceiver,
-                intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER) ?: return@broadcastReceiver)
+        adapter.activeIfaces = intent.tetheredIfaces ?: return@broadcastReceiver
+        adapter.localOnlyIfaces = intent.localOnlyTetheredIfaces ?: return@broadcastReceiver
+        adapter.erroredIfaces = intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER)
+            ?: return@broadcastReceiver
+        adapter.updateEnabledTypes()
+        adapter.update()
     }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
@@ -219,7 +236,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                 val configuration = ret!!.configuration
@@ -251,7 +268,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         binding.interfaces.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.interfaces.itemAnimator = DefaultItemAnimator()
         binding.interfaces.adapter = adapter
-        adapter.update(emptyList(), emptyList(), emptyList())
+        adapter.update()
         ServiceForegroundConnector(this, this, TetheringService::class)
         (activity as MainActivity).binding.toolbar.apply {
             inflateMenu(R.menu.toolbar_tethering)
@@ -275,19 +292,22 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
-        service.routingsChanged[this] = {
-            lifecycleScope.launchWhenStarted { adapter.notifyInterfaceChanged() }
-        }
+        service.routingsChanged[this] = { lifecycleScope.launchWhenStarted { adapter.update() } }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-            lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() }
+        if (Build.VERSION.SDK_INT >= 30) {
+            TetheringManager.registerTetheringEventCallback(null, adapter)
+            TetherType.listener[this] = { lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() } }
         }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
         (binder ?: return).routingsChanged -= this
         binder = null
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
+        if (Build.VERSION.SDK_INT >= 30) {
+            TetherType.listener -= this
+            TetheringManager.unregisterTetheringEventCallback(adapter)
+            adapter.lastErrors.clear()
+        }
         requireContext().unregisterReceiver(receiver)
     }
 }

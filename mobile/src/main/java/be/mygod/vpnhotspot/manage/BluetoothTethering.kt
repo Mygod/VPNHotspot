@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
@@ -9,7 +10,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.core.os.BuildCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -18,7 +18,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
-class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
+class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter, val stateListener: () -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
     companion object : BroadcastReceiver() {
         /**
@@ -26,17 +26,9 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
          */
         private const val PAN = 5
         private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
-        private val constructor by lazy {
-            clazz.getDeclaredConstructor(Context::class.java, BluetoothProfile.ServiceListener::class.java).apply {
-                isAccessible = true
-            }
-        }
         private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
 
-        fun pan(context: Context, serviceListener: BluetoothProfile.ServiceListener) =
-                constructor.newInstance(context, serviceListener) as BluetoothProfile
-        val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
-        fun BluetoothProfile.closePan() = BluetoothAdapter.getDefaultAdapter()!!.closeProfileProxy(PAN, this)
+        private val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
 
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
@@ -58,28 +50,12 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
             pendingCallback = null
             app.unregisterReceiver(this)
         }
-
-        /**
-         * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
-         */
-        @RequiresApi(24)
-        fun start(callback: TetheringManager.StartTetheringCallback) {
-            if (pendingCallback != null) return
-            val adapter = BluetoothAdapter.getDefaultAdapter()
-            try {
-                if (adapter?.state == BluetoothAdapter.STATE_OFF) {
-                    registerBluetoothStateListener(this)
-                    pendingCallback = callback
-                    adapter.enable()
-                } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
-            } catch (e: SecurityException) {
-                SmartSnackbar.make(e.readableMessage).shortToast().show()
-            }
-        }
     }
 
+    private var proxyCreated = false
     private var connected = false
     private var pan: BluetoothProfile? = null
+    private var stoppedByUser = false
     var activeFailureCause: Throwable? = null
     /**
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
@@ -88,7 +64,7 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
         val pan = pan ?: return null
         if (!connected) return null
         activeFailureCause = null
-        return BluetoothAdapter.getDefaultAdapter()?.state == BluetoothAdapter.STATE_ON && try {
+        val on = adapter.state == BluetoothAdapter.STATE_ON && try {
             pan.isTetheringOn
         } catch (e: InvocationTargetException) {
             activeFailureCause = e.cause ?: e
@@ -96,16 +72,21 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
             else Timber.w(e)
             return null
         }
+        return if (stoppedByUser) {
+            if (!on) stoppedByUser = false
+            false
+        } else on
     }
 
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
     fun ensureInit(context: Context) {
-        if (pan == null && BluetoothAdapter.getDefaultAdapter() != null) try {
-            pan = pan(context, this)
-        } catch (e: ReflectiveOperationException) {
-            if (e.cause is SecurityException && BuildCompat.isAtLeastS()) Timber.d(e.readableMessage)
-            else Timber.w(e)
+        activeFailureCause = null
+        if (!proxyCreated) try {
+            check(adapter.getProfileProxy(context, this, PAN))
+            proxyCreated = true
+        } catch (e: SecurityException) {
+            if (Build.VERSION.SDK_INT >= 31) Timber.d(e.readableMessage) else Timber.w(e)
             activeFailureCause = e
         }
     }
@@ -116,13 +97,39 @@ class BluetoothTethering(context: Context, val stateListener: () -> Unit) :
 
     override fun onServiceDisconnected(profile: Int) {
         connected = false
+        stoppedByUser = false
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+        pan = proxy
         connected = true
         stateListener()
     }
+
+    /**
+     * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresApi(24)
+    fun start(callback: TetheringManager.StartTetheringCallback) {
+        if (pendingCallback == null) try {
+            if (adapter.state == BluetoothAdapter.STATE_OFF) {
+                registerBluetoothStateListener(BluetoothTethering)
+                pendingCallback = callback
+                adapter.enable()
+            } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
+        } catch (e: SecurityException) {
+            SmartSnackbar.make(e.readableMessage).shortToast().show()
+            pendingCallback = null
+        }
+    }
+    @RequiresApi(24)
+    fun stop(callback: (Exception) -> Unit) {
+        TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, callback)
+        stoppedByUser = true
+    }
+
     override fun close() {
         app.unregisterReceiver(receiver)
-        pan?.closePan()
+        adapter.closeProfileProxy(PAN, pan)
     }
 }

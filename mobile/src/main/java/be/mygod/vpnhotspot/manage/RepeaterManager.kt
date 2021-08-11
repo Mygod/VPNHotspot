@@ -5,7 +5,6 @@ import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
@@ -30,6 +29,7 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
@@ -89,11 +89,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> if (Build.VERSION.SDK_INT < 29) parent.requireContext().let { context ->
                     ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
-                } else if (parent.requireContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) ==
-                    PackageManager.PERMISSION_GRANTED ||
-                    parent.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION)) {
-                        parent.startRepeater.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                } else SmartSnackbar.make(R.string.repeater_missing_location_permissions).shortToast().show()
+                } else parent.startRepeater.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                 RepeaterService.Status.ACTIVE -> binder.shutdown()
                 else -> { }
             }
@@ -192,23 +188,23 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 return SoftApConfigurationCompat(
                         ssid = networkName,
                         passphrase = passphrase,
-                        band = RepeaterService.operatingBand,
-                        channel = RepeaterService.operatingChannel,
                         securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                         isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                         shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).apply {
                     bssid = RepeaterService.deviceAddress
+                    setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
+                    setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 } to false
             }
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat(
                     ssid = group.networkName,
-                    channel = RepeaterService.operatingChannel,
-                    band = SoftApConfigurationCompat.BAND_ANY,
                     securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                     isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                     shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
+                setChannel(RepeaterService.operatingChannel)
+                setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 try {
                     val config = P2pSupplicantConfiguration(group)
                     config.init(binder.obtainDeviceAddress()?.toString())
@@ -230,6 +226,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         return null
     }
     private suspend fun updateConfiguration(config: SoftApConfigurationCompat) {
+        val (band, channel) = config.requireSingleBand()
         if (RepeaterService.safeMode) {
             RepeaterService.networkName = config.ssid
             RepeaterService.deviceAddress = config.bssid
@@ -246,8 +243,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
             holder.config = null
         }
-        RepeaterService.operatingBand = config.band
-        RepeaterService.operatingChannel = config.channel
+        RepeaterService.operatingBand = band
+        RepeaterService.operatingChannel = channel
         RepeaterService.isAutoShutdownEnabled = config.isAutoShutdownEnabled
         RepeaterService.shutdownTimeoutMillis = config.shutdownTimeoutMillis
     }

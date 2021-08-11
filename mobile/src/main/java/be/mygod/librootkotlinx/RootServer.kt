@@ -8,7 +8,6 @@ import android.os.RemoteException
 import android.system.Os
 import android.system.OsConstants
 import androidx.collection.LongSparseArray
-import androidx.collection.set
 import androidx.collection.valueIterator
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
@@ -102,6 +101,7 @@ class RootServer {
 
     private fun readUnexpectedStderr(): String? {
         if (!this::process.isInitialized) return null
+        Logger.me.d("Attempting to read stderr")
         var available = process.errorStream.available()
         return if (available <= 0) null else String(ByteArrayOutputStream().apply {
             try {
@@ -146,7 +146,9 @@ class RootServer {
         try {
             val token2 = UUID.randomUUID().toString()
             val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-            val uuid = context.packageName + '@' + if (persistence.canRead()) persistence.readText() else {
+            val uuid = context.packageName + '@' + try {
+                persistence.readText()
+            } catch (_: FileNotFoundException) {
                 UUID.randomUUID().toString().also { persistence.writeText(it) }
             }
             val (script, relocated) = AppProcess.relocateScript(uuid)
@@ -218,9 +220,9 @@ class RootServer {
                 throw e
             } finally {
                 Logger.me.d("Waiting for exit")
-                errorReader.await()
+                withContext(NonCancellable) { errorReader.await() }
                 process.waitFor()
-                withContext(NonCancellable) { closeInternal(true) }
+                closeInternal(true)
             }
         }
     }
@@ -246,7 +248,7 @@ class RootServer {
             @Suppress("UNCHECKED_CAST")
             val callback = Callback.Ordinary(this, counter, classLoader, future as CompletableDeferred<Parcelable?>)
             if (active) {
-                callbackLookup[counter] = callback
+                callbackLookup.append(counter, callback)
                 sendLocked(command)
             } else future.cancel()
             callback
@@ -277,7 +279,7 @@ class RootServer {
             @Suppress("UNCHECKED_CAST")
             val callback = Callback.Channel(this@RootServer, counter, classLoader, this as SendChannel<Parcelable?>)
             if (active) {
-                callbackLookup[counter] = callback
+                callbackLookup.append(counter, callback)
                 sendLocked(command)
             } else callback.finish.cancel()
             callback
@@ -290,7 +292,7 @@ class RootServer {
         }
     }
 
-    private suspend fun closeInternal(fromWorker: Boolean = false) = synchronized(callbackLookup) {
+    private fun closeInternal(fromWorker: Boolean = false) = synchronized(callbackLookup) {
         if (active) {
             active = false
             Logger.me.d(if (fromWorker) "Shutting down from worker" else "Shutting down from client")
@@ -432,7 +434,7 @@ class RootServer {
                     }
                     is RootCommand<*> -> {
                         val commandJob = Job()
-                        cancellables[callback] = { commandJob.cancel() }
+                        cancellables.append(callback) { commandJob.cancel() }
                         defaultWorker.launch(commandJob) {
                             val result = try {
                                 val result = command.execute();
@@ -450,7 +452,7 @@ class RootServer {
                         val result = try {
                             coroutineScope {
                                 command.create(this).also {
-                                    cancellables[callback] = { it.cancel() }
+                                    cancellables.append(callback) { it.cancel() }
                                 }.consumeEach { result ->
                                     withContext(callbackWorker) { output.pushResult(callback, result) }
                                 }

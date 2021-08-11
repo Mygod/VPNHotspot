@@ -4,17 +4,13 @@ import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.*
 import android.content.res.Resources
-import android.net.InetAddresses
-import android.net.LinkProperties
-import android.net.RouteInfo
+import android.net.*
 import android.os.Build
 import android.os.RemoteException
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.SpannableStringBuilder
+import android.text.*
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
@@ -39,6 +35,7 @@ import java.lang.reflect.Method
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
+import java.util.*
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -55,6 +52,19 @@ fun Long.toPluralInt(): Int {
     if (this <= Int.MAX_VALUE) return toInt()
     return (this % 1000000000).toInt() + 1000000000
 }
+
+@RequiresApi(26)
+fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
+        classes.indices.all { i -> parameters[i].type == classes[i] }
+@RequiresApi(26)
+inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+fun Method.matchesCompat(name: String, args: Array<out Any?>?, vararg classes: Class<*>) =
+    if (Build.VERSION.SDK_INT < 26) {
+        this.name == name && args?.size ?: 0 == classes.size && classes.indices.all { i ->
+            args!![i]?.let { classes[i].isInstance(it) } != false
+        }
+    } else matches(name, *classes)
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
@@ -79,6 +89,61 @@ fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageVi
 fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
 }
+
+private val formatSequence = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[tT][a-zA-Z])".toPattern()
+/**
+ * Version of [String.format] that works on [Spanned] strings to preserve rich text formatting.
+ * Both the `format` as well as any `%s args` can be Spanned and will have their formatting preserved.
+ * Due to the way [Spannable]s work, any argument's spans will can only be included **once** in the result.
+ * Any duplicates will appear as text only.
+ *
+ * See also: https://github.com/george-steel/android-utils/blob/289aff11e53593a55d780f9f5986e49343a79e55/src/org/oshkimaadziig/george/androidutils/SpanFormatter.java
+ *
+ * @param locale
+ * the locale to apply; `null` value means no localization.
+ * @param args
+ * the list of arguments passed to the formatter.
+ * @return the formatted string (with spans).
+ * @see String.format
+ * @author George T. Steel
+ */
+fun CharSequence.format(locale: Locale, vararg args: Any) = SpannableStringBuilder(this).apply {
+    var i = 0
+    var argAt = -1
+    while (i < length) {
+        val m = formatSequence.matcher(this)
+        if (!m.find(i)) break
+        i = m.start()
+        val exprEnd = m.end()
+        val argTerm = m.group(1)!!
+        val modTerm = m.group(2)
+        val cookedArg = when (val typeTerm = m.group(3)) {
+            "%" -> "%"
+            "n" -> "\n"
+            else -> {
+                val argItem = args[when (argTerm) {
+                    "" -> ++argAt
+                    "<" -> argAt
+                    else -> Integer.parseInt(argTerm.substring(0, argTerm.length - 1)) - 1
+                }]
+                if (typeTerm == "s" && argItem is Spanned) argItem else {
+                    String.format(locale, "%$modTerm$typeTerm", argItem)
+                }
+            }
+        }
+        replace(i, exprEnd, cookedArg)
+        i += cookedArg.length
+    }
+}
+
+fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
+                                  limit: Int = -1, truncated: CharSequence = "...",
+                                  transform: ((T) -> CharSequence)? = null) =
+    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
+fun <T> Sequence<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
+                                  limit: Int = -1, truncated: CharSequence = "...",
+                                  transform: ((T) -> CharSequence)? = null) =
+    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
 
 fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     // exclude all bogon IP addresses supported by Android APIs
@@ -181,6 +246,14 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
     else -> {
         Timber.w("Unhandled method: $method(${args?.contentDeepToString()})")
         null
+    }
+}
+
+fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
+    if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true) else if (Build.VERSION.SDK_INT == 23) {
+        // workarounds for OEM bugs
+        removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
     }
 }
 

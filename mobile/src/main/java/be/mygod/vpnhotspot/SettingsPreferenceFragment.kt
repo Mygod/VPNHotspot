@@ -14,13 +14,12 @@ import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.preference.AlwaysAutoCompleteEditTextPreferenceDialogFragment
+import be.mygod.vpnhotspot.preference.AutoCompleteNetworkPreferenceDialogFragment
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -144,16 +143,12 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         }
     }
 
-    override fun onDisplayPreferenceDialog(preference: Preference) {
-        when (preference.key) {
-            UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
-                AlwaysAutoCompleteEditTextPreferenceDialogFragment().apply {
-                    setArguments(preference.key, Services.connectivity.allNetworks.mapNotNull {
-                        Services.connectivity.getLinkProperties(it)?.allInterfaceNames
-                    }.flatten().toTypedArray())
-                    setTargetFragment(this@SettingsPreferenceFragment, 0)
-                }.showAllowingStateLoss(parentFragmentManager, preference.key)
-            else -> super.onDisplayPreferenceDialog(preference)
-        }
+    override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
+        UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
+            AutoCompleteNetworkPreferenceDialogFragment().apply {
+                setArguments(preference.key)
+                setTargetFragment(this@SettingsPreferenceFragment, 0)
+            }.showAllowingStateLoss(parentFragmentManager, preference.key)
+        else -> super.onDisplayPreferenceDialog(preference)
     }
 }

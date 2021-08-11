@@ -1,13 +1,18 @@
 package be.mygod.vpnhotspot.root
 
-import android.net.MacAddress
+import android.annotation.TargetApi
+import android.content.ClipData
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
@@ -26,32 +31,29 @@ object WifiApCommands {
         }
         @Parcelize
         data class OnNumClientsChanged(val numClients: Int) : SoftApCallbackParcel() {
-            @Suppress("DEPRECATION")
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onNumClientsChanged(numClients)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnConnectedClientsChanged(val clients: List<MacAddress>) : SoftApCallbackParcel() {
+        data class OnConnectedClientsChanged(val clients: List<Parcelable>) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onConnectedClientsChanged(clients)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnInfoChanged(val frequency: Int, val bandwidth: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onInfoChanged(frequency, bandwidth)
+        data class OnInfoChanged(val info: List<Parcelable>) : SoftApCallbackParcel() {
+            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) = callback.onInfoChanged(info)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnCapabilityChanged(val maxSupportedClients: Int,
-                                       val supportedFeatures: Long) : SoftApCallbackParcel() {
+        data class OnCapabilityChanged(val capability: Parcelable) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onCapabilityChanged(maxSupportedClients, supportedFeatures)
+                    callback.onCapabilityChanged(capability)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnBlockedClientConnecting(val client: MacAddress, val blockedReason: Int) : SoftApCallbackParcel() {
+        data class OnBlockedClientConnecting(val client: Parcelable, val blockedReason: Int) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
                     callback.onBlockedClientConnecting(client, blockedReason)
         }
@@ -60,7 +62,7 @@ object WifiApCommands {
     @Parcelize
     @RequiresApi(28)
     class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
-        override fun create(scope: CoroutineScope) = scope.produce<SoftApCallbackParcel>(capacity = capacity) {
+        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
             val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
                 private fun push(parcel: SoftApCallbackParcel) {
@@ -71,20 +73,18 @@ object WifiApCommands {
 
                 override fun onStateChanged(state: Int, failureReason: Int) =
                         push(SoftApCallbackParcel.OnStateChanged(state, failureReason))
-                @Suppress("OverridingDeprecatedMember")
                 override fun onNumClientsChanged(numClients: Int) =
                         push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
                 @RequiresApi(30)
-                override fun onConnectedClientsChanged(clients: List<MacAddress>) =
+                override fun onConnectedClientsChanged(clients: List<Parcelable>) =
                         push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
                 @RequiresApi(30)
-                override fun onInfoChanged(frequency: Int, bandwidth: Int) =
-                        push(SoftApCallbackParcel.OnInfoChanged(frequency, bandwidth))
+                override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
                 @RequiresApi(30)
-                override fun onCapabilityChanged(maxSupportedClients: Int, supportedFeatures: Long) =
-                        push(SoftApCallbackParcel.OnCapabilityChanged(maxSupportedClients, supportedFeatures))
+                override fun onCapabilityChanged(capability: Parcelable) =
+                        push(SoftApCallbackParcel.OnCapabilityChanged(capability))
                 @RequiresApi(30)
-                override fun onBlockedClientConnecting(client: MacAddress, blockedReason: Int) =
+                override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) =
                         push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
             }) {
                 scope.launch {
@@ -125,8 +125,21 @@ object WifiApCommands {
             }
             is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
+            is SoftApCallbackParcel.OnBlockedClientConnecting -> @TargetApi(30) {   // passively consume events
+                val client = WifiClient(parcel.client)
+                val macAddress = client.macAddress
+                var name = macAddress.toString()
+                if (Build.VERSION.SDK_INT >= 31) client.apInstanceIdentifier?.let { name += "%$it" }
+                val reason = WifiApManager.clientBlockLookup(parcel.blockedReason, true)
+                Timber.i("$name blocked from connecting: $reason (${parcel.blockedReason})")
+                SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
+                    action(R.string.tethering_manage_wifi_copy_mac) {
+                        app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+                    }
+                }.show()
+            }
         }
-        for (callback in synchronized(callbacks) { callbacks }) parcel.dispatch(callback)
+        for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
     @RequiresApi(28)
     fun registerSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
@@ -142,8 +155,8 @@ object WifiApCommands {
                     SmartSnackbar.make(e).show()
                 }
             }
-            lastCallback
-        } else null
+            null
+        } else lastCallback
     }?.toSequence()?.forEach { it?.dispatch(callback) }
     @RequiresApi(28)
     fun unregisterSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {

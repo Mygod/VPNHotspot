@@ -73,10 +73,23 @@
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
     <string name="tethering_manage_wigig">WiGig hotspot</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
+        width %3$s, idle timeout in %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
+        width %3$s, idle timeout disabled</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="one">%1$s/%2$d client connected\nSupported features: %3$s</item>
         <item quantity="other">%1$s/%2$d clients connected\nSupported features: %3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="one">%d client connected</item>
+        <item quantity="other">%1d clients connected</item>
+    </plurals>
+    <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %s</string>
+    <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
+    <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>
+    <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP concurrency</string>
+    <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA + Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
@@ -157,8 +170,9 @@
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
-    <string name="notification_tethering_title">VPN tethering active</string>
+    <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
+    <string name="notification_channel_monitor">Monitor Inactive Interfaces</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d device connected to %s</item>
         <item quantity="other">%d devices connected to %s</item>
@@ -188,16 +202,25 @@
     <string name="wifi_hotspot_timeout">Inactive timeout</string>
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
+    <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_auto">Auto</string>
     <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
-    <string name="wifi_ap_choose_5G">5.0 GHz Band</string>
-    <string name="wifi_ap_choose_6G">6.0 GHz Band</string>
+    <string name="wifi_ap_choose_5G">5 GHz Band</string>
+    <string name="wifi_ap_choose_6G">6 GHz Band</string>
+    <string name="wifi_ap_choose_60G">60 GHz Band</string>
+    <string name="wifi_hotspot_access_control_title">Access Control</string>
+    <string name="wifi_hotspot_ap_advanced_title">Advanced AP Options</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
     <string name="wifi_client_user_control">Control which client can use hotspot</string>
     <string name="wifi_blocked_list">Blocked list of clients</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
+    <string name="wifi_mac_randomization">Use randomized MAC</string>
+    <string name="wifi_bridged_mode">Enable Bridged Access point (AP) concurrency</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable Bridged mode opportunistic shutdown</string>
+    <string name="wifi_ieee_80211ax">Enable Wi\u2011Fi 6</string>
+    <string name="wifi_user_config">User Supplied Configuration</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
