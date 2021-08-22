@@ -331,24 +331,27 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         dialogView.maxClientWrapper.error = maxClientError
-        val blockedListError = try {
-            (dialogView.blockedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.forEach { MacAddressCompat.fromString(it).toPlatform() }
-            null
-        } catch (e: IllegalArgumentException) {
-            e.readableMessage
-        }
-        dialogView.blockedListWrapper.error = blockedListError
-        val allowedListError = try {
-            (dialogView.allowedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.forEach { MacAddressCompat.fromString(it).toPlatform() }
-            null
-        } catch (e: IllegalArgumentException) {
-            e.readableMessage
-        }
-        dialogView.allowedListWrapper.error = allowedListError
-        val canCopy = timeoutError == null && bssidValid && maxClientError == null && blockedListError == null &&
-                allowedListError == null
+        val listsNoError = if (Build.VERSION.SDK_INT >= 30) {
+            val (blockedList, blockedListError) = try {
+                (dialogView.blockedList.text ?: "").split(nonMacChars)
+                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }.toSet() to null
+            } catch (e: IllegalArgumentException) {
+                null to e.readableMessage
+            }
+            dialogView.blockedListWrapper.error = blockedListError
+            val allowedListError = try {
+                (dialogView.allowedList.text ?: "").split(nonMacChars).filter { it.isNotEmpty() }.forEach {
+                    val mac = MacAddressCompat.fromString(it).toPlatform()
+                    require(blockedList?.contains(mac) != true) { "A MAC address exists in both client lists" }
+                }
+                null
+            } catch (e: IllegalArgumentException) {
+                e.readableMessage
+            }
+            dialogView.allowedListWrapper.error = allowedListError
+            blockedListError == null && allowedListError == null
+        } else true
+        val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
                 ssidLength in 1..32 && passwordValid && isBandValid && canCopy
         dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
