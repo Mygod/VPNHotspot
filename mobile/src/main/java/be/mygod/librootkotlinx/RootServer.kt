@@ -400,6 +400,7 @@ class RootServer {
                 CoroutineScope(Dispatchers.Main.immediate + job)
             }
             val callbackWorker = newSingleThreadContext("callbackWorker")
+            // access to cancellables shall be wrapped in defaultWorker
             val cancellables = LongSparseArray<() -> Unit>()
 
             // thread safety: usage of output should be guarded by callbackWorker
@@ -424,7 +425,7 @@ class RootServer {
                 val callback = counter
                 Logger.me.d("Received #$callback: $command")
                 when (command) {
-                    is CancelCommand -> cancellables[command.index]?.invoke()
+                    is CancelCommand -> defaultWorker.launch { cancellables[command.index]?.invoke() }
                     is RootCommandOneWay -> defaultWorker.launch {
                         try {
                             command.execute()
@@ -434,8 +435,8 @@ class RootServer {
                     }
                     is RootCommand<*> -> {
                         val commandJob = Job()
-                        cancellables.append(callback) { commandJob.cancel() }
                         defaultWorker.launch(commandJob) {
+                            cancellables.append(callback) { commandJob.cancel() }
                             val result = try {
                                 val result = command.execute();
                                 { output.pushResult(callback, result) }
