@@ -231,8 +231,12 @@ class RootServer {
      * Caller should check for active.
      */
     private fun sendLocked(command: Parcelable) {
-        output.writeParcelable(command)
-        output.flush()
+        try {
+            output.writeParcelable(command)
+            output.flush()
+        } catch (e: IOException) {
+            if (e.isEBADF) throw CancellationException().initCause(e) else throw e
+        }
         Logger.me.d("Sent #$counter: $command")
         counter++
     }
@@ -300,8 +304,9 @@ class RootServer {
                 sendLocked(Shutdown())
                 output.close()
                 process.outputStream.close()
+            } catch (_: CancellationException) {
             } catch (e: IOException) {
-                if (!e.isEBADF) Logger.me.w("send Shutdown failed", e)
+                Logger.me.w("send Shutdown failed", e)
             }
             Logger.me.d("Client closed")
         }
