@@ -333,6 +333,33 @@ data class SoftApConfigurationCompat(
             Build.VERSION.SDK_INT < 31 || isUserConfiguration(this) as Boolean,
             this,
         )
+
+        /**
+         * Only single band/channel can be supplied on API 23-30
+         */
+        fun requireSingleBand(channels: SparseIntArray): Pair<Int, Int> {
+            require(channels.size() == 1) { "Unsupported number of bands configured" }
+            return channels.keyAt(0) to channels.valueAt(0)
+        }
+        fun optimizeChannels(channels: SparseIntArray) = SparseIntArray(channels.size()).apply {
+            var setBand = 0
+            repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
+            if (setBand != 0) append(setBand, 0)    // merge all bands into one
+            repeat(channels.size()) { i ->
+                val band = channels.keyAt(i)
+                if (band and setBand == 0) put(band, channels.valueAt(i))
+            }
+        }
+
+        @RequiresApi(30)
+        private fun setChannelsCompat(builder: Any, channels: SparseIntArray) = if (Build.VERSION.SDK_INT < 31) {
+            val (band, channel) = requireSingleBand(channels)
+            if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
+        } else setChannels(builder, channels)
+        @get:RequiresApi(30)
+        private val staticBuilder by lazy { classBuilder.newInstance() }
+        @RequiresApi(30)
+        fun testPlatformValidity(channels: SparseIntArray) = setChannels(staticBuilder, channels)
     }
 
     @Suppress("DEPRECATION")
@@ -342,13 +369,6 @@ data class SoftApConfigurationCompat(
             bssidAddr = value?.addr
         }
 
-    /**
-     * Only single band/channel can be supplied on API 23-30
-     */
-    fun requireSingleBand(): Pair<Int, Int> {
-        require(channels.size() == 1) { "Unsupported number of bands configured" }
-        return channels.keyAt(0) to channels.valueAt(0)
-    }
     fun getChannel(band: Int): Int {
         var result = -1
         repeat(channels.size()) { i ->
@@ -367,17 +387,6 @@ data class SoftApConfigurationCompat(
             }, channel)
         }
     }
-    fun optimizeChannels(channels: SparseIntArray = this.channels) {
-        this.channels = SparseIntArray(channels.size()).apply {
-            var setBand = 0
-            repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
-            if (setBand != 0) append(setBand, 0)    // merge all bands into one
-            repeat(channels.size()) { i ->
-                val band = channels.keyAt(i)
-                if (band and setBand == 0) put(band, channels.valueAt(i))
-            }
-        }
-    }
 
     fun setMacRandomizationEnabled(enabled: Boolean) {
         macRandomizationSetting = if (enabled) RANDOMIZATION_PERSISTENT else RANDOMIZATION_NONE
@@ -393,7 +402,7 @@ data class SoftApConfigurationCompat(
     @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
     @Suppress("DEPRECATION")
     fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {
-        val (band, channel) = requireSingleBand()
+        val (band, channel) = requireSingleBand(channels)
         val wc = underlying as? android.net.wifi.WifiConfiguration
         val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
         val original = wc?.toCompat()
@@ -437,11 +446,8 @@ data class SoftApConfigurationCompat(
         val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
         setSsid(builder, ssid)
         setPassphrase(builder, if (securityType == SoftApConfiguration.SECURITY_TYPE_OPEN) null else passphrase,
-                securityType)
-        if (Build.VERSION.SDK_INT >= 31) setChannels(builder, channels) else {
-            val (band, channel) = requireSingleBand()
-            if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
-        }
+            securityType)
+        setChannelsCompat(builder, channels)
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
         setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)

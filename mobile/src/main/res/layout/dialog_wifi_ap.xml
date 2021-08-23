@@ -16,11 +16,13 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-              xmlns:app="http://schemas.android.com/apk/res-auto"
-              android:layout_width="300sp"
-              android:layout_height="wrap_content"
-              android:orientation="vertical">
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="300sp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
@@ -208,6 +210,16 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_bridged_mode" />
+                <TextView
+                    android:id="@+id/band_error"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:paddingStart="8dp"
+                    android:textAppearance="@style/TextAppearance.Design.Error"
+                    android:visibility="gone"
+                    tools:text="error text placeholder"
+                    tools:visibility="visible"/>
                 <Switch
                     android:id="@+id/bridged_mode_opportunistic_shutdown"
                     style="@style/wifi_item_label"
