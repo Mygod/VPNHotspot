@@ -65,32 +65,31 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         try {
             Services.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
-                    if (reservation == null) onFailed(-2) else {
-                        this@LocalOnlyHotspotService.reservation = reservation
-                        val configuration = binder.configuration!!
-                        if (Build.VERSION.SDK_INT < 30 && configuration.isAutoShutdownEnabled) {
-                            timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis,
-                                coroutineContext) { reservation.close() }
+                    if (reservation == null) return onFailed(-2)
+                    this@LocalOnlyHotspotService.reservation = reservation
+                    val configuration = binder.configuration!!
+                    if (Build.VERSION.SDK_INT < 30 && configuration.isAutoShutdownEnabled) {
+                        timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis, coroutineContext) {
+                            reservation.close()
                         }
-                        // based on: https://android.googlesource.com/platform/packages/services/Car/+/df5cd06/service/src/com/android/car/CarProjectionService.java#160
-                        val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
-                        val apState = sticky.wifiApState
-                        val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)
-                        if (apState != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
-                            if (apState == WifiApManager.WIFI_AP_STATE_FAILED) {
-                                SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
-                                    WifiApManager.failureReasonLookup(sticky.getIntExtra(
-                                        WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)))).show()
-                            }
-                            return stopService()
+                    }
+                    // based on: https://android.googlesource.com/platform/packages/services/Car/+/df5cd06/service/src/com/android/car/CarProjectionService.java#160
+                    val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
+                    val apState = sticky.wifiApState
+                    val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)
+                    if (apState != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
+                        if (apState == WifiApManager.WIFI_AP_STATE_FAILED) {
+                            SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
+                                WifiApManager.failureReasonLookup(sticky.getIntExtra(
+                                    WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)))).show()
                         }
-                        binder.iface = iface
-                        launch {
-                            check(routingManager == null)
-                            routingManager = RoutingManager.LocalOnly(
-                                this@LocalOnlyHotspotService, iface).apply { start() }
-                            IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
-                        }
+                        return stopService()
+                    }
+                    binder.iface = iface
+                    launch {
+                        check(routingManager == null)
+                        routingManager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService, iface).apply { start() }
+                        IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
                     }
                 }
 
