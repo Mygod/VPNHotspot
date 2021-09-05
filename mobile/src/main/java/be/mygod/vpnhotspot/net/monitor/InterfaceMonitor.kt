@@ -77,7 +77,7 @@ class InterfaceMonitor(private val ifaceRegex: String) : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            Services.connectivity.registerNetworkCallback(request, networkCallback)
+            Services.registerNetworkCallbackCompat(request, networkCallback)
             registered = true
         }
     }

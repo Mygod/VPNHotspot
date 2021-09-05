@@ -61,7 +61,7 @@ object VpnMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            Services.connectivity.registerNetworkCallback(request, networkCallback)
+            Services.registerNetworkCallbackCompat(request, networkCallback)
             registered = true
         }
     }

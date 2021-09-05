@@ -63,7 +63,7 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
 
     override fun onStart() {
         super.onStart()
-        Services.connectivity.registerNetworkCallback(globalNetworkRequestBuilder().apply {
+        Services.registerNetworkCallbackCompat(globalNetworkRequestBuilder().apply {
             removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
             removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
             removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)

@@ -6,8 +6,6 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
@@ -57,9 +55,12 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
             when (Build.VERSION.SDK_INT) {
                 in 31..Int.MAX_VALUE -> @TargetApi(31) {
                     Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
-                        Handler(Looper.getMainLooper()))
+                        Services.mainHandler)
                 }
-                in 24..27 -> @TargetApi(24) {
+                in 26..27 -> @TargetApi(26) {
+                    Services.connectivity.registerDefaultNetworkCallback(networkCallback, Services.mainHandler)
+                }
+                in 24..25 -> @TargetApi(24) {
                     Services.connectivity.registerDefaultNetworkCallback(networkCallback)
                 }
                 else -> try {
