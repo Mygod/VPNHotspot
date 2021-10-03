@@ -292,7 +292,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         dialogView.timeoutWrapper.error = timeoutError
-        val bandError = if (arg.p2pMode || Build.VERSION.SDK_INT <= 30) {
+        val bandError = if (arg.p2pMode || Build.VERSION.SDK_INT < 30) {
             val option5G = dialogView.band5G.selectedItem
             val valid = when (dialogView.band2G.selectedItem) {
                 is ChannelOption.Disabled -> option5G !is ChannelOption.Disabled &&
