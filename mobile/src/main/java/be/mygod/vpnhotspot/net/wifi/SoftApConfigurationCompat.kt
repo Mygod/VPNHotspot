@@ -359,7 +359,7 @@ data class SoftApConfigurationCompat(
         @get:RequiresApi(30)
         private val staticBuilder by lazy { classBuilder.newInstance() }
         @RequiresApi(30)
-        fun testPlatformValidity(channels: SparseIntArray) = setChannels(staticBuilder, channels)
+        fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
     }
 
     @Suppress("DEPRECATION")
