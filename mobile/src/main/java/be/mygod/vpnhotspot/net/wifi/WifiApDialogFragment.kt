@@ -166,13 +166,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
             dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
                     TetherTimeoutMonitor.defaultTimeout)
-            dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
+            if (!arg.readOnly) dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         } else dialogView.timeoutWrapper.isGone = true
         fun Spinner.configure(options: List<ChannelOption>) {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, options).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            onItemSelectedListener = this@WifiApDialogFragment
+            if (!arg.readOnly) onItemSelectedListener = this@WifiApDialogFragment
         }
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
             dialogView.band2G.configure(channels2G)
@@ -185,12 +185,13 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 dialogView.bridgedModeOpportunisticShutdown.isGone = true
             }
         } else dialogView.bandGroup.isGone = true
-        if (!arg.p2pMode && Build.VERSION.SDK_INT >= 30) {
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 30) dialogView.accessControlGroup.isGone = true
+        else if (!arg.readOnly) {
             dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
-        } else dialogView.accessControlGroup.isGone = true
-        dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
+        }
+        if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomization.isGone = true
