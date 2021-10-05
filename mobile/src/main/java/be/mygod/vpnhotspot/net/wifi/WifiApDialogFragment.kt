@@ -8,6 +8,7 @@ import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
 import android.text.Editable
+import android.text.InputFilter
 import android.text.TextWatcher
 import android.util.Base64
 import android.util.SparseIntArray
@@ -157,7 +158,19 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    dialogView.passwordWrapper.isGone = position == SoftApConfiguration.SECURITY_TYPE_OPEN
+                    if (position != SoftApConfiguration.SECURITY_TYPE_OPEN) {
+                        dialogView.passwordWrapper.isGone = false
+                        if (position == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE) {
+                            dialogView.passwordWrapper.isCounterEnabled = false
+                            dialogView.passwordWrapper.counterMaxLength = 0
+                            dialogView.password.filters = emptyArray()
+                        } else {
+                            dialogView.passwordWrapper.isCounterEnabled = true
+                            dialogView.passwordWrapper.counterMaxLength = 63
+                            dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
+                        }
+                    } else dialogView.passwordWrapper.isGone = true
+                    validate()
                 }
             }
         }
@@ -278,10 +291,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else dialogView.security.selectedItemPosition
         // see also: https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#688
         val passwordValid = when (selectedSecurity) {
+            SoftApConfiguration.SECURITY_TYPE_OPEN -> true
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> {
-                dialogView.password.length() >= 8
+                dialogView.password.length() in 8..63
             }
-            else -> true    // do not try to validate
+            else -> dialogView.password.length() > 0
         }
         dialogView.passwordWrapper.error = if (passwordValid) null else " "
         val timeoutError = dialogView.timeout.text.let { text ->

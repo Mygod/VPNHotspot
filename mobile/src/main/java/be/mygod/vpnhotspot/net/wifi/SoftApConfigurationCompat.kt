@@ -85,7 +85,7 @@ data class SoftApConfigurationCompat(
          */
         private const val LEGACY_WPA2_PSK = 4
 
-        val securityTypes = arrayOf("OPEN", "WPA2-PSK", "WPA3-SAE", "WPA3-SAE Transition mode")
+        val securityTypes = arrayOf("OPEN", "WPA2-PSK", "WPA3-SAE Transition mode", "WPA3-SAE")
 
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
