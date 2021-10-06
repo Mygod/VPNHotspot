@@ -66,9 +66,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
         @get:RequiresApi(30)
         private val tetherManagers30 by lazy @TargetApi(30) {
-            listOf(TetherManager.Ethernet(this@TetheringFragment),
-                    TetherManager.Ncm(this@TetheringFragment),
-                    TetherManager.WiGig(this@TetheringFragment))
+            listOf(TetherManager.Ethernet(this@TetheringFragment), TetherManager.Ncm(this@TetheringFragment))
         }
         private val wifiManagerLegacy by lazy { TetherManager.WifiLegacy(this@TetheringFragment) }
 

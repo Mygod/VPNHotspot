@@ -19,7 +19,6 @@ abstract class Manager {
         const val VIEW_TYPE_BLUETOOTH = 4
         const val VIEW_TYPE_ETHERNET = 8
         const val VIEW_TYPE_NCM = 9
-        const val VIEW_TYPE_WIGIG = 10
         const val VIEW_TYPE_WIFI_LEGACY = 5
         const val VIEW_TYPE_LOCAL_ONLY_HOTSPOT = 6
         const val VIEW_TYPE_REPEATER = 7
@@ -37,7 +36,6 @@ abstract class Manager {
             VIEW_TYPE_BLUETOOTH,
             VIEW_TYPE_ETHERNET,
             VIEW_TYPE_NCM,
-            VIEW_TYPE_WIGIG,
             VIEW_TYPE_WIFI_LEGACY -> {
                 TetherManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             }

@@ -362,15 +362,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
-    @RequiresApi(30)
-    class WiGig(parent: TetheringFragment) : TetherManager(parent) {
-        override val title get() = parent.getString(R.string.tethering_manage_wigig)
-        override val tetherType get() = TetherType.WIGIG
-        override val type get() = VIEW_TYPE_WIGIG
-
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIGIG, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIGIG, this::onException)
-    }
 
     @Suppress("DEPRECATION")
     @Deprecated("Not usable since API 26, malfunctioning on API 25")
