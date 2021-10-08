@@ -24,8 +24,8 @@ android {
         minSdk = 21
         this.targetSdk = targetSdk
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 278
-        versionName = "2.12.7"
+        versionCode = 279
+        versionName = "2.12.8"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -83,8 +83,8 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:4.0.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.5.0-alpha04")
-    implementation("com.google.firebase:firebase-analytics-ktx:19.0.1")
-    implementation("com.google.firebase:firebase-crashlytics:18.2.1")
+    implementation("com.google.firebase:firebase-analytics-ktx:19.0.2")
+    implementation("com.google.firebase:firebase-crashlytics:18.2.3")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.1")
