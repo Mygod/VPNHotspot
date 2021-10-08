@@ -283,9 +283,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private fun validate() {
         if (!started) return
         val ssidLength = dialogView.ssid.text.toString().toByteArray().size
+        val ssidLengthOk = ssidLength in 1..32
         dialogView.ssidWrapper.error = if (arg.p2pMode && RepeaterService.safeMode && ssidLength < 9) {
             requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
-        } else null
+        } else if (ssidLengthOk) null else " "
         val selectedSecurity = if (arg.p2pMode) {
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         } else dialogView.security.selectedItemPosition
@@ -368,7 +369,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else true
         val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLength in 1..32 && passwordValid && bandError == null && canCopy
+                ssidLengthOk && passwordValid && bandError == null && canCopy
         dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
     }
 
