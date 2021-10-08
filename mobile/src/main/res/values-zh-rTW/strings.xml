@@ -177,11 +177,7 @@
     <string name="wifi_hotspot_timeout_default">默認延遲：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">AP 頻帶</string>
     <string name="wifi_ap_choose_disabled">停用</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">自動</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">2.4 GHz 頻帶</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">5 GHz 頻帶</string>
-    <string name="wifi_ap_choose_6G">6 GHz 頻帶</string>
-    <string name="wifi_ap_choose_60G">60 GHz 頻帶</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">%s GHz 頻帶</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隱藏的網路"</string>
     <string name="wifi_max_clients">允許的連接裝置數量</string>

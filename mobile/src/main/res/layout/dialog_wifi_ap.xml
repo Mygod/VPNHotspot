@@ -128,88 +128,27 @@
                 android:id="@+id/band_group"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8dip"
                 android:orientation="vertical">
-                <com.google.android.material.divider.MaterialDivider
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_divider" />
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    style="@style/wifi_item_subhead"
+                    style="@style/wifi_item_label"
                     android:text="@string/wifi_hotspot_ap_band_title" />
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    style="@style/wifi_item_label"
-                    android:text="@string/wifi_ap_choose_2G" />
                 <Spinner
-                    android:id="@+id/band_2G"
+                    android:id="@+id/band_primary"
                     style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_ap_choose_2G" />
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    style="@style/wifi_item_label"
-                    android:text="@string/wifi_ap_choose_5G" />
+                    android:prompt="@string/wifi_hotspot_ap_band_title" />
                 <Spinner
-                    android:id="@+id/band_5G"
+                    android:id="@+id/band_secondary"
                     style="@style/wifi_item_content"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_ap_choose_5G" />
-                <LinearLayout
-                    android:id="@+id/band_wrapper_6G"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        style="@style/wifi_item_label"
-                        android:text="@string/wifi_ap_choose_6G" />
-                    <Spinner
-                        android:id="@+id/band_6G"
-                        style="@style/wifi_item_content"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minHeight="@dimen/touch_target_min"
-                        android:prompt="@string/wifi_ap_choose_6G" />
-                </LinearLayout>
-                <LinearLayout
-                    android:id="@+id/band_wrapper_60G"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:orientation="vertical">
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        style="@style/wifi_item_label"
-                        android:text="@string/wifi_ap_choose_60G" />
-                    <Spinner
-                        android:id="@+id/band_60G"
-                        style="@style/wifi_item_content"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:minHeight="@dimen/touch_target_min"
-                        android:prompt="@string/wifi_ap_choose_60G" />
-                </LinearLayout>
-                <Switch
-                    android:id="@+id/bridged_mode"
-                    style="@style/wifi_item_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:text="@string/wifi_bridged_mode" />
+                    android:prompt="@string/wifi_hotspot_ap_band_title" />
                 <TextView
                     android:id="@+id/band_error"
                     android:layout_width="match_parent"
@@ -220,14 +159,6 @@
                     android:visibility="gone"
                     tools:text="error text placeholder"
                     tools:visibility="visible"/>
-                <Switch
-                    android:id="@+id/bridged_mode_opportunistic_shutdown"
-                    style="@style/wifi_item_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
             </LinearLayout>
 
             <LinearLayout
@@ -354,6 +285,14 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_ieee_80211ax" />
+                <Switch
+                    android:id="@+id/bridged_mode_opportunistic_shutdown"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
                 <Switch
                     android:id="@+id/user_config"
                     style="@style/wifi_item_label"

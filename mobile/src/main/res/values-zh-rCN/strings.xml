@@ -180,11 +180,7 @@
     <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 GHz 频段"</string>
-    <string name="wifi_ap_choose_6G">6 GHz 频段</string>
-    <string name="wifi_ap_choose_60G">60 GHz 频段</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">"%s GHz 频段"</string>
     <string name="wifi_hotspot_access_control_title">访问控制</string>
     <string name="wifi_hotspot_ap_advanced_title">高级接入点设置</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
@@ -194,7 +190,6 @@
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
     <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
-    <string name="wifi_bridged_mode">启用无线接入点桥接模式</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
     <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
     <string name="wifi_user_config">用户提供配置</string>

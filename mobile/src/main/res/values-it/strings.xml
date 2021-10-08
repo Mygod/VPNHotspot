@@ -154,9 +154,7 @@
     <string name="wifi_password">Password</string>
     <string name="wifi_hotspot_auto_off" msgid="5858098059725925084">"L\'hotspot Wi‑Fi viene disattivato se non ci sono dispositivi collegati"</string>
     <string name="wifi_hotspot_ap_band_title">Banda AP</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Automatica"</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"Banda a 2,4 GHz"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"Banda a 5 GHz"</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">"Banda a %s GHz"</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"Indirizzo MAC"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"Rete nascosta"</string>
     <string name="wifi_save">Salva</string>

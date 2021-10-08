@@ -24,11 +24,9 @@ data class SoftApConfigurationCompat(
         var passphrase: String? = null,
         var isHiddenSsid: Boolean = false,
         /**
-         * To read legacy band/channel pair, use [requireSingleBand]. For easy access, see [getChannel].
-         *
          * You should probably set or modify this field directly only when you want to use bridged AP,
          * see also [android.net.wifi.WifiManager.isBridgedApConcurrencySupported].
-         * Otherwise, use [optimizeChannels] or [setChannel].
+         * Otherwise, use [requireSingleBand] and [setChannel].
          */
         @TargetApi(23)
         var channels: SparseIntArray = SparseIntArray(1).apply { append(BAND_2GHZ, 0) },
@@ -62,6 +60,10 @@ data class SoftApConfigurationCompat(
         @TargetApi(31)
         const val BAND_60GHZ = 8
         const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
+        @TargetApi(30)
+        const val BAND_ANY_30 = BAND_LEGACY or BAND_6GHZ
+        @TargetApi(31)
+        const val BAND_ANY_31 = BAND_ANY_30 or BAND_60GHZ
         val BAND_TYPES by lazy {
             if (Build.VERSION.SDK_INT >= 31) try {
                 return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
@@ -341,15 +343,6 @@ data class SoftApConfigurationCompat(
             require(channels.size() == 1) { "Unsupported number of bands configured" }
             return channels.keyAt(0) to channels.valueAt(0)
         }
-        fun optimizeChannels(channels: SparseIntArray) = SparseIntArray(channels.size()).apply {
-            var setBand = 0
-            repeat(channels.size()) { i -> if (channels.valueAt(i) == 0) setBand = setBand or channels.keyAt(i) }
-            if (setBand != 0) append(setBand, 0)    // merge all bands into one
-            repeat(channels.size()) { i ->
-                val band = channels.keyAt(i)
-                if (band and setBand == 0) put(band, channels.valueAt(i))
-            }
-        }
 
         @RequiresApi(30)
         private fun setChannelsCompat(builder: Any, channels: SparseIntArray) = if (Build.VERSION.SDK_INT < 31) {
@@ -369,15 +362,6 @@ data class SoftApConfigurationCompat(
             bssidAddr = value?.addr
         }
 
-    fun getChannel(band: Int): Int {
-        var result = -1
-        repeat(channels.size()) { i ->
-            if (band and channels.keyAt(i) != band) return@repeat
-            require(result == -1) { "Duplicate band found" }
-            result = channels.valueAt(i)
-        }
-        return result
-    }
     fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
         channels = SparseIntArray(1).apply {
             append(when {
