@@ -59,9 +59,10 @@
             app:title="@string/settings_service_wifi_lock"
             app:useSimpleSummaryProvider="true"/>
         <SwitchPreference
-            app:key="service.repeater.startOnBoot"
+            app:key="service.autoStart"
             app:icon="@drawable/ic_action_autorenew"
-            app:title="@string/settings_service_repeater_start_on_boot"/>
+            app:title="@string/settings_service_auto_start"
+            app:summary="@string/settings_service_auto_start_summary"/>
         <SwitchPreference
             app:key="service.repeater.safeMode"
             app:icon="@drawable/ic_alert_warning"

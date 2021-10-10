@@ -48,6 +48,7 @@ class App : Application() {
             // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
+            BootReceiver.migrateIfNecessary(this, deviceStorage)
         } else deviceStorage = this
         Services.init { this }
 

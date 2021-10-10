@@ -111,7 +111,8 @@
     <string name="settings_service_masquerade_netd">Android Netd 服务</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 VPN 通过 IPv6 泄漏。</string>
-    <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
+    <string name="settings_service_auto_start">自动启动服务</string>
+    <string name="settings_service_auto_start_summary">设备重启或应用升级后自动恢复之前运行的服务</string>
     <string name="settings_service_repeater_safe_mode">中继安全模式</string>
     <string name="settings_service_repeater_safe_mode_summary">不对系统配置进行修改，但是可能须要较长的网络名称。</string>
     <string name="settings_service_repeater_safe_mode_warning">使用短名称可能需要关闭安全模式。</string>

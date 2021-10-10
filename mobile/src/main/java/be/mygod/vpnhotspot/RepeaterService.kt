@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
@@ -14,6 +15,7 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
@@ -33,6 +35,7 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -200,6 +203,13 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
 
         fun shutdown() {
             if (active) removeGroup()
+        }
+    }
+
+    @Parcelize
+    class Starter : BootReceiver.Startable {
+        override fun start(context: Context) {
+            ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
         }
     }
 
@@ -463,6 +473,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         routingManager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!).apply { start() }
         status = Status.ACTIVE
         showNotification(group)
+        BootReceiver.add<RepeaterService>(Starter())
     }
     private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null, showWifiEnable: Boolean = false) {
         SmartSnackbar.make(msg).apply {
@@ -493,6 +504,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         })
     }
     private fun cleanLocked() {
+        BootReceiver.delete<RepeaterService>()
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
             p2pPoller?.cancel()

@@ -109,7 +109,6 @@
     <string name="settings_service_masquerade_netd">Android Netd 服務</string>
     <string name="settings_service_disable_ipv6">停用 IPv6 共用</string>
     <string name="settings_service_disable_ipv6_summary">防止 VPN 通過 IPv6 洩漏</string>
-    <string name="settings_service_repeater_start_on_boot">開機時自動啟動中繼器</string>
     <string name="settings_service_repeater_safe_mode">中繼安全模式</string>
     <string name="settings_service_repeater_safe_mode_summary">不對系統設定值進行任何修改，但是可能需要較長的 SSID。</string>
     <string name="settings_service_repeater_safe_mode_warning">使用短 SSID 可能需要關閉安全模式。</string>

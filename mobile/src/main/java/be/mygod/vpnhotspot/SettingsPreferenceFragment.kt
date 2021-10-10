@@ -66,14 +66,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 }
             } else parent!!.removePreference(this)
         }
-        val boot = findPreference<SwitchPreference>("service.repeater.startOnBoot")!!
-        if (Services.p2p != null) {
-            boot.setOnPreferenceChangeListener { _, value ->
-                BootReceiver.enabled = value as Boolean
-                true
-            }
-            boot.isChecked = BootReceiver.enabled
-        } else boot.parent!!.removePreference(boot)
+        findPreference<SwitchPreference>(BootReceiver.KEY)!!.setOnPreferenceChangeListener { _, value ->
+            BootReceiver.onUserSettingUpdated(value as Boolean)
+            true
+        }
         if (Services.p2p == null || !RepeaterService.safeModeConfigurable) {
             val safeMode = findPreference<Preference>(RepeaterService.KEY_SAFE_MODE)!!
             safeMode.parent!!.removePreference(safeMode)

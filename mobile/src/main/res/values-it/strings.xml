@@ -91,7 +91,6 @@
     <string name="settings_service_masquerade_netd">Servizio Android Netd</string>
     <string name="settings_service_disable_ipv6">Disabilita tethering IPv6</string>
     <string name="settings_service_disable_ipv6_summary">Abilitando questa funzione si preveniranno perdite della VPN via IPv6.</string>
-    <string name="settings_service_repeater_start_on_boot">Avvia ripetitore all\'avvio</string>
     <string name="settings_service_wifi_lock">Tieni il Wi\u2011Fi attivo</string>
     <string name="settings_service_wifi_lock_none">Default di sistema</string>
     <string name="settings_service_wifi_lock_full">Attivo</string>

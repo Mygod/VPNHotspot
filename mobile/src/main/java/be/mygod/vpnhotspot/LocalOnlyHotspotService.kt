@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
@@ -15,6 +16,7 @@ import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.net.Inet4Address
 
@@ -42,6 +44,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             }
             reservation?.close()
             stopService()
+        }
+    }
+
+    @Parcelize
+    class Starter : BootReceiver.Startable {
+        override fun start(context: Context) {
+            context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
         }
     }
 
@@ -86,6 +95,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                         return stopService()
                     }
                     binder.iface = iface
+                    BootReceiver.add<LocalOnlyHotspotService>(Starter())
                     launch {
                         check(routingManager == null)
                         routingManager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService, iface).apply { start() }
@@ -140,6 +150,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     private fun stopService() {
+        BootReceiver.delete<LocalOnlyHotspotService>()
         binder.iface = null
         unregisterReceiver()
         ServiceNotification.stopForeground(this)

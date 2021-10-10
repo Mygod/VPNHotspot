@@ -128,7 +128,9 @@
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
-    <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
+    <string name="settings_service_auto_start">Auto start services</string>
+    <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
+        update</string>
     <string name="settings_service_repeater_safe_mode">Repeater safe mode</string>
     <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
         not work with short network names.</string>
