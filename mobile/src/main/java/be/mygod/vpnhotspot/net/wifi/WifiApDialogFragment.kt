@@ -63,17 +63,22 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             listOf(ChannelOption(SoftApConfigurationCompat.BAND_LEGACY)) +
                     channels2G + (15..165).map { ChannelOption(SoftApConfigurationCompat.BAND_5GHZ, it) }
         }
-        /**
-         * Also used for legacy soft ap.
-         */
         private val p2pSafeOptions by lazy { genAutoOptions(SoftApConfigurationCompat.BAND_LEGACY) + channels5G }
         @get:RequiresApi(30)
         private val softApOptions by lazy {
-            val channels6G = channels5G + (1..233).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) }
-            if (Build.VERSION.SDK_INT >= 31) {
-                genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
-                        channels6G + (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
-            } else genAutoOptions(SoftApConfigurationCompat.BAND_ANY_30) + channels6G
+            when (Build.VERSION.SDK_INT) {
+                in 30..Int.MAX_VALUE -> {
+                    val channels6G = channels5G +
+                            (1..233).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) }
+                    if (Build.VERSION.SDK_INT >= 31) {
+                        genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
+                                channels6G + (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
+                    } else genAutoOptions(SoftApConfigurationCompat.BAND_ANY_30) + channels6G
+                }
+                in 28 until 30 -> p2pSafeOptions
+                else -> listOf(ChannelOption(SoftApConfigurationCompat.BAND_2GHZ),
+                    ChannelOption(SoftApConfigurationCompat.BAND_5GHZ)) + channels5G
+            }
         }
     }
 
@@ -105,9 +110,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     private lateinit var base: SoftApConfigurationCompat
     private var started = false
     private val currentChannels get() = when {
-        arg.p2pMode && !RepeaterService.safeMode -> p2pUnsafeOptions
-        arg.p2pMode || Build.VERSION.SDK_INT < 30 -> p2pSafeOptions
-        else -> softApOptions
+        !arg.p2pMode -> softApOptions
+        RepeaterService.safeMode -> p2pSafeOptions
+        else -> p2pUnsafeOptions
     }
     override val ret get() = Arg(generateConfig())
 
