@@ -44,31 +44,31 @@ class BootReceiver : BroadcastReceiver() {
 
         private const val FILENAME = "bootconfig"
         private val configFile by lazy { File(app.deviceStorage.noBackupFilesDir, FILENAME) }
-        private var config: Config?
-            get() = try {
-                DataInputStream(configFile.inputStream()).use { it.readBytes().toParcelable() }
-            } catch (_: FileNotFoundException) {
+        private val config: Config? get() = try {
+            DataInputStream(configFile.inputStream()).use { it.readBytes().toParcelable() }
+        } catch (_: FileNotFoundException) {
+            null
+        }
+        private fun updateConfig(work: Config.() -> Unit) = synchronized(BootReceiver) {
+            val config = try {
+                config
+            } catch (e: Exception) {
+                Timber.w(e)
                 null
-            }
-            set(value) = DataOutputStream(configFile.outputStream()).use { it.write(value.toByteArray()) }
+            } ?: Config()
+            config.work()
+            DataOutputStream(configFile.outputStream()).use { it.write(config.toByteArray()) }
+            config
+        }
 
         fun add(key: String, value: Startable) = try {
-            synchronized(BootReceiver) {
-                val c = config ?: Config()
-                c.startables[key] = value
-                config = c
-            }
+            updateConfig { startables[key] = value }
             onConfigUpdated(true)
         } catch (e: Exception) {
             Timber.w(e)
         }
         fun delete(key: String) = try {
-            onConfigUpdated(synchronized(BootReceiver) {
-                val c = config ?: Config()
-                c.startables.remove(key)
-                config = c
-                c
-            }.startables.isNotEmpty())
+            onConfigUpdated(updateConfig { startables.remove(key) }.startables.isNotEmpty())
         } catch (e: Exception) {
             Timber.w(e)
         }
