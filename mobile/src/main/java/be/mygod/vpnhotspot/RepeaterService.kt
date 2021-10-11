@@ -78,7 +78,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
             @SuppressLint("InlinedApi")
-            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_LEGACY)
+            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_LEGACY) and
+                    SoftApConfigurationCompat.BAND_LEGACY
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
