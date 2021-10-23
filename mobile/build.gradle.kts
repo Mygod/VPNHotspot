@@ -10,7 +10,6 @@ plugins {
 
 android {
     val javaVersion = JavaVersion.VERSION_11
-    val targetSdk = 29
     buildToolsVersion = "31.0.0"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
@@ -22,10 +21,10 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
-        this.targetSdk = targetSdk
+        targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 279
-        versionName = "2.12.8"
+        versionCode = 280
+        versionName = "2.13.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -33,7 +32,7 @@ android {
             put("room.schemaLocation", "$projectDir/schemas")
         }
         buildConfigField("boolean", "DONATIONS", "true")
-        buildConfigField("int", "TARGET_SDK", targetSdk.toString())
+        buildConfigField("int", "TARGET_SDK", "29")
     }
     buildFeatures {
         dataBinding = true
@@ -57,7 +56,9 @@ android {
         }
         create("google") {
             dimension = "freedom"
+            targetSdk = 31
             buildConfigField("boolean", "DONATIONS", "false")
+            buildConfigField("int", "TARGET_SDK", "31")
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
@@ -91,6 +92,7 @@ dependencies {
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.5.2")
+    add("googleImplementation", "com.github.tiann:FreeReflection:3.1.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test:runner:1.4.0")

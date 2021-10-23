@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required since API 31, when targeting API 31 -->
+    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_CONNECT"/>
+</manifest>

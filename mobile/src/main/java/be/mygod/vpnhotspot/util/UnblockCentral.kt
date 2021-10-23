@@ -3,31 +3,22 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
-import android.os.Build
 import androidx.annotation.RequiresApi
-import java.lang.reflect.Method
+import be.mygod.vpnhotspot.App.Companion.app
 
 /**
  * The central object for accessing all the useful blocked APIs. Thanks Google!
  *
  * Lazy cannot be used directly as it will create inner classes.
  */
+@RequiresApi(28)
 @SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi")
 @Suppress("FunctionName")
 object UnblockCentral {
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    private val init by lazy {
-        if (Build.VERSION.SDK_INT < 28) return@lazy
-        // TODO: fix this not working when targeting API 30+
-        val getDeclaredMethod = Class::class.java.getDeclaredMethod("getDeclaredMethod",
-            String::class.java, arrayOf<Class<*>>()::class.java)
-        val clazz = Class.forName("dalvik.system.VMRuntime")
-        val setHiddenApiExemptions = getDeclaredMethod(clazz, "setHiddenApiExemptions",
-            arrayOf(Array<String>::class.java)) as Method
-        setHiddenApiExemptions(clazz.getDeclaredMethod("getRuntime")(null), arrayOf(""))
-    }
+    private val init by lazy { UnblockHelper(app) }
 
     @RequiresApi(31)
     fun setUserConfiguration(clazz: Class<*>) = init.let {

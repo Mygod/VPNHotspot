@@ -320,12 +320,11 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             onTetheringStarted()    // force flush
         }
         override fun onResume(owner: LifecycleOwner) {
-            if (Build.VERSION.SDK_INT < 31 || parent.requireContext().checkSelfPermission(
-                    Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+            if (Build.VERSION.SDK_INT < 31) return
+            if (parent.requireContext().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED) {
                 tethering.ensureInit(parent.requireContext())
-            } else if (parent.shouldShowRequestPermissionRationale(Manifest.permission.BLUETOOTH_CONNECT)) {
-                parent.requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
-            }
+            } else parent.requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
         override fun onDestroy(owner: LifecycleOwner) = tethering.close()
 
