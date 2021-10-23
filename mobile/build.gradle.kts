@@ -65,14 +65,14 @@ android {
 
 dependencies {
     val lifecycleVersion = "2.4.0-rc01"
-    val roomVersion = "2.3.0"
+    val roomVersion = "2.4.0-beta01"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.appcompat:appcompat:1.3.1")    // https://issuetracker.google.com/issues/151603528
-    implementation("androidx.browser:browser:1.4.0-beta01")
-    implementation("androidx.core:core-ktx:1.7.0-beta02")
+    implementation("androidx.browser:browser:1.4.0-rc01")
+    implementation("androidx.core:core-ktx:1.7.0-rc01")
     implementation("androidx.emoji:emoji:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.3.6")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
