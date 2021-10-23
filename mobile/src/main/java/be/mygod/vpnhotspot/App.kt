@@ -48,7 +48,6 @@ class App : Application() {
             // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
             deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
             deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
-            BootReceiver.migrateIfNecessary(this, deviceStorage)
         } else deviceStorage = this
         Services.init { this }
 
@@ -93,6 +92,7 @@ class App : Application() {
         })
         EBegFragment.init()
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
+        BootReceiver.init()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

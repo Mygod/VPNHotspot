@@ -5,8 +5,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Parcelable
-import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.App.Companion.app
@@ -39,8 +39,6 @@ class BootReceiver : BroadcastReceiver() {
         private fun onConfigUpdated(isNotEmpty: Boolean) {
             enabled = isNotEmpty && app.pref.getBoolean(KEY, false)
         }
-
-        private var started = false
 
         private const val FILENAME = "bootconfig"
         private val configFile by lazy { File(app.deviceStorage.noBackupFilesDir, FILENAME) }
@@ -75,16 +73,25 @@ class BootReceiver : BroadcastReceiver() {
         inline fun <reified T> add(value: Startable) = add(T::class.java.name, value)
         inline fun <reified T> delete() = delete(T::class.java.name)
 
-        @RequiresApi(24)
-        fun migrateIfNecessary(old: Context, new: Context) {
-            val oldFile = File(old.noBackupFilesDir, FILENAME)
-            if (oldFile.canRead()) try {
-                val newFile = File(new.noBackupFilesDir, FILENAME)
-                if (!newFile.exists()) oldFile.copyTo(newFile)
-                if (!oldFile.delete()) oldFile.deleteOnExit()
+        fun init() {
+            if (Build.VERSION.SDK_INT >= 24) {
+                val oldFile = File(app.noBackupFilesDir, FILENAME)
+                if (oldFile.canRead()) try {
+                    if (!configFile.exists()) oldFile.copyTo(configFile)
+                    if (!oldFile.delete()) oldFile.deleteOnExit()
+                } catch (e: Exception) {
+                    Timber.w(e)
+                }
+            }
+            val config = try {
+                synchronized(BootReceiver) { config }
             } catch (e: Exception) {
                 Timber.w(e)
+                null
             }
+            if (config == null || config.startables.isEmpty()) {
+                enabled = false
+            } else for (startable in config.startables.values) startable.start(app)
         }
     }
 
@@ -95,22 +102,5 @@ class BootReceiver : BroadcastReceiver() {
     @Parcelize
     private data class Config(var startables: MutableMap<String, Startable> = mutableMapOf()) : Parcelable
 
-    override fun onReceive(context: Context, intent: Intent) {
-        if (started) return
-        val isUpdate = when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_LOCKED_BOOT_COMPLETED -> false
-            Intent.ACTION_MY_PACKAGE_REPLACED -> true
-            else -> return
-        }
-        started = true
-        val config = try {
-            synchronized(BootReceiver) { config }
-        } catch (e: Exception) {
-            Timber.w(e)
-            if (isUpdate) null else return
-        }
-        if (config == null || config.startables.isEmpty()) {
-            enabled = false
-        } else for (startable in config.startables.values) startable.start(context)
-    }
+    override fun onReceive(context: Context, intent: Intent) { }
 }
