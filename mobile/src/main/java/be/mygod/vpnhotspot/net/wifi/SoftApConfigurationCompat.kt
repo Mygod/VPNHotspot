@@ -353,6 +353,8 @@ data class SoftApConfigurationCompat(
         private val staticBuilder by lazy { classBuilder.newInstance() }
         @RequiresApi(30)
         fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
+        @RequiresApi(30)
+        fun testPlatformValidity(bssid: MacAddress) = setBssid(staticBuilder, bssid)
     }
 
     @Suppress("DEPRECATION")

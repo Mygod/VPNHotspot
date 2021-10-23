@@ -306,9 +306,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bandError.text = bandError
         dialogView.bssidWrapper.error = null
         val bssidValid = dialogView.bssid.length() == 0 || try {
-            MacAddressCompat.fromString(dialogView.bssid.text.toString())
+            val mac = MacAddressCompat.fromString(dialogView.bssid.text.toString())
+            if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) {
+                SoftApConfigurationCompat.testPlatformValidity(mac.toPlatform())
+            }
             true
-        } catch (e: IllegalArgumentException) {
+        } catch (e: Exception) {
             dialogView.bssidWrapper.error = e.readableMessage
             false
         }
