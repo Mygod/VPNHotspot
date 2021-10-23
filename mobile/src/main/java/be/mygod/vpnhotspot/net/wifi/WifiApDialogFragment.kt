@@ -108,6 +108,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     private lateinit var dialogView: DialogWifiApBinding
     private lateinit var base: SoftApConfigurationCompat
+    private var pasted = false
     private var started = false
     private val currentChannels get() = when {
         !arg.p2pMode -> softApOptions
@@ -230,7 +231,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val channel = base.channels.valueAt(i)
         val selection = currentChannels.indexOfFirst { it.band == band && it.channel == channel }
         return if (selection == -1) {
-            Timber.w(Exception("Unable to locate $band, $channel, ${arg.p2pMode && !RepeaterService.safeMode}"))
+            val msg = "Unable to locate $band, $channel, ${arg.p2pMode && !RepeaterService.safeMode}"
+            if (pasted) Timber.w(msg) else Timber.w(Exception(msg))
             0
         } else selection
     }
@@ -375,6 +377,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                             arg.configuration.underlying?.let { check(it.javaClass == newUnderlying.javaClass) }
                         } else config.underlying = arg.configuration.underlying
                         base = config
+                        pasted = true
                         populateFromConfiguration()
                     }
                 }
