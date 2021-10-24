@@ -93,6 +93,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.5.2")
     add("googleImplementation", "com.github.tiann:FreeReflection:3.1.0")
+    add("googleImplementation", "com.google.android.play:core:1.10.2")
+    add("googleImplementation", "com.google.android.play:core-ktx:1.8.1")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
     androidTestImplementation("androidx.test:runner:1.4.0")

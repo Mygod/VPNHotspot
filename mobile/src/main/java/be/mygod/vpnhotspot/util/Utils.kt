@@ -24,6 +24,9 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
 import java.io.FileNotFoundException
@@ -32,6 +35,7 @@ import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -65,6 +69,10 @@ fun Method.matchesCompat(name: String, args: Array<out Any?>?, vararg classes: C
             args!![i]?.let { classes[i].isInstance(it) } != false
         }
     } else matches(name, *classes)
+
+fun HttpURLConnection.disconnectCompat() {
+    if (Build.VERSION.SDK_INT < 26) GlobalScope.launch(Dispatchers.IO) { disconnect() } else disconnect()
+}
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
