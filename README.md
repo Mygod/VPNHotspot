@@ -8,8 +8,13 @@
 [![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](LICENSE)
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
-<a href="https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot" target="_blank"><img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" height="60"></a>,
-sign up for beta at <a href="https://play.google.com/apps/testing/be.mygod.vpnhotspot" target="_blank">Google Play</a>
+
+| Release channel | [GitHub (recommended)](https://github.com/Mygod/VPNHotspot/releases) | [Google Play](https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot) ([beta](https://play.google.com/apps/testing/be.mygod.vpnhotspot)) |
+| --- | :---: | :---: |
+| Monitor connected clients without root | ✓ | Up to Android 10 |
+| Auto update | Email updates via watching releases | ✓ |
+| In-app update channel | GitHub | Google Play |
+| [Sponsor/Donation](https://github.com/sponsors/Mygod) | ✓ | Google Play In-App Purchases only |
 
 This app is useful for:
 
