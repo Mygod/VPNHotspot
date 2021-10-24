@@ -57,6 +57,7 @@ android {
         create("google") {
             dimension = "freedom"
             targetSdk = 31
+            versionNameSuffix = "-google"
             buildConfigField("boolean", "DONATIONS", "false")
             buildConfigField("int", "TARGET_SDK", "31")
         }
