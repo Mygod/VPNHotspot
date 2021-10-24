@@ -49,7 +49,7 @@ object UpdateChecker {
                 val response = JSONObject(withContext(Dispatchers.IO) {
                     conn.inputStream.bufferedReader().readText()
                 })
-                val version = response.getString("name")
+                val version = response.getString("tag_name")
                 val published = Instant.parse(response.getString("published_at")).toEpochMilli()
                 app.pref.edit {
                     putLong(KEY_LAST_FETCHED, System.currentTimeMillis())
