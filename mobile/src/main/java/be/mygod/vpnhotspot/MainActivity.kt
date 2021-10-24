@@ -78,7 +78,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
             false -> R.drawable.ic_file_downloading
             true -> R.drawable.ic_action_autorenew
         })
-        updateItem.title = update.message ?: "Update"
+        updateItem.title = update.message ?: getText(R.string.title_update)
         updateBadge.isVisible = when (val days = update.stalenessDays) {
             null -> false
             else -> {

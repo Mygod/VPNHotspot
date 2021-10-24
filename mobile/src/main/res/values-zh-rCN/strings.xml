@@ -5,6 +5,7 @@
     <string name="title_tethering">共享管理</string>
     <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
+    <string name="title_update">更新应用</string>
 
     <string name="repeater_channel">无线中继 (%1$d MHz, 频道 %2$d)</string>
     <string name="repeater_wps">WPS（不安全）</string>

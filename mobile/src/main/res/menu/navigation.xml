@@ -19,7 +19,7 @@
     <item
         android:id="@+id/navigation_update"
         android:icon="@drawable/ic_action_update"
-        android:title="Update"
+        android:title="@string/title_update"
         android:visible="false"/>
 
 </menu>

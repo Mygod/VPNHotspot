@@ -21,6 +21,7 @@
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
+    <string name="title_update">Update</string>
 
     <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (insecure)</string>
