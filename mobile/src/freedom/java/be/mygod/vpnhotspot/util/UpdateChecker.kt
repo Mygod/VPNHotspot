@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.util
 
 import android.app.Activity
-import android.content.Intent
 import android.net.Uri
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
