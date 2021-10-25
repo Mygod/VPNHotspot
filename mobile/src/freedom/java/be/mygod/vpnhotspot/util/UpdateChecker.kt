@@ -57,7 +57,7 @@ object UpdateChecker {
                     putLong(KEY_PUBLISHED, published)
                 }
                 emit(if (myVersion == version) null else GitHubUpdate(version, published))
-            } catch (e: CancellationException) {
+            } catch (_: CancellationException) {
                 return@flow
             } catch (e: Exception) {
                 Timber.w(e)
