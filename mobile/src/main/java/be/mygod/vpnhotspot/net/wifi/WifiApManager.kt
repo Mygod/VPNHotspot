@@ -35,17 +35,22 @@ object WifiApManager {
             PackageManager.MATCH_SYSTEM_ONLY).single()
 
     private const val CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED = "config_wifi_p2p_mac_randomization_supported"
-    val p2pMacRandomizationSupported get() = when (Build.VERSION.SDK_INT) {
-        29 -> Resources.getSystem().run {
-            getBoolean(getIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool", "android"))
+    val p2pMacRandomizationSupported get() = try {
+        when (Build.VERSION.SDK_INT) {
+            29 -> Resources.getSystem().run {
+                getBoolean(getIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool", "android"))
+            }
+            in 30..Int.MAX_VALUE -> @TargetApi(30) {
+                val info = resolvedActivity.activityInfo
+                val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
+                resources.getBoolean(resources.findIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool",
+                    RESOURCES_PACKAGE, info.packageName))
+            }
+            else -> false
         }
-        in 30..Int.MAX_VALUE -> @TargetApi(30) {
-            val info = resolvedActivity.activityInfo
-            val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
-            resources.getBoolean(resources.findIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool",
-                RESOURCES_PACKAGE, info.packageName))
-        }
-        else -> false
+    } catch (e: RuntimeException) {
+        Timber.w(e)
+        false
     }
 
     @get:RequiresApi(30)
