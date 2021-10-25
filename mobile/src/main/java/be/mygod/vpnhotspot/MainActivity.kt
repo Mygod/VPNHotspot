@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.net.Inet4Address
+import java.util.concurrent.CancellationException
 
 class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListener {
     lateinit var binding: ActivityMainBinding
@@ -65,6 +66,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
                 onAppUpdateAvailable(null)
                 try {
                     UpdateChecker.check().collect(this@MainActivity::onAppUpdateAvailable)
+                } catch (_: CancellationException) {
                 } catch (e: Exception) {
                     Timber.w(e)
                     SmartSnackbar.make(e).show()

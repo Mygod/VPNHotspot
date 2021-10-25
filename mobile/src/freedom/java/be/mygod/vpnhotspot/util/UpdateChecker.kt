@@ -14,6 +14,7 @@ import timber.log.Timber
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
+import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
@@ -56,6 +57,8 @@ object UpdateChecker {
                     putLong(KEY_PUBLISHED, published)
                 }
                 emit(if (myVersion == version) null else GitHubUpdate(version, published))
+            } catch (e: CancellationException) {
+                return@flow
             } catch (e: Exception) {
                 Timber.w(e)
             } finally {
