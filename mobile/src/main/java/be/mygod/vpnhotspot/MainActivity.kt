@@ -24,6 +24,7 @@ import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.net.Inet4Address
 
 class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListener {
@@ -62,7 +63,12 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 onAppUpdateAvailable(null)
-                UpdateChecker.check().collect(this@MainActivity::onAppUpdateAvailable)
+                try {
+                    UpdateChecker.check().collect(this@MainActivity::onAppUpdateAvailable)
+                } catch (e: Exception) {
+                    Timber.w(e)
+                    SmartSnackbar.make(e).show()
+                }
             }
         }
     }
