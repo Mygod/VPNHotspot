@@ -58,5 +58,9 @@ object UpdateChecker {
     } catch (e: InstallException) {
         app.logEvent("InstallErrorCode") { param("errorCode", e.errorCode.toLong()) }
         throw AppUpdate.IgnoredException(e)
+    } catch (e: RuntimeException) {
+        if (e.message != "Failed to bind to the service.") throw e
+        app.logEvent("UpdateBindFailure")
+        throw AppUpdate.IgnoredException(e)
     }
 }
