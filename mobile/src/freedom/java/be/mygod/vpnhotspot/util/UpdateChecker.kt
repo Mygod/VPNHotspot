@@ -5,11 +5,10 @@ import android.net.Uri
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import org.json.JSONArray
 import timber.log.Timber
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,7 +23,7 @@ object UpdateChecker {
     private const val KEY_PUBLISHED = "update.published"
     private const val UPDATE_INTERVAL = 1000 * 60 * 60 * 6
 
-    private class GitHubUpdate(override val message: String, private val published: Long) : AppUpdate {
+    private data class GitHubUpdate(override val message: String, val published: Long) : AppUpdate {
         override val stalenessDays get() = max(0,
             TimeUnit.DAYS.convert(System.currentTimeMillis() - published, TimeUnit.MILLISECONDS)).toInt()
 
@@ -33,6 +32,36 @@ object UpdateChecker {
         }
     }
 
+    private data class SemVer(val major: Int, val minor: Int, val revision: Int) : Comparable<SemVer> {
+        override fun compareTo(other: SemVer): Int {
+            var result = major - other.major
+            if (result != 0) return result
+            result = minor - other.minor
+            if (result != 0) return result
+            return revision - other.revision
+        }
+    }
+    private val semverParser = "^v?(\\d+)\\.(\\d+)\\.(\\d+)(?:-|$)".toPattern()
+    private fun CharSequence.toSemVer() = semverParser.matcher(this).let { matcher ->
+        require(matcher.find()) { "Unrecognized version $this" }
+        SemVer(matcher.group(1)!!.toInt(), matcher.group(2)!!.toInt(), matcher.group(3)!!.toInt())
+    }
+    private val myVer by lazy { BuildConfig.VERSION_NAME.toSemVer() }
+
+    private fun findUpdate(response: JSONArray): GitHubUpdate? {
+        for (i in 0 until response.length()) {
+            val obj = response.getJSONObject(i)
+            val name = obj.getString("name")
+            val isNew = try {
+                name.toSemVer() > myVer
+            } catch (e: IllegalArgumentException) {
+                Timber.w(e)
+                false
+            }
+            if (isNew) return GitHubUpdate(name, Instant.parse(obj.getString("published_at")).toEpochMilli())
+        }
+        return null
+    }
     fun check() = flow<AppUpdate?> {
         val myVersion = "v${BuildConfig.VERSION_NAME}"
         emit(app.pref.getString(KEY_VERSION, null)?.let {
@@ -42,28 +71,30 @@ object UpdateChecker {
             val now = System.currentTimeMillis()
             val lastFetched = app.pref.getLong(KEY_LAST_FETCHED, -1)
             if (lastFetched in 0..now) delay(lastFetched + UPDATE_INTERVAL - now)
-            val conn = URL("https://api.github.com/repos/Mygod/VPNHotspot/releases/latest")
+            currentCoroutineContext().ensureActive()
+            val conn = URL("https://api.github.com/repos/Mygod/VPNHotspot/releases?per_page=100")
                 .openConnection() as HttpURLConnection
-            try {
-                conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                val response = JSONObject(withContext(Dispatchers.IO) {
-                    conn.inputStream.bufferedReader().readText()
-                })
-                val version = response.getString("tag_name")
-                val published = Instant.parse(response.getString("published_at")).toEpochMilli()
-                app.pref.edit {
+            app.pref.edit {
+                try {
+                    conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    val update = findUpdate(JSONArray(withContext(Dispatchers.IO) {
+                        conn.inputStream.bufferedReader().readText()
+                    }))
+                    putLong(KEY_PUBLISHED, if (update == null) -1 else {
+                        putString(KEY_VERSION, update.message)
+                        update.published
+                    })
+                    emit(update)
+                } catch (_: CancellationException) {
+                    return@flow
+                } catch (e: Exception) {
+                    Timber.w(e)
+                } finally {
+                    conn.disconnectCompat()
                     putLong(KEY_LAST_FETCHED, System.currentTimeMillis())
-                    putString(KEY_VERSION, version)
-                    putLong(KEY_PUBLISHED, published)
                 }
-                emit(if (myVersion == version) null else GitHubUpdate(version, published))
-            } catch (_: CancellationException) {
-                return@flow
-            } catch (e: Exception) {
-                Timber.w(e)
-            } finally {
-                conn.disconnectCompat()
             }
+            delay(System.currentTimeMillis() - (conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull() ?: 0) * 1000)
         }
-    }
+    }.cancellable()
 }
