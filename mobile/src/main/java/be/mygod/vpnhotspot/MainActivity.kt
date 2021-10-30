@@ -79,7 +79,10 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
     private fun onAppUpdateAvailable(update: AppUpdate?) {
         lastUpdate = update
         updateItem.isVisible = update != null
-        if (update == null) return
+        if (update == null) {
+            updateItem.isEnabled = false
+            return
+        }
         updateItem.isEnabled = update.downloaded != false
         updateItem.setIcon(when (update.downloaded) {
             null -> R.drawable.ic_action_update
