@@ -7,9 +7,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Parcelable
+import android.widget.Toast
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.io.DataInputStream
@@ -91,7 +93,12 @@ class BootReceiver : BroadcastReceiver() {
             }
             if (config == null || config.startables.isEmpty()) {
                 enabled = false
-            } else for (startable in config.startables.values) startable.start(app)
+            } else for (startable in config.startables.values) try {
+                startable.start(app)
+            } catch (e: IllegalStateException) {    // ForegroundServiceStartNotAllowedException
+                Timber.w(e)
+                Toast.makeText(app, e.readableMessage, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
