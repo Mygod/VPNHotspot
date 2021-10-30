@@ -68,6 +68,8 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
                 try {
                     UpdateChecker.check().collect(this@MainActivity::onAppUpdateAvailable)
                 } catch (_: CancellationException) {
+                } catch (e: AppUpdate.IgnoredException) {
+                    Timber.d(e)
                 } catch (e: Exception) {
                     Timber.w(e)
                     SmartSnackbar.make(e).show()

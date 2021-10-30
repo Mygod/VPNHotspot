@@ -74,9 +74,11 @@ object UpdateChecker {
             currentCoroutineContext().ensureActive()
             val conn = URL("https://api.github.com/repos/Mygod/VPNHotspot/releases?per_page=100")
                 .openConnection() as HttpURLConnection
+            var reset: Long? = null
             app.pref.edit {
                 try {
                     conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                    reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
                     val update = findUpdate(JSONArray(withContext(Dispatchers.IO) {
                         conn.inputStream.bufferedReader().readText()
                     }))
@@ -94,7 +96,7 @@ object UpdateChecker {
                     putLong(KEY_LAST_FETCHED, System.currentTimeMillis())
                 }
             }
-            delay(System.currentTimeMillis() - (conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull() ?: 0) * 1000)
+            reset?.let { delay(System.currentTimeMillis() - it * 1000) }
         }
     }.cancellable()
 }

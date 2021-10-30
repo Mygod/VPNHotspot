@@ -4,6 +4,7 @@ import android.app.Activity
 import android.net.Uri
 import be.mygod.vpnhotspot.App.Companion.app
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.InstallException
 import com.google.android.play.core.install.model.InstallErrorCode
 import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.ktx.AppUpdateResult
@@ -43,14 +44,19 @@ object UpdateChecker {
 
     private val manager by lazy { AppUpdateManagerFactory.create(app) }
 
-    fun check() = manager.requestUpdateFlow().map { result ->
-        when (result) {
-            is AppUpdateResult.NotAvailable -> null
-            is AppUpdateResult.Available -> UpdateAvailable(result)
-            is AppUpdateResult.InProgress -> {
-                if (result.installState.installStatus() == InstallStatus.CANCELED) null else UpdateDownloading(result)
+    fun check() = try {
+        manager.requestUpdateFlow().map { result ->
+            when (result) {
+                is AppUpdateResult.NotAvailable -> null
+                is AppUpdateResult.Available -> UpdateAvailable(result)
+                is AppUpdateResult.InProgress -> {
+                    if (result.installState.installStatus() == InstallStatus.CANCELED) null else UpdateDownloading(result)
+                }
+                is AppUpdateResult.Downloaded -> UpdateDownloaded(result)
             }
-            is AppUpdateResult.Downloaded -> UpdateDownloaded(result)
         }
+    } catch (e: InstallException) {
+        app.logEvent("InstallErrorCode") { param("errorCode", e.errorCode.toLong()) }
+        throw AppUpdate.IgnoredException(e)
     }
 }
