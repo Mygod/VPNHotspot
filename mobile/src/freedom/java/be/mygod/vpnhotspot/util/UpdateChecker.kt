@@ -78,13 +78,13 @@ object UpdateChecker {
             app.pref.edit {
                 try {
                     conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
                     val update = findUpdate(JSONArray(withContext(Dispatchers.IO) {
+                        reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
                         conn.inputStream.bufferedReader().readText()
                     }))
-                    putLong(KEY_PUBLISHED, if (update == null) -1 else {
-                        putString(KEY_VERSION, update.message)
-                        update.published
+                    putString(KEY_VERSION, update?.let {
+                        putLong(KEY_PUBLISHED, update.published)
+                        it.message
                     })
                     emit(update)
                 } catch (_: CancellationException) {

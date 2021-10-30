@@ -23,8 +23,8 @@ android {
         minSdk = 21
         targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 280
-        versionName = "2.13.0"
+        versionCode = 282
+        versionName = "2.13.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
