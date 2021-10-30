@@ -13,8 +13,8 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.core.provider.FontRequest
-import androidx.emoji.text.EmojiCompat
-import androidx.emoji.text.FontRequestEmojiCompatConfig
+import androidx.emoji2.text.EmojiCompat
+import androidx.emoji2.text.FontRequestEmojiCompatConfig
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround

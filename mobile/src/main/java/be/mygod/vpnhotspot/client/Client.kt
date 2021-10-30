@@ -45,7 +45,7 @@ open class Client(val mac: MacAddressCompat, val iface: String) {
         SpannableStringBuilder(if (record.nickname.isEmpty()) {
             if (record.macLookupPending) MacLookup.perform(mac)
             macIface
-        } else emojize(record.nickname)).apply {
+        } else record.nickname).apply {
             if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }

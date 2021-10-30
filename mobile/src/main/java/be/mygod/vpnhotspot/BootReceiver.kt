@@ -99,7 +99,7 @@ class BootReceiver : BroadcastReceiver() {
             started = true
         }
         fun startIfEnabled() {
-            if (started && userEnabled) startIfNecessary()
+            if (!started && userEnabled) startIfNecessary()
         }
     }
 
