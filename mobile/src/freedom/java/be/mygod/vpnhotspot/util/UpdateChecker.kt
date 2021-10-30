@@ -46,26 +46,25 @@ object UpdateChecker {
         require(matcher.find()) { "Unrecognized version $this" }
         SemVer(matcher.group(1)!!.toInt(), matcher.group(2)!!.toInt(), matcher.group(3)!!.toInt())
     }
-    private val myVer by lazy { BuildConfig.VERSION_NAME.toSemVer() }
+    private val myVer = BuildConfig.VERSION_NAME.toSemVer()
 
     private fun findUpdate(response: JSONArray): GitHubUpdate? {
         for (i in 0 until response.length()) {
             val obj = response.getJSONObject(i)
             val name = obj.getString("name")
-            val isNew = try {
-                name.toSemVer() > myVer
+            try {
+                if (name.toSemVer() <= myVer) continue
             } catch (e: IllegalArgumentException) {
                 Timber.w(e)
-                false
+                continue
             }
-            if (isNew) return GitHubUpdate(name, Instant.parse(obj.getString("published_at")).toEpochMilli())
+            return GitHubUpdate(name, Instant.parse(obj.getString("published_at")).toEpochMilli())
         }
         return null
     }
     fun check() = flow<AppUpdate?> {
-        val myVersion = "v${BuildConfig.VERSION_NAME}"
         emit(app.pref.getString(KEY_VERSION, null)?.let {
-            if (myVersion == it) null else GitHubUpdate(it, app.pref.getLong(KEY_PUBLISHED, -1))
+            if (myVer >= it.toSemVer()) null else GitHubUpdate(it, app.pref.getLong(KEY_PUBLISHED, -1))
         })
         while (true) {
             val now = System.currentTimeMillis()
