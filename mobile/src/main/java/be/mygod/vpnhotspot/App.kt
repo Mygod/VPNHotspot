@@ -12,9 +12,6 @@ import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
-import androidx.core.provider.FontRequest
-import androidx.emoji2.text.EmojiCompat
-import androidx.emoji2.text.FontRequestEmojiCompatConfig
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround
@@ -80,17 +77,6 @@ class App : Application() {
             }
         })
         ServiceNotification.updateNotificationChannels()
-        EmojiCompat.init(FontRequestEmojiCompatConfig(deviceStorage, FontRequest(
-                "com.google.android.gms.fonts",
-                "com.google.android.gms",
-                "Noto Color Emoji Compat",
-                R.array.com_google_android_gms_fonts_certs)).apply {
-            setEmojiSpanIndicatorEnabled(BuildConfig.DEBUG)
-            registerInitCallback(object : EmojiCompat.InitCallback() {
-                override fun onInitialized() = Timber.d("EmojiCompat initialized")
-                override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
-            })
-        })
         EBegFragment.init()
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
