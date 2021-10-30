@@ -5,13 +5,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Parcelable
-import android.widget.Toast
+import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.io.DataInputStream
@@ -30,6 +28,7 @@ class BootReceiver : BroadcastReceiver() {
             set(value) = app.packageManager.setComponentEnabledSetting(componentName,
                     if (value) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                     else PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+        private val userEnabled get() = app.pref.getBoolean(KEY, false)
         fun onUserSettingUpdated(shouldStart: Boolean) {
             enabled = shouldStart && try {
                 config
@@ -39,7 +38,7 @@ class BootReceiver : BroadcastReceiver() {
             }?.startables?.isEmpty() == false
         }
         private fun onConfigUpdated(isNotEmpty: Boolean) {
-            enabled = isNotEmpty && app.pref.getBoolean(KEY, false)
+            enabled = isNotEmpty && userEnabled
         }
 
         private const val FILENAME = "bootconfig"
@@ -75,16 +74,19 @@ class BootReceiver : BroadcastReceiver() {
         inline fun <reified T> add(value: Startable) = add(T::class.java.name, value)
         inline fun <reified T> delete() = delete(T::class.java.name)
 
-        fun init() {
-            if (Build.VERSION.SDK_INT >= 24) {
-                val oldFile = File(app.noBackupFilesDir, FILENAME)
-                if (oldFile.canRead()) try {
-                    if (!configFile.exists()) oldFile.copyTo(configFile)
-                    if (!oldFile.delete()) oldFile.deleteOnExit()
-                } catch (e: Exception) {
-                    Timber.w(e)
-                }
+        @RequiresApi(24)
+        fun migrateIfNecessary() {
+            val oldFile = File(app.noBackupFilesDir, FILENAME)
+            if (oldFile.canRead()) try {
+                if (!configFile.exists()) oldFile.copyTo(configFile)
+                if (!oldFile.delete()) oldFile.deleteOnExit()
+            } catch (e: Exception) {
+                Timber.w(e)
             }
+        }
+        private var started = false
+        private fun startIfNecessary() {
+            if (started) return
             val config = try {
                 synchronized(BootReceiver) { config }
             } catch (e: Exception) {
@@ -93,12 +95,11 @@ class BootReceiver : BroadcastReceiver() {
             }
             if (config == null || config.startables.isEmpty()) {
                 enabled = false
-            } else for (startable in config.startables.values) try {
-                startable.start(app)
-            } catch (e: IllegalStateException) {    // ForegroundServiceStartNotAllowedException
-                Timber.w(e)
-                Toast.makeText(app, e.readableMessage, Toast.LENGTH_LONG).show()
-            }
+            } else for (startable in config.startables.values) startable.start(app)
+            started = true
+        }
+        fun startIfEnabled() {
+            if (started && userEnabled) startIfNecessary()
         }
     }
 
@@ -109,5 +110,11 @@ class BootReceiver : BroadcastReceiver() {
     @Parcelize
     private data class Config(var startables: MutableMap<String, Startable> = mutableMapOf()) : Parcelable
 
-    override fun onReceive(context: Context, intent: Intent) { }
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_LOCKED_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                if (userEnabled) startIfNecessary() else enabled = false
+            }
+        }
+    }
 }

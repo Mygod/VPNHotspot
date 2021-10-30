@@ -68,6 +68,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        BootReceiver.startIfEnabled()
         if (binder.iface != null) return START_STICKY
         binder.iface = ""
         updateNotification()    // show invisible foreground notification to avoid being killed

@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         SmartSnackbar.Register(binding.fragmentHolder)
         WifiDoubleLock.ActivityListener(this)
         lifecycleScope.launch {
+            BootReceiver.startIfEnabled()
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 onAppUpdateAvailable(null)
                 try {

@@ -354,6 +354,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
      * startService Step 1
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        BootReceiver.startIfEnabled()
         if (status != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         status = Status.STARTING

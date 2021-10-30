@@ -111,6 +111,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        BootReceiver.startIfEnabled()
         // call this first just in case we are shutting down immediately
         if (Build.VERSION.SDK_INT >= 26) updateNotification()
         launch {
