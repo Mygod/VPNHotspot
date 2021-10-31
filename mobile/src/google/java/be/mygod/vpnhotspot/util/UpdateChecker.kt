@@ -10,6 +10,7 @@ import com.google.android.play.core.install.model.InstallStatus
 import com.google.android.play.core.ktx.AppUpdateResult
 import com.google.android.play.core.ktx.requestUpdateFlow
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -44,23 +45,26 @@ object UpdateChecker {
 
     private val manager by lazy { AppUpdateManagerFactory.create(app) }
 
-    fun check() = try {
-        manager.requestUpdateFlow().map { result ->
-            when (result) {
-                is AppUpdateResult.NotAvailable -> null
-                is AppUpdateResult.Available -> UpdateAvailable(result)
-                is AppUpdateResult.InProgress -> {
-                    if (result.installState.installStatus() == InstallStatus.CANCELED) null else UpdateDownloading(result)
-                }
-                is AppUpdateResult.Downloaded -> UpdateDownloaded(result)
+    fun check() = manager.requestUpdateFlow().catch { e ->
+        when (e) {
+            is InstallException -> {
+                app.logEvent("InstallErrorCode") { param("errorCode", e.errorCode.toLong()) }
+                throw AppUpdate.IgnoredException(e)
+            }
+            is RuntimeException -> if (e.message == "Failed to bind to the service.") {
+                app.logEvent("UpdateBindFailure")
+                throw AppUpdate.IgnoredException(e)
             }
         }
-    } catch (e: InstallException) {
-        app.logEvent("InstallErrorCode") { param("errorCode", e.errorCode.toLong()) }
-        throw AppUpdate.IgnoredException(e)
-    } catch (e: RuntimeException) {
-        if (e.message != "Failed to bind to the service.") throw e
-        app.logEvent("UpdateBindFailure")
-        throw AppUpdate.IgnoredException(e)
+        throw e
+    }.map { result ->
+        when (result) {
+            is AppUpdateResult.NotAvailable -> null
+            is AppUpdateResult.Available -> UpdateAvailable(result)
+            is AppUpdateResult.InProgress -> {
+                if (result.installState.installStatus() == InstallStatus.CANCELED) null else UpdateDownloading(result)
+            }
+            is AppUpdateResult.Downloaded -> UpdateDownloaded(result)
+        }
     }
 }

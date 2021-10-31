@@ -16,6 +16,7 @@ import java.time.Instant
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
+import kotlin.math.min
 
 object UpdateChecker {
     private const val KEY_LAST_FETCHED = "update.lastFetched"
@@ -49,18 +50,26 @@ object UpdateChecker {
     private val myVer = BuildConfig.VERSION_NAME.toSemVer()
 
     private fun findUpdate(response: JSONArray): GitHubUpdate? {
+        var latest: String? = null
+        var latestVer = myVer
+        var earliest = Long.MAX_VALUE
         for (i in 0 until response.length()) {
             val obj = response.getJSONObject(i)
             val name = obj.getString("name")
-            try {
-                if (name.toSemVer() <= myVer) continue
+            val semver = try {
+                name.toSemVer()
             } catch (e: IllegalArgumentException) {
                 Timber.w(e)
                 continue
             }
-            return GitHubUpdate(name, Instant.parse(obj.getString("published_at")).toEpochMilli())
+            if (semver <= myVer) continue
+            if (semver > latestVer) {
+                latest = name
+                latestVer = semver
+            }
+            earliest = min(earliest, Instant.parse(obj.getString("published_at")).toEpochMilli())
         }
-        return null
+        return latest?.let { GitHubUpdate(it, earliest) }
     }
     fun check() = flow<AppUpdate?> {
         emit(app.pref.getString(KEY_VERSION, null)?.let {
