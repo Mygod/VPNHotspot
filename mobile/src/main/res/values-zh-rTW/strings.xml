@@ -66,7 +66,6 @@
     <string name="tethering_manage_bluetooth">藍牙網路共用</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"乙太網路網路共用"</string>
     <string name="tethering_manage_ncm">USB 網路共用 (NCM)</string>
-    <string name="tethering_manage_wigig">WiGig 無線基地台</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 頻道 %2$d, 頻寬 %3$s</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">已連接 %1$s/%2$d 個設備\n支持功能：%3$s</item>
