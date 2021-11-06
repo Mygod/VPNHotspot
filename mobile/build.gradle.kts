@@ -23,8 +23,8 @@ android {
         minSdk = 21
         targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 282
-        versionName = "2.13.1"
+        versionCode = 283
+        versionName = "2.13.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -73,10 +73,10 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.appcompat:appcompat:1.4.0-rc01")   // https://issuetracker.google.com/issues/151603528
-    implementation("androidx.browser:browser:1.4.0-rc01")
+    implementation("androidx.browser:browser:1.4.0")
     implementation("androidx.core:core-ktx:1.7.0")
     implementation("androidx.emoji2:emoji2:1.0.0-rc01")
-    implementation("androidx.fragment:fragment-ktx:1.3.6")
+    implementation("androidx.fragment:fragment-ktx:1.4.0-rc01")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.1.1")
@@ -85,8 +85,8 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:4.0.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.5.0-alpha05")
-    implementation("com.google.firebase:firebase-analytics-ktx:19.0.2")
-    implementation("com.google.firebase:firebase-crashlytics:18.2.3")
+    implementation("com.google.firebase:firebase-analytics-ktx:20.0.0")
+    implementation("com.google.firebase:firebase-crashlytics:18.2.4")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.1")
