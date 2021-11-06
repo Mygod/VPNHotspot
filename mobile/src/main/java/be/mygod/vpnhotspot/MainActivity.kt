@@ -40,13 +40,15 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         binding.navigation.setOnItemSelectedListener(this)
         val badge = binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
             backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
-            badgeTextColor = ContextCompat.getColor(this@MainActivity, R.color.primary_text_default_material_light)
+            badgeTextColor = ContextCompat.getColor(this@MainActivity,
+                androidx.appcompat.R.color.primary_text_default_material_light)
         }
         updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
         updateItem.isCheckable = false
         updateBadge = binding.navigation.getOrCreateBadge(R.id.navigation_update).apply {
             backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
-            badgeTextColor = ContextCompat.getColor(this@MainActivity, R.color.primary_text_default_material_light)
+            badgeTextColor = ContextCompat.getColor(this@MainActivity,
+                androidx.appcompat.R.color.primary_text_default_material_light)
         }
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model by viewModels<ClientViewModel>()

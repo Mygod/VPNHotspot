@@ -121,7 +121,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         .putExtra(Intent.EXTRA_STREAM,
                                 FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
-                        context.getString(R.string.abc_shareactionprovider_share_with)))
+                        context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)))
             }
             true
         }
