@@ -58,6 +58,9 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private fun updateRegexs() = synchronized(this) {
             if (!requiresUpdate) return@synchronized
             requiresUpdate = false
+            usbRegexs = emptyList()
+            wifiRegexs = emptyList()
+            bluetoothRegexs = emptyList()
             TetheringManager.registerTetheringEventCallback(null, this)
             val info = TetheringManager.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
