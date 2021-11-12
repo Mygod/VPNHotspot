@@ -75,7 +75,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.4.0-rc01")   // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.4.0")
     implementation("androidx.core:core-ktx:1.7.0")
-    implementation("androidx.emoji2:emoji2:1.0.0-rc01")
     implementation("androidx.fragment:fragment-ktx:1.4.0-rc01")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")

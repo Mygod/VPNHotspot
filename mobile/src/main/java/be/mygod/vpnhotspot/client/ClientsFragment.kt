@@ -16,7 +16,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.collection.LongSparseArray
 import androidx.databinding.BaseObservable
-import androidx.emoji2.text.EmojiCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.findViewTreeLifecycleOwner
@@ -56,7 +55,7 @@ class ClientsFragment : Fragment() {
             setTitle(getString(R.string.clients_nickname_title, MacAddressCompat(arg.mac).toString()))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
-            setNeutralButton(EmojiCompat.get().process(getText(R.string.clients_nickname_set_to_vendor)), listener)
+            setNeutralButton(getText(R.string.clients_nickname_set_to_vendor), listener)
         }
 
         override fun onCreateDialog(savedInstanceState: Bundle?) = super.onCreateDialog(savedInstanceState).apply {
