@@ -98,8 +98,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             listDeferred = deferred
             ifaceLookup = try {
                 NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
-            } catch (e: SocketException) {
-                Timber.d(e)
+            } catch (e: Exception) {
+                if (e is SocketException) Timber.d(e) else Timber.w(e)
                 emptyMap()
             }
 
