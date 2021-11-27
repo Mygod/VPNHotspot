@@ -57,6 +57,9 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                     Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
                         Services.mainHandler)
                 }
+                in 28..30 -> @TargetApi(28) {
+                    Services.connectivity.requestNetwork(networkRequest, networkCallback, Services.mainHandler)
+                }
                 in 26..27 -> @TargetApi(26) {
                     Services.connectivity.registerDefaultNetworkCallback(networkCallback, Services.mainHandler)
                 }
