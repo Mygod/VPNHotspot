@@ -18,7 +18,7 @@ object UnblockCentral {
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    private val init by lazy { UnblockHelper(app) }
+    private val init by lazy { UnblockHelper(app.deviceStorage) }
 
     @RequiresApi(31)
     fun setUserConfiguration(clazz: Class<*>) = init.let {
