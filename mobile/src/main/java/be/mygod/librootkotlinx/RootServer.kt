@@ -404,7 +404,7 @@ class RootServer {
                 mainInitialized.await()
                 CoroutineScope(Dispatchers.Main.immediate + job)
             }
-            val callbackWorker = newSingleThreadContext("callbackWorker")
+            val callbackWorker = Dispatchers.IO.limitedParallelism(1)
             // access to cancellables shall be wrapped in defaultWorker
             val cancellables = LongSparseArray<() -> Unit>()
 

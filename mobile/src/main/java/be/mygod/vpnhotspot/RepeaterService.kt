@@ -241,7 +241,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
-    private val dispatcher = newSingleThreadContext("RepeaterService")
+    private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
@@ -529,7 +529,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         launch {    // force clean to prevent leakage
             cleanLocked()
             cancel()
-            dispatcher.close()
         }
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
         if (Build.VERSION.SDK_INT < 29) unregisterReceiver(deviceListener)

@@ -59,7 +59,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
-    private val dispatcher = newSingleThreadContext("LocalOnlyHotspotService")
+    private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var timeoutMonitor: TetherTimeoutMonitor? = null
@@ -167,10 +167,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         launch {
             routingManager?.stop()
             routingManager = null
-            if (exit) {
-                cancel()
-                dispatcher.close()
-            }
+            if (exit) cancel()
         }
     }
 }

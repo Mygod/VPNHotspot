@@ -55,7 +55,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     /**
      * Writes and critical reads to downstreams should be protected with this context.
      */
-    private val dispatcher = newSingleThreadContext("TetheringService")
+    private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
@@ -144,7 +144,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             cancel()
-            dispatcher.close()
         }
         super.onDestroy()
     }
