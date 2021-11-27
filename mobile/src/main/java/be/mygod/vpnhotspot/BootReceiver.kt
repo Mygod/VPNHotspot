@@ -52,7 +52,7 @@ class BootReceiver : BroadcastReceiver() {
             val config = try {
                 config
             } catch (e: Exception) {
-                Timber.w(e)
+                Timber.i("Boot config corrupted", e)
                 null
             } ?: Config()
             config.work()
