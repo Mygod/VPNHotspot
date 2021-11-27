@@ -64,7 +64,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     channels2G + (15..165).map { ChannelOption(SoftApConfigurationCompat.BAND_5GHZ, it) }
         }
         private val p2pSafeOptions by lazy { genAutoOptions(SoftApConfigurationCompat.BAND_LEGACY) + channels5G }
-        @get:RequiresApi(30)
         private val softApOptions by lazy {
             when (Build.VERSION.SDK_INT) {
                 in 30..Int.MAX_VALUE -> {

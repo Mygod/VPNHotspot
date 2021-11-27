@@ -45,8 +45,9 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
                 } else {
                     val info = WifiApManager.resolvedActivity.activityInfo
                     val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
-                    resources.getInteger(resources.findIdentifier("config_wifiFrameworkSoftApShutDownTimeoutMilliseconds",
-                        "integer", WifiApManager.RESOURCES_PACKAGE, info.packageName))
+                    resources.getInteger(resources.findIdentifier(
+                        "config_wifiFrameworkSoftApShutDownTimeoutMilliseconds", "integer",
+                        WifiApManager.RESOURCES_PACKAGE, info.packageName))
                 }
             } catch (e: RuntimeException) {
                 Timber.w(e)

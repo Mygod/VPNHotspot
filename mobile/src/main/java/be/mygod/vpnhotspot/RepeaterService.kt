@@ -68,7 +68,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         val safeModeConfigurable get() = Build.VERSION.SDK_INT >= 29 && hasP2pValidateName
         val safeMode get() = Build.VERSION.SDK_INT >= 29 &&
                 (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
-        private val mNetworkName by lazy { UnblockCentral.WifiP2pConfig_Builder_mNetworkName }
+        @get:RequiresApi(29)
+        private val mNetworkName by lazy @TargetApi(29) { UnblockCentral.WifiP2pConfig_Builder_mNetworkName }
 
         var networkName: String?
             get() = app.pref.getString(KEY_NETWORK_NAME, null)

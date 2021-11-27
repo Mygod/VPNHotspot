@@ -182,14 +182,14 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             R.id.configuration -> item.subMenu.run {
                 findItem(R.id.configuration_repeater).isNotGone = Services.p2p != null
                 findItem(R.id.configuration_temp_hotspot).isNotGone =
-                        adapter.localOnlyHotspotManager.binder?.configuration != null
+                        Build.VERSION.SDK_INT >= 26 && adapter.localOnlyHotspotManager.binder?.configuration != null
                 true
             }
             R.id.configuration_repeater -> {
                 adapter.repeaterManager.configure()
                 true
             }
-            R.id.configuration_temp_hotspot -> {
+            R.id.configuration_temp_hotspot -> @TargetApi(26) {
                 WifiApDialogFragment().apply {
                     arg(WifiApDialogFragment.Arg(adapter.localOnlyHotspotManager.binder?.configuration ?: return false,
                             readOnly = true))
@@ -239,7 +239,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                 val configuration = ret!!.configuration
                 @Suppress("DEPRECATION")
-                if (Build.VERSION.SDK_INT in 28 until 30 &&
+                if (Build.VERSION.SDK_INT >= 28 && Build.VERSION.SDK_INT < 30 &&
                         configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
                     TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
                 } catch (e: Exception) {

@@ -114,8 +114,8 @@ abstract class IpMonitor {
                 try {
                     RootManager.use { server ->
                         // while we only need to use this server once, we need to also keep the server alive
-                        handleChannel(server.create(ProcessListener(errorMatcher, Routing.IP, "monitor", monitoredObject),
-                            this))
+                        handleChannel(server.create(ProcessListener(errorMatcher,
+                            Routing.IP, "monitor", monitoredObject), this))
                     }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {

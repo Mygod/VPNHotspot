@@ -189,7 +189,7 @@ object TetheringManager {
         Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
     }
     @get:RequiresApi(24)
-    private val startTetheringLegacy by lazy {
+    private val startTetheringLegacy by lazy @TargetApi(24) {
         ConnectivityManager::class.java.getDeclaredMethod("startTethering",
                 Int::class.java, Boolean::class.java, classOnStartTetheringCallback, Handler::class.java)
     }
@@ -206,34 +206,36 @@ object TetheringManager {
         Class.forName("android.net.TetheringManager\$TetheringRequest\$Builder")
     }
     @get:RequiresApi(30)
-    private val newTetheringRequestBuilder by lazy { classTetheringRequestBuilder.getConstructor(Int::class.java) }
+    private val newTetheringRequestBuilder by lazy @TargetApi(30) {
+        classTetheringRequestBuilder.getConstructor(Int::class.java)
+    }
 //    @get:RequiresApi(30)
 //    private val setStaticIpv4Addresses by lazy {
 //        classTetheringRequestBuilder.getDeclaredMethod("setStaticIpv4Addresses",
 //                LinkAddress::class.java, LinkAddress::class.java)
 //    }
     @get:RequiresApi(30)
-    private val setExemptFromEntitlementCheck by lazy {
+    private val setExemptFromEntitlementCheck by lazy @TargetApi(30) {
         classTetheringRequestBuilder.getDeclaredMethod("setExemptFromEntitlementCheck", Boolean::class.java)
     }
     @get:RequiresApi(30)
-    private val setShouldShowEntitlementUi by lazy {
+    private val setShouldShowEntitlementUi by lazy @TargetApi(30) {
         classTetheringRequestBuilder.getDeclaredMethod("setShouldShowEntitlementUi", Boolean::class.java)
     }
     @get:RequiresApi(30)
-    private val build by lazy { classTetheringRequestBuilder.getDeclaredMethod("build") }
+    private val build by lazy @TargetApi(30) { classTetheringRequestBuilder.getDeclaredMethod("build") }
 
     @get:RequiresApi(30)
     private val interfaceStartTetheringCallback by lazy {
         Class.forName("android.net.TetheringManager\$StartTetheringCallback")
     }
     @get:RequiresApi(30)
-    private val startTethering by lazy {
+    private val startTethering by lazy @TargetApi(30) {
         clazz.getDeclaredMethod("startTethering", Class.forName("android.net.TetheringManager\$TetheringRequest"),
                 Executor::class.java, interfaceStartTetheringCallback)
     }
     @get:RequiresApi(30)
-    private val stopTethering by lazy { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
+    private val stopTethering by lazy @TargetApi(30) { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
 
     @Deprecated("Legacy API")
     @RequiresApi(24)
@@ -498,11 +500,11 @@ object TetheringManager {
         Class.forName("android.net.TetheringManager\$TetheringEventCallback")
     }
     @get:RequiresApi(30)
-    private val registerTetheringEventCallback by lazy {
+    private val registerTetheringEventCallback by lazy @TargetApi(30) {
         clazz.getDeclaredMethod("registerTetheringEventCallback", Executor::class.java, interfaceTetheringEventCallback)
     }
     @get:RequiresApi(30)
-    private val unregisterTetheringEventCallback by lazy {
+    private val unregisterTetheringEventCallback by lazy @TargetApi(30) {
         clazz.getDeclaredMethod("unregisterTetheringEventCallback", interfaceTetheringEventCallback)
     }
 
@@ -621,7 +623,7 @@ object TetheringManager {
             "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE", "TETHER_ERROR_MASTER_ERROR",
             "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR", "TETHER_ERROR_ENABLE_NAT_ERROR",
             "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR", "TETHER_ERROR_PROVISION_FAILED",
-            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") { clazz }
+            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") @TargetApi(30) { clazz }
     @RequiresApi(30)
     const val TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION = 14
 

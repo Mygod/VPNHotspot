@@ -94,8 +94,7 @@ data class SoftApConfigurationCompat(
         /**
          * Based on:
          * https://elixir.bootlin.com/linux/v5.12.8/source/net/wireless/util.c#L75
-         * TODO: update for Android 12
-         * https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/ScanResult.java;l=624;drc=f7ccda05642b55700d67a288462bada488fc7f5e
+         * https://cs.android.com/android/platform/superproject/+/master:packages/modules/Wifi/framework/java/android/net/wifi/ScanResult.java;l=789;drc=71d758698c45984d3f8de981bf98e56902480f16
          */
         fun channelToFrequency(band: Int, chan: Int) = when (band) {
             BAND_2GHZ -> when (chan) {
@@ -211,23 +210,23 @@ data class SoftApConfigurationCompat(
         @get:RequiresApi(30)
         private val newBuilder by lazy @TargetApi(30) { classBuilder.getConstructor(SoftApConfiguration::class.java) }
         @get:RequiresApi(30)
-        private val build by lazy { classBuilder.getDeclaredMethod("build") }
+        private val build by lazy @TargetApi(30) { classBuilder.getDeclaredMethod("build") }
         @get:RequiresApi(30)
-        private val setAllowedClientList by lazy {
+        private val setAllowedClientList by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setAllowedClientList", java.util.List::class.java)
         }
         @get:RequiresApi(30)
-        private val setAutoShutdownEnabled by lazy {
+        private val setAutoShutdownEnabled by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setAutoShutdownEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
-        private val setBand by lazy { classBuilder.getDeclaredMethod("setBand", Int::class.java) }
+        private val setBand by lazy @TargetApi(30) { classBuilder.getDeclaredMethod("setBand", Int::class.java) }
         @get:RequiresApi(30)
-        private val setBlockedClientList by lazy {
+        private val setBlockedClientList by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setBlockedClientList", java.util.List::class.java)
         }
         @get:RequiresApi(31)
-        private val setBridgedModeOpportunisticShutdownEnabled by lazy {
+        private val setBridgedModeOpportunisticShutdownEnabled by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setBridgedModeOpportunisticShutdownEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
@@ -235,41 +234,43 @@ data class SoftApConfigurationCompat(
             classBuilder.getDeclaredMethod("setBssid", MacAddress::class.java)
         }
         @get:RequiresApi(30)
-        private val setChannel by lazy {
+        private val setChannel by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setChannel", Int::class.java, Int::class.java)
         }
         @get:RequiresApi(31)
-        private val setChannels by lazy {
+        private val setChannels by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setChannels", SparseIntArray::class.java)
         }
         @get:RequiresApi(30)
-        private val setClientControlByUserEnabled by lazy {
+        private val setClientControlByUserEnabled by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setClientControlByUserEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
-        private val setHiddenSsid by lazy { classBuilder.getDeclaredMethod("setHiddenSsid", Boolean::class.java) }
+        private val setHiddenSsid by lazy @TargetApi(30) {
+            classBuilder.getDeclaredMethod("setHiddenSsid", Boolean::class.java)
+        }
         @get:RequiresApi(31)
-        private val setIeee80211axEnabled by lazy {
+        private val setIeee80211axEnabled by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setIeee80211axEnabled", Boolean::class.java)
         }
         @get:RequiresApi(31)
-        private val setMacRandomizationSetting by lazy {
+        private val setMacRandomizationSetting by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setMacRandomizationSetting", Int::class.java)
         }
         @get:RequiresApi(30)
-        private val setMaxNumberOfClients by lazy {
+        private val setMaxNumberOfClients by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setMaxNumberOfClients", Int::class.java)
         }
         @get:RequiresApi(30)
-        private val setPassphrase by lazy {
+        private val setPassphrase by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setPassphrase", String::class.java, Int::class.java)
         }
         @get:RequiresApi(30)
-        private val setShutdownTimeoutMillis by lazy {
+        private val setShutdownTimeoutMillis by lazy @TargetApi(30) {
             classBuilder.getDeclaredMethod("setShutdownTimeoutMillis", Long::class.java)
         }
         @get:RequiresApi(30)
-        private val setSsid by lazy { classBuilder.getDeclaredMethod("setSsid", String::class.java) }
+        private val setSsid by lazy @TargetApi(30) { classBuilder.getDeclaredMethod("setSsid", String::class.java) }
         @get:RequiresApi(31)
         private val setUserConfiguration by lazy @TargetApi(31) { UnblockCentral.setUserConfiguration(classBuilder) }
 
@@ -350,7 +351,7 @@ data class SoftApConfigurationCompat(
             if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
         } else setChannels(builder, channels)
         @get:RequiresApi(30)
-        private val staticBuilder by lazy { classBuilder.newInstance() }
+        private val staticBuilder by lazy @TargetApi(30) { classBuilder.newInstance() }
         @RequiresApi(30)
         fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
         @RequiresApi(30)

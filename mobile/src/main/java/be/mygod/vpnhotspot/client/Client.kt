@@ -42,10 +42,10 @@ open class Client(val mac: MacAddressCompat, val iface: String) {
          * we hijack the get title process to check if we need to perform MacLookup,
          * as record might not be initialized in other more appropriate places
          */
-        SpannableStringBuilder(if (record.nickname.isEmpty()) {
+        SpannableStringBuilder(record.nickname.ifEmpty {
             if (record.macLookupPending) MacLookup.perform(mac)
             macIface
-        } else record.nickname).apply {
+        }).apply {
             if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }

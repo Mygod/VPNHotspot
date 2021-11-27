@@ -225,9 +225,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                         yield(SoftApCapability.featureLookup(bit, true))
                         features = features and bit.inv()
                     }
-                }.joinToSpanned().let {
-                    if (it.isEmpty()) parent.getText(R.string.tethering_manage_wifi_no_features) else it
-                })
+                }.joinToSpanned().ifEmpty { parent.getText(R.string.tethering_manage_wifi_no_features) })
             if (Build.VERSION.SDK_INT >= 31) {
                 val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
                     val channels = capability.getSupportedChannelList(band)
