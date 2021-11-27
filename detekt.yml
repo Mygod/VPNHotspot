@@ -1,4 +1,4 @@
-# https://github.com/detekt/detekt/blob/v1.17.1/detekt-core/src/main/resources/default-detekt-config.yml
+# https://github.com/detekt/detekt/blob/v1.18.1/detekt-core/src/main/resources/default-detekt-config.yml
 
 comments:
   active: false
@@ -19,6 +19,16 @@ complexity:
     ignoreSingleWhenExpression: false
     ignoreSimpleWhenEntries: false
     ignoreNestingFunctions: false
+    nestingFunctions:
+      - 'also'
+      - 'apply'
+      - 'forEach'
+      - 'isNotNull'
+      - 'ifNull'
+      - 'let'
+      - 'run'
+      - 'use'
+      - 'with'
   LabeledExpression:
     active: false
   LargeClass:
@@ -27,6 +37,7 @@ complexity:
   LongMethod:
     active: true
     threshold: 60
+    ignoreAnnotated: []
   LongParameterList:
     active: true
     functionThreshold: 6
@@ -112,7 +123,11 @@ exceptions:
   active: true
   ExceptionRaisedInUnexpectedLocation:
     active: true
-    methodNames: [toString, hashCode, equals, finalize]
+    methodNames:
+      - 'equals'
+      - 'finalize'
+      - 'hashCode'
+      - 'toString'
   InstanceOfCheckForException:
     active: false
   NotImplementedDeclaration:
@@ -129,10 +144,10 @@ exceptions:
   SwallowedException:
     active: true
     ignoredExceptionTypes:
-      - InterruptedException
-      - NumberFormatException
-      - ParseException
-      - MalformedURLException
+      - 'InterruptedException'
+      - 'MalformedURLException'
+      - 'NumberFormatException'
+      - 'ParseException'
     allowedExceptionNameRegex: '_|(ignore|expected).*'
   ThrowingExceptionFromFinally:
     active: false
@@ -142,9 +157,15 @@ exceptions:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**']
     exceptions:
-      - IllegalArgumentException
-      - IllegalStateException
-      - IOException
+      - 'ArrayIndexOutOfBoundsException'
+      - 'Exception'
+      - 'IllegalArgumentException'
+      - 'IllegalMonitorStateException'
+      - 'IllegalStateException'
+      - 'IndexOutOfBoundsException'
+      - 'NullPointerException'
+      - 'RuntimeException'
+      - 'Throwable'
   ThrowingNewInstanceOfSameException:
     active: true
   TooGenericExceptionCaught:
@@ -152,10 +173,10 @@ exceptions:
   TooGenericExceptionThrown:
     active: true
     exceptionNames:
-      - Error
-      - Exception
-      - Throwable
-      - RuntimeException
+      - 'Error'
+      - 'Exception'
+      - 'RuntimeException'
+      - 'Throwable'
 
 formatting:
   active: true
@@ -280,6 +301,8 @@ formatting:
 
 naming:
   active: true
+  BooleanPropertyNaming:
+    active: false
   ClassNaming:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**']
@@ -311,7 +334,8 @@ naming:
     functionPattern: '([a-z][a-zA-Z0-9]*)|(`.*`)'
     excludeClassPattern: '$^'
     ignoreOverridden: true
-    ignoreAnnotated: ['Composable']
+    ignoreAnnotated:
+      - 'Composable'
   FunctionParameterNaming:
     active: true
     excludes: ['**/test/**', '**/androidTest/**', '**/commonTest/**', '**/jvmTest/**', '**/jsTest/**', '**/iosTest/**']
@@ -376,6 +400,10 @@ performance:
 
 potential-bugs:
   active: true
+  AvoidReferentialEquality:
+    active: true
+    forbiddenTypePatterns:
+      - 'kotlin.String'
   CastToNullableType:
     active: false
   Deprecation:
@@ -399,7 +427,11 @@ potential-bugs:
   IgnoredReturnValue:
     active: true
     restrictToAnnotatedMethods: true
-    returnValueAnnotations: ['*.CheckReturnValue', '*.CheckResult']
+    returnValueAnnotations:
+      - '*.CheckResult'
+      - '*.CheckReturnValue'
+    ignoreReturnValueAnnotations:
+      - '*.CanIgnoreReturnValue'
   ImplicitDefaultLocale:
     active: true
   ImplicitUnitReturnType:
@@ -466,7 +498,10 @@ style:
     includeLineWrapping: false
   ForbiddenComment:
     active: true
-    values: ['TODO:', 'FIXME:', 'STOPSHIP:']
+    values:
+      - 'FIXME:'
+      - 'STOPSHIP:'
+      - 'TODO:'
     allowedPatterns: ''
   ForbiddenImport:
     active: true
@@ -474,11 +509,15 @@ style:
     forbiddenPatterns: ''
   ForbiddenMethodCall:
     active: true
-    methods: ['kotlin.io.println', 'kotlin.io.print']
+    methods:
+      - 'kotlin.io.print'
+      - 'kotlin.io.println'
   ForbiddenPublicDataClass:
     active: true
     excludes: ['**']
-    ignorePackages: ['*.internal', '*.internal.*']
+    ignorePackages:
+      - '*.internal'
+      - '*.internal.*'
   ForbiddenVoid:
     active: true
     ignoreOverridden: true
@@ -487,8 +526,9 @@ style:
     active: true
     ignoreOverridableFunction: true
     ignoreActualFunction: true
-    excludedFunctions: 'describeContents'
-    excludeAnnotatedFunction: ['dagger.Provides']
+    excludedFunctions: ''
+    excludeAnnotatedFunction:
+      - 'dagger.Provides'
   LibraryCodeMustSpecifyReturnType:
     active: true
     excludes: ['**']
@@ -551,6 +591,7 @@ style:
   ThrowsCount:
     active: true
     max: 2
+    excludeGuardClauses: false
   TrailingWhitespace:
     active: true
   UnderscoresInNumericLiterals:

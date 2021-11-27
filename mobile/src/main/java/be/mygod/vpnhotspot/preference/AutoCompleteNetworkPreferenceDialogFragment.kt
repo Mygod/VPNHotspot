@@ -42,7 +42,7 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
         }
     }
 
-    override fun onCreateDialogView(context: Context) = super.onCreateDialogView(context).apply {
+    override fun onCreateDialogView(context: Context) = super.onCreateDialogView(context)!!.apply {
         editText = AlwaysAutoCompleteEditText(context).apply {
             id = android.R.id.edit
             minHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
