@@ -15,10 +15,11 @@ import be.mygod.vpnhotspot.App.Companion.app
 @SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi")
 @Suppress("FunctionName")
 object UnblockCentral {
+    var needInit = true
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    private val init by lazy { UnblockHelper(app.deviceStorage) }
+    private val init by lazy { if (needInit) UnblockHelper(app.deviceStorage) }
 
     @RequiresApi(31)
     fun setUserConfiguration(clazz: Class<*>) = init.let {

@@ -1,11 +1,13 @@
 package be.mygod.vpnhotspot.root
 
 import android.annotation.SuppressLint
+import android.os.Build
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
@@ -31,6 +33,7 @@ object RootManager : RootSession(), Logger {
             })
             Logger.me = RootManager
             Services.init { systemContext }
+            if (Build.VERSION.SDK_INT >= 28) UnblockCentral.needInit = false
             return null
         }
     }
