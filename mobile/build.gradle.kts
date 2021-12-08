@@ -67,7 +67,7 @@ android {
 
 dependencies {
     val lifecycleVersion = "2.4.0"
-    val roomVersion = "2.4.0-beta02"
+    val roomVersion = "2.4.0-rc01"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
     kapt("androidx.room:room-compiler:$roomVersion")
@@ -85,7 +85,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.5.0-beta01")
     implementation("com.google.firebase:firebase-analytics-ktx:20.0.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.2.4")
+    implementation("com.google.firebase:firebase-crashlytics:18.2.5")
     implementation("com.google.zxing:core:3.4.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.1")
