@@ -1,5 +1,5 @@
 plugins {
-    id("com.github.ben-manes.versions") version "0.39.0"
+    id("com.github.ben-manes.versions") version "0.42.0"
 }
 
 buildscript {
@@ -9,8 +9,8 @@ buildscript {
     }
 
     dependencies {
-        classpath(kotlin("gradle-plugin", "1.6.0"))
-        classpath("com.android.tools.build:gradle:7.1.0-beta04")
+        classpath(kotlin("gradle-plugin", "1.6.10"))
+        classpath("com.android.tools.build:gradle:7.1.1")
         classpath("com.google.firebase:firebase-crashlytics-gradle:2.8.1")
         classpath("com.google.android.gms:oss-licenses-plugin:0.10.4")
         classpath("com.google.gms:google-services:4.3.10")
