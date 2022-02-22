@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.Looper
 import android.os.Parcelable
 import android.os.RemoteException
+import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import androidx.collection.LongSparseArray
@@ -236,6 +237,8 @@ class RootServer {
             output.flush()
         } catch (e: IOException) {
             if (e.isEBADF) throw CancellationException().initCause(e) else throw e
+        } catch (e: ErrnoException) {
+            if (e.errno == OsConstants.EPIPE) throw CancellationException().initCause(e) else throw e
         }
         Logger.me.d("Sent #$counter: $command")
         counter++
