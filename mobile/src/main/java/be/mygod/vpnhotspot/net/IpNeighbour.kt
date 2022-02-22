@@ -27,8 +27,8 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
          *   https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
          * Assumptions: IP addr (key) always present and RTM_GETNEIGH is never used
          */
-        private val parser = "^(Deleted )?([^ ]+) dev ([^ ]+) (lladdr ([^ ]*))?.*?( ([INCOMPLET,RAHBSDYF]+))?\$"
-                .toRegex()
+        private val parser = ("^(Deleted )?(?:([^ ]+) )?dev ([^ ]+) (?:lladdr ([^ ]*))?.*?" +
+                "(?: ([INCOMPLET,RAHBSDYF]+))?\$").toRegex()
         /**
          * Fallback format will be used if if_indextoname returns null, which some stupid devices do.
          *
@@ -49,14 +49,15 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
         suspend fun parse(line: String, fullMode: Boolean): List<IpNeighbour> {
             return if (line.isBlank()) emptyList() else try {
                 val match = parser.matchEntire(line)!!
-                val ip = parseNumericAddress(match.groupValues[2])  // by regex, ip is non-empty
-                val devs = substituteDev(match.groupValues[3])      // by regex, dev is non-empty as well
-                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[7]) {
+                if (match.groups[2] == null) return emptyList()
+                val ip = parseNumericAddress(match.groupValues[2])
+                val devs = substituteDev(match.groupValues[3])  // by regex, dev is non-empty
+                val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[5]) {
                     "", "INCOMPLETE" -> State.INCOMPLETE
                     "REACHABLE", "DELAY", "STALE", "PROBE", "PERMANENT" -> State.VALID
                     "FAILED" -> State.FAILED
                     "NOARP" -> return emptyList()   // skip
-                    else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[7]}")
+                    else -> throw IllegalArgumentException("Unknown state encountered: ${match.groupValues[5]}")
                 }
                 var lladdr = MacAddressCompat.ALL_ZEROS_ADDRESS
                 if (!fullMode && state != State.VALID) {
@@ -64,7 +65,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                     return devs.map { IpNeighbour(ip, it, lladdr, State.DELETING) }
                 }
                 if (match.groups[4] != null) try {
-                    lladdr = MacAddressCompat.fromString(match.groupValues[5])
+                    lladdr = MacAddressCompat.fromString(match.groupValues[4])
                 } catch (e: IllegalArgumentException) {
                     if (state != State.INCOMPLETE && state != State.DELETING) {
                         Timber.w(IOException("Failed to find MAC address for $line", e))
