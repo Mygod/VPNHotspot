@@ -1,4 +1,4 @@
-# https://github.com/detekt/detekt/blob/v1.18.1/detekt-core/src/main/resources/default-detekt-config.yml
+# https://github.com/detekt/detekt/blob/v1.19.0/detekt-core/src/main/resources/default-detekt-config.yml
 
 comments:
   active: false
