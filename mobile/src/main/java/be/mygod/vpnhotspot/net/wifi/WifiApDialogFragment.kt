@@ -231,7 +231,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val selection = currentChannels.indexOfFirst { it.band == band && it.channel == channel }
         return if (selection == -1) {
             val msg = "Unable to locate $band, $channel, ${arg.p2pMode && !RepeaterService.safeMode}"
-            if (pasted) Timber.w(msg) else Timber.w(Exception(msg))
+            if (pasted || arg.p2pMode) Timber.w(msg) else Timber.w(Exception(msg))
             0
         } else selection
     }
