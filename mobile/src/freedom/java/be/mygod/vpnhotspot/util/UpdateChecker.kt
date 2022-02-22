@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.flow
 import org.json.JSONArray
 import timber.log.Timber
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
@@ -97,6 +98,8 @@ object UpdateChecker {
                     emit(update)
                 } catch (_: CancellationException) {
                     return@flow
+                } catch (e: IOException) {
+                    Timber.i(e)
                 } catch (e: Exception) {
                     Timber.w(e)
                 } finally {
