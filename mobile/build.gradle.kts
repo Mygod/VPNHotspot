@@ -81,7 +81,7 @@ dependencies {
     implementation("androidx.preference:preference:1.2.0")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("com.android.billingclient:billing-ktx:4.0.0")
+    implementation("com.android.billingclient:billing-ktx:4.1.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.5.0")
     implementation("com.google.firebase:firebase-analytics-ktx:20.1.0")
