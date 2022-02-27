@@ -99,7 +99,7 @@ object UpdateChecker {
                 } catch (_: CancellationException) {
                     return@flow
                 } catch (e: IOException) {
-                    Timber.i(e)
+                    Timber.d(e)
                 } catch (e: Exception) {
                     Timber.w(e)
                 } finally {
