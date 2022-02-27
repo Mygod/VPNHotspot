@@ -25,7 +25,7 @@ abstract class IpMonitor {
     companion object {
         const val KEY = "service.ipMonitor"
         // https://android.googlesource.com/platform/external/iproute2/+/7f7a711/lib/libnetlink.c#493
-        private val errorMatcher = ("(^Cannot bind netlink socket: |^request send failed: |" +
+        private val errorMatcher = ("(?:^Cannot (?:bind netlink socket|send dump request): |^request send failed: |" +
                 "Dump (was interrupted and may be inconsistent.|terminated)$)").toRegex()
         var currentMode: Mode
             get() {
