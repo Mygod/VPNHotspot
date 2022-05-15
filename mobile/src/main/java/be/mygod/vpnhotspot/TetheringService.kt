@@ -155,4 +155,8 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             callbackRegistered = false
         }
     }
+
+    override fun updateNotification() {
+        launch { super.updateNotification() }
+    }
 }

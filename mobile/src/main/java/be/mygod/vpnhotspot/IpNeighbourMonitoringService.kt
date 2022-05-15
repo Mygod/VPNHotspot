@@ -15,7 +15,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
         this.neighbours = neighbours
         updateNotification()
     }
-    protected fun updateNotification() {
+    protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
                     .filter { it.ip is Inet4Address && it.state == IpNeighbour.State.VALID }
