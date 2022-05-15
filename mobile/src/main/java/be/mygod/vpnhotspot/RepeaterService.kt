@@ -408,7 +408,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         val networkName = networkName
         val passphrase = passphrase
         @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
-        if (!safeMode || networkName == null || passphrase == null) {
+        if (!safeMode || networkName.isNullOrEmpty() || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)
         } else @TargetApi(29) {
