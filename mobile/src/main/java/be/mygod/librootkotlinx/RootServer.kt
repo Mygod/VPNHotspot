@@ -86,6 +86,7 @@ class RootServer {
         }
     }
 
+    class LaunchException(cause: Throwable) : RuntimeException("Failed to launch root daemon", cause)
     class UnexpectedExitException : RemoteException("Root process exited unexpectedly")
 
     private lateinit var process: Process
@@ -130,7 +131,7 @@ class RootServer {
             Logger.me.w(line)
         }
     }
-    private fun doInit(context: Context, niceName: String) {
+    private fun doInit(context: Context, niceName: String, shouldRelocate: Boolean = false) {
         try {
             val (reader, writer) = try {
                 process = ProcessBuilder("su").start()
@@ -147,20 +148,25 @@ class RootServer {
             }
             try {
                 val token2 = UUID.randomUUID().toString()
-                val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-                val uuid = context.packageName + '@' + try {
-                    persistence.readText()
-                } catch (_: FileNotFoundException) {
-                    UUID.randomUUID().toString().also { persistence.writeText(it) }
-                }
-                val (script, relocated) = AppProcess.relocateScript(uuid)
-                script.appendLine(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name,
-                    relocated, niceName) + " $token2")
-                writer.writeBytes(script.toString())
+                writer.writeBytes(if (shouldRelocate) {
+                    val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+                    val uuid = context.packageName + '@' + try {
+                        persistence.readText()
+                    } catch (_: FileNotFoundException) {
+                        UUID.randomUUID().toString().also { persistence.writeText(it) }
+                    }
+                    val (script, relocated) = AppProcess.relocateScript(uuid)
+                    script.appendLine(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name,
+                        relocated, niceName) + " $token2")
+                    script.toString()
+                } else {
+                    AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, AppProcess.myExe,
+                        niceName) + " $token2\n"
+                })
                 writer.flush()
                 reader.lookForToken(token2) // wait for ready signal
             } catch (e: Exception) {
-                throw RuntimeException("Failed to launch root daemon", e)
+                throw LaunchException(e)
             }
             output = writer
             require(!active)
@@ -204,7 +210,19 @@ class RootServer {
      * @param niceName Name to call the rooted Java process.
      */
     suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
-        withContext(Dispatchers.IO) { doInit(context, niceName) }
+        withContext(Dispatchers.IO) {
+            try {
+                doInit(context, niceName)
+            } catch (e: LaunchException) {
+                try {
+                    doInit(context, niceName, true)
+                } catch (e2: LaunchException) {
+                    e2.addSuppressed(e)
+                    throw e2
+                }
+                Logger.me.w("Root without relocation has failed", RuntimeException(e))
+            }
+        }
         callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
             val errorReader = async(Dispatchers.IO) {
                 try {
