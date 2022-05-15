@@ -131,40 +131,48 @@ class RootServer {
         }
     }
     private fun doInit(context: Context, niceName: String) {
-        val (reader, writer) = try {
-            process = ProcessBuilder("su").start()
-            val token1 = UUID.randomUUID().toString()
-            val writer = DataOutputStream(process.outputStream.buffered())
-            writer.writeBytes("echo $token1\n")
-            writer.flush()
-            val reader = process.inputStream.bufferedReader()
-            reader.lookForToken(token1)
-            Logger.me.d("Root shell initialized")
-            reader to writer
-        } catch (e: Exception) {
-            throw NoShellException(e)
-        }
         try {
-            val token2 = UUID.randomUUID().toString()
-            val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
-            val uuid = context.packageName + '@' + try {
-                persistence.readText()
-            } catch (_: FileNotFoundException) {
-                UUID.randomUUID().toString().also { persistence.writeText(it) }
+            val (reader, writer) = try {
+                process = ProcessBuilder("su").start()
+                val token1 = UUID.randomUUID().toString()
+                val writer = DataOutputStream(process.outputStream.buffered())
+                writer.writeBytes("echo $token1\n")
+                writer.flush()
+                val reader = process.inputStream.bufferedReader()
+                reader.lookForToken(token1)
+                Logger.me.d("Root shell initialized")
+                reader to writer
+            } catch (e: Exception) {
+                throw NoShellException(e)
             }
-            val (script, relocated) = AppProcess.relocateScript(uuid)
-            script.appendLine(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name, relocated,
-                    niceName) + " $token2")
-            writer.writeBytes(script.toString())
-            writer.flush()
-            reader.lookForToken(token2) // wait for ready signal
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to launch root daemon", e)
+            try {
+                val token2 = UUID.randomUUID().toString()
+                val persistence = File(context.codeCacheDir, ".librootkotlinx-uuid")
+                val uuid = context.packageName + '@' + try {
+                    persistence.readText()
+                } catch (_: FileNotFoundException) {
+                    UUID.randomUUID().toString().also { persistence.writeText(it) }
+                }
+                val (script, relocated) = AppProcess.relocateScript(uuid)
+                script.appendLine(AppProcess.launchString(context.packageCodePath, RootServer::class.java.name,
+                    relocated, niceName) + " $token2")
+                writer.writeBytes(script.toString())
+                writer.flush()
+                reader.lookForToken(token2) // wait for ready signal
+            } catch (e: Exception) {
+                throw RuntimeException("Failed to launch root daemon", e)
+            }
+            output = writer
+            require(!active)
+            active = true
+            Logger.me.d("Root server initialized")
+        } finally {
+            try {
+                readUnexpectedStderr()?.let { Logger.me.e(it) }
+            } catch (e: IOException) {
+                Logger.me.e("Failed to read from stderr", e)    // avoid the real exception being swallowed
+            }
         }
-        output = writer
-        require(!active)
-        active = true
-        Logger.me.d("Root server initialized")
     }
 
     private fun callbackSpin() {
@@ -196,17 +204,7 @@ class RootServer {
      * @param niceName Name to call the rooted Java process.
      */
     suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
-        withContext(Dispatchers.IO) {
-            try {
-                doInit(context, niceName)
-            } finally {
-                try {
-                    readUnexpectedStderr()?.let { Logger.me.e(it) }
-                } catch (e: IOException) {
-                    Logger.me.e("Failed to read from stderr", e)    // avoid the real exception being swallowed
-                }
-            }
-        }
+        withContext(Dispatchers.IO) { doInit(context, niceName) }
         callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
             val errorReader = async(Dispatchers.IO) {
                 try {
