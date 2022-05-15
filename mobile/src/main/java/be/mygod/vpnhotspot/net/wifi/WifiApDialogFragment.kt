@@ -67,12 +67,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         private val softApOptions by lazy {
             when (Build.VERSION.SDK_INT) {
                 in 30..Int.MAX_VALUE -> {
-                    val channels6G = channels5G +
-                            (1..233).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) }
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
-                                channels6G + (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
-                    } else genAutoOptions(SoftApConfigurationCompat.BAND_ANY_30) + channels6G
+                    genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
+                            channels5G +
+                            (1..233).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
+                            (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
                 }
                 in 28 until 30 -> p2pSafeOptions
                 else -> listOf(ChannelOption(SoftApConfigurationCompat.BAND_2GHZ),
