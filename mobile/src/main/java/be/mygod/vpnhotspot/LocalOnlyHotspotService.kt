@@ -83,7 +83,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                             reservation.close()
                         }
                     }
-                    // based on: https://android.googlesource.com/platform/packages/services/Car/+/df5cd06/service/src/com/android/car/CarProjectionService.java#160
+                    // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
                     val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
                     val apState = sticky.wifiApState
                     val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)

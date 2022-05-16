@@ -81,7 +81,12 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 initRoutingLocked(fromMonitor)
             }
             this -> true    // already started
-            else -> error("Double routing detected for $downstream from $caller != ${other.caller}")
+            else -> {
+                val msg = "Double routing detected for $downstream from $caller != ${other.caller}"
+                Timber.w(RuntimeException(msg))
+                SmartSnackbar.make(msg).show()
+                false
+            }
         }
     }
 
