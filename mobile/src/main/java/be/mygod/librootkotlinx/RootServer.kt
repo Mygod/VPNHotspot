@@ -211,7 +211,7 @@ class RootServer {
      */
     suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
         withContext(Dispatchers.IO) {
-            try {
+            if (AppProcess.myExeCanonical.startsWith("/data/")) doInit(context, niceName, true) else try {  // #173
                 doInit(context, niceName)
             } catch (e: LaunchException) {
                 try {
