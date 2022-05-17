@@ -23,8 +23,8 @@ android {
         minSdk = 21
         targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 288
-        versionName = "2.14.0"
+        versionCode = 289
+        versionName = "2.14.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -75,7 +75,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.4.1")    // https://issuetracker.google.com/issues/151603528
     implementation("androidx.browser:browser:1.4.0")
     implementation("androidx.core:core-ktx:1.8.0-rc01")
-    implementation("androidx.fragment:fragment-ktx:1.4.1")
+    implementation("androidx.fragment:fragment-ktx:1.5.0-rc01")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.0")
