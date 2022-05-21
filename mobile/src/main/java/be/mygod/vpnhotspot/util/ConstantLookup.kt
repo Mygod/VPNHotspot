@@ -12,7 +12,7 @@ class ConstantLookup(private val prefix: String, private val lookup29: Array<out
     private val lookup by lazy {
         SparseArrayCompat<String>().apply {
             for (field in clazz().declaredFields) try {
-                if (field.type == Int::class.java && field.name.startsWith(prefix)) put(field.getInt(null), field.name)
+                if (field?.type == Int::class.java && field.name.startsWith(prefix)) put(field.getInt(null), field.name)
             } catch (e: Exception) {
                 Timber.w(e)
             }
