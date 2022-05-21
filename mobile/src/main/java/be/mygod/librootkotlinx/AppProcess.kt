@@ -72,6 +72,13 @@ object AppProcess {
     }
 
     /**
+     * Try to guess whether enabling relocation would work best.
+     * It seems some Android 5-7 devices give random permission denials without relocation.
+     * See also VPNHotspot#173.
+     */
+    val shouldRelocateHeuristics get() = Build.VERSION.SDK_INT < 26 || myExeCanonical.startsWith("/data/")
+
+    /**
      * To workaround Samsung's stupid kernel patch that prevents exec, we need to relocate exe outside of /data.
      * See also: https://github.com/Chainfire/librootjava/issues/19
      *

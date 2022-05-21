@@ -131,7 +131,7 @@ class RootServer {
             Logger.me.w(line)
         }
     }
-    private fun doInit(context: Context, niceName: String, shouldRelocate: Boolean = false) {
+    private fun doInit(context: Context, shouldRelocate: Boolean, niceName: String) {
         try {
             val (reader, writer) = try {
                 process = ProcessBuilder("su").start()
@@ -207,22 +207,12 @@ class RootServer {
      * Initialize a RootServer synchronously, can throw a lot of exceptions.
      *
      * @param context Any [Context] from the app.
+     * @param shouldRelocate Whether app process should be copied first. See also [AppProcess.shouldRelocateHeuristics].
      * @param niceName Name to call the rooted Java process.
      */
-    suspend fun init(context: Context, niceName: String = "${context.packageName}:root") {
-        withContext(Dispatchers.IO) {
-            if (AppProcess.myExeCanonical.startsWith("/data/")) doInit(context, niceName, true) else try {  // #173
-                doInit(context, niceName)
-            } catch (e: LaunchException) {
-                try {
-                    doInit(context, niceName, true)
-                } catch (e2: LaunchException) {
-                    e2.addSuppressed(e)
-                    throw e2
-                }
-                Logger.me.w("Root without relocation has failed", RuntimeException(e))
-            }
-        }
+    suspend fun init(context: Context, shouldRelocate: Boolean = false,
+                     niceName: String = "${context.packageName}:root") {
+        withContext(Dispatchers.IO) { doInit(context, shouldRelocate, niceName) }
         callbackListenerExit = GlobalScope.async(Dispatchers.IO) {
             val errorReader = async(Dispatchers.IO) {
                 try {
