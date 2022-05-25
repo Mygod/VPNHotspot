@@ -18,7 +18,7 @@
     <string name="title_update">更新</string>
 
     <string name="repeater_channel">中繼器 (%1$d MHz，頻道 %2$d)</string>
-    <string name="repeater_wps">WPS（不安全）</string>
+    <string name="repeater_wps">WPS (不安全)</string>
     <string name="repeater_wps_dialog_title">輸入 PIN 碼</string>
     <string name="repeater_wps_dialog_pbc">WPS 按鈕</string>
     <string name="repeater_wps_success_pbc">請在兩分鐘內在需要連線的裝置上，按下 WPS 按鈕以連線到此中繼器</string>
@@ -41,7 +41,7 @@
     <string name="repeater_failure_disconnected">服務不可用，請稍後再試</string>
     <string name="repeater_missing_location_permissions">中繼器需要精確位置存取權</string>
     <string name="repeater_location_off">由於系統限制，關閉定位服務可能會導致問題並增加電池使用量</string>
-    <string name="repeater_location_off_configure">配置</string>
+    <string name="repeater_location_off_configure">設定</string>
 
     <string name="tethering_temp_hotspot">臨時 Wi\u2011Fi 無線基地台</string>
     <string name="tethering_temp_hotspot_location">開啟臨時無線基地台須開啟定位</string>
@@ -90,9 +90,9 @@
     <string name="tethering_manage_wifi_client_blocked">已隱藏 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">複製 MAC</string>
 
-    <string name="connected_state_incomplete">（正在連線）</string>
-    <string name="connected_state_valid">（已連線）</string>
-    <string name="connected_state_failed">（未連線）</string>
+    <string name="connected_state_incomplete">(正在連線)</string>
+    <string name="connected_state_valid">(已連線)</string>
+    <string name="connected_state_failed">(已中斷)</string>
 
     <string name="clients_popup_nickname">暱稱…</string>
     <string name="clients_popup_block">黑名單</string>
@@ -124,7 +124,7 @@
     <string name="settings_service_auto_start">自動啟動服務</string>
     <string name="settings_service_auto_start_summary">裝置重新啟動或應用升級後自動恢復之前執行的服務</string>
     <string name="settings_service_repeater_safe_mode">中繼安全模式</string>
-    <string name="settings_service_repeater_safe_mode_summary">不對系統設定值進行任何修改，但是可能需要較長的 SSID。</string>
+    <string name="settings_service_repeater_safe_mode_summary">不對系統組態做任何變更，但是可能需要較長的 SSID</string>
     <string name="settings_service_repeater_safe_mode_warning">使用短 SSID 可能需要關閉安全模式。</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 開啟</string>
     <string name="settings_service_wifi_lock_none">系統預設</string>
@@ -137,27 +137,27 @@
     <string name="settings_service_ip_monitor_monitor_root">Netlink 監視 (root)</string>
     <string name="settings_service_ip_monitor_poll">輪詢</string>
     <string name="settings_service_ip_monitor_poll_root">輪詢 (root)</string>
-    <string name="settings_service_upstream_monitor">目前上游接口</string>
+    <string name="settings_service_upstream_monitor">目前上游</string>
     <string name="settings_service_upstream_monitor_summary">%1$s；後援：%2$s</string>
     <string name="settings_service_upstream">上游網路介面</string>
     <string name="settings_service_upstream_auto">自動檢測系統 VPN 服務</string>
     <string name="settings_upstream_fallback">後援上游介面</string>
     <string name="settings_upstream_fallback_auto">自動檢測系統預設網路</string>
     <string name="settings_service_clean">清理/重新套用路由規則</string>
-    <string name="settings_service_clean_summary">將修改的設定套用到目前啟用的服務上。也可用於修復偶爾會發生的競態條件。</string>
+    <string name="settings_service_clean_summary">將修改的設定套用到目前啟用的服務上，也可用於修復偶爾會發生的競態條件</string>
     <string name="settings_service_dhcp_workaround">啟用 DHCP 因應措施</string>
-    <string name="settings_service_dhcp_workaround_summary">如果裝置無法取得 IP 位址，嘗試開啟這選項。</string>
+    <string name="settings_service_dhcp_workaround_summary">如果裝置無法取得 IP 位址，嘗試開啟這選項</string>
     <string name="settings_system_tether_offload">網路共用硬體加速</string>
     <string name="settings_system_tether_offload_summary">系統「開發人員選項」的捷徑</string>
     <string name="settings_misc">雜項</string>
     <string name="settings_help">說明</string>
     <string name="settings_misc_logcat">匯出偵錯資訊</string>
-    <string name="settings_misc_logcat_summary">這種非常有用啊 (^O^)／</string>
+    <string name="settings_misc_logcat_summary">如此有用 (^0^)</string>
     <string name="settings_misc_source">專案首頁 @ GitHub</string>
-    <string name="settings_misc_source_summary">閱讀使用說明，star，提交 issues，合作</string>
-    <string name="settings_misc_donate">抖內</string>
+    <string name="settings_misc_source_summary">閱讀手冊、加星號、提交問題並參與</string>
+    <string name="settings_misc_donate">捐助</string>
     <string name="settings_misc_donate_summary">我喜歡錢</string>
-    <string name="settings_misc_donate_more">PayPal，Flattr，等其他方式…</string>
+    <string name="settings_misc_donate_more">PayPal、Flattr 等其他方式…</string>
     <string name="settings_restart_required">重啟應用程式以套用設定值</string>
     <string name="settings_exit_app">離開</string>
 
@@ -209,11 +209,10 @@
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
     <string name="donations__button_close">關閉</string>
     <string name="donations__google_android_market">Google Play 商店</string>
-    <string name="donations__google_android_market_not_supported">不支援應用程式內購。Play 商店是否正確安裝?</string>
-    <string name="donations__google_android_market_donate_button">抖內！</string>
-    <string name="donations__google_android_market_text">抖內多少錢</string>
-    <string name="donations__thanks_dialog">感謝抖內！\n十分感謝您！</string>
-
-    <string name="donations__description">這個程式有用嗎？\n小額的抖內給開發人員用來支持此應用程式的開發</string>
+    <string name="donations__google_android_market_not_supported">不支援應用程式內捐助，Play 商店是否正確安裝？</string>
+    <string name="donations__google_android_market_donate_button">捐助！</string>
+    <string name="donations__google_android_market_text">捐助多少錢</string>
+    <string name="donations__thanks_dialog">感謝捐助！\n十分感謝您！</string>
+    <string name="donations__description">這個應用程式有用嗎？\n小額的捐助給開發人員用來支援此應用程式的開發</string>
     <string name="donations__google_android_market_description">Google 將收取 30% 的費用</string>
 </resources>
