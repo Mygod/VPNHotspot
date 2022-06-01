@@ -31,19 +31,19 @@
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_downstream">
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:key="service.disableIpv6"
             app:icon="@drawable/ic_image_looks_6"
             app:title="@string/settings_service_disable_ipv6"
             app:summary="@string/settings_service_disable_ipv6_summary"
             app:defaultValue="true"/>
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:key="system.enableTetherOffload"
             app:persistent="false"
             app:icon="@drawable/ic_device_battery_charging_full"
             app:title="@string/settings_system_tether_offload"
             app:summary="@string/settings_system_tether_offload_summary"/>
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:key="service.dhcpWorkaround"
             app:icon="@drawable/ic_action_build"
             app:title="@string/settings_service_dhcp_workaround"
@@ -58,12 +58,12 @@
             app:entryValues="@array/settings_service_wifi_lock_values"
             app:title="@string/settings_service_wifi_lock"
             app:useSimpleSummaryProvider="true"/>
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:key="service.autoStart"
             app:icon="@drawable/ic_action_autorenew"
             app:title="@string/settings_service_auto_start"
             app:summary="@string/settings_service_auto_start_summary"/>
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:key="service.repeater.safeMode"
             app:icon="@drawable/ic_alert_warning"
             app:title="@string/settings_service_repeater_safe_mode"

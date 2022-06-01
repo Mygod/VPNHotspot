@@ -54,7 +54,7 @@
                     tools:text="192.168.43.1/24\n01:23:45:ab:cd:ef"/>
             </LinearLayout>
 
-            <Switch
+            <com.google.android.material.materialswitch.MaterialSwitch
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"

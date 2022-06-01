@@ -7,7 +7,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.SwitchPreference
+import androidx.preference.TwoStatePreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetherOffloadManager
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
@@ -46,7 +46,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         addPreferencesFromResource(R.xml.pref_settings)
         SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
         SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
-        findPreference<SwitchPreference>("system.enableTetherOffload")!!.apply {
+        findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
             if (TetherOffloadManager.supported) {
                 isChecked = TetherOffloadManager.enabled
                 setOnPreferenceChangeListener { _, newValue ->
@@ -66,7 +66,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 }
             } else parent!!.removePreference(this)
         }
-        findPreference<SwitchPreference>(BootReceiver.KEY)!!.setOnPreferenceChangeListener { _, value ->
+        findPreference<TwoStatePreference>(BootReceiver.KEY)!!.setOnPreferenceChangeListener { _, value ->
             BootReceiver.onUserSettingUpdated(value as Boolean)
             true
         }

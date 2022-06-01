@@ -97,7 +97,7 @@
                     android:maxLength="63"
                     android:imeOptions="flagForceAscii" />
             </com.google.android.material.textfield.TextInputLayout>
-            <Switch
+            <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/auto_shutdown"
                 style="@style/wifi_item_label"
                 android:layout_width="match_parent"
@@ -192,7 +192,7 @@
                         android:inputType="number"
                         android:maxLength="10" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/client_user_control"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
@@ -261,7 +261,7 @@
                         android:inputType="textNoSuggestions"
                         android:maxLength="17" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/mac_randomization"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
@@ -269,7 +269,7 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_mac_randomization" />
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/hidden_ssid"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
@@ -277,7 +277,7 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_hidden_network" />
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/ieee_80211ax"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
@@ -285,7 +285,7 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_ieee_80211ax" />
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/bridged_mode_opportunistic_shutdown"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
@@ -293,7 +293,7 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
-                <Switch
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/user_config"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
