@@ -21,6 +21,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
+        @android.annotation.SuppressLint("ExpiredTargetSdkVersion")
         targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 291
