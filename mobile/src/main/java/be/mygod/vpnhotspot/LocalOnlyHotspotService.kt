@@ -14,6 +14,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
+import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import kotlinx.parcelize.Parcelize
@@ -65,6 +66,20 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     override val activeIfaces get() = binder.iface.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
+    private var lastState: Triple<Int, String?, Int>? = null
+    private val receiver = broadcastReceiver { _, intent -> updateState(intent) }
+    private var receiverRegistered = false
+    private fun updateState(intent: Intent) {
+        lastState = Triple(intent.wifiApState, intent.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME),
+            intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0))
+    }
+    private fun unregisterStateReceiver() {
+        if (!receiverRegistered) return
+        receiverRegistered = false
+        lastState = null
+        unregisterReceiver(receiver)
+    }
+
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -73,6 +88,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         binder.iface = ""
         updateNotification()    // show invisible foreground notification to avoid being killed
         try {
+            if (!receiverRegistered) {
+                receiverRegistered = true
+                registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
+                    ?.let(this::updateState)
+            }
             Services.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) return onFailed(-2)
@@ -84,14 +104,14 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                         }
                     }
                     // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
-                    val sticky = registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))!!
-                    val apState = sticky.wifiApState
-                    val iface = sticky.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME)
-                    if (apState != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
-                        if (apState == WifiApManager.WIFI_AP_STATE_FAILED) {
+                    val state = lastState
+                    unregisterStateReceiver()
+                    requireNotNull(state) { "Failed to obtain latest AP state" }
+                    val iface = state.second
+                    if (state.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
+                        if (state.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                             SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
-                                WifiApManager.failureReasonLookup(sticky.getIntExtra(
-                                    WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)))).show()
+                                WifiApManager.failureReasonLookup(state.third))).show()
                         }
                         return stopService()
                     }
@@ -167,6 +187,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         launch {
             routingManager?.stop()
             routingManager = null
+            unregisterStateReceiver()
             if (exit) cancel()
         }
     }
