@@ -88,10 +88,12 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         binder.iface = ""
         updateNotification()    // show invisible foreground notification to avoid being killed
         try {
-            if (!receiverRegistered) {
-                receiverRegistered = true
-                registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
-                    ?.let(this::updateState)
+            launch {
+                if (!receiverRegistered) {
+                    receiverRegistered = true
+                    registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
+                        ?.let(this@LocalOnlyHotspotService::updateState)
+                }
             }
             Services.wifi.startLocalOnlyHotspot(object : WifiManager.LocalOnlyHotspotCallback() {
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
@@ -106,7 +108,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                     registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
                         ?.let(this@LocalOnlyHotspotService::updateState)    // attempt to update again
                     val state = lastState
-                    unregisterStateReceiver()
+                    launch { unregisterStateReceiver() }
                     checkNotNull(state) { "Failed to obtain latest AP state" }
                     val iface = state.second
                     if (state.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
