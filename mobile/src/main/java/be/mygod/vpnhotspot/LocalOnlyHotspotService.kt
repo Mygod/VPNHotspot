@@ -106,7 +106,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                     // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
                     val state = lastState
                     unregisterStateReceiver()
-                    requireNotNull(state) { "Failed to obtain latest AP state" }
+                    checkNotNull(state) { "Failed to obtain latest AP state" }
                     val iface = state.second
                     if (state.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
                         if (state.first == WifiApManager.WIFI_AP_STATE_FAILED) {
