@@ -166,7 +166,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         val activity = activity as? MainActivity
         val item = activity?.binding?.toolbar?.menu?.findItem(R.id.monitor) ?: return   // assuming no longer foreground
         item.isNotGone = canMonitor.isNotEmpty()
-        item.subMenu.apply {
+        item.subMenu!!.apply {
             clear()
             for (iface in canMonitor.sorted()) add(iface).setOnMenuItemClickListener {
                 ContextCompat.startForegroundService(activity, Intent(activity, TetheringService::class.java)
@@ -179,7 +179,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     private var apConfigurationRunning = false
     override fun onMenuItemClick(item: MenuItem?): Boolean {
         return when (item?.itemId) {
-            R.id.configuration -> item.subMenu.run {
+            R.id.configuration -> item.subMenu!!.run {
                 findItem(R.id.configuration_repeater).isNotGone = Services.p2p != null
                 findItem(R.id.configuration_temp_hotspot).isNotGone =
                         Build.VERSION.SDK_INT >= 26 && adapter.localOnlyHotspotManager.binder?.configuration != null

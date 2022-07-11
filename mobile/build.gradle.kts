@@ -10,13 +10,13 @@ plugins {
 
 android {
     val javaVersion = JavaVersion.VERSION_11
-    buildToolsVersion = "32.0.0"
+    buildToolsVersion = "33.0.0"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
-    compileSdk = 32
+    compileSdk = 33
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
@@ -57,10 +57,10 @@ android {
         }
         create("google") {
             dimension = "freedom"
-            targetSdk = 32
+            targetSdk = 33
             versionNameSuffix = "-g"
             buildConfigField("boolean", "DONATIONS", "false")
-            buildConfigField("int", "TARGET_SDK", "32")
+            buildConfigField("int", "TARGET_SDK", "33")
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
