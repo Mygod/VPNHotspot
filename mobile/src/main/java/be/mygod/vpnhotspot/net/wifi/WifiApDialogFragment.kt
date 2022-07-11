@@ -170,18 +170,23 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                    if (position != SoftApConfiguration.SECURITY_TYPE_OPEN) {
-                        dialogView.passwordWrapper.isGone = false
-                        if (position == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE) {
-                            dialogView.passwordWrapper.isCounterEnabled = false
-                            dialogView.passwordWrapper.counterMaxLength = 0
-                            dialogView.password.filters = emptyArray()
-                        } else {
-                            dialogView.passwordWrapper.isCounterEnabled = true
-                            dialogView.passwordWrapper.counterMaxLength = 63
-                            dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
+                    when (position) {
+                         SoftApConfiguration.SECURITY_TYPE_OPEN,
+                         SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+                         SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> dialogView.passwordWrapper.isGone = true
+                         else -> {
+                            dialogView.passwordWrapper.isGone = false
+                            if (position == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE) {
+                                dialogView.passwordWrapper.isCounterEnabled = false
+                                dialogView.passwordWrapper.counterMaxLength = 0
+                                dialogView.password.filters = emptyArray()
+                            } else {
+                                dialogView.passwordWrapper.isCounterEnabled = true
+                                dialogView.passwordWrapper.counterMaxLength = 63
+                                dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
+                            }
                         }
-                    } else dialogView.passwordWrapper.isGone = true
+                    }
                     validate()
                 }
             }
@@ -278,7 +283,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else dialogView.security.selectedItemPosition
         // see also: https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#688
         val passwordValid = when (selectedSecurity) {
-            SoftApConfiguration.SECURITY_TYPE_OPEN -> true
+            SoftApConfiguration.SECURITY_TYPE_OPEN, SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+            SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> true
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> {
                 dialogView.password.length() in 8..63
             }

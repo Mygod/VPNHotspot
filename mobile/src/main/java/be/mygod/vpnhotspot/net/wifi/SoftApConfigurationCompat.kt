@@ -87,7 +87,14 @@ data class SoftApConfigurationCompat(
          */
         private const val LEGACY_WPA2_PSK = 4
 
-        val securityTypes = arrayOf("OPEN", "WPA2-PSK", "WPA3-SAE Transition mode", "WPA3-SAE")
+        val securityTypes = arrayOf(
+            "OPEN",
+            "WPA2-PSK",
+            "WPA3-SAE Transition mode",
+            "WPA3-SAE",
+            "WPA3-OWE Transition",
+            "WPA3-OWE",
+        )
 
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
@@ -304,6 +311,7 @@ data class SoftApConfigurationCompat(
                             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
                         }
                         android.net.wifi.WifiConfiguration.KeyMgmt.SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
+                        android.net.wifi.WifiConfiguration.KeyMgmt.OWE -> SoftApConfiguration.SECURITY_TYPE_WPA3_OWE
                         else -> android.net.wifi.WifiConfiguration.KeyMgmt.strings
                                 .getOrElse<String>(selected) { "?" }.let {
                             throw IllegalArgumentException("Unrecognized key management $it ($selected)")
@@ -417,6 +425,8 @@ data class SoftApConfigurationCompat(
                 // CHANGED: not actually converted in framework-wifi
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE,
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> android.net.wifi.WifiConfiguration.KeyMgmt.SAE
+                SoftApConfiguration.SECURITY_TYPE_WPA3_OWE,
+                SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION -> android.net.wifi.WifiConfiguration.KeyMgmt.OWE
                 else -> throw IllegalArgumentException("Convert fail, unsupported security type :$securityType")
             })
             result.allowedAuthAlgorithms.clear()
@@ -463,11 +473,12 @@ data class SoftApConfigurationCompat(
     fun toQrCode() = StringBuilder("WIFI:").apply {
         fun String.sanitize() = qrSanitizer.replace(this) { "\\${it.groupValues[1]}" }
         when (securityType) {
-            SoftApConfiguration.SECURITY_TYPE_OPEN -> { }
-            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> append("T:WPA;")
-            SoftApConfiguration.SECURITY_TYPE_WPA3_SAE, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> {
-                append("T:SAE;")
+            SoftApConfiguration.SECURITY_TYPE_OPEN, SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+            SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> { }
+            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> {
+                append("T:WPA;")
             }
+            SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> append("T:SAE;")
             else -> throw IllegalArgumentException("Unsupported authentication type")
         }
         append("S:")
