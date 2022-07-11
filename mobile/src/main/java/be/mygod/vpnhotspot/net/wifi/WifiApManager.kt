@@ -164,13 +164,19 @@ object WifiApManager {
     /**
      * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29-.
      */
-    val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-        (getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?)?.toCompat()
-                ?: SoftApConfigurationCompat()
-    } else (getSoftApConfiguration(Services.wifi) as SoftApConfiguration).toCompat()
-    fun setConfiguration(value: SoftApConfigurationCompat) = (if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-        setWifiApConfiguration(Services.wifi, value.toWifiConfiguration())
-    } else setSoftApConfiguration(Services.wifi, value.toPlatform())) as Boolean
+    @Deprecated("Use configuration instead", ReplaceWith("configuration"))
+    @Suppress("DEPRECATION")
+    val configurationLegacy get() = getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?
+    /**
+     * Requires NETWORK_SETTINGS permission (or root).
+     */
+    @get:RequiresApi(30)
+    val configuration get() = getSoftApConfiguration(Services.wifi) as SoftApConfiguration
+    @Deprecated("Use SoftApConfiguration instead")
+    @Suppress("DEPRECATION")
+    fun setConfiguration(value: android.net.wifi.WifiConfiguration?) =
+        setWifiApConfiguration(Services.wifi, value) as Boolean
+    fun setConfiguration(value: SoftApConfiguration) = setSoftApConfiguration(Services.wifi, value) as Boolean
 
     @RequiresApi(28)
     interface SoftApCallbackCompat {

@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.root
 
 import android.annotation.TargetApi
 import android.content.ClipData
+import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
@@ -10,7 +11,6 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandChannel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -167,12 +167,28 @@ object WifiApCommands {
     }
 
     @Parcelize
-    class GetConfiguration : RootCommand<SoftApConfigurationCompat> {
+    @Deprecated("Use GetConfiguration instead", ReplaceWith("GetConfiguration"))
+    @Suppress("DEPRECATION")
+    class GetConfigurationLegacy : RootCommand<android.net.wifi.WifiConfiguration?> {
+        override suspend fun execute() = WifiApManager.configurationLegacy
+    }
+    @Parcelize
+    @RequiresApi(30)
+    class GetConfiguration : RootCommand<SoftApConfiguration> {
         override suspend fun execute() = WifiApManager.configuration
     }
 
     @Parcelize
-    data class SetConfiguration(val configuration: SoftApConfigurationCompat) : RootCommand<ParcelableBoolean> {
+    @Deprecated("Use SetConfiguration instead", ReplaceWith("SetConfiguration"))
+    @Suppress("DEPRECATION")
+    data class SetConfigurationLegacy(
+        val configuration: android.net.wifi.WifiConfiguration?,
+    ) : RootCommand<ParcelableBoolean> {
+        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
+    }
+    @Parcelize
+    @RequiresApi(30)
+    data class SetConfiguration(val configuration: SoftApConfiguration) : RootCommand<ParcelableBoolean> {
         override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
     }
 }

@@ -30,6 +30,8 @@ import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.RootManager
@@ -201,11 +203,16 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 apConfigurationRunning = true
                 viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                     try {
-                        WifiApManager.configuration
+                        if (Build.VERSION.SDK_INT < 30) {
+                            WifiApManager.configurationLegacy?.toCompat() ?: SoftApConfigurationCompat()
+                        } else WifiApManager.configuration.toCompat()
                     } catch (e: InvocationTargetException) {
                         if (e.targetException !is SecurityException) Timber.w(e)
                         try {
-                            RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }
+                            if (Build.VERSION.SDK_INT < 30) {
+                                RootManager.use { it.execute(WifiApCommands.GetConfigurationLegacy()) }?.toCompat()
+                                    ?: SoftApConfigurationCompat()
+                            } else RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }.toCompat()
                         } catch (_: CancellationException) {
                             null
                         } catch (eRoot: Exception) {
@@ -239,7 +246,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                 val configuration = ret!!.configuration
                 @Suppress("DEPRECATION")
-                if (Build.VERSION.SDK_INT >= 28 && Build.VERSION.SDK_INT < 30 &&
+                if (Build.VERSION.SDK_INT in 28 until 30 &&
                         configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
                     TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
                 } catch (e: Exception) {
@@ -247,10 +254,18 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                     SmartSnackbar.make(e).show()
                 }
                 val success = try {
-                    WifiApManager.setConfiguration(configuration)
+                    if (Build.VERSION.SDK_INT < 30) {
+                        WifiApManager.setConfiguration(configuration.toWifiConfiguration())
+                    } else WifiApManager.setConfiguration(configuration.toPlatform())
                 } catch (e: InvocationTargetException) {
                     try {
-                        RootManager.use { it.execute(WifiApCommands.SetConfiguration(configuration)) }
+                        if (Build.VERSION.SDK_INT < 30) {
+                            val wc = configuration.toWifiConfiguration()
+                            RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }
+                        } else {
+                            val platform = configuration.toPlatform()
+                            RootManager.use { it.execute(WifiApCommands.SetConfiguration(platform)) }
+                        }
                     } catch (_: CancellationException) {
                     } catch (eRoot: Exception) {
                         eRoot.addSuppressed(e)
