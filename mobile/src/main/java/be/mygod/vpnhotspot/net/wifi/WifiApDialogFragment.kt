@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.DialogInterface
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
@@ -18,9 +19,9 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
 import android.widget.Toast
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.os.persistableBundleOf
 import androidx.core.view.isGone
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
@@ -360,7 +361,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         return when (item?.itemId) {
             android.R.id.copy -> try {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
-                        Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)))
+                        Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)).apply {
+                    description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
+                })
                 true
             } catch (e: RuntimeException) {
                 Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
