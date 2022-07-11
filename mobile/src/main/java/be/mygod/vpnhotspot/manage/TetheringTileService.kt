@@ -153,7 +153,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val labelString get() = R.string.tethering_manage_bluetooth
         override val tetherType get() = TetherType.BLUETOOTH
 
-        override fun start() = tethering!!.start(this)
+        override fun start() = tethering!!.start(this, this)
         override fun stop() {
             tethering!!.stop(this::onException)
             onTetheringStarted()    // force flush state

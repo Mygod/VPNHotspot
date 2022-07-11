@@ -334,7 +334,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 if (tethering.active == null) tethering.activeFailureCause?.readableMessage else null,
                 baseError).joinToString("\n")
 
-        override fun start() = tethering.start(this)
+        override fun start() = tethering.start(this, parent.requireContext())
         override fun stop() {
             tethering.stop(this::onException)
             onTetheringStarted()    // force flush state

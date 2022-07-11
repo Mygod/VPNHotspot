@@ -110,12 +110,13 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
      */
     @SuppressLint("MissingPermission")
     @RequiresApi(24)
-    fun start(callback: TetheringManager.StartTetheringCallback) {
+    fun start(callback: TetheringManager.StartTetheringCallback, context: Context) {
         if (pendingCallback == null) try {
             if (adapter.state == BluetoothAdapter.STATE_OFF) {
                 registerBluetoothStateListener(BluetoothTethering)
                 pendingCallback = callback
-                adapter.enable()
+                @Suppress("DEPRECATION")
+                if (!adapter.enable()) context.startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
             } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
         } catch (e: SecurityException) {
             SmartSnackbar.make(e.readableMessage).shortToast().show()
