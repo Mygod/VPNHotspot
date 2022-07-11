@@ -24,8 +24,8 @@ android {
         @android.annotation.SuppressLint("ExpiredTargetSdkVersion")
         targetSdk = 29
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 291
-        versionName = "2.14.3"
+        versionCode = 292
+        versionName = "2.14.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
