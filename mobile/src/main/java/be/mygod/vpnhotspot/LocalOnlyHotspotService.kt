@@ -70,13 +70,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val receiver = broadcastReceiver { _, intent -> updateState(intent) }
     private var receiverRegistered = false
     private fun updateState(intent: Intent) {
+        // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
         lastState = Triple(intent.wifiApState, intent.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME),
             intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0))
     }
     private fun unregisterStateReceiver() {
         if (!receiverRegistered) return
         receiverRegistered = false
-        lastState = null
         unregisterReceiver(receiver)
     }
 
@@ -103,7 +103,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                             reservation.close()
                         }
                     }
-                    // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
+                    registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
+                        ?.let(this@LocalOnlyHotspotService::updateState)    // attempt to update again
                     val state = lastState
                     unregisterStateReceiver()
                     checkNotNull(state) { "Failed to obtain latest AP state" }
