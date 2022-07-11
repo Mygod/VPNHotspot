@@ -293,9 +293,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else " "
         val timeoutError = dialogView.timeout.text.let { text ->
             if (text.isNullOrEmpty()) null else try {
-                text.toString().toLong()
+                SoftApConfigurationCompat.testPlatformValidity(text.toString().toLong())
                 null
-            } catch (e: NumberFormatException) {
+            } catch (e: Exception) {
                 e.readableMessage
             }
         }

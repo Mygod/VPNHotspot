@@ -364,6 +364,8 @@ data class SoftApConfigurationCompat(
         fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
         @RequiresApi(30)
         fun testPlatformValidity(bssid: MacAddress) = setBssid(staticBuilder, bssid)
+        @RequiresApi(30)
+        fun testPlatformValidity(timeout: Long) = setShutdownTimeoutMillis(staticBuilder, timeout)
     }
 
     @Suppress("DEPRECATION")
