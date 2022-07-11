@@ -9,6 +9,8 @@ plugins {
 }
 
 android {
+    namespace = "be.mygod.vpnhotspot"
+
     val javaVersion = JavaVersion.VERSION_11
     buildToolsVersion = "33.0.0"
     compileOptions {
