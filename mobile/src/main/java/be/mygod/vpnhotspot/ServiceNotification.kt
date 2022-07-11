@@ -64,7 +64,9 @@ object ServiceNotification {
     fun stopForeground(service: Service) = synchronized(this) {
         deviceCountsMap.remove(service) ?: return@synchronized
         val shutdown = deviceCountsMap.isEmpty()
-        service.stopForeground(shutdown)
+        if (Build.VERSION.SDK_INT >= 33) {
+            service.stopForeground(if (shutdown) Service.STOP_FOREGROUND_REMOVE else Service.STOP_FOREGROUND_DETACH)
+        } else @Suppress("DEPRECATION") service.stopForeground(shutdown)
         if (!shutdown) manager.notify(NOTIFICATION_ID, buildNotification(service))
     }
 
