@@ -364,7 +364,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         launch {
             val filter = intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
-            if (Build.VERSION.SDK_INT >= 30) filter.addAction(LocationManager.MODE_CHANGED_ACTION)
+            if (Build.VERSION.SDK_INT in 30 until 33) filter.addAction(LocationManager.MODE_CHANGED_ACTION)
             registerReceiver(receiver, filter)
             receiverRegistered = true
             val group = p2pManager.requestGroupInfo(channel)
@@ -397,7 +397,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             override fun onSuccess() {
                 // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
                 // in order for this to happen, we need to make sure that the callbacks are firing
-                if (Build.VERSION.SDK_INT >= 30) onLocationModeChanged(app.location?.isLocationEnabled == true)
+                if (Build.VERSION.SDK_INT in 30 until 33) onLocationModeChanged(app.location?.isLocationEnabled == true)
             }
         }
         val channel = channel ?: return listener.onFailure(WifiP2pManager.BUSY)

@@ -53,7 +53,7 @@
     <string name="repeater_location_off_configure">Configure</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
-    <string name="tethering_temp_hotspot_location">Temporary hotspot requires location to be turned on.</string>
+    <string name="tethering_location_off">This feature requires location to be turned on.</string>
     <string name="tethering_temp_hotspot_failure">Failed to start hotspot (reason: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">no channel</string>
     <string name="tethering_temp_hotspot_failure_generic">generic error</string>

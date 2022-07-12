@@ -34,7 +34,7 @@
     <string name="repeater_location_off_configure">进入设置</string>
 
     <string name="tethering_temp_hotspot">临时 WLAN 热点</string>
-    <string name="tethering_temp_hotspot_location">使用临时热点需要打开位置服务。</string>
+    <string name="tethering_location_off">使用此功能需要打开位置服务。</string>
     <string name="tethering_temp_hotspot_failure">打开热点失败 (原因：%s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">无频段</string>
     <string name="tethering_temp_hotspot_failure_generic">通用错误</string>

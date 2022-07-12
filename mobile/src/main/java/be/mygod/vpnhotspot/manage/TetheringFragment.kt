@@ -24,6 +24,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.*
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
@@ -136,7 +137,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) requireActivity().startForegroundService(Intent(activity, RepeaterService::class.java)) else {
+        if (granted) app.startServiceWithLocation<RepeaterService>(requireContext()) else {
             Snackbar.make((activity as MainActivity).binding.fragmentHolder,
                 R.string.repeater_missing_location_permissions, Snackbar.LENGTH_LONG).show()
         }

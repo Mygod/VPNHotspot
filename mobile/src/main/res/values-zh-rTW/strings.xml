@@ -44,7 +44,7 @@
     <string name="repeater_location_off_configure">設定</string>
 
     <string name="tethering_temp_hotspot">臨時 Wi\u2011Fi 無線基地台</string>
-    <string name="tethering_temp_hotspot_location">開啟臨時無線基地台須開啟定位</string>
+    <string name="tethering_location_off">開啟須開啟定位</string>
     <string name="tethering_temp_hotspot_failure">啟動無線基地台失敗 (原因：%s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">沒有頻道</string>
     <string name="tethering_temp_hotspot_failure_generic">一般錯誤</string>

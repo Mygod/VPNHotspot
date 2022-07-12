@@ -38,7 +38,7 @@
     <string name="repeater_failure_disconnected">Servizio non disponibile. Riprova dopo</string>
 
     <string name="tethering_temp_hotspot">Hotspot Wi\u2011Fi temporaneo</string>
-    <string name="tethering_temp_hotspot_location">L\'hotspot temporaneo richiede che la localizzazione sia attiva.</string>
+    <string name="tethering_location_off">L\'hotspot temporaneo richiede che la localizzazione sia attiva.</string>
     <string name="tethering_temp_hotspot_failure">Avvio dell\'hotspot fallito (causa: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">nessun canale</string>
     <string name="tethering_temp_hotspot_failure_generic">errore generico</string>

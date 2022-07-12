@@ -2,11 +2,16 @@ package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
@@ -19,6 +24,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.firebase.analytics.ktx.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -102,6 +108,26 @@ class App : Application() {
         builder.block()
         Timber.i(if (builder.bundle.isEmpty) event else "$event, extras: ${builder.bundle}")
         Firebase.analytics.logEvent(event, builder.bundle)
+    }
+
+    /**
+     * LOH also requires location to be turned on. So does p2p for some reason. Source:
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
+     */
+    inline fun <reified T> startServiceWithLocation(context: Context) {
+        if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33 || if (Build.VERSION.SDK_INT >= 28) {
+                location?.isLocationEnabled == true
+            } else @Suppress("DEPRECATION") {
+                Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
+                    Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
+            }) ContextCompat.startForegroundService(context, Intent(context, T::class.java)) else try {
+            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            Toast.makeText(context, R.string.tethering_location_off, Toast.LENGTH_LONG).show()
+        } catch (e: ActivityNotFoundException) {
+            app.logEvent("location_settings") { param("message", e.toString()) }
+            SmartSnackbar.make(R.string.tethering_location_off).show()
+        }
     }
 
     lateinit var deviceStorage: Application
