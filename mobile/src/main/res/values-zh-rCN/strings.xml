@@ -194,6 +194,7 @@
     <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
     <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
+    <string name="wifi_ieee_80211be">启用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">用户提供配置</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 

@@ -50,6 +50,8 @@ data class SoftApConfigurationCompat(
         var isBridgedModeOpportunisticShutdownEnabled: Boolean = true,
         @TargetApi(31)
         var isIeee80211axEnabled: Boolean = true,
+        @TargetApi(33)
+        var isIeee80211beEnabled: Boolean = true,
         @TargetApi(31)
         var isUserConfiguration: Boolean = true,
         var underlying: Parcelable? = null) : Parcelable {
@@ -209,6 +211,10 @@ data class SoftApConfigurationCompat(
         private val isIeee80211axEnabled by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("isIeee80211axEnabled")
         }
+        @get:RequiresApi(33)
+        private val isIeee80211beEnabled by lazy @TargetApi(33) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isIeee80211beEnabled")
+        }
         @get:RequiresApi(31)
         private val isUserConfiguration by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("isUserConfiguration")
@@ -261,6 +267,10 @@ data class SoftApConfigurationCompat(
         @get:RequiresApi(31)
         private val setIeee80211axEnabled by lazy @TargetApi(31) {
             classBuilder.getDeclaredMethod("setIeee80211axEnabled", Boolean::class.java)
+        }
+        @get:RequiresApi(33)
+        private val setIeee80211beEnabled by lazy @TargetApi(33) {
+            classBuilder.getDeclaredMethod("setIeee80211beEnabled", Boolean::class.java)
         }
         @get:RequiresApi(31)
         private val setMacRandomizationSetting by lazy @TargetApi(31) {
@@ -343,6 +353,7 @@ data class SoftApConfigurationCompat(
             if (Build.VERSION.SDK_INT >= 31) getMacRandomizationSetting(this) as Int else RANDOMIZATION_PERSISTENT,
             Build.VERSION.SDK_INT < 31 || isBridgedModeOpportunisticShutdownEnabled(this) as Boolean,
             Build.VERSION.SDK_INT < 31 || isIeee80211axEnabled(this) as Boolean,
+            Build.VERSION.SDK_INT < 33 || isIeee80211beEnabled(this) as Boolean,
             Build.VERSION.SDK_INT < 31 || isUserConfiguration(this) as Boolean,
             this,
         )
@@ -461,6 +472,7 @@ data class SoftApConfigurationCompat(
             setMacRandomizationSetting(builder, macRandomizationSetting)
             setBridgedModeOpportunisticShutdownEnabled(builder, isBridgedModeOpportunisticShutdownEnabled)
             setIeee80211axEnabled(builder, isIeee80211axEnabled)
+            if (Build.VERSION.SDK_INT >= 33) setIeee80211beEnabled(builder, isIeee80211beEnabled)
             if (sac?.let { isUserConfiguration(it) as Boolean } != false != isUserConfiguration) try {
                 setUserConfiguration(builder, isUserConfiguration)
             } catch (e: ReflectiveOperationException) {

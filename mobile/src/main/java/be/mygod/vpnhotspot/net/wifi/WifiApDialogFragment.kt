@@ -148,6 +148,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             setMacRandomizationEnabled(dialogView.macRandomization.isChecked)
             isBridgedModeOpportunisticShutdownEnabled = dialogView.bridgedModeOpportunisticShutdown.isChecked
             isIeee80211axEnabled = dialogView.ieee80211ax.isChecked
+            isIeee80211beEnabled = dialogView.ieee80211be.isChecked
             isUserConfiguration = dialogView.userConfig.isChecked
         }
     }
@@ -225,6 +226,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bridgedModeOpportunisticShutdown.isGone = true
             dialogView.userConfig.isGone = true
         }
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 33) dialogView.ieee80211be.isGone = true
         base = arg.configuration
         populateFromConfiguration()
     }
@@ -263,6 +265,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             base.macRandomizationSetting == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT
         dialogView.bridgedModeOpportunisticShutdown.isChecked = base.isBridgedModeOpportunisticShutdownEnabled
         dialogView.ieee80211ax.isChecked = base.isIeee80211axEnabled
+        dialogView.ieee80211be.isChecked = base.isIeee80211beEnabled
         dialogView.userConfig.isChecked = base.isUserConfiguration
     }
 

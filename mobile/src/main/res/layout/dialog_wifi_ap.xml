@@ -286,6 +286,14 @@
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_ieee_80211ax" />
                 <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/ieee_80211be"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_ieee_80211be" />
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/bridged_mode_opportunistic_shutdown"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"

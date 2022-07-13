@@ -203,6 +203,7 @@
     <string name="wifi_mac_randomization">隨機化 MAC 位址</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">啟用橋接模式隨機關閉</string>
     <string name="wifi_ieee_80211ax">啟用 Wi\u2011Fi 6</string>
+    <string name="wifi_ieee_80211be">啟用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">使用者提供組態</string>
     <string name="wifi_save" msgid="3331121567988522826">儲存</string>
 
