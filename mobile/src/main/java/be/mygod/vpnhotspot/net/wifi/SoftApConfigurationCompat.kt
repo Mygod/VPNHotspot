@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
+import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -95,6 +96,7 @@ data class SoftApConfigurationCompat(
             "WPA3-OWE Transition",
             "WPA3-OWE",
         )
+        val TIMEOUT_DEFAULT = if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33) -1L else 0L
 
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
