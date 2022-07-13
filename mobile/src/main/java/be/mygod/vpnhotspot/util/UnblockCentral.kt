@@ -21,6 +21,9 @@ object UnblockCentral {
      */
     private val init by lazy { if (needInit) UnblockHelper(app.deviceStorage) }
 
+    @RequiresApi(33)
+    fun getCountryCode(clazz: Class<*>) = init.let { clazz.getDeclaredMethod("getCountryCode") }
+
     @RequiresApi(31)
     fun setUserConfiguration(clazz: Class<*>) = init.let {
         clazz.getDeclaredMethod("setUserConfiguration", Boolean::class.java)

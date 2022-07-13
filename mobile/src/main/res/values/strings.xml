@@ -86,6 +86,7 @@
         <item quantity="other">%1d clients connected</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %s</string>
+    <string name="tethering_manage_wifi_country_code">\nDriver country code: %s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP concurrency</string>
