@@ -1,5 +1,7 @@
 package be.mygod.vpnhotspot.net.wifi
 
+import android.annotation.TargetApi
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.util.LongConstantLookup
@@ -17,7 +19,8 @@ value class SoftApCapability(val inner: Parcelable) {
         private val getSupportedChannelList by lazy {
             clazz.getDeclaredMethod("getSupportedChannelList", Int::class.java)
         }
-        @get:RequiresApi(33)
+        @get:RequiresApi(31)
+        @get:TargetApi(33)
         private val getCountryCode by lazy { UnblockCentral.getCountryCode(clazz) }
 
         @RequiresApi(31)
@@ -42,11 +45,11 @@ value class SoftApCapability(val inner: Parcelable) {
         return supportedFeatures
     }
     fun getSupportedChannelList(band: Int) = getSupportedChannelList(inner, band) as IntArray
-    @get:RequiresApi(33)
+    @get:RequiresApi(31)
     val countryCode: String? get() = try {
         getCountryCode(inner) as String?
     } catch (e: ReflectiveOperationException) {
-        Timber.w(e)
+        if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
         null
     }
 }

@@ -257,7 +257,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                 }.filterNotNull()
                 if (list.isNotEmpty()) result.append(parent.getText(R.string.tethering_manage_wifi_supported_channels)
                     .format(locale, list.joinToString("; ")))
-                if (Build.VERSION.SDK_INT >= 33) capability.countryCode?.let {
+                capability.countryCode?.let {
                     result.append(parent.getText(R.string.tethering_manage_wifi_country_code).format(locale, it))
                 }
             }
