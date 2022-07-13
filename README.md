@@ -270,6 +270,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_60GHZ:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_6GHZ:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_*:I,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->DEFAULT_TIMEOUT:J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->RANDOMIZATION_NONE:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->RANDOMIZATION_PERSISTENT:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getAllowedClientList()Ljava/util/List;,sdk,system-api,test-api`

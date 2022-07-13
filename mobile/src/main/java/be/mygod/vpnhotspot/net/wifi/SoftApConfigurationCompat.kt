@@ -96,7 +96,7 @@ data class SoftApConfigurationCompat(
             "WPA3-OWE Transition",
             "WPA3-OWE",
         )
-        val TIMEOUT_DEFAULT = if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33) -1L else 0L
+        val DEFAULT_TIMEOUT = if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33) -1L else 0L
 
         private val qrSanitizer = Regex("([\\\\\":;,])")
 

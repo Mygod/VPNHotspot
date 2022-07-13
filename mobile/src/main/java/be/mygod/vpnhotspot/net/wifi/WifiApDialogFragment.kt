@@ -229,7 +229,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         populateFromConfiguration()
     }
 
-    private val defaultTimeout get() = if (arg.p2pMode) 0L else SoftApConfigurationCompat.TIMEOUT_DEFAULT
+    private val defaultTimeout get() = if (arg.p2pMode) 0L else SoftApConfigurationCompat.DEFAULT_TIMEOUT
 
     private fun locate(i: Int): Int {
         val band = base.channels.keyAt(i)
