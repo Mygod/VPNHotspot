@@ -116,7 +116,7 @@ data class SoftApConfigurationCompat(
             }
             BAND_6GHZ -> when (chan) {
                 2 -> 5935
-                in 1..233 -> 5950 + chan * 5
+                in 1..253 -> 5950 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 6GHz channel $chan")
             }
             BAND_60GHZ -> {

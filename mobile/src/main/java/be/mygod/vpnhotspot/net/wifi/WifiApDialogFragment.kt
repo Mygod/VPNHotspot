@@ -70,7 +70,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 in 30..Int.MAX_VALUE -> {
                     genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
                             channels5G +
-                            (1..233).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
+                            (1..253).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
                             (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
                 }
                 in 28 until 30 -> p2pSafeOptions
