@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import androidx.annotation.RequiresApi
@@ -23,6 +24,11 @@ object UnblockCentral {
 
     @RequiresApi(33)
     fun getCountryCode(clazz: Class<*>) = init.let { clazz.getDeclaredMethod("getCountryCode") }
+
+    @RequiresApi(33)
+    fun setRandomizedMacAddress(clazz: Class<*>) = init.let {
+        clazz.getDeclaredMethod("setRandomizedMacAddress", MacAddress::class.java)
+    }
 
     @RequiresApi(31)
     fun setUserConfiguration(clazz: Class<*>) = init.let {

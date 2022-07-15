@@ -152,7 +152,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [SHA-256 checksum `40674ff4291eb268f86561bf687e69dbd013df9ec9531a460404532a4ac9a761`](https://dl.google.com/developers/android/sc/non-sdk/hiddenapi-flags.csv).
+API restrictions are updated up to [SHA-256 checksum `2886a24b6382be8751e86e3c355516c448987c3b0550eb8bb906a34490cfaa3c`](https://dl.google.com/developers/android/tm/non-sdk/hiddenapi-flags.csv).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
@@ -160,6 +160,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->getCountryCode()Ljava/lang/String;,blocked`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration$Builder;->setUserConfiguration(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getApInstanceIdentifier()Ljava/lang/String;,blocked`
@@ -249,11 +250,13 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;-><init>()V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;-><init>(Landroid/net/wifi/SoftApConfiguration;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->build()Landroid/net/wifi/SoftApConfiguration;,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setAllowedAcsChannels(I[I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setAllowedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setAutoShutdownEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (on API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBand(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBlockedClientList(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBridgedModeOpportunisticShutdownEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBridgedModeOpportunisticShutdownTimeoutMillis(J)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setBssid(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (on API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setChannel(II)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration$Builder;->setChannels(Landroid/util/SparseIntArray;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
@@ -262,10 +265,12 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration$Builder;->setIeee80211axEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setIeee80211beEnabled(Z)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration$Builder;->setMacRandomizationSetting(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setMaxChannelBandwidth(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setMaxNumberOfClients(I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setPassphrase(Ljava/lang/String;I)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setShutdownTimeoutMillis(J)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration$Builder;->setSsid(Ljava/lang/String;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setVendorElements(Ljava/util/List;)Landroid/net/wifi/SoftApConfiguration$Builder;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_2GHZ:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->BAND_5GHZ:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_60GHZ:I,sdk,system-api,test-api`
@@ -273,15 +278,21 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_*:I,sdk,system-api,test-api`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration;->DEFAULT_TIMEOUT:J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->RANDOMIZATION_NONE:I,sdk,system-api,test-api`
+* (since API 31) `Landroid/net/wifi/SoftApConfiguration;->RANDOMIZATION_NON_PERSISTENT:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->RANDOMIZATION_PERSISTENT:I,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->getAllowedAcsChannels(I)[I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getAllowedClientList()Ljava/util/List;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getBand()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getBlockedClientList()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->getBridgedModeOpportunisticShutdownTimeoutMillis()J,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getChannel()I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->getChannels()Landroid/util/SparseIntArray;,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->getMacRandomizationSetting()I,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->getMaxChannelBandwidth()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getMaxNumberOfClients()I,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->getPersistentRandomizedMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->getShutdownTimeoutMillis()J,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApConfiguration;->getVendorElements()Ljava/util/List;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->isAutoShutdownEnabled()Z,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->isBridgedModeOpportunisticShutdownEnabled()Z,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApConfiguration;->isClientControlByUserEnabled()Z,sdk,system-api,test-api`
@@ -289,6 +300,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration;->isIeee80211beEnabled()Z,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->isUserConfiguration()Z,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_*:I,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_AUTO:I,sdk,system-api,test-api`
 * (on API 30) `Landroid/net/wifi/SoftApInfo;->CHANNEL_WIDTH_INVALID:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getAutoShutdownTimeoutMillis()J,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->getBandwidth()I,sdk,system-api,test-api`
@@ -339,6 +351,7 @@ Nonexported system resources:
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wigig_regexs`
 * (since API 30) `@com.android.wifi.resources:bool/config_wifi_p2p_mac_randomization_supported`
+* (since API 31) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond`
 * (since API 30) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownTimeoutMilliseconds`
 
 Other: Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.

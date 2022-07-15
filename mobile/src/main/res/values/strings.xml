@@ -216,7 +216,11 @@
     <string name="wifi_blocked_list">Blocked list of clients</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
     <string name="wifi_mac_randomization">Use randomized MAC</string>
-    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable Bridged mode opportunistic shutdown</string>
+    <string name="wifi_mac_randomization_none">None</string>
+    <string name="wifi_mac_randomization_persistent">Persistent</string>
+    <string name="wifi_mac_randomization_non_persistent">Non-persistent</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable opportunistic shutdown of an instance in bridged AP</string>
+    <string name="wifi_hotspot_timeout_bridged">Inactive timeout for a bridged instance</string>
     <string name="wifi_ieee_80211ax">Enable Wi\u2011Fi 6</string>
     <string name="wifi_ieee_80211be">Enable Wi\u2011Fi 7</string>
     <string name="wifi_user_config">User Supplied Configuration</string>

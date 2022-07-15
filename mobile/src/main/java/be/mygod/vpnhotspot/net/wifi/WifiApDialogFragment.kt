@@ -145,11 +145,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                     .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
             blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
                     .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
-            setMacRandomizationEnabled(dialogView.macRandomization.isChecked)
+            macRandomizationSetting = dialogView.macRandomization.selectedItemPosition
             isBridgedModeOpportunisticShutdownEnabled = dialogView.bridgedModeOpportunisticShutdown.isChecked
             isIeee80211axEnabled = dialogView.ieee80211ax.isChecked
             isIeee80211beEnabled = dialogView.ieee80211be.isChecked
             isUserConfiguration = dialogView.userConfig.isChecked
+            bridgedModeOpportunisticShutdownTimeoutMillis = dialogView.bridgedTimeout.text.let { text ->
+                if (text.isNullOrEmpty()) -1L else text.toString().toLong()
+            }
         }
     }
 
@@ -225,8 +228,15 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.ieee80211ax.isGone = true
             dialogView.bridgedModeOpportunisticShutdown.isGone = true
             dialogView.userConfig.isGone = true
+            dialogView.bridgedTimeoutWrapper.isGone = true
+        } else {
+            dialogView.bridgedTimeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
+                TetherTimeoutMonitor.defaultTimeoutBridged)
         }
-        if (arg.p2pMode || Build.VERSION.SDK_INT < 33) dialogView.ieee80211be.isGone = true
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 33) {
+            dialogView.ieee80211be.isGone = true
+            dialogView.bridgedTimeout.isEnabled = false
+        } else dialogView.bridgedTimeout.addTextChangedListener(this@WifiApDialogFragment)
         base = arg.configuration
         populateFromConfiguration()
     }
@@ -261,12 +271,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.clientUserControl.isChecked = base.isClientControlByUserEnabled
         dialogView.blockedList.setText(base.blockedClientList.joinToString("\n"))
         dialogView.allowedList.setText(base.allowedClientList.joinToString("\n"))
-        dialogView.macRandomization.isChecked =
-            base.macRandomizationSetting == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT
+        dialogView.macRandomization.setSelection(base.macRandomizationSetting)
         dialogView.bridgedModeOpportunisticShutdown.isChecked = base.isBridgedModeOpportunisticShutdownEnabled
         dialogView.ieee80211ax.isChecked = base.isIeee80211axEnabled
         dialogView.ieee80211be.isChecked = base.isIeee80211beEnabled
         dialogView.userConfig.isChecked = base.isUserConfiguration
+        dialogView.bridgedTimeout.setText(base.bridgedModeOpportunisticShutdownTimeoutMillis.let {
+            if (it == -1L) "" else it.toString()
+        })
     }
 
     override fun onStart() {
@@ -298,7 +310,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.passwordWrapper.error = if (passwordValid) null else " "
         val timeoutError = dialogView.timeout.text.let { text ->
             if (text.isNullOrEmpty()) null else try {
-                SoftApConfigurationCompat.testPlatformValidity(text.toString().toLong())
+                SoftApConfigurationCompat.testPlatformTimeoutValidity(text.toString().toLong())
                 null
             } catch (e: Exception) {
                 e.readableMessage
@@ -355,7 +367,17 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.allowedListWrapper.error = allowedListError
             blockedListError == null && allowedListError == null
         } else true
-        val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError
+        val bridgedTimeoutError = dialogView.bridgedTimeout.text.let { text ->
+            if (text.isNullOrEmpty()) null else try {
+                SoftApConfigurationCompat.testPlatformBridgedTimeoutValidity(text.toString().toLong())
+                null
+            } catch (e: Exception) {
+                e.readableMessage
+            }
+        }
+        dialogView.bridgedTimeoutWrapper.error = bridgedTimeoutError
+        val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError &&
+                bridgedTimeoutError == null
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
                 ssidLengthOk && passwordValid && bandError == null && canCopy
         dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy

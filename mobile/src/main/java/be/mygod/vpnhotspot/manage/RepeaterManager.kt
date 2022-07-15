@@ -191,25 +191,31 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val passphrase = RepeaterService.passphrase
             if (networkName != null && passphrase != null) {
                 return SoftApConfigurationCompat(
-                        ssid = networkName,
-                        passphrase = passphrase,
-                        securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
-                        isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
-                        shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).apply {
+                    ssid = networkName,
+                    passphrase = passphrase,
+                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                    isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
+                    shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
+                    macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
+                        SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
+                    } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                ).apply {
                     bssid = RepeaterService.deviceAddress
                     setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
-                    setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 } to false
             }
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat(
-                    ssid = group.networkName,
-                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
-                    isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
-                    shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis).run {
+                ssid = group.networkName,
+                securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
+                shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
+                macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
+                    SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
+                } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
+            ).run {
                 setChannel(RepeaterService.operatingChannel)
-                setMacRandomizationEnabled(WifiApManager.p2pMacRandomizationSupported)
                 try {
                     val config = P2pSupplicantConfiguration(group)
                     config.init(binder.obtainDeviceAddress()?.toString())

@@ -11,7 +11,6 @@ import android.os.Handler
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.*
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
@@ -289,8 +288,8 @@ object WifiApManager {
                         if (Build.VERSION.SDK_INT >= 31) return null    // ignore old version calls
                         val arg = args!![0]
                         val info = SoftApInfo(arg as Parcelable)
-                        callback.onInfoChanged( // check for legacy empty info with CHANNEL_WIDTH_INVALID
-                            if (info.frequency == 0 && info.bandwidth == 0) emptyList() else listOf(arg))
+                        callback.onInfoChanged(if (info.frequency == 0 && info.bandwidth ==
+                            SoftApConfigurationCompat.CHANNEL_WIDTH_INVALID) emptyList() else listOf(arg))
                     }
                     Build.VERSION.SDK_INT >= 30 && method.matches("onCapabilityChanged", SoftApCapability.clazz) -> {
                         callback.onCapabilityChanged(args!![0] as Parcelable)

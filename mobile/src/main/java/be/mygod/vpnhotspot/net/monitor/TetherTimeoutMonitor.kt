@@ -58,6 +58,17 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
                 MIN_SOFT_AP_TIMEOUT_DELAY_MS
             } else delay
         }
+        @get:RequiresApi(31)
+        val defaultTimeoutBridged: Int get() = try {
+            val info = WifiApManager.resolvedActivity.activityInfo
+            val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
+            resources.getInteger(resources.findIdentifier(
+                "config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond", "integer",
+                WifiApManager.RESOURCES_PACKAGE, info.packageName))
+        } catch (e: RuntimeException) {
+            Timber.w(e)
+            MIN_SOFT_AP_TIMEOUT_DELAY_MS
+        }
     }
 
     private var noClient = true

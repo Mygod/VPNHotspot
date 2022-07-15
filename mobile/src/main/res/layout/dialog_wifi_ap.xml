@@ -261,14 +261,19 @@
                         android:inputType="textNoSuggestions"
                         android:maxLength="17" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/mac_randomization"
-                    style="@style/wifi_item_label"
+                <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:minHeight="@dimen/touch_target_min"
+                    style="@style/wifi_item_label"
                     android:text="@string/wifi_mac_randomization" />
+                <Spinner
+                    android:id="@+id/mac_randomization"
+                    style="@style/wifi_item_content"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:entries="@array/wifi_mac_randomization"
+                    android:prompt="@string/wifi_mac_randomization" />
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/hidden_ssid"
                     style="@style/wifi_item_label"
@@ -301,6 +306,24 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_bridged_mode_opportunistic_shutdown" />
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/bridged_timeout_wrapper"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:hint="@string/wifi_hotspot_timeout_bridged"
+                    app:counterEnabled="true"
+                    app:counterMaxLength="19"
+                    app:errorEnabled="true"
+                    app:suffixText="ms">
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/bridged_timeout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_edit_content"
+                        android:inputType="number"
+                        android:maxLength="19" />
+                </com.google.android.material.textfield.TextInputLayout>
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/user_config"
                     style="@style/wifi_item_label"
