@@ -183,19 +183,28 @@
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G" msgid="8724267386885036210">"%s GHz 频段"</string>
+    <string name="wifi_hotspot_acs_channel_2g">2.4 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_acs_channel_5g">5 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_acs_channel_6g">6 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_max_channel_bandwidth">最大频宽</string>
     <string name="wifi_hotspot_access_control_title">访问控制</string>
     <string name="wifi_hotspot_ap_advanced_title">高级接入点设置</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
+    <string name="wifi_advanced_mac_address_persistent_randomized">持久性随机 MAC 地址</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
     <string name="wifi_max_clients">允许连接设备数上限</string>
     <string name="wifi_client_user_control">过滤可以连接的设备</string>
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
     <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
+    <string name="wifi_mac_randomization_none">无</string>
+    <string name="wifi_mac_randomization_persistent">持久化</string>
+    <string name="wifi_mac_randomization_non_persistent">不持久化</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
     <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
     <string name="wifi_ieee_80211be">启用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">用户提供配置</string>
+    <string name="wifi_vendor_elements">供应商特定元素</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->

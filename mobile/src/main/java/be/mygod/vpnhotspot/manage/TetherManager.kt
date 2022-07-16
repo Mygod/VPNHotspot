@@ -229,30 +229,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             if (Build.VERSION.SDK_INT >= 31) {
                 val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
                     val channels = capability.getSupportedChannelList(band)
-                    if (channels.isNotEmpty()) StringBuilder().apply {
-                        append(SoftApConfigurationCompat.bandLookup(band, true))
-                        append(" (")
-                        channels.sort()
-                        var pending: Int? = null
-                        var last = channels[0]
-                        append(last)
-                        for (channel in channels.asSequence().drop(1)) {
-                            if (channel == last + 1) pending = channel else {
-                                pending?.let {
-                                    append('-')
-                                    append(it)
-                                    pending = null
-                                }
-                                append(',')
-                                append(channel)
-                            }
-                            last = channel
-                        }
-                        pending?.let {
-                            append('-')
-                            append(it)
-                        }
-                        append(')')
+                    if (channels.isNotEmpty()) {
+                        "${SoftApConfigurationCompat.bandLookup(band, true)} (${RangeInput.toString(channels)})"
                     } else null
                 }.filterNotNull()
                 if (list.isNotEmpty()) result.append(parent.getText(R.string.tethering_manage_wifi_supported_channels)

@@ -9,7 +9,7 @@ import timber.log.Timber
 
 class ConstantLookup(private val prefix: String, private val lookup29: Array<out String?>,
                      private val clazz: () -> Class<*>) {
-    private val lookup by lazy {
+    val lookup by lazy {
         SparseArrayCompat<String>().apply {
             for (field in clazz().declaredFields) try {
                 if (field?.type == Int::class.java && field.name.startsWith(prefix)) put(field.getInt(null), field.name)

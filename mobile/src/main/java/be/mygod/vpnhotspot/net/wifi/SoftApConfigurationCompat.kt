@@ -455,6 +455,13 @@ data class SoftApConfigurationCompat(
         fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
         @RequiresApi(30)
         fun testPlatformValidity(bssid: MacAddress) = setBssid(staticBuilder, bssid)
+        @RequiresApi(33)
+        fun testPlatformValidity(vendorElements: List<ScanResult.InformationElement>) =
+            setVendorElements(staticBuilder, vendorElements)
+        @RequiresApi(33)
+        fun testPlatformValidity(band: Int, channels: IntArray) = setAllowedAcsChannels(staticBuilder, band, channels)
+        @RequiresApi(33)
+        fun testPlatformValidity(bandwidth: Int) = setMaxChannelBandwidth(staticBuilder, bandwidth)
         @RequiresApi(30)
         fun testPlatformTimeoutValidity(timeout: Long) = setShutdownTimeoutMillis(staticBuilder, timeout)
         @RequiresApi(33)

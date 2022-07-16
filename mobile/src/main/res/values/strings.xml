@@ -207,9 +207,14 @@
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G">%s GHz Band</string>
+    <string name="wifi_hotspot_acs_channel_2g">Allowed 2.4 GHz ACS channels</string>
+    <string name="wifi_hotspot_acs_channel_5g">Allowed 5 GHz ACS channels</string>
+    <string name="wifi_hotspot_acs_channel_6g">Allowed 6 GHz ACS channels</string>
+    <string name="wifi_hotspot_max_channel_bandwidth">Maximum channel bandwidth</string>
     <string name="wifi_hotspot_access_control_title">Access Control</string>
     <string name="wifi_hotspot_ap_advanced_title">Advanced AP Options</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
+    <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
     <string name="wifi_client_user_control">Control which client can use hotspot</string>
@@ -223,7 +228,8 @@
     <string name="wifi_hotspot_timeout_bridged">Inactive timeout for a bridged instance</string>
     <string name="wifi_ieee_80211ax">Enable Wi\u2011Fi 6</string>
     <string name="wifi_ieee_80211be">Enable Wi\u2011Fi 7</string>
-    <string name="wifi_user_config">User Supplied Configuration</string>
+    <string name="wifi_user_config">User supplied configuration</string>
+    <string name="wifi_vendor_elements">Vendor elements</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
