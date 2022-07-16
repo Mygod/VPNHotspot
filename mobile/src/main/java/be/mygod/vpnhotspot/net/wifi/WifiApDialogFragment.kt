@@ -5,7 +5,6 @@ import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.DialogInterface
-import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
@@ -143,13 +142,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         (dialogView.bandPrimary.selectedItem as ChannelOption).apply { put(band, channel) }
     }
-    private fun generateVendorElements() = (dialogView.vendorElements.text ?: "").split("\n").map { line ->
-        if (line.isBlank()) return@map null
-        require(line.length % 2 == 0) { "Input should be hex: $line" }
-        (0 until line.length / 2).map {
-            Integer.parseInt(line.substring(it * 2, it * 2 + 2), 16).toByte()
-        }.toByteArray()
-    }.filterNotNull().map { ScanResult.InformationElement(221, 0, it) }
     private fun generateConfig(full: Boolean = true) = base.copy(
             ssid = dialogView.ssid.text.toString(),
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
@@ -182,12 +174,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             bridgedModeOpportunisticShutdownTimeoutMillis = dialogView.bridgedTimeout.text.let { text ->
                 if (text.isNullOrEmpty()) -1L else text.toString().toLong()
             }
-            vendorElements = generateVendorElements()
+            vendorElements = VendorElements.deserialize(dialogView.vendorElements.text)
             persistentRandomizedMacAddress = if (dialogView.persistentRandomizedMac.length() != 0) {
                 MacAddressCompat.fromString(dialogView.persistentRandomizedMac.text.toString()).toPlatform()
             } else null
             allowedAcsChannels = acsList.associate { (band, text, _) -> band to RangeInput.fromString(text.text) }
-            maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
+            if (!arg.p2pMode && Build.VERSION.SDK_INT >= 33) {
+                maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
+            }
         }
     }
 
@@ -332,16 +326,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bridgedTimeout.setText(base.bridgedModeOpportunisticShutdownTimeoutMillis.let {
             if (it == -1L) "" else it.toString()
         })
-        dialogView.vendorElements.setText(base.vendorElements.joinToString("\n") { element ->
-            element.bytes.let { buffer ->
-                StringBuilder().apply {
-                    while (buffer.hasRemaining()) append("%02x".format(buffer.get()))
-                }.toString()
-            }.also {
-                if (element.id != 221 || element.idExt != 0 || it.isEmpty()) Timber.w(Exception(
-                    "Unexpected InformationElement ${element.id}, ${element.idExt}, $it"))
-            }
-        })
+        dialogView.vendorElements.setText(VendorElements.serialize(base.vendorElements))
         dialogView.persistentRandomizedMac.setText(base.persistentRandomizedMacAddress?.toString())
         for ((band, text, _) in acsList) text.setText(RangeInput.toString(base.allowedAcsChannels[band]))
         if (Build.VERSION.SDK_INT >= 33) bandWidthOptions.binarySearch(BandWidth(base.maxChannelBandwidth)).let {
@@ -448,7 +433,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bridgedTimeoutWrapper.error = bridgedTimeoutError
         val vendorElementsError = if (Build.VERSION.SDK_INT >= 33) {
             try {
-                generateVendorElements().also {
+                VendorElements.deserialize(dialogView.vendorElements.text).also {
                     if (!arg.p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
                 }
                 null

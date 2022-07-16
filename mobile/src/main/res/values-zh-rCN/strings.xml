@@ -23,6 +23,7 @@
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_old_group_failure">关闭 P2P 群组失败（原因：%s）</string>
     <string name="repeater_set_oc_failure">设置运行频段失败（原因：%s）</string>
+    <string name="repeater_set_vendor_elements_failure">设置供应商特定元素失败（原因：%s）</string>
 
     <string name="repeater_failure_reason_error">内部异常</string>
     <string name="repeater_failure_reason_p2p_unsupported">设备不支持 Wi\u2011Fi 直连</string>

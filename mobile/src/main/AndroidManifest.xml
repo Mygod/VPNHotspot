@@ -36,6 +36,8 @@
                      tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MANAGE_USB"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+                     android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG"
                      tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.READ_WIFI_CREDENTIAL"

@@ -199,6 +199,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
                         SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
                     } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                    vendorElements = RepeaterService.vendorElements,
                 ).apply {
                     bssid = RepeaterService.deviceAddress
                     setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
@@ -214,6 +215,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
                     SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
                 } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                vendorElements = RepeaterService.vendorElements,
             ).run {
                 setChannel(RepeaterService.operatingChannel)
                 try {
@@ -258,5 +260,6 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         RepeaterService.operatingChannel = channel
         RepeaterService.isAutoShutdownEnabled = config.isAutoShutdownEnabled
         RepeaterService.shutdownTimeoutMillis = config.shutdownTimeoutMillis
+        RepeaterService.vendorElements = config.vendorElements
     }
 }

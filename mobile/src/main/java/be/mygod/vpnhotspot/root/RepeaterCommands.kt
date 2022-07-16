@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root
 
+import android.net.wifi.ScanResult
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
 import android.os.Parcelable
@@ -11,6 +12,7 @@ import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.parcelize.Parcelize
@@ -52,6 +54,14 @@ object RepeaterCommands {
     data class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
             setWifiP2pChannels(obtainChannel(), 0, oc)?.let { ParcelableInt(it) }
+        }
+    }
+
+    @Parcelize
+    @RequiresApi(33)
+    data class SetVendorElements(private val ve: List<ScanResult.InformationElement>) : RootCommand<ParcelableInt?> {
+        override suspend fun execute() = Services.p2p!!.run {
+            setVendorElements(obtainChannel(), ve)?.let { ParcelableInt(it) }
         }
     }
 

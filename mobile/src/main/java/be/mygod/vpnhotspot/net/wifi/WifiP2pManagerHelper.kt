@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
+import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
@@ -8,6 +9,7 @@ import android.net.wifi.p2p.WifiP2pManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.callSuper
 import be.mygod.vpnhotspot.util.matchesCompat
 import kotlinx.coroutines.CompletableDeferred
@@ -51,6 +53,14 @@ object WifiP2pManagerHelper {
             app.logEvent("NoSuchMethod_setWifiP2pChannels")
             return UNSUPPORTED
         }
+        return result.future.await()
+    }
+
+    @RequiresApi(33)
+    suspend fun WifiP2pManager.setVendorElements(c: WifiP2pManager.Channel,
+                                                 ve: List<ScanResult.InformationElement>): Int? {
+        val result = ResultListener()
+        setVendorElements(c, ve, result)
         return result.future.await()
     }
 

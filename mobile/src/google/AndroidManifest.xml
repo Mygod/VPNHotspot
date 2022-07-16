@@ -3,8 +3,6 @@
     <!-- Required since API 31, when targeting API 31 -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <!-- Required since API 33, when targeting API 33 -->
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-        android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="32"/>
