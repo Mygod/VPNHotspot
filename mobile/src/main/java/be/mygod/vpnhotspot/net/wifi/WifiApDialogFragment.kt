@@ -187,7 +187,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 MacAddressCompat.fromString(dialogView.persistentRandomizedMac.text.toString()).toPlatform()
             } else null
             allowedAcsChannels = acsList.associate { (band, text, _) -> band to RangeInput.fromString(text.text) }
-            maxChannelBandwidth = dialogView.maxChannelBandwidth.selectedItemId.toInt()
+            maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
         }
     }
 
@@ -258,7 +258,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
-        else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomization.isGone = true
+        else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomizationWrapper.isGone = true
         if (arg.p2pMode || Build.VERSION.SDK_INT < 31) {
             dialogView.ieee80211ax.isGone = true
             dialogView.bridgedModeOpportunisticShutdown.isGone = true
@@ -275,7 +275,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bridgedTimeout.isEnabled = false
             dialogView.persistentRandomizedMacWrapper.isGone = true
             for ((_, _, wrapper) in acsList) wrapper.isGone = true
-            dialogView.maxChannelBandwidth.isGone = true
+            dialogView.maxChannelBandwidthWrapper.isGone = true
         } else {
             dialogView.maxChannelBandwidth.adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
                 bandWidthOptions).apply {

@@ -233,28 +233,35 @@
                         android:imeOptions="flagForceAscii"
                         android:inputType="textNoSuggestions" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_label"
-                    android:text="@string/wifi_hotspot_max_channel_bandwidth" />
-                <Spinner
-                    android:id="@+id/max_channel_bandwidth"
-                    style="@style/wifi_item_content"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:prompt="@string/wifi_hotspot_max_channel_bandwidth" />
-                <TextView
-                    android:id="@+id/max_channel_bandwidth_error"
+                <LinearLayout
+                    android:id="@+id/max_channel_bandwidth_wrapper"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dip"
-                    android:paddingStart="8dp"
-                    android:textAppearance="@style/TextAppearance.Design.Error"
-                    android:visibility="gone"
-                    tools:text="error text placeholder"
-                    tools:visibility="visible"/>
+                    android:orientation="vertical">
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        style="@style/wifi_item_label"
+                        android:text="@string/wifi_hotspot_max_channel_bandwidth" />
+                    <Spinner
+                        android:id="@+id/max_channel_bandwidth"
+                        style="@style/wifi_item_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:prompt="@string/wifi_hotspot_max_channel_bandwidth" />
+                    <TextView
+                        android:id="@+id/max_channel_bandwidth_error"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dip"
+                        android:paddingStart="8dp"
+                        android:textAppearance="@style/TextAppearance.Design.Error"
+                        android:visibility="gone"
+                        tools:text="error text placeholder"
+                        tools:visibility="visible"/>
+                </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
@@ -360,37 +367,44 @@
                         android:inputType="textNoSuggestions"
                         android:maxLength="17" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    style="@style/wifi_item_label"
-                    android:text="@string/wifi_mac_randomization" />
-                <Spinner
-                    android:id="@+id/mac_randomization"
-                    style="@style/wifi_item_content"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:entries="@array/wifi_mac_randomization"
-                    android:prompt="@string/wifi_mac_randomization" />
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/persistent_randomized_mac_wrapper"
+                <LinearLayout
+                    android:id="@+id/mac_randomization_wrapper"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dip"
-                    app:counterEnabled="true"
-                    app:counterMaxLength="17"
-                    app:errorEnabled="true"
-                    android:hint="@string/wifi_advanced_mac_address_persistent_randomized">
-                    <com.google.android.material.textfield.TextInputEditText
-                        android:id="@+id/persistent_randomized_mac"
+                    android:orientation="vertical">
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        style="@style/wifi_item_edit_content"
-                        android:imeOptions="flagForceAscii"
-                        android:inputType="textNoSuggestions"
-                        android:maxLength="17" />
-                </com.google.android.material.textfield.TextInputLayout>
+                        style="@style/wifi_item_label"
+                        android:text="@string/wifi_mac_randomization" />
+                    <Spinner
+                        android:id="@+id/mac_randomization"
+                        style="@style/wifi_item_content"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:minHeight="@dimen/touch_target_min"
+                        android:entries="@array/wifi_mac_randomization"
+                        android:prompt="@string/wifi_mac_randomization" />
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/persistent_randomized_mac_wrapper"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dip"
+                        app:counterEnabled="true"
+                        app:counterMaxLength="17"
+                        app:errorEnabled="true"
+                        android:hint="@string/wifi_advanced_mac_address_persistent_randomized">
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/persistent_randomized_mac"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            style="@style/wifi_item_edit_content"
+                            android:imeOptions="flagForceAscii"
+                            android:inputType="textNoSuggestions"
+                            android:maxLength="17" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
                 <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/hidden_ssid"
                     style="@style/wifi_item_label"

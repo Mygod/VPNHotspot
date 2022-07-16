@@ -30,7 +30,9 @@ object RangeInput {
         if (input == null) return@apply
         for (unit in input.split(',')) {
             if (unit.isBlank()) continue
-            val blocks = unit.split('-', limit = 2).map { it.trim().toInt() }
+            val blocks = unit.split('-', limit = 2).map { i ->
+                i.trim { it == '\u200b' || it.isWhitespace() }.toInt()
+            }
             require(blocks[0] in min..max) { "Out of range: ${blocks[0]}" }
             if (blocks.size == 2) {
                 require(blocks[1] in min..max) { "Out of range: ${blocks[1]}" }
