@@ -429,14 +429,6 @@
                     android:layout_marginTop="8dip"
                     android:minHeight="@dimen/touch_target_min"
                     android:text="@string/wifi_ieee_80211be" />
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/user_config"
-                    style="@style/wifi_item_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:text="@string/wifi_user_config" />
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/vendor_elements_wrapper"
                     android:layout_width="match_parent"
@@ -452,6 +444,15 @@
                         android:imeOptions="flagForceAscii"
                         android:inputType="textMultiLine|textNoSuggestions" />
                 </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/user_config"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:enabled="false"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_user_config" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

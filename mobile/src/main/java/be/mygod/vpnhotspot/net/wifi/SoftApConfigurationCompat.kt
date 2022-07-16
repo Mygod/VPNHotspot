@@ -348,8 +348,6 @@ data class SoftApConfigurationCompat(
         }
         @get:RequiresApi(30)
         private val setSsid by lazy @TargetApi(30) { classBuilder.getDeclaredMethod("setSsid", String::class.java) }
-        @get:RequiresApi(31)
-        private val setUserConfiguration by lazy @TargetApi(31) { UnblockCentral.setUserConfiguration(classBuilder) }
         @get:RequiresApi(33)
         private val setVendorElements by lazy @TargetApi(33) {
             classBuilder.getDeclaredMethod("setVendorElements", java.util.List::class.java)
@@ -556,13 +554,8 @@ data class SoftApConfigurationCompat(
             setMacRandomizationSetting(builder, macRandomizationSetting)
             setBridgedModeOpportunisticShutdownEnabled(builder, isBridgedModeOpportunisticShutdownEnabled)
             setIeee80211axEnabled(builder, isIeee80211axEnabled)
-            if (Build.VERSION.SDK_INT >= 33) setIeee80211beEnabled(builder, isIeee80211beEnabled)
-            if (sac?.let { isUserConfiguration(it) as Boolean } != false != isUserConfiguration) try {
-                setUserConfiguration(builder, isUserConfiguration)
-            } catch (e: ReflectiveOperationException) {
-                Timber.w(e) // as far as we are concerned, this field is not used anywhere so ignore for now
-            }
             if (Build.VERSION.SDK_INT >= 33) {
+                setIeee80211beEnabled(builder, isIeee80211beEnabled)
                 setBridgedModeOpportunisticShutdownTimeoutMillis(builder, bridgedModeOpportunisticShutdownTimeoutMillis)
                 setVendorElements(builder, vendorElements)
                 if (sac?.let { getPersistentRandomizedMacAddress(it) as MacAddress } !=

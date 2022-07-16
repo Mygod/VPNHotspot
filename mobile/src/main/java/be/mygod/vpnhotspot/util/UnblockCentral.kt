@@ -30,11 +30,6 @@ object UnblockCentral {
         clazz.getDeclaredMethod("setRandomizedMacAddress", MacAddress::class.java)
     }
 
-    @RequiresApi(31)
-    fun setUserConfiguration(clazz: Class<*>) = init.let {
-        clazz.getDeclaredMethod("setUserConfiguration", Boolean::class.java)
-    }
-
     @get:RequiresApi(31)
     val SoftApConfiguration_BAND_TYPES get() = init.let {
         SoftApConfiguration::class.java.getDeclaredField("BAND_TYPES").get(null) as IntArray
