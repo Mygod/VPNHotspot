@@ -7,8 +7,6 @@
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorSecondary">@color/colorSecondary</item>
-        <!-- TODO: https://github.com/material-components/material-components-android/issues/2725 -->
-        <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
         <item name="switchPreferenceCompatStyle">@style/AppTheme.Preference.MaterialSwitchPreference</item>
 
         <!-- Remove ActionBar but keep styles and themes -->
