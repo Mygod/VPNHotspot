@@ -491,7 +491,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             android.R.id.copy -> try {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
                         Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)).apply {
-                    description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
+                    if (Build.VERSION.SDK_INT >= 24) {
+                        description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
+                    }
                 })
                 true
             } catch (e: RuntimeException) {
