@@ -194,6 +194,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         setNegativeButton(R.string.donations__button_close, null)
         dialogView.toolbar.inflateMenu(R.menu.toolbar_configuration)
         dialogView.toolbar.setOnMenuItemClickListener(this@WifiApDialogFragment)
+        dialogView.ssidWrapper.setLengthCounter { it.toString().toByteArray().size }
         if (!arg.readOnly) dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
