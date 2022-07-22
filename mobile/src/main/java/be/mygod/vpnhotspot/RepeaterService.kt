@@ -323,6 +323,11 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             } catch (e: IllegalArgumentException) {
                 SmartSnackbar.make(getString(R.string.repeater_set_vendor_elements_failure, e.message)).show()
                 return
+            } catch (e: UnsupportedOperationException) {
+                if (ve.isNotEmpty()) {
+                    SmartSnackbar.make(getString(R.string.repeater_set_vendor_elements_failure, e.message)).show()
+                }
+                return
             }
             if (reason == WifiP2pManager.ERROR) {
                 val rootReason = try {
