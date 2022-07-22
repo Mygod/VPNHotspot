@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
@@ -64,9 +65,8 @@ object ServiceNotification {
     fun stopForeground(service: Service) = synchronized(this) {
         deviceCountsMap.remove(service) ?: return@synchronized
         val shutdown = deviceCountsMap.isEmpty()
-        if (Build.VERSION.SDK_INT >= 33) {
-            service.stopForeground(if (shutdown) Service.STOP_FOREGROUND_REMOVE else Service.STOP_FOREGROUND_DETACH)
-        } else @Suppress("DEPRECATION") service.stopForeground(shutdown)
+        ServiceCompat.stopForeground(service,
+            if (shutdown) ServiceCompat.STOP_FOREGROUND_REMOVE else ServiceCompat.STOP_FOREGROUND_DETACH)
         if (!shutdown) manager.notify(NOTIFICATION_ID, buildNotification(service))
     }
 
