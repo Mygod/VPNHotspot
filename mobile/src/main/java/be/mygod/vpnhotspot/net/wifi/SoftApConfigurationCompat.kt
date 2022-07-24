@@ -539,8 +539,12 @@ data class SoftApConfigurationCompat(
         val sac = underlying as? SoftApConfiguration
         val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
         setSsid(builder, ssid)
-        setPassphrase(builder, if (securityType == SoftApConfiguration.SECURITY_TYPE_OPEN) null else passphrase,
-            securityType)
+        setPassphrase(builder, when (securityType) {
+            SoftApConfiguration.SECURITY_TYPE_OPEN,
+            SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+            SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> null
+            else -> passphrase
+        }, securityType)
         setChannelsCompat(builder, channels)
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
