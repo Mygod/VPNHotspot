@@ -44,7 +44,7 @@
     <string name="repeater_location_off_configure">設定</string>
 
     <string name="tethering_temp_hotspot">臨時 Wi\u2011Fi 無線基地台</string>
-    <string name="tethering_location_off">開啟須開啟定位</string>
+    <string name="tethering_location_off">需要開啟定位</string>
     <string name="tethering_temp_hotspot_failure">啟動無線基地台失敗 (原因：%s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">沒有頻道</string>
     <string name="tethering_temp_hotspot_failure_generic">一般錯誤</string>
@@ -180,9 +180,9 @@
     <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
 
-    <string name="configuration_view">WIFI 組態</string>
+    <string name="configuration_view">WiFi 組態</string>
     <string name="configuration_share">使用 QR Code 分享</string>
-    <string name="configuration_rejected">Android 系统拒绝使用此組態。(請檢視 Logcat)</string>
+    <string name="configuration_rejected">Android 系統拒絕使用此組態。(請檢視 Logcat)</string>
     <string name="wifi_ssid" msgid="5519636102673067319">網路名稱</string>
     <string name="wifi_security" msgid="6603611185592956936">安全性</string>
     <string name="wifi_password" msgid="5948219759936151048">密碼</string>
