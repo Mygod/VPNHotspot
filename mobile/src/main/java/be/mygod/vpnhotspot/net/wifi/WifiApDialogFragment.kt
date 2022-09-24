@@ -155,9 +155,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 if (text.isNullOrEmpty()) 0 else text.toString().toLong()
             }
             if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) channels = generateChannels()
-            bssid = if (dialogView.bssid.length() != 0) {
-                MacAddressCompat.fromString(dialogView.bssid.text.toString())
-            } else null
             maxNumberOfClients = dialogView.maxClient.text.let { text ->
                 if (text.isNullOrEmpty()) 0 else text.toString().toInt()
             }
@@ -167,6 +164,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
                     .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
             macRandomizationSetting = dialogView.macRandomization.selectedItemPosition
+            bssid = if ((arg.p2pMode || Build.VERSION.SDK_INT < 31 && macRandomizationSetting ==
+                        SoftApConfigurationCompat.RANDOMIZATION_NONE) && dialogView.bssid.length() != 0) {
+                MacAddressCompat.fromString(dialogView.bssid.text.toString())
+            } else null
             isBridgedModeOpportunisticShutdownEnabled = dialogView.bridgedModeOpportunisticShutdown.isChecked
             isIeee80211axEnabled = dialogView.ieee80211ax.isChecked
             isIeee80211beEnabled = dialogView.ieee80211be.isChecked
@@ -254,6 +255,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomizationWrapper.isGone = true
+        else dialogView.macRandomization.onItemSelectedListener = this@WifiApDialogFragment
         if (arg.p2pMode || Build.VERSION.SDK_INT < 31) {
             dialogView.ieee80211ax.isGone = true
             dialogView.bridgedModeOpportunisticShutdown.isGone = true
@@ -382,8 +384,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else null
         dialogView.bandError.isGone = bandError.isNullOrEmpty()
         dialogView.bandError.text = bandError
+        val hideBssid = !arg.p2pMode && Build.VERSION.SDK_INT >= 31 &&
+                dialogView.macRandomization.selectedItemPosition != SoftApConfigurationCompat.RANDOMIZATION_NONE
+        dialogView.bssidWrapper.isGone = hideBssid
         dialogView.bssidWrapper.error = null
-        val bssidValid = dialogView.bssid.length() == 0 || try {
+        val bssidValid = hideBssid || dialogView.bssid.length() == 0 || try {
             val mac = MacAddressCompat.fromString(dialogView.bssid.text.toString())
             if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) {
                 SoftApConfigurationCompat.testPlatformValidity(mac.toPlatform())

@@ -546,7 +546,9 @@ data class SoftApConfigurationCompat(
             else -> passphrase
         }, securityType)
         setChannelsCompat(builder, channels)
-        setBssid(builder, bssid?.toPlatform())
+        setBssid(builder, bssid?.run {
+            if (Build.VERSION.SDK_INT >= 31 && macRandomizationSetting != RANDOMIZATION_NONE) null else toPlatform()
+        })
         setMaxNumberOfClients(builder, maxNumberOfClients)
         try {
             setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)
