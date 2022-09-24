@@ -86,7 +86,7 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
     fun onClientsChanged(noClient: Boolean) {
         this.noClient = noClient
         if (!noClient) close() else if (timeoutJob == null) timeoutJob = GlobalScope.launch(context) {
-            delay(if (timeout == 0L) defaultTimeout.toLong() else timeout)
+            delay(if (timeout <= 0L) defaultTimeout.toLong() else timeout)
             onTimeout()
         }
     }

@@ -548,7 +548,16 @@ data class SoftApConfigurationCompat(
         setChannelsCompat(builder, channels)
         setBssid(builder, bssid?.toPlatform())
         setMaxNumberOfClients(builder, maxNumberOfClients)
-        setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)
+        try {
+            setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)
+        } catch (e: InvocationTargetException) {
+            if (e.targetException is IllegalArgumentException) try {
+                setShutdownTimeoutMillis(builder, -1 - shutdownTimeoutMillis)
+            } catch (e2: InvocationTargetException) {
+                e2.addSuppressed(e)
+                throw e2
+            } else throw e
+        }
         setAutoShutdownEnabled(builder, isAutoShutdownEnabled)
         setClientControlByUserEnabled(builder, isClientControlByUserEnabled)
         setHiddenSsid(builder, isHiddenSsid)

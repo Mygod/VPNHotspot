@@ -152,7 +152,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (full) @TargetApi(28) {
             isAutoShutdownEnabled = dialogView.autoShutdown.isChecked
             shutdownTimeoutMillis = dialogView.timeout.text.let { text ->
-                if (text.isNullOrEmpty()) defaultTimeout else text.toString().toLong()
+                if (text.isNullOrEmpty()) 0 else text.toString().toLong()
             }
             if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) channels = generateChannels()
             bssid = if (dialogView.bssid.length() != 0) {
@@ -289,8 +289,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         populateFromConfiguration()
     }
 
-    private val defaultTimeout get() = if (arg.p2pMode) 0L else SoftApConfigurationCompat.DEFAULT_TIMEOUT
-
     private fun locate(i: Int): Int {
         val band = base.channels.keyAt(i)
         val channel = base.channels.valueAt(i)
@@ -306,7 +304,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
         dialogView.password.setText(base.passphrase)
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
-        dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it == defaultTimeout) "" else it.toString() })
+        dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it <= 0) "" else it.toString() })
         if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
             dialogView.bandPrimary.setSelection(locate(0))
             if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
