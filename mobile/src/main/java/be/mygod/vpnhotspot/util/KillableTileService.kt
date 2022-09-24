@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Build
+import android.os.DeadObjectException
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -28,5 +29,9 @@ abstract class KillableTileService : TileService(), ServiceConnection {
         }
     }
 
-    override fun onBind(intent: Intent?) = super.onBind(intent).also { BootReceiver.startIfEnabled() }
+    override fun onBind(intent: Intent?) = try {
+        super.onBind(intent)
+    } catch (_: DeadObjectException) {
+        null
+    }.also { BootReceiver.startIfEnabled() }
 }
