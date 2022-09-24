@@ -83,7 +83,6 @@ class App : Application() {
             }
         })
         ServiceNotification.updateNotificationChannels()
-        EBegFragment.init()
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 
