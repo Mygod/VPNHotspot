@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
+import android.os.DeadObjectException
 import android.os.Handler
 import androidx.annotation.RequiresApi
 import androidx.core.os.ExecutorCompat
@@ -583,7 +584,11 @@ object TetheringManager {
     @RequiresApi(30)
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
-        unregisterTetheringEventCallback(instance, proxy)
+        try {
+            unregisterTetheringEventCallback(instance, proxy)
+        } catch (e: InvocationTargetException) {
+            if (!e.targetException.let { it is IllegalStateException && it.cause is DeadObjectException }) throw e
+        }
     }
 
     /**
