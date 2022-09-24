@@ -172,7 +172,7 @@ object TetheringManager {
     @get:RequiresApi(30)
     private val instance by lazy @TargetApi(30) {
         @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
-        val service = Services.context.getSystemService(TETHERING_SERVICE)
+        val service = Services.context.getSystemService(TETHERING_SERVICE)!!
         service
     }
 
