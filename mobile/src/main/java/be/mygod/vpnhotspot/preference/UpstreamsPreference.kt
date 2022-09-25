@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.preference
 import android.content.Context
 import android.graphics.Typeface
 import android.net.LinkProperties
+import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.util.AttributeSet
@@ -40,7 +41,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
                     internet == true || try {
                         route.matches(internetV4Address) || route.matches(internetV6Address)
                     } catch (e: RuntimeException) {
-                        Timber.w(e)
+                        if (Build.VERSION.SDK_INT >= 23) Timber.w(e) else Timber.d(e)
                         false
                     }
                 }
