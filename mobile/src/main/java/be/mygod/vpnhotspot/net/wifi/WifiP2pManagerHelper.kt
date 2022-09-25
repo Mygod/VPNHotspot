@@ -56,6 +56,7 @@ object WifiP2pManagerHelper {
         return result.future.await()
     }
 
+    @SuppressLint("MissingPermission")  // this method will fail correctly if permission is missing
     @RequiresApi(33)
     suspend fun WifiP2pManager.setVendorElements(c: WifiP2pManager.Channel,
                                                  ve: List<ScanResult.InformationElement>): Int? {
