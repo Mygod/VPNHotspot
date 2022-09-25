@@ -180,7 +180,7 @@
     <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
 
-    <string name="configuration_view">WiFi 組態</string>
+    <string name="configuration_view">Wi\u2011Fi 組態</string>
     <string name="configuration_share">使用 QR Code 分享</string>
     <string name="configuration_rejected">Android 系統拒絕使用此組態。(請檢視 Logcat)</string>
     <string name="wifi_ssid" msgid="5519636102673067319">網路名稱</string>
