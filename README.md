@@ -7,15 +7,15 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/e70e52b1a58045819b505c09edcae816)](https://www.codacy.com/gh/Mygod/VPNHotspot/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Mygod/VPNHotspot&amp;utm_campaign=Badge_Grade)
 [![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](LICENSE)
 
-Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
+Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)
 
 | Release channel                                         | [GitHub (recommended)](https://github.com/Mygod/VPNHotspot/releases) | [Google Play](https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot) ([beta](https://play.google.com/apps/testing/be.mygod.vpnhotspot)) |
 |---------------------------------------------------------|:--------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------:|
-| Monitor connected clients without root                  |                                  âœ“                                   |                                                                  Up to Android 10                                                                   |
+| Monitor connected clients without root                  |                                  âœ?                                   |                                                                  Up to Android 10                                                                   |
 | Use repeater/temporary hotspot without location enabled |                          Up to Android 10/9                          |                                                          Up to Android 10/9 or Android 13+                                                          |
-| Auto update                                             |                 Email updates via watching releases                  |                                                                          âœ“                                                                          |
+| Auto update                                             |                 Email updates via watching releases                  |                                                                          âœ?                                                                          |
 | In-app update channel                                   |                                GitHub                                |                                                                     Google Play                                                                     |
-| [Sponsor/Donation](https://github.com/sponsors/Mygod)   |                                  âœ“                                   |                                                          Google Play In-App Purchases only                                                          |
+| [Sponsor/Donation](https://github.com/sponsors/Mygod)   |                                  âœ?                                   |                                                          Google Play In-App Purchases only                                                          |
 
 This app is useful for:
 
