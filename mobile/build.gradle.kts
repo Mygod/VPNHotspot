@@ -82,6 +82,7 @@ dependencies {
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.0")
     implementation("com.android.billingclient:billing-ktx:5.1.0")
     implementation("com.github.tiann:FreeReflection:3.1.0")
+    implementation("com.google.android.gms:play-services-base:18.1.0")  // fix for GoogleApiActivity crash
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.7.0")
     implementation("com.google.firebase:firebase-analytics-ktx:21.2.0")
