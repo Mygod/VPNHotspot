@@ -152,7 +152,7 @@ abstract class IpMonitor {
     fun flushAsync() = GlobalScope.launch(Dispatchers.IO) { flush() }
 
     private suspend fun work(server: RootServer?): RootServer? {
-        if (currentMode != Mode.PollRoot) try {
+        if (currentMode != Mode.PollRoot && currentMode != Mode.MonitorRoot) try {
             poll()
             return server
         } catch (e: IOException) {
