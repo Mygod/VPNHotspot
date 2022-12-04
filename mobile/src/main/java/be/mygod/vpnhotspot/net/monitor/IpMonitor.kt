@@ -30,8 +30,7 @@ abstract class IpMonitor {
         var currentMode: Mode
             get() {
                 // Completely restricted on Android 13: https://github.com/termux/termux-app/issues/2993#issuecomment-1250312777
-                val isLegacy = Build.VERSION.SDK_INT < 33 && (Build.VERSION.SDK_INT < 30 || BuildConfig.TARGET_SDK < 30)
-                val defaultMode = if (isLegacy) @Suppress("DEPRECATION") {
+                val defaultMode = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                     Mode.Poll
                 } else Mode.MonitorRoot
                 return Mode.valueOf(app.pref.getString(KEY, defaultMode.toString()) ?: "")

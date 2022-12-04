@@ -92,7 +92,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> if (Build.VERSION.SDK_INT < 29) parent.requireContext().let { context ->
                     ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
-                } else parent.startRepeater.launch(if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33) {
+                } else parent.startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
                     Manifest.permission.NEARBY_WIFI_DEVICES
                 } else Manifest.permission.ACCESS_FINE_LOCATION)
                 RepeaterService.Status.ACTIVE -> binder.shutdown()

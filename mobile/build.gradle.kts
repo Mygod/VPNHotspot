@@ -23,8 +23,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
-        @android.annotation.SuppressLint("ExpiredTargetSdkVersion")
-        targetSdk = 29
+        targetSdk = 33
         resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 302
         versionName = "2.15.2"
@@ -35,7 +34,6 @@ android {
             put("room.schemaLocation", "$projectDir/schemas")
         }
         buildConfigField("boolean", "DONATIONS", "true")
-        buildConfigField("int", "TARGET_SDK", "29")
     }
     buildFeatures {
         dataBinding = true
@@ -59,10 +57,8 @@ android {
         }
         create("google") {
             dimension = "freedom"
-            targetSdk = 33
             versionNameSuffix = "-g"
             buildConfigField("boolean", "DONATIONS", "false")
-            buildConfigField("int", "TARGET_SDK", "33")
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
@@ -85,6 +81,7 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.0")
     implementation("com.android.billingclient:billing-ktx:5.1.0")
+    implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.7.0")
     implementation("com.google.firebase:firebase-analytics-ktx:21.2.0")
@@ -95,7 +92,6 @@ dependencies {
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
-    add("googleImplementation", "com.github.tiann:FreeReflection:3.1.0")
     add("googleImplementation", "com.google.android.play:core:1.10.3")
     add("googleImplementation", "com.google.android.play:core-ktx:1.8.1")
     testImplementation("junit:junit:4.13.2")

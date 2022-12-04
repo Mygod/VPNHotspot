@@ -6,6 +6,7 @@ import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
+import me.weishu.reflection.Reflection
 
 /**
  * The central object for accessing all the useful blocked APIs. Thanks Google!
@@ -20,7 +21,7 @@ object UnblockCentral {
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    private val init by lazy { if (needInit) UnblockHelper(app.deviceStorage) }
+    private val init by lazy { if (needInit) check(Reflection.unseal(app.deviceStorage) == 0) }
 
     @RequiresApi(33)
     fun getCountryCode(clazz: Class<*>) = init.let { clazz.getDeclaredMethod("getCountryCode") }

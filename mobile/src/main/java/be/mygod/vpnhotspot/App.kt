@@ -115,12 +115,13 @@ class App : Application() {
      * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
      */
     inline fun <reified T> startServiceWithLocation(context: Context) {
-        if (BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33 || if (Build.VERSION.SDK_INT >= 28) {
-                location?.isLocationEnabled == true
-            } else @Suppress("DEPRECATION") {
-                Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
-                    Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
-            }) ContextCompat.startForegroundService(context, Intent(context, T::class.java)) else try {
+        val canStart = Build.VERSION.SDK_INT >= 33 || if (Build.VERSION.SDK_INT >= 28) {
+            location?.isLocationEnabled == true
+        } else @Suppress("DEPRECATION") {
+            Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
+        }
+        if (canStart) ContextCompat.startForegroundService(context, Intent(context, T::class.java)) else try {
             context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             Toast.makeText(context, R.string.tethering_location_off, Toast.LENGTH_LONG).show()
         } catch (e: ActivityNotFoundException) {

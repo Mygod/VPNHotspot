@@ -20,7 +20,7 @@ import java.net.NetworkInterface
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
     companion object {
         val permission = when {
-            BuildConfig.TARGET_SDK >= 33 && Build.VERSION.SDK_INT >= 33 -> Manifest.permission.NEARBY_WIFI_DEVICES
+            Build.VERSION.SDK_INT >= 33 -> Manifest.permission.NEARBY_WIFI_DEVICES
             Build.VERSION.SDK_INT >= 29 -> Manifest.permission.ACCESS_FINE_LOCATION
             else -> Manifest.permission.ACCESS_COARSE_LOCATION
         }
