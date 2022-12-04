@@ -198,7 +198,7 @@ object TetheringManager {
     private val stopTetheringLegacy by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("stopTethering", Int::class.java)
     }
-    private val getLastTetherError by lazy {
+    private val getLastTetherError by lazy @SuppressLint("SoonBlockedPrivateApi") {
         ConnectivityManager::class.java.getDeclaredMethod("getLastTetherError", String::class.java)
     }
 
