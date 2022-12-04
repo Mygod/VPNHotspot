@@ -12,7 +12,7 @@ android {
     namespace = "be.mygod.vpnhotspot"
 
     val javaVersion = JavaVersion.VERSION_11
-    buildToolsVersion = "33.0.0"
+    buildToolsVersion = "33.0.1"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = javaVersion
@@ -24,7 +24,7 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 21
         targetSdk = 33
-        resourceConfigurations.addAll(arrayOf("it", "ru", "zh-rCN", "zh-rTW"))
+        resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 302
         versionName = "2.15.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
