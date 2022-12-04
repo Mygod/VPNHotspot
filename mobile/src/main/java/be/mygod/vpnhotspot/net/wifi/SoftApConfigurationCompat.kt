@@ -572,8 +572,10 @@ data class SoftApConfigurationCompat(
                 setIeee80211beEnabled(builder, isIeee80211beEnabled)
                 setBridgedModeOpportunisticShutdownTimeoutMillis(builder, bridgedModeOpportunisticShutdownTimeoutMillis)
                 setVendorElements(builder, vendorElements)
-                if (sac?.let { getPersistentRandomizedMacAddress(it) as MacAddress } !=
-                    persistentRandomizedMacAddress) try {
+                val needsUpdate = persistentRandomizedMacAddress != null && sac?.let {
+                    getPersistentRandomizedMacAddress(it) as MacAddress
+                } != persistentRandomizedMacAddress
+                if (needsUpdate) try {
                     setRandomizedMacAddress(builder, persistentRandomizedMacAddress)
                 } catch (e: ReflectiveOperationException) {
                     Timber.w(e)
