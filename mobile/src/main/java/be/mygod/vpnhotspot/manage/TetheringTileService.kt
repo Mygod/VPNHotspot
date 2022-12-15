@@ -36,7 +36,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     protected abstract val tetherType: TetherType
     protected open val icon get() = tetherType.icon
     private var tethered: List<String>? = null
-    protected val interested get() = tethered?.filter { TetherType.ofInterface(it) == tetherType }
+    protected val interested get() = tethered?.filter { TetherType.ofInterface(it).isA(tetherType) }
     protected var binder: TetheringService.Binder? = null
 
     private val receiver = broadcastReceiver { _, intent ->
@@ -227,14 +227,6 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
-    }
-    @RequiresApi(30)
-    class Ncm : TetheringTileService() {
-        override val labelString get() = R.string.tethering_manage_ncm
-        override val tetherType get() = TetherType.NCM
-
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
 
     @Suppress("DEPRECATION")

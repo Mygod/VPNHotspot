@@ -90,7 +90,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     val data = Data()
     abstract val title: CharSequence
     abstract val tetherType: TetherType
-    open val isStarted: Boolean? get() = parent.enabledTypes.contains(tetherType)
+    open val isStarted: Boolean? get() = parent.enabledTypes.contains(tetherType) ||
+            tetherType == TetherType.USB && parent.enabledTypes.contains(TetherType.NCM)
     protected open val text: CharSequence get() = baseError ?: ""
 
     protected var baseError: String? = null
@@ -126,7 +127,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     }
 
     fun updateErrorMessage(errored: List<String>, lastErrors: Map<String, Int>) {
-        val interested = errored.filter { TetherType.ofInterface(it) == tetherType }
+        val interested = errored.filter { TetherType.ofInterface(it).isA(tetherType) }
         baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
             "$iface: " + try {
                 TetheringManager.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
@@ -330,15 +331,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
-    }
-    @RequiresApi(30)
-    class Ncm(parent: TetheringFragment) : TetherManager(parent) {
-        override val title get() = parent.getString(R.string.tethering_manage_ncm)
-        override val tetherType get() = TetherType.NCM
-        override val type get() = VIEW_TYPE_NCM
-
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_NCM, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_NCM, this::onException)
     }
 
     @Suppress("DEPRECATION")

@@ -28,6 +28,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
         else -> false
     }
 
+    fun isA(other: TetherType) = this == other || other == USB && this == NCM
+
     companion object : TetheringManager.TetheringEventCallback {
         private lateinit var usbRegexs: List<Pattern>
         private lateinit var wifiRegexs: List<Pattern>

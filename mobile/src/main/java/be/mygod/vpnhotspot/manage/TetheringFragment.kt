@@ -68,9 +68,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             )
         }
         @get:RequiresApi(30)
-        private val tetherManagers30 by lazy @TargetApi(30) {
-            listOf(TetherManager.Ethernet(this@TetheringFragment), TetherManager.Ncm(this@TetheringFragment))
-        }
+        private val ethernetManager by lazy @TargetApi(30) { TetherManager.Ethernet(this@TetheringFragment) }
         private val wifiManagerLegacy by lazy { TetherManager.WifiLegacy(this@TetheringFragment) }
 
         var activeIfaces = emptyList<String>()
@@ -119,8 +117,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 tetherManagers.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             }
             if (Build.VERSION.SDK_INT >= 30) {
-                list.addAll(tetherManagers30)
-                tetherManagers30.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
+                list.add(ethernetManager)
+                ethernetManager.updateErrorMessage(erroredIfaces, lastErrors)
             }
             if (Build.VERSION.SDK_INT < 26) {
                 list.add(wifiManagerLegacy)

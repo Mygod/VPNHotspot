@@ -152,13 +152,6 @@ object TetheringManager {
     @RequiresApi(24)
     const val TETHERING_BLUETOOTH = 2
     /**
-     * Ncm local tethering type.
-     *
-     * @see startTethering
-     */
-    @RequiresApi(30)
-    const val TETHERING_NCM = 4
-    /**
      * Ethernet tethering type.
      *
      * Requires MANAGE_USB permission, also.
