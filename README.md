@@ -9,7 +9,7 @@
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 
-| Release channel                                         | [GitHub (recommended)](https://github.com/Mygod/VPNHotspot/releases) | [Google Play](https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot) ([beta](https://play.google.com/apps/testing/be.mygod.vpnhotspot)) |
+| Release channel                                         | [GitHub](https://github.com/Mygod/VPNHotspot/releases) | [Google Play](https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot) ([beta](https://play.google.com/apps/testing/be.mygod.vpnhotspot)) |
 |---------------------------------------------------------|:--------------------------------------------------------------------:|:---------------------------------------------------------------------------------------------------------------------------------------------------:|
 | Auto update                                             |                 Email updates via watching releases                  |                                                                          ✓                                                                          |
 | In-app update channel                                   |                                GitHub                                |                                                                     Google Play                                                                     |
