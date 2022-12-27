@@ -2,7 +2,7 @@ package be.mygod.vpnhotspot.root
 
 import android.os.Parcelable
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandOneWay
+import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.vpnhotspot.net.Routing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -13,7 +13,7 @@ import timber.log.Timber
 
 object RoutingCommands {
     @Parcelize
-    class Clean : RootCommandOneWay {
+    class Clean : RootCommandNoResult {
         @Suppress("BlockingMethodInNonBlockingContext")
         override suspend fun execute() = withContext(Dispatchers.IO) {
             val process = ProcessBuilder("sh").fixPath(true).start()
@@ -23,6 +23,7 @@ object RoutingCommands {
                 else -> Timber.w("Unexpected exit code $code")
             }
             check(process.waitFor() == 0)
+            null
         }
     }
 
