@@ -421,7 +421,7 @@ data class SoftApConfigurationCompat(
             it.bridgedModeOpportunisticShutdownTimeoutMillis =
                 getBridgedModeOpportunisticShutdownTimeoutMillis(this) as Long
             it.vendorElements = getVendorElements(this) as List<ScanResult.InformationElement>
-            it.persistentRandomizedMacAddress = getPersistentRandomizedMacAddress(this) as MacAddress
+            it.persistentRandomizedMacAddress = getPersistentRandomizedMacAddress(this) as MacAddress?
             it.allowedAcsChannels = BAND_TYPES.map { bandType ->
                 try {
                     bandType to (getAllowedAcsChannels(this, bandType) as IntArray).toSet()
