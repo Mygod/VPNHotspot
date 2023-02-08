@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
@@ -21,7 +20,6 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.net.Inet4Address
 
-@RequiresApi(26)
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     inner class Binder : android.os.Binder() {
         /**
@@ -162,7 +160,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
 
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
-        if (Build.VERSION.SDK_INT >= 28) timeoutMonitor?.onClientsChanged(neighbours.none {
+        timeoutMonitor?.onClientsChanged(neighbours.none {
             it.ip is Inet4Address && it.state == IpNeighbour.State.VALID
         })
     }
@@ -183,10 +181,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
 
     private fun unregisterReceiver(exit: Boolean = false) {
         IpNeighbourMonitor.unregisterCallback(this)
-        if (Build.VERSION.SDK_INT >= 28) {
-            timeoutMonitor?.close()
-            timeoutMonitor = null
-        }
+        timeoutMonitor?.close()
+        timeoutMonitor = null
         launch {
             routingManager?.stop()
             routingManager = null

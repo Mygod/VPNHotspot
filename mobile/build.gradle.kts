@@ -22,7 +22,7 @@ android {
     kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
-        minSdk = 21
+        minSdk = 28
         targetSdk = 33
         resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 1000

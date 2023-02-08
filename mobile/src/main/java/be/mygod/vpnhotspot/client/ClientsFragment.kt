@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.client
 
 import android.content.DialogInterface
+import android.net.MacAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
@@ -30,7 +31,6 @@ import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
@@ -41,18 +41,21 @@ import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
-    // FIXME: value class does not work with Parcelize
     @Parcelize
-    data class NicknameArg(val mac: Long, val nickname: CharSequence) : Parcelable
+    data class NicknameArg(val mac: MacAddress, val nickname: CharSequence) : Parcelable
     class NicknameDialogFragment : AlertDialogFragment<NicknameArg, Empty>() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             setView(R.layout.dialog_nickname)
-            setTitle(getString(R.string.clients_nickname_title, MacAddressCompat(arg.mac).toString()))
+            setTitle(getString(R.string.clients_nickname_title, arg.mac))
             setPositiveButton(android.R.string.ok, listener)
             setNegativeButton(android.R.string.cancel, null)
             setNeutralButton(getText(R.string.clients_nickname_set_to_vendor), listener)
@@ -64,7 +67,7 @@ class ClientsFragment : Fragment() {
         }
 
         override fun onClick(dialog: DialogInterface?, which: Int) {
-            val mac = MacAddressCompat(arg.mac)
+            val mac = arg.mac
             when (which) {
                 DialogInterface.BUTTON_POSITIVE -> {
                     val newNickname = this.dialog!!.findViewById<EditText>(android.R.id.edit).text
@@ -135,7 +138,7 @@ class ClientsFragment : Fragment() {
                 R.id.nickname -> {
                     val client = binding.client ?: return false
                     NicknameDialogFragment().apply {
-                        arg(NicknameArg(client.mac.addr, client.nickname))
+                        arg(NicknameArg(client.mac, client.nickname))
                     }.showAllowingStateLoss(parentFragmentManager)
                     true
                 }
@@ -160,7 +163,7 @@ class ClientsFragment : Fragment() {
                             withContext(Dispatchers.Unconfined) {
                                 StatsDialogFragment().apply {
                                     arg(StatsArg(client.title.value ?: return@withContext,
-                                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac.addr)))
+                                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
                                 }.showAllowingStateLoss(parentFragmentManager)
                             }
                         }
@@ -201,9 +204,7 @@ class ClientsFragment : Fragment() {
                     check(newRecord.receivedPackets == oldRecord.receivedPackets)
                     check(newRecord.receivedBytes == oldRecord.receivedBytes)
                 } else {
-                    val rate = rates.computeIfAbsent(newRecord.downstream to MacAddressCompat(newRecord.mac)) {
-                        TrafficRate()
-                    }
+                    val rate = rates.computeIfAbsent(newRecord.downstream to newRecord.mac) { TrafficRate() }
                     if (rate.send < 0 || rate.receive < 0) {
                         rate.send = 0
                         rate.receive = 0
@@ -218,7 +219,7 @@ class ClientsFragment : Fragment() {
 
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
-    private var rates = mutableMapOf<Pair<String, MacAddressCompat>, TrafficRate>()
+    private var rates = mutableMapOf<Pair<String, MacAddress>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         binding = FragmentClientsBinding.inflate(inflater, container, false)

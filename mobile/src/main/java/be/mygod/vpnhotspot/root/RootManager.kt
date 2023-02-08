@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.root
 
 import android.annotation.SuppressLint
-import android.os.Build
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.*
@@ -34,7 +33,7 @@ object RootManager : RootSession(), Logger {
             })
             Logger.me = RootManager
             Services.init { systemContext }
-            if (Build.VERSION.SDK_INT >= 28) UnblockCentral.needInit = false
+            UnblockCentral.needInit = false
             return null
         }
     }

@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Parcelable
-import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.toByteArray
 import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.App.Companion.app
@@ -74,7 +73,6 @@ class BootReceiver : BroadcastReceiver() {
         inline fun <reified T> add(value: Startable) = add(T::class.java.name, value)
         inline fun <reified T> delete() = delete(T::class.java.name)
 
-        @RequiresApi(24)
         fun migrateIfNecessary() {
             val oldFile = File(app.noBackupFilesDir, FILENAME)
             if (oldFile.canRead()) try {

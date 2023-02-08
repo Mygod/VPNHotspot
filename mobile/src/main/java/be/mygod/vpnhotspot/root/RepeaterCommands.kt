@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root
 
+import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
@@ -37,10 +38,8 @@ object RepeaterCommands {
 
     @Parcelize
     @RequiresApi(29)
-    class RequestDeviceAddress : RootCommand<ParcelableLong?> {
-        override suspend fun execute() = Services.p2p!!.run {
-            requestDeviceAddress(obtainChannel())?.let { ParcelableLong(it.addr) }
-        }
+    class RequestDeviceAddress : RootCommand<MacAddress?> {
+        override suspend fun execute() = Services.p2p!!.run { requestDeviceAddress(obtainChannel()) }
     }
 
     @Parcelize

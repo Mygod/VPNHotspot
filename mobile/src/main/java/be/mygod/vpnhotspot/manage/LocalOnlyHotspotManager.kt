@@ -1,14 +1,14 @@
 package be.mygod.vpnhotspot.manage
 
 import android.Manifest
-import android.content.*
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
 import android.view.View
-import androidx.annotation.RequiresApi
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
@@ -16,7 +16,6 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import java.net.NetworkInterface
 
-@RequiresApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
     companion object {
         val permission = when {

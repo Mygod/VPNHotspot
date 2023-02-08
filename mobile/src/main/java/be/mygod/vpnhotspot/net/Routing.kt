@@ -1,11 +1,9 @@
 package be.mygod.vpnhotspot.net
 
-import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.net.LinkProperties
+import android.net.MacAddress
 import android.net.RouteInfo
-import android.os.Build
-import androidx.annotation.RequiresApi
+import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
@@ -15,7 +13,9 @@ import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.allInterfaceNames
+import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
@@ -125,7 +125,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          *
          * Source: https://android.googlesource.com/platform/system/netd/+/3b47c793ff7ade843b1d85a9be8461c3b4dc693e
          */
-        @RequiresApi(28)
         Netd,
     }
 
@@ -155,14 +154,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * The only case when upstream is null is on API 23- and we are using system default rules.
          */
         inner class Subrouting(priority: Int, val upstream: String) {
-            val ifindex = if (upstream.isEmpty()) 0 else if_nametoindex(upstream).also {
+            val ifindex = if (upstream.isEmpty()) 0 else Os.if_nametoindex(upstream).also {
                 if (it <= 0) throw InterfaceGoneException(upstream)
             }
             val transaction = RootSession.beginTransaction().safeguard {
                 if (upstream.isEmpty()) {
                     ipRule("goto $RULE_PRIORITY_TETHERING", priority)   // skip unreachable rule
                 } else ipRuleLookup(ifindex, priority)
-                @TargetApi(28) when (masqueradeMode) {
+                when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
                     MasqueradeMode.Simple -> {
                         // note: specifying -i wouldn't work for POSTROUTING
@@ -225,16 +224,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             updateDnsRoute()
         }
     }
-    private val fallbackUpstream = object : Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK) {
-        @SuppressLint("NewApi")
-        override fun onFallback() = onAvailable(LinkProperties().apply {
-            interfaceName = ""
-            setDnsServers(listOf(parseNumericAddress("8.8.8.8")))
-        })
-    }
+    private val fallbackUpstream = Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK)
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
 
-    private inner class Client(private val ip: Inet4Address, mac: MacAddressCompat) : AutoCloseable {
+    private inner class Client(private val ip: Inet4Address, mac: MacAddress) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
             val address = ip.hostAddress
             iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")
@@ -287,9 +280,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
      * but may be broken when system tethering shutdown before local-only interfaces.
      */
     fun ipForward() {
-        if (Build.VERSION.SDK_INT >= 23) try {
+        try {
             transaction.ndc("ipfwd", "ndc ipfwd enable vpnhotspot_$downstream",
-                    "ndc ipfwd disable vpnhotspot_$downstream")
+                "ndc ipfwd disable vpnhotspot_$downstream")
             return
         } catch (e: RoutingCommands.UnexpectedOutputException) {
             Timber.w(IOException("ndc ipfwd enable failure", e))

@@ -16,7 +16,7 @@ object ManageBar : Manager() {
     private const val SETTINGS_2 = "com.android.settings.TetherSettings"
 
     object Data : BaseObservable() {
-        val offloadEnabled get() = TetherOffloadManager.supported && TetherOffloadManager.enabled
+        val offloadEnabled get() = TetherOffloadManager.enabled
     }
     class ViewHolder(binding: ListitemManageBinding) : RecyclerView.ViewHolder(binding.root), View.OnClickListener {
         init {

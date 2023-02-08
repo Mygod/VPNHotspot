@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <bool name="api_ge_30">false</bool>
-    <bool name="api_ge_26">false</bool>
-    <bool name="api_lt_25">true</bool>
     <bool name="is_day">true</bool>
 </resources>

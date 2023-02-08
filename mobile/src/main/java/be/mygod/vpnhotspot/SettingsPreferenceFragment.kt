@@ -47,24 +47,22 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
         SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
-            if (TetherOffloadManager.supported) {
-                isChecked = TetherOffloadManager.enabled
-                setOnPreferenceChangeListener { _, newValue ->
-                    if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-                        isEnabled = false
-                        try {
-                            TetherOffloadManager.setEnabled(newValue as Boolean)
-                        } catch (_: CancellationException) {
-                        } catch (e: Exception) {
-                            Timber.w(e)
-                            SmartSnackbar.make(e).show()
-                        }
-                        isChecked = TetherOffloadManager.enabled
-                        isEnabled = true
+            isChecked = TetherOffloadManager.enabled
+            setOnPreferenceChangeListener { _, newValue ->
+                if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+                    isEnabled = false
+                    try {
+                        TetherOffloadManager.setEnabled(newValue as Boolean)
+                    } catch (_: CancellationException) {
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
                     }
-                    false
+                    isChecked = TetherOffloadManager.enabled
+                    isEnabled = true
                 }
-            } else parent!!.removePreference(this)
+                false
+            }
         }
         findPreference<TwoStatePreference>(BootReceiver.KEY)!!.setOnPreferenceChangeListener { _, value ->
             BootReceiver.onUserSettingUpdated(value as Boolean)

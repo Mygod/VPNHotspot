@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.root
 
 import android.content.Context
-import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
 import android.provider.Settings
@@ -30,18 +29,10 @@ fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
 
 @Parcelize
 data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
-    @Suppress("BlockingMethodInNonBlockingContext")
     override suspend fun execute() = withContext(Dispatchers.IO) {
         FileOutputStream(path, true).use { out ->
             val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use { commands ->
-                // https://android.googlesource.com/platform/external/iptables/+/android-7.0.0_r1/iptables/Android.mk#34
-                val iptablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "iptables-save").absolutePath.also {
-                    commands.appendLine("ln -sf /system/bin/iptables $it")
-                } else "iptables-save"
-                val ip6tablesSave = if (Build.VERSION.SDK_INT < 24) File(cacheDir, "ip6tables-save").absolutePath.also {
-                    commands.appendLine("ln -sf /system/bin/ip6tables $it")
-                } else "ip6tables-save"
                 commands.appendLine("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}
@@ -50,13 +41,13 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |echo
                     |echo iptables -t filter
-                    |$iptablesSave -t filter
+                    |iptables-save -t filter
                     |echo
                     |echo iptables -t nat
-                    |$iptablesSave -t nat
+                    |iptables-save -t nat
                     |echo
                     |echo ip6tables-save
-                    |$ip6tablesSave
+                    |ip6tables-save
                     |echo
                     |echo ip rule
                     |$IP rule
@@ -125,7 +116,7 @@ class ProcessListener(private val terminateRegex: Regex,
             parent.join()
         } finally {
             parent.cancel()
-            if (Build.VERSION.SDK_INT < 26) process.destroy() else if (process.isAlive) process.destroyForcibly()
+            if (process.isAlive) process.destroyForcibly()
             parent.join()
         }
     }
@@ -162,7 +153,6 @@ data class StartTethering(private val type: Int,
 
 @Deprecated("Old API since API 30")
 @Parcelize
-@RequiresApi(24)
 @Suppress("DEPRECATION")
 data class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
                                 private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
@@ -184,7 +174,6 @@ data class StartTetheringLegacy(private val cacheDir: File, private val type: In
 }
 
 @Parcelize
-@RequiresApi(24)
 data class StopTethering(private val type: Int) : RootCommandNoResult {
     override suspend fun execute(): Parcelable? {
         TetheringManager.stopTethering(type)
@@ -209,7 +198,6 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
         }
     }
 
-    @Suppress("BlockingMethodInNonBlockingContext")
     override suspend fun execute() = withContext(Dispatchers.IO) {
         val process = ProcessBuilder("settings", "put", "global", name, value).fixPath(true).start()
         val error = process.inputStream.bufferedReader().readText()

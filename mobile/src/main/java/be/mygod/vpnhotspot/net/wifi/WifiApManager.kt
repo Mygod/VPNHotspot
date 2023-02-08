@@ -88,7 +88,6 @@ object WifiApManager {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-6.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#210
      */
-    @get:RequiresApi(23)
     val EXTRA_WIFI_AP_FAILURE_REASON get() =
         if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_FAILURE_REASON" else "wifi_ap_error_code"
     /**
@@ -98,7 +97,6 @@ object WifiApManager {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/android-8.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#413
      */
-    @get:RequiresApi(26)
     val EXTRA_WIFI_AP_INTERFACE_NAME get() =
         if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_INTERFACE_NAME" else "wifi_ap_interface_name"
 
@@ -177,7 +175,6 @@ object WifiApManager {
         setWifiApConfiguration(Services.wifi, value) as Boolean
     fun setConfiguration(value: SoftApConfiguration) = setSoftApConfiguration(Services.wifi, value) as Boolean
 
-    @RequiresApi(28)
     interface SoftApCallbackCompat {
         /**
          * Called when soft AP state changes.
@@ -239,7 +236,6 @@ object WifiApManager {
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
     }
-    @RequiresApi(23)
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
@@ -255,7 +251,6 @@ object WifiApManager {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", interfaceSoftApCallback)
     }
 
-    @RequiresApi(28)
     fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
         val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
                 arrayOf(interfaceSoftApCallback), object : InvocationHandler {
@@ -270,7 +265,7 @@ object WifiApManager {
                     method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> {
                         callback.onStateChanged(args!![0] as Int, args[1] as Int)
                     }
-                    method.matches("onNumClientsChanged", Integer.TYPE) -> @Suppress("DEPRECATION") {
+                    method.matches("onNumClientsChanged", Integer.TYPE) -> {
                         if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
                         callback.onNumClientsChanged(args!![0] as Int)
                     }
@@ -307,7 +302,6 @@ object WifiApManager {
         } else registerSoftApCallback(Services.wifi, proxy, null)
         return proxy
     }
-    @RequiresApi(28)
     fun unregisterSoftApCallback(key: Any) = unregisterSoftApCallback(Services.wifi, key)
 
     private val cancelLocalOnlyHotspotRequest by lazy {
@@ -317,43 +311,5 @@ object WifiApManager {
      * This is the only way to unregister requests besides app exiting.
      * Therefore, we are happy with crashing the app if reflection fails.
      */
-    @RequiresApi(26)
     fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
-
-    @Suppress("DEPRECATION")
-    private val setWifiApEnabled by lazy {
-        WifiManager::class.java.getDeclaredMethod("setWifiApEnabled",
-                android.net.wifi.WifiConfiguration::class.java, Boolean::class.java)
-    }
-    /**
-     * Start AccessPoint mode with the specified
-     * configuration. If the radio is already running in
-     * AP mode, update the new configuration
-     * Note that starting in access point mode disables station
-     * mode operation
-     * @param wifiConfig SSID, security and channel details as
-     *        part of WifiConfiguration
-     * @return {@code true} if the operation succeeds, {@code false} otherwise
-     */
-    @Suppress("DEPRECATION")
-    private fun WifiManager.setWifiApEnabled(wifiConfig: android.net.wifi.WifiConfiguration?, enabled: Boolean) =
-            setWifiApEnabled(this, wifiConfig, enabled) as Boolean
-
-    /**
-     * Although the functionalities were removed in API 26, it is already not functioning correctly on API 25.
-     *
-     * See also: https://android.googlesource.com/platform/frameworks/base/+/5c0b10a4a9eecc5307bb89a271221f2b20448797%5E%21/
-     */
-    @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 26, malfunctioning on API 25")
-    fun start(wifiConfig: android.net.wifi.WifiConfiguration? = null) {
-        Services.wifi.isWifiEnabled = false
-        Services.wifi.setWifiApEnabled(wifiConfig, true)
-    }
-    @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 26")
-    fun stop() {
-        Services.wifi.setWifiApEnabled(null, false)
-        Services.wifi.isWifiEnabled = true
-    }
 }

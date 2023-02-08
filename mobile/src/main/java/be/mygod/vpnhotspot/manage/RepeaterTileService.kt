@@ -7,15 +7,12 @@ import android.graphics.drawable.Icon
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.IBinder
 import android.service.quicksettings.Tile
-import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
-@RequiresApi(24)
 class RepeaterTileService : KillableTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_settings_input_antenna) }
 
@@ -37,8 +34,7 @@ class RepeaterTileService : KillableTileService() {
         val binder = binder
         if (binder == null) tapPending = true else when (binder.service.status) {
             RepeaterService.Status.ACTIVE -> binder.shutdown()
-            RepeaterService.Status.IDLE -> ContextCompat.startForegroundService(this,
-                    Intent(this, RepeaterService::class.java))
+            RepeaterService.Status.IDLE -> startForegroundService(Intent(this, RepeaterService::class.java))
             else -> { }
         }
     }

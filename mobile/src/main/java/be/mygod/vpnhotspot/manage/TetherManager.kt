@@ -5,7 +5,6 @@ import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Parcelable
@@ -27,7 +26,6 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.wifi.*
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -57,7 +55,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun onClick(v: View?) {
             val manager = manager!!
             val mainActivity = manager.parent.activity as MainActivity
-            if (Build.VERSION.SDK_INT >= 23 && !Settings.System.canWrite(mainActivity)) try {
+            if (!Settings.System.canWrite(mainActivity)) try {
                 manager.parent.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS,
                         "package:${mainActivity.packageName}".toUri()))
                 return
@@ -134,41 +132,29 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     TetheringManager.getLastTetherError(iface)
                 } else lastErrors[iface] ?: 0)
             } catch (e: InvocationTargetException) {
-                if (Build.VERSION.SDK_INT !in 24..25 || e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
+                if (e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
                 e.readableMessage
             }
         }
         data.notifyChange()
     }
 
-    @RequiresApi(24)
     class Wifi(parent: TetheringFragment) : TetherManager(parent), DefaultLifecycleObserver,
             WifiApManager.SoftApCallbackCompat {
-        private val receiver = broadcastReceiver { _, intent ->
-            failureReason = if (intent.wifiApState == WifiApManager.WIFI_AP_STATE_FAILED) {
-                intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0)
-            } else null
-            data.notifyChange()
-        }
         private var failureReason: Int? = null
         private var numClients: Int? = null
         private var info = emptyList<Parcelable>()
         private var capability: Parcelable? = null
 
         init {
-            if (Build.VERSION.SDK_INT >= 23) parent.viewLifecycleOwner.lifecycle.addObserver(this)
+            parent.viewLifecycleOwner.lifecycle.addObserver(this)
         }
 
         override fun onStart(owner: LifecycleOwner) {
-            if (Build.VERSION.SDK_INT < 28) {
-                parent.requireContext().registerReceiver(receiver,
-                    IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
-            } else WifiApCommands.registerSoftApCallback(this)
+            WifiApCommands.registerSoftApCallback(this)
         }
         override fun onStop(owner: LifecycleOwner) {
-            if (Build.VERSION.SDK_INT < 28) {
-                parent.requireContext().unregisterReceiver(receiver)
-            } else WifiApCommands.unregisterSoftApCallback(this)
+            WifiApCommands.unregisterSoftApCallback(this)
         }
 
         override fun onStateChanged(state: Int, failureReason: Int) {
@@ -277,7 +263,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
     }
-    @RequiresApi(24)
     class Usb(parent: TetheringFragment) : TetherManager(parent) {
         override val title get() = parent.getString(R.string.tethering_manage_usb)
         override val tetherType get() = TetherType.USB
@@ -286,7 +271,6 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
     }
-    @RequiresApi(24)
     class Bluetooth(parent: TetheringFragment, adapter: BluetoothAdapter) :
         TetherManager(parent), DefaultLifecycleObserver {
         private val tethering = BluetoothTethering(parent.requireContext(), adapter) { data.notifyChange() }
@@ -331,24 +315,5 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
-    }
-
-    @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 26, malfunctioning on API 25")
-    class WifiLegacy(parent: TetheringFragment) : TetherManager(parent) {
-        override val title get() = parent.getString(R.string.tethering_manage_wifi_legacy)
-        override val tetherType get() = TetherType.WIFI
-        override val type get() = VIEW_TYPE_WIFI_LEGACY
-
-        override fun start() = try {
-            WifiApManager.start()
-        } catch (e: Exception) {
-            onException(e)
-        }
-        override fun stop() = try {
-            WifiApManager.stop()
-        } catch (e: Exception) {
-            onException(e)
-        }
     }
 }

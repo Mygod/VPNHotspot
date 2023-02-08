@@ -1,14 +1,12 @@
 package be.mygod.vpnhotspot.manage
 
 import android.service.quicksettings.Tile
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.KillableTileService
 import java.net.Inet4Address
 
-@RequiresApi(24)
 abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeighbourMonitor.Callback {
     private var neighbours: Collection<IpNeighbour> = emptyList()
     abstract fun updateTile()

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.*
@@ -16,10 +17,10 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
-import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toLong
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.VendorElements
@@ -98,17 +99,19 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         var shutdownTimeoutMillis: Long
             get() = app.pref.getLong(KEY_SHUTDOWN_TIMEOUT, 0)
             set(value) = app.pref.edit { putLong(KEY_SHUTDOWN_TIMEOUT, value) }
-        var deviceAddress: MacAddressCompat?
+        var deviceAddress: MacAddress?
             get() = try {
-                MacAddressCompat(app.pref.getLong(KEY_DEVICE_ADDRESS, MacAddressCompat.ANY_ADDRESS.addr)).run {
-                    validate()
-                    if (this == MacAddressCompat.ANY_ADDRESS) null else this
+                MacAddressCompat(app.pref.getLong(KEY_DEVICE_ADDRESS, 2)).run {
+                    require(addr and ((1L shl 48) - 1).inv() == 0L)
+                    if (addr == 2L) null else toPlatform()
                 }
             } catch (e: IllegalArgumentException) {
                 Timber.w(e)
                 null
             }
-            set(value) = app.pref.edit { putLong(KEY_DEVICE_ADDRESS, (value ?: MacAddressCompat.ANY_ADDRESS).addr) }
+            set(value) = app.pref.edit {
+                putLong(KEY_DEVICE_ADDRESS, (value ?: MacAddressCompat.ANY_ADDRESS).toLong())
+            }
         @get:RequiresApi(33)
         @set:RequiresApi(33)
         var vendorElements: List<ScanResult.InformationElement>
@@ -128,19 +131,17 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             set(value) {
                 field = value
                 groupChanged(value)
-                if (Build.VERSION.SDK_INT >= 28) value?.clientList?.let {
-                    timeoutMonitor?.onClientsChanged(it.isEmpty())
-                }
+                value?.clientList?.let { timeoutMonitor?.onClientsChanged(it.isEmpty()) }
             }
         val groupChanged = StickyEvent1 { group }
 
-        suspend fun obtainDeviceAddress(): MacAddressCompat? {
+        suspend fun obtainDeviceAddress(): MacAddress? {
             return if (Build.VERSION.SDK_INT >= 29) p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
                 RootManager.use { it.execute(RepeaterCommands.RequestDeviceAddress()) }
             } catch (e: Exception) {
                 Timber.d(e)
                 null
-            }?.let { MacAddressCompat(it.value) } else lastMac?.let { MacAddressCompat.fromString(it) }
+            } else lastMac?.let { MacAddress.fromString(it) }
         }
 
         @SuppressLint("NewApi") // networkId is available since Android 4.2
@@ -152,7 +153,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 val ownedGroups = filter {
                     if (!it.isGroupOwner) return@filter false
                     val address = try {
-                        MacAddressCompat.fromString(it.owner.deviceAddress)
+                        MacAddress.fromString(it.owner.deviceAddress)
                     } catch (e: IllegalArgumentException) {
                         Timber.w(e)
                         return@filter true  // assuming it was changed due to privacy
@@ -220,7 +221,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     @Parcelize
     class Starter : BootReceiver.Startable {
         override fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
+            context.startForegroundService(Intent(context, RepeaterService::class.java))
         }
     }
 
@@ -400,7 +401,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         status = Status.STARTING
         // bump self to foreground location service (API 29+) to use location later, also to avoid getting killed
-        if (Build.VERSION.SDK_INT >= 26) showNotification()
+        showNotification()
         launch {
             val filter = intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
                 WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION)
@@ -479,7 +480,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                         setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
                     }
                 }
-                setDeviceAddress(deviceAddress?.toPlatform())
+                setDeviceAddress(deviceAddress)
             }.build(), listener)
         }
     }
@@ -554,10 +555,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             p2pPoller?.cancel()
             receiverRegistered = false
         }
-        if (Build.VERSION.SDK_INT >= 28) {
-            timeoutMonitor?.close()
-            timeoutMonitor = null
-        }
+        timeoutMonitor?.close()
+        timeoutMonitor = null
         routingManager?.stop()
         routingManager = null
         status = Status.IDLE
@@ -574,7 +573,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
         if (Build.VERSION.SDK_INT < 29) unregisterReceiver(deviceListener)
         status = Status.DESTROYED
-        if (Build.VERSION.SDK_INT >= 27) channel?.close()
+        channel?.close()
         super.onDestroy()
     }
 }

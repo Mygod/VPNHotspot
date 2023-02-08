@@ -8,10 +8,8 @@ import android.os.DeadObjectException
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.BootReceiver
 
-@RequiresApi(24)
 abstract class KillableTileService : TileService(), ServiceConnection {
     protected var tapPending = false
 

@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -50,16 +49,14 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         setContentView(binding.root)
         binding.navigation.setOnItemSelectedListener(this)
         val badge = binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
-            backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
-            badgeTextColor = ContextCompat.getColor(this@MainActivity,
-                androidx.appcompat.R.color.primary_text_default_material_light)
+            backgroundColor = resources.getColor(R.color.colorSecondary, theme)
+            badgeTextColor = resources.getColor(androidx.appcompat.R.color.primary_text_default_material_light, theme)
         }
         updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
         updateItem.isCheckable = false
         updateBadge = binding.navigation.getOrCreateBadge(R.id.navigation_update).apply {
-            backgroundColor = ContextCompat.getColor(this@MainActivity, R.color.colorSecondary)
-            badgeTextColor = ContextCompat.getColor(this@MainActivity,
-                androidx.appcompat.R.color.primary_text_default_material_light)
+            backgroundColor = resources.getColor(R.color.colorSecondary, theme)
+            badgeTextColor = resources.getColor(androidx.appcompat.R.color.primary_text_default_material_light, theme)
         }
         if (savedInstanceState == null) displayFragment(TetheringFragment())
         val model by viewModels<ClientViewModel>()

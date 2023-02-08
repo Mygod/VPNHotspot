@@ -1,21 +1,16 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.content.*
 import android.content.res.Resources
 import android.net.*
 import android.os.Build
 import android.os.RemoteException
-import android.system.ErrnoException
-import android.system.Os
-import android.system.OsConstants
 import android.text.*
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
-import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
@@ -24,18 +19,11 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.io.File
-import java.io.FileNotFoundException
-import java.io.IOException
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
-import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -57,22 +45,9 @@ fun Long.toPluralInt(): Int {
     return (this % 1000000000).toInt() + 1000000000
 }
 
-@RequiresApi(26)
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
-@RequiresApi(26)
 inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
-
-fun Method.matchesCompat(name: String, args: Array<out Any?>?, vararg classes: Class<*>) =
-    if (Build.VERSION.SDK_INT < 26) {
-        this.name == name && args?.size ?: 0 == classes.size && classes.indices.all { i ->
-            args!![i]?.let { classes[i].isInstance(it) } != false
-        }
-    } else matches(name, *classes)
-
-fun HttpURLConnection.disconnectCompat() {
-    if (Build.VERSION.SDK_INT < 26) GlobalScope.launch(Dispatchers.IO) { disconnect() } else disconnect()
-}
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
@@ -167,7 +142,7 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
     try {
-        val address = hardwareAddress?.let(MacAddressCompat::fromBytes)
+        val address = hardwareAddress?.let(MacAddress::fromBytes)
         if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
     } catch (e: IllegalArgumentException) {
         Timber.w(e)
@@ -219,8 +194,7 @@ fun Resources.findIdentifier(name: String, defType: String, defPackage: String, 
         if (alternativePackage != null && it == 0) getIdentifier(name, defType, alternativePackage) else it
     }
 
-@get:RequiresApi(26)
-private val newLookup by lazy @TargetApi(26) {
+private val newLookup by lazy {
     MethodHandles.Lookup::class.java.getDeclaredConstructor(Class::class.java, Int::class.java).apply {
         isAccessible = true
     }
@@ -232,7 +206,7 @@ private val newLookup by lazy @TargetApi(26) {
  * See also: https://stackoverflow.com/a/49532463/2245107
  */
 fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?) = when {
-    Build.VERSION.SDK_INT >= 26 && method.isDefault -> try {
+    method.isDefault -> try {
         newLookup.newInstance(interfaceClass, 0xf)   // ALL_MODES
     } catch (e: ReflectiveOperationException) {
         Timber.w(e)
@@ -258,20 +232,5 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
 }
 
 fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
-    if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true) else if (Build.VERSION.SDK_INT == 23) {
-        // workarounds for OEM bugs
-        removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-        removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-    }
-}
-
-@Suppress("FunctionName")
-fun if_nametoindex(ifname: String) = if (Build.VERSION.SDK_INT >= 26) {
-    Os.if_nametoindex(ifname)
-} else try {
-    File("/sys/class/net/$ifname/ifindex").inputStream().bufferedReader().use { it.readLine().trim().toInt() }
-} catch (_: FileNotFoundException) {
-    NetworkInterface.getByName(ifname)?.index ?: 0
-} catch (e: IOException) {
-    if ((e.cause as? ErrnoException)?.errno == OsConstants.ENODEV) 0 else throw e
+    if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true)
 }

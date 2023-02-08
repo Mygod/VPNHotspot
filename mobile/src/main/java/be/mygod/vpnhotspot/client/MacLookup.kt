@@ -1,12 +1,11 @@
 package be.mygod.vpnhotspot.client
 
-import android.content.Context
+    import android.content.Context
+import android.net.MacAddress
 import androidx.annotation.MainThread
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.util.disconnectCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -22,25 +21,26 @@ import java.net.URL
  * This class generates a default nickname for new clients.
  */
 object MacLookup {
-    class UnexpectedError(val mac: MacAddressCompat, val error: String) : JSONException("") {
+    class UnexpectedError(val mac: MacAddress, val error: String) : JSONException("") {
         private fun formatMessage(context: Context) =
-                context.getString(R.string.clients_mac_lookup_unexpected_error, mac.toOui(), error)
+            context.getString(R.string.clients_mac_lookup_unexpected_error,
+                mac.toByteArray().joinToString("") { "%02x".format(it) }.substring(0, 9), error)
         override val message get() = formatMessage(app.english)
         override fun getLocalizedMessage() = formatMessage(app)
     }
 
-    private val macLookupBusy = mutableMapOf<MacAddressCompat, Pair<HttpURLConnection, Job>>()
+    private val macLookupBusy = mutableMapOf<MacAddress, Pair<HttpURLConnection, Job>>()
     // http://en.wikipedia.org/wiki/ISO_3166-1
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
 
     @MainThread
-    fun abort(mac: MacAddressCompat) = macLookupBusy.remove(mac)?.let { (conn, job) ->
+    fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.let { (conn, job) ->
         job.cancel()
-        conn.disconnectCompat()
+        conn.disconnect()
     }
 
     @MainThread
-    fun perform(mac: MacAddressCompat, explicit: Boolean = false) {
+    fun perform(mac: MacAddress, explicit: Boolean = false) {
         abort(mac)
         val conn = URL("https://macvendors.co/api/$mac").openConnection() as HttpURLConnection
         macLookupBusy[mac] = conn to GlobalScope.launch(Dispatchers.IO) {
@@ -70,7 +70,7 @@ object MacLookup {
         }
     }
 
-    private fun extractCountry(mac: MacAddressCompat, response: String, obj: JSONObject): MatchResult? {
+    private fun extractCountry(mac: MacAddress, response: String, obj: JSONObject): MatchResult? {
         countryCodeRegex.matchEntire(obj.optString("country"))?.also { return it }
         val address = obj.optString("address")
         if (address.isBlank()) return null

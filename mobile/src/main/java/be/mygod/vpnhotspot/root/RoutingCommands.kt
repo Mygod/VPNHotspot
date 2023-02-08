@@ -14,7 +14,6 @@ import timber.log.Timber
 object RoutingCommands {
     @Parcelize
     class Clean : RootCommandNoResult {
-        @Suppress("BlockingMethodInNonBlockingContext")
         override suspend fun execute() = withContext(Dispatchers.IO) {
             val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use(Routing.Companion::appendCleanCommands)

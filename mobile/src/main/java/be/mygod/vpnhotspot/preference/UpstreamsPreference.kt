@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.preference
 import android.content.Context
 import android.graphics.Typeface
 import android.net.LinkProperties
-import android.os.Build
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.util.AttributeSet
@@ -41,7 +40,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
                     internet == true || try {
                         route.matches(internetV4Address) || route.matches(internetV6Address)
                     } catch (e: RuntimeException) {
-                        if (Build.VERSION.SDK_INT >= 23) Timber.w(e) else Timber.d(e)
+                        Timber.w(e)
                         false
                     }
                 }
@@ -52,12 +51,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     }
 
     private val primary = Monitor()
-    private val fallback: Monitor = object : Monitor() {
-        override fun onFallback() {
-            currentInterfaces = mapOf("<default>" to true)
-            onUpdate()
-        }
-    }
+    private val fallback = Monitor()
 
     init {
         (context as LifecycleOwner).lifecycle.addObserver(this)

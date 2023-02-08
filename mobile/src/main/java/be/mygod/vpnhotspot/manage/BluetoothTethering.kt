@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
@@ -9,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -38,7 +36,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         /**
          * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#215
          */
-        @TargetApi(24)
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
                 BluetoothAdapter.STATE_ON -> {
@@ -109,7 +106,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
      */
     @SuppressLint("MissingPermission")
-    @RequiresApi(24)
     fun start(callback: TetheringManager.StartTetheringCallback, context: Context) {
         if (pendingCallback == null) try {
             if (adapter.state == BluetoothAdapter.STATE_OFF) {
@@ -123,7 +119,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
             pendingCallback = null
         }
     }
-    @RequiresApi(24)
     fun stop(callback: (Exception) -> Unit) {
         TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, callback)
         stoppedByUser = true

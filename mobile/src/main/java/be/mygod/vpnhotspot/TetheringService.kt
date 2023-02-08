@@ -2,9 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
@@ -46,7 +44,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     @Parcelize
     data class Starter(val monitored: ArrayList<String>) : BootReceiver.Startable {
         override fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, TetheringService::class.java).apply {
+            context.startForegroundService(Intent(context, TetheringService::class.java).apply {
                 putStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR, monitored)
             })
         }
@@ -113,7 +111,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
         // call this first just in case we are shutting down immediately
-        if (Build.VERSION.SDK_INT >= 26) updateNotification()
+        updateNotification()
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {

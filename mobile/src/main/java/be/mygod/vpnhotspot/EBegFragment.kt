@@ -94,7 +94,6 @@ class EBegFragment : AppCompatDialogFragment() {
                 }.build()))
             }.build()) else SmartSnackbar.make(R.string.donations__google_android_market_not_supported).show()
         }
-        @Suppress("ConstantConditionIf")
         if (BuildConfig.DONATIONS) (binding.donationsMoreStub.inflate() as Button).setOnClickListener {
             requireContext().launchUrl("https://mygod.be/donate/")
         }

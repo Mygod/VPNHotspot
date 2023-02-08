@@ -6,12 +6,10 @@ import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.IBinder
 import android.service.quicksettings.Tile
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
-@RequiresApi(26)
 class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
 

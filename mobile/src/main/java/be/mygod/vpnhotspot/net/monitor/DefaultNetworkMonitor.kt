@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.annotation.TargetApi
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -52,29 +51,10 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            when (Build.VERSION.SDK_INT) {
-                in 31..Int.MAX_VALUE -> @TargetApi(31) {
-                    Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
-                        Services.mainHandler)
-                }
-                in 28..30 -> @TargetApi(28) {
-                    Services.connectivity.requestNetwork(networkRequest, networkCallback, Services.mainHandler)
-                }
-                in 26..27 -> @TargetApi(26) {
-                    Services.connectivity.registerDefaultNetworkCallback(networkCallback, Services.mainHandler)
-                }
-                in 24..25 -> @TargetApi(24) {
-                    Services.connectivity.registerDefaultNetworkCallback(networkCallback)
-                }
-                else -> try {
-                    Services.connectivity.requestNetwork(networkRequest, networkCallback)
-                } catch (e: RuntimeException) {
-                    // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
-                    if (Build.VERSION.SDK_INT != 23) throw e
-                    GlobalScope.launch { callback.onFallback() }
-                    return
-                }
-            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
+                    Services.mainHandler)
+            } else Services.connectivity.requestNetwork(networkRequest, networkCallback, Services.mainHandler)
             registered = true
         }
     }

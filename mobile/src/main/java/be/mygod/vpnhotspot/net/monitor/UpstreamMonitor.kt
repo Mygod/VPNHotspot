@@ -46,15 +46,6 @@ abstract class UpstreamMonitor {
          * Called if some possibly stacked interface is available
          */
         fun onAvailable(properties: LinkProperties? = null)
-        /**
-         * Called on API 23- from DefaultNetworkMonitor. This indicates that there isn't a good way of telling the
-         * default network (see DefaultNetworkMonitor) and we are using rules at priority 22000
-         * (RULE_PRIORITY_DEFAULT_NETWORK) as our fallback rules, which would work fine until Android 9.0 broke it in
-         * commit: https://android.googlesource.com/platform/system/netd/+/758627c4d93392190b08e9aaea3bbbfb92a5f364
-         */
-        fun onFallback() {
-            throw UnsupportedOperationException()
-        }
     }
 
     val callbacks = mutableSetOf<Callback>()

@@ -50,7 +50,6 @@
     <string name="tethering_manage_offload_enabled">Por favor, desative a Aceleração de hardware de tethering nas configurações de desenvolvedor caso o VPN Hotspot não funcionar corretamente.</string>
     <string name="tethering_manage_usb">Tethering USB</string>
     <string name="tethering_manage_wifi">Ponto de acesso Wi\u2011Fi</string>
-    <string name="tethering_manage_wifi_legacy">Ponto de acesso Wi\u2011Fi (legacy)</string>
     <string name="tethering_manage_bluetooth">Tethering Bluetooth</string>
     <string name="tethering_manage_ethernet">Tethering Ethernet</string>
     <string name="tethering_manage_ncm">Tethering USB (NCM)</string>

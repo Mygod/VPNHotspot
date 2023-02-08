@@ -103,7 +103,7 @@ object UpdateChecker {
                 } catch (e: Exception) {
                     Timber.w(e)
                 } finally {
-                    conn.disconnectCompat()
+                    conn.disconnect()
                     putLong(KEY_LAST_FETCHED, System.currentTimeMillis())
                 }
             }

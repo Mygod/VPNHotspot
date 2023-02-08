@@ -94,9 +94,7 @@ object TetheringManager {
      * https://android.googlesource.com/platform/frameworks/base.git/+/2a091d7aa0c174986387e5d56bf97a87fe075bdb%5E%21/services/java/com/android/server/connectivity/Tethering.java
      */
     const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
-    @RequiresApi(26)
     private const val EXTRA_ACTIVE_LOCAL_ONLY_LEGACY = "localOnlyArray"
-    private const val EXTRA_ACTIVE_TETHER_LEGACY = "activeArray"
     /**
      * gives a String[] listing all the interfaces currently in local-only
      * mode (ie, has DHCPv4+IPv6-ULA support and no packet forwarding)
@@ -107,7 +105,6 @@ object TetheringManager {
      * gives a String[] listing all the interfaces currently tethered
      * (ie, has DHCPv4 support and packets potentially forwarded/NATed)
      */
-    @RequiresApi(26)
     private const val EXTRA_ACTIVE_TETHER = "tetherArray"
     /**
      * gives a String[] listing all the interfaces we tried to tether and
@@ -131,7 +128,6 @@ object TetheringManager {
      * Wifi tethering type.
      * @see [startTethering].
      */
-    @RequiresApi(24)
     const val TETHERING_WIFI = 0
     /**
      * USB tethering type.
@@ -141,7 +137,6 @@ object TetheringManager {
      * Source: https://android.googlesource.com/platform/frameworks/base/+/7ca5d3a/services/usb/java/com/android/server/usb/UsbService.java#389
      * @see startTethering
      */
-    @RequiresApi(24)
     const val TETHERING_USB = 1
     /**
      * Bluetooth tethering type.
@@ -149,7 +144,6 @@ object TetheringManager {
      * Requires BLUETOOTH permission.
      * @see startTethering
      */
-    @RequiresApi(24)
     const val TETHERING_BLUETOOTH = 2
     /**
      * Ethernet tethering type.
@@ -178,16 +172,13 @@ object TetheringManager {
         }
     }.first()
 
-    @get:RequiresApi(24)
     private val classOnStartTetheringCallback by lazy {
         Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
     }
-    @get:RequiresApi(24)
-    private val startTetheringLegacy by lazy @TargetApi(24) {
+    private val startTetheringLegacy by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("startTethering",
                 Int::class.java, Boolean::class.java, classOnStartTetheringCallback, Handler::class.java)
     }
-    @get:RequiresApi(24)
     private val stopTetheringLegacy by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("stopTethering", Int::class.java)
     }
@@ -232,7 +223,6 @@ object TetheringManager {
     private val stopTethering by lazy @TargetApi(30) { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
 
     @Deprecated("Legacy API")
-    @RequiresApi(24)
     fun startTetheringLegacy(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
                              handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
         val reference = WeakReference(callback)
@@ -299,7 +289,6 @@ object TetheringManager {
      *         configures tethering with the preferred local IPv4 link address to use.
      * *@see setStaticIpv4Addresses
      */
-    @RequiresApi(24)
     fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
                        handler: Handler? = null, cacheDir: File = app.deviceStorage.codeCacheDir) {
         if (Build.VERSION.SDK_INT >= 30) try {
@@ -371,12 +360,10 @@ object TetheringManager {
      *         {@link ConnectivityManager.TETHERING_USB}, or
      *         {@link ConnectivityManager.TETHERING_BLUETOOTH}.
      */
-    @RequiresApi(24)
     fun stopTethering(type: Int) {
         if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type)
         else stopTetheringLegacy(Services.connectivity, type)
     }
-    @RequiresApi(24)
     fun stopTethering(type: Int, callback: (Exception) -> Unit) {
         try {
             stopTethering(type)
@@ -625,10 +612,7 @@ object TetheringManager {
     @RequiresApi(30)
     const val TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION = 14
 
-    val Intent.tetheredIfaces get() = getStringArrayListExtra(
-            if (Build.VERSION.SDK_INT >= 26) EXTRA_ACTIVE_TETHER else EXTRA_ACTIVE_TETHER_LEGACY)
-    val Intent.localOnlyTetheredIfaces get() = if (Build.VERSION.SDK_INT >= 26) {
-        getStringArrayListExtra(
-                if (Build.VERSION.SDK_INT >= 30) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
-    } else emptyList<String>()
+    val Intent.tetheredIfaces get() = getStringArrayListExtra(EXTRA_ACTIVE_TETHER)
+    val Intent.localOnlyTetheredIfaces get() = getStringArrayListExtra(
+        if (Build.VERSION.SDK_INT >= 30) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
 }

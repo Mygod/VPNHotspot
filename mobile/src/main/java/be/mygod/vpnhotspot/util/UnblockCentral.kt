@@ -13,9 +13,7 @@ import me.weishu.reflection.Reflection
  *
  * Lazy cannot be used directly as it will create inner classes.
  */
-@RequiresApi(28)
 @SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi")
-@Suppress("FunctionName")
 object UnblockCentral {
     var needInit = true
     /**

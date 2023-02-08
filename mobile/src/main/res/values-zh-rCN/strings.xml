@@ -57,7 +57,6 @@
       -->
     <string name="tethering_manage_usb">USB 网络共享</string>
     <string name="tethering_manage_wifi">WLAN 热点</string>
-    <string name="tethering_manage_wifi_legacy">WLAN 热点 (旧 API)</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"以太网络共享"</string>
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>

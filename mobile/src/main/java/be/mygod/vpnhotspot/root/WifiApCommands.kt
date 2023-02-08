@@ -20,7 +20,6 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object WifiApCommands {
-    @RequiresApi(28)
     sealed class SoftApCallbackParcel : Parcelable {
         abstract fun dispatch(callback: WifiApManager.SoftApCallbackCompat)
 
@@ -60,7 +59,6 @@ object WifiApCommands {
     }
 
     @Parcelize
-    @RequiresApi(28)
     class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
         override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
@@ -115,7 +113,6 @@ object WifiApCommands {
     private val callbacks = mutableSetOf<WifiApManager.SoftApCallbackCompat>()
     private val lastCallback = AutoFiringCallbacks()
     private var rootCallbackJob: Job? = null
-    @RequiresApi(28)
     private suspend fun handleChannel(channel: ReceiveChannel<SoftApCallbackParcel>) = channel.consumeEach { parcel ->
         when (parcel) {
             is SoftApCallbackParcel.OnStateChanged -> synchronized(callbacks) { lastCallback.state = parcel }
@@ -141,7 +138,6 @@ object WifiApCommands {
         }
         for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
-    @RequiresApi(28)
     fun registerSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
         val wasEmpty = callbacks.isEmpty()
         callbacks.add(callback)
@@ -158,7 +154,6 @@ object WifiApCommands {
             null
         } else lastCallback
     }?.toSequence()?.forEach { it?.dispatch(callback) }
-    @RequiresApi(28)
     fun unregisterSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
         if (callbacks.remove(callback) && callbacks.isEmpty()) {
             rootCallbackJob!!.cancel()

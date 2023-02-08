@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
+import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
@@ -9,9 +10,8 @@ import android.net.wifi.p2p.WifiP2pManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
-import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.matchesCompat
+import be.mygod.vpnhotspot.util.matches
 import kotlinx.coroutines.CompletableDeferred
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -128,7 +128,7 @@ object WifiP2pManagerHelper {
         requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when {
-                method.matchesCompat("onPersistentGroupInfoAvailable", args, classWifiP2pGroupList) -> {
+                method.matches("onPersistentGroupInfoAvailable", classWifiP2pGroupList) -> {
                     @Suppress("UNCHECKED_CAST")
                     result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }
@@ -142,11 +142,11 @@ object WifiP2pManagerHelper {
         CompletableDeferred<WifiP2pInfo?>().apply { requestConnectionInfo(c) { complete(it) } }.await()
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     @RequiresApi(29)
-    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddressCompat? {
+    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddress? {
         val future = CompletableDeferred<String?>()
         requestDeviceInfo(c) { future.complete(it?.deviceAddress) }
         return future.await()?.let {
-            val address = if (it.isEmpty()) null else MacAddressCompat.fromString(it)
+            val address = if (it.isEmpty()) null else MacAddress.fromString(it)
             if (address == MacAddressCompat.ANY_ADDRESS) null else address
         }
     }

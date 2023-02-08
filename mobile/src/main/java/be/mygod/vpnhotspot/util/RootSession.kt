@@ -28,8 +28,8 @@ class RootSession : AutoCloseable {
 
     private var server: RootServer? = runBlocking { RootManager.acquire() }
     override fun close() {
-        server = null
         server?.let { runBlocking { RootManager.release(it) } }
+        server = null
     }
 
     /**

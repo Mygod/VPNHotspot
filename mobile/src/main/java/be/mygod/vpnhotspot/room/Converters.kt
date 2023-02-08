@@ -1,8 +1,11 @@
 package be.mygod.vpnhotspot.room
 
+import android.net.MacAddress
 import android.text.TextUtils
 import androidx.room.TypeConverter
 import be.mygod.librootkotlinx.useParcel
+import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toLong
 import timber.log.Timber
 import java.net.InetAddress
 
@@ -26,6 +29,14 @@ object Converters {
             ""
         }
     }
+
+    @JvmStatic
+    @TypeConverter
+    fun persistMacAddress(address: MacAddress) = address.toLong()
+
+    @JvmStatic
+    @TypeConverter
+    fun unpersistMacAddress(address: Long) = MacAddressCompat(address).toPlatform()
 
     @JvmStatic
     @TypeConverter

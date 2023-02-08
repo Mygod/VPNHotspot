@@ -9,10 +9,9 @@ import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
 import androidx.annotation.RequiresApi
-import be.mygod.vpnhotspot.BuildConfig
-import be.mygod.vpnhotspot.net.MacAddressCompat
-import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.requireSingleBand
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.setChannel
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.parcelize.Parcelize
@@ -22,8 +21,7 @@ import java.lang.reflect.InvocationTargetException
 @Parcelize
 data class SoftApConfigurationCompat(
     var ssid: String? = null,
-    @Deprecated("Workaround for using inline class with Parcelize, use bssid")
-    var bssidAddr: Long? = null,
+    var bssid: MacAddress? = null,
     var passphrase: String? = null,
     var isHiddenSsid: Boolean = false,
     /**
@@ -31,14 +29,11 @@ data class SoftApConfigurationCompat(
      * see also [android.net.wifi.WifiManager.isBridgedApConcurrencySupported].
      * Otherwise, use [requireSingleBand] and [setChannel].
      */
-    @TargetApi(23)
     var channels: SparseIntArray = SparseIntArray(1).apply { append(BAND_2GHZ, 0) },
     var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
     @TargetApi(30)
     var maxNumberOfClients: Int = 0,
-    @TargetApi(28)
     var isAutoShutdownEnabled: Boolean = true,
-    @TargetApi(28)
     var shutdownTimeoutMillis: Long = 0,
     @TargetApi(30)
     var isClientControlByUserEnabled: Boolean = false,
@@ -166,7 +161,6 @@ data class SoftApConfigurationCompat(
          *
          * https://android.googlesource.com/platform/frameworks/base/+/android-6.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#242
          */
-        @get:RequiresApi(23)
         @Suppress("DEPRECATION")
         /**
          * The band which AP resides on
@@ -174,7 +168,6 @@ data class SoftApConfigurationCompat(
          * By default, 2G is chosen
          */
         private val apBand by lazy { android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apBand") }
-        @get:RequiresApi(23)
         @Suppress("DEPRECATION")
         /**
          * The channel which AP resides on
@@ -356,17 +349,17 @@ data class SoftApConfigurationCompat(
         @Suppress("DEPRECATION")
         fun android.net.wifi.WifiConfiguration.toCompat() = SoftApConfigurationCompat(
                 SSID,
-                BSSID?.let { MacAddressCompat.fromString(it) }?.addr,
+                BSSID?.let { MacAddress.fromString(it) },
                 preSharedKey,
                 hiddenSSID,
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
                 SparseIntArray(1).also {
-                    if (Build.VERSION.SDK_INT >= 23) it.append(when (val band = apBand.getInt(this)) {
+                    it.append(when (val band = apBand.getInt(this)) {
                         0 -> BAND_2GHZ
                         1 -> BAND_5GHZ
                         -1 -> BAND_LEGACY
                         else -> throw IllegalArgumentException("Unexpected band $band")
-                    }, apChannel.getInt(this)) else it.append(BAND_LEGACY, 0)
+                    }, apChannel.getInt(this))
                 },
                 allowedKeyManagement.nextSetBit(0).let { selected ->
                     require(allowedKeyManagement.nextSetBit(selected + 1) < 0) {
@@ -389,14 +382,14 @@ data class SoftApConfigurationCompat(
                         }
                     }
                 },
-                isAutoShutdownEnabled = if (Build.VERSION.SDK_INT >= 28) TetherTimeoutMonitor.enabled else false,
+                isAutoShutdownEnabled = TetherTimeoutMonitor.enabled,
                 underlying = this)
 
         @RequiresApi(30)
         @Suppress("UNCHECKED_CAST")
         fun SoftApConfiguration.toCompat() = SoftApConfigurationCompat(
             ssid,
-            bssid?.toCompat()?.addr,
+            bssid,
             passphrase,
             isHiddenSsid,
             if (Build.VERSION.SDK_INT >= 31) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
@@ -466,13 +459,6 @@ data class SoftApConfigurationCompat(
             setBridgedModeOpportunisticShutdownTimeoutMillis(staticBuilder, timeout)
     }
 
-    @Suppress("DEPRECATION")
-    inline var bssid: MacAddressCompat?
-        get() = bssidAddr?.let { MacAddressCompat(it) }
-        set(value) {
-            bssidAddr = value?.addr
-        }
-
     fun setChannel(channel: Int, band: Int = BAND_LEGACY) {
         channels = SparseIntArray(1).apply {
             append(when {
@@ -500,18 +486,15 @@ data class SoftApConfigurationCompat(
         result.SSID = ssid
         result.preSharedKey = passphrase
         result.hiddenSSID = isHiddenSsid
-        if (Build.VERSION.SDK_INT >= 23) {
-            apBand.setInt(result, when (band) {
-                BAND_2GHZ -> 0
-                BAND_5GHZ -> 1
-                else -> {
-                    require(Build.VERSION.SDK_INT >= 28) { "A band must be specified on this platform" }
-                    require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
-                    -1
-                }
-            })
-            apChannel.setInt(result, channel)
-        } else require(isLegacyEitherBand(band)) { "Specifying band is unsupported on this platform" }
+        apBand.setInt(result, when (band) {
+            BAND_2GHZ -> 0
+            BAND_5GHZ -> 1
+            else -> {
+                require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
+                -1
+            }
+        })
+        apChannel.setInt(result, channel)
         if (original?.securityType != securityType) {
             result.allowedKeyManagement.clear()
             result.allowedKeyManagement.set(when (securityType) {
@@ -545,9 +528,8 @@ data class SoftApConfigurationCompat(
             else -> passphrase
         }, securityType)
         setChannelsCompat(builder, channels)
-        setBssid(builder, bssid?.run {
-            if (Build.VERSION.SDK_INT >= 31 && macRandomizationSetting != RANDOMIZATION_NONE) null else toPlatform()
-        })
+        setBssid(builder,
+            if (Build.VERSION.SDK_INT < 31 || macRandomizationSetting == RANDOMIZATION_NONE) bssid else null)
         setMaxNumberOfClients(builder, maxNumberOfClients)
         try {
             setShutdownTimeoutMillis(builder, shutdownTimeoutMillis)

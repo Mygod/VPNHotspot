@@ -15,7 +15,6 @@ import android.widget.Toast
 import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
@@ -46,13 +45,11 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         app = this
-        if (Build.VERSION.SDK_INT >= 24) @SuppressLint("RestrictedApi") {
-            deviceStorage = DeviceStorageApp(this)
-            // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
-            deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
-            deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
-            BootReceiver.migrateIfNecessary()
-        } else deviceStorage = this
+        deviceStorage = DeviceStorageApp(this)
+        // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
+        deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
+        deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
+        BootReceiver.migrateIfNecessary()
         Services.init { this }
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
@@ -62,7 +59,7 @@ class App : Application() {
             "REL" -> { }
             else -> FirebaseCrashlytics.getInstance().apply {
                 setCustomKey("codename", codename)
-                if (Build.VERSION.SDK_INT >= 23) setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
+                setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
             }
         }
         Timber.plant(object : Timber.DebugTree() {
@@ -115,19 +112,13 @@ class App : Application() {
      * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
      */
     inline fun <reified T> startServiceWithLocation(context: Context) {
-        val canStart = Build.VERSION.SDK_INT >= 33 || if (Build.VERSION.SDK_INT >= 28) {
-            location?.isLocationEnabled == true
-        } else @Suppress("DEPRECATION") {
-            Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
-                Settings.Secure.LOCATION_MODE_OFF) != Settings.Secure.LOCATION_MODE_OFF
-        }
-        if (canStart) ContextCompat.startForegroundService(context, Intent(context, T::class.java)) else try {
+        if (Build.VERSION.SDK_INT < 33 && location?.isLocationEnabled != true) try {
             context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             Toast.makeText(context, R.string.tethering_location_off, Toast.LENGTH_LONG).show()
         } catch (e: ActivityNotFoundException) {
             app.logEvent("location_settings") { param("message", e.toString()) }
             SmartSnackbar.make(R.string.tethering_location_off).show()
-        }
+        } else context.startForegroundService(Intent(context, T::class.java))
     }
 
     lateinit var deviceStorage: Application
@@ -145,10 +136,10 @@ class App : Application() {
         CustomTabsIntent.Builder().apply {
             setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
             setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_LIGHT, CustomTabColorSchemeParams.Builder().apply {
-                setToolbarColor(ContextCompat.getColor(app, R.color.light_colorPrimary))
+                setToolbarColor(resources.getColor(R.color.light_colorPrimary, theme))
             }.build())
             setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK, CustomTabColorSchemeParams.Builder().apply {
-                setToolbarColor(ContextCompat.getColor(app, R.color.dark_colorPrimary))
+                setToolbarColor(resources.getColor(R.color.dark_colorPrimary, theme))
             }.build())
         }.build()
     }

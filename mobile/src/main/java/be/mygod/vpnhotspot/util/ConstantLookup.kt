@@ -30,10 +30,8 @@ class ConstantLookup(private val prefix: String, private val lookup29: Array<out
     }
 }
 
-@Suppress("FunctionName")
 fun ConstantLookup(prefix: String, vararg lookup29: String?, clazz: () -> Class<*>) =
         ConstantLookup(prefix, lookup29, clazz)
-@Suppress("FunctionName")
 inline fun <reified T> ConstantLookup(prefix: String, vararg lookup29: String?) =
         ConstantLookup(prefix, lookup29) { T::class.java }
 

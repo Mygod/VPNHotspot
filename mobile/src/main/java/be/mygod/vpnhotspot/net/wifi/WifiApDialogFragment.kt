@@ -1,10 +1,10 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.content.ClipData
 import android.content.ClipDescription
 import android.content.DialogInterface
+import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
@@ -31,7 +31,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.RangeInput
@@ -68,17 +67,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         private val p2pSafeOptions by lazy { genAutoOptions(SoftApConfigurationCompat.BAND_LEGACY) + channels5G }
         private val softApOptions by lazy {
-            when (Build.VERSION.SDK_INT) {
-                in 30..Int.MAX_VALUE -> {
-                    genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
-                            channels5G +
-                            (1..253).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
-                            (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
-                }
-                in 28 until 30 -> p2pSafeOptions
-                else -> listOf(ChannelOption(SoftApConfigurationCompat.BAND_2GHZ),
-                    ChannelOption(SoftApConfigurationCompat.BAND_5GHZ)) + channels5G
-            }
+            if (Build.VERSION.SDK_INT >= 30) {
+                genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
+                        channels5G +
+                        (1..253).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
+                        (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
+            } else p2pSafeOptions
         }
 
         @get:RequiresApi(30)
@@ -149,24 +143,24 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
         }
-        if (full) @TargetApi(28) {
+        if (full) {
             isAutoShutdownEnabled = dialogView.autoShutdown.isChecked
             shutdownTimeoutMillis = dialogView.timeout.text.let { text ->
                 if (text.isNullOrEmpty()) 0 else text.toString().toLong()
             }
-            if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) channels = generateChannels()
+            channels = generateChannels()
             maxNumberOfClients = dialogView.maxClient.text.let { text ->
                 if (text.isNullOrEmpty()) 0 else text.toString().toInt()
             }
             isClientControlByUserEnabled = dialogView.clientUserControl.isChecked
             allowedClientList = (dialogView.allowedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
+                    .filter { it.isNotEmpty() }.map(MacAddress::fromString)
             blockedClientList = (dialogView.blockedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }
+                    .filter { it.isNotEmpty() }.map(MacAddress::fromString)
             macRandomizationSetting = dialogView.macRandomization.selectedItemPosition
             bssid = if ((arg.p2pMode || Build.VERSION.SDK_INT < 31 && macRandomizationSetting ==
                         SoftApConfigurationCompat.RANDOMIZATION_NONE) && dialogView.bssid.length() != 0) {
-                MacAddressCompat.fromString(dialogView.bssid.text.toString())
+                MacAddress.fromString(dialogView.bssid.text.toString())
             } else null
             isBridgedModeOpportunisticShutdownEnabled = dialogView.bridgedModeOpportunisticShutdown.isChecked
             isIeee80211axEnabled = dialogView.ieee80211ax.isChecked
@@ -177,7 +171,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             vendorElements = VendorElements.deserialize(dialogView.vendorElements.text)
             persistentRandomizedMacAddress = if (dialogView.persistentRandomizedMac.length() != 0) {
-                MacAddressCompat.fromString(dialogView.persistentRandomizedMac.text.toString()).toPlatform()
+                MacAddress.fromString(dialogView.persistentRandomizedMac.text.toString())
             } else null
             allowedAcsChannels = acsList.associate { (band, text, _) -> band to RangeInput.fromString(text.text) }
             if (!arg.p2pMode && Build.VERSION.SDK_INT >= 33) {
@@ -227,7 +221,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
-        if (!arg.p2pMode && Build.VERSION.SDK_INT < 28) dialogView.autoShutdown.isGone = true
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
             dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
                     TetherTimeoutMonitor.defaultTimeout)
@@ -239,12 +232,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             if (!arg.readOnly) onItemSelectedListener = this@WifiApDialogFragment
         }
-        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-            dialogView.bandPrimary.configure(currentChannels)
-            if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
-                dialogView.bandSecondary.configure(listOf(ChannelOption.Disabled) + currentChannels)
-            } else dialogView.bandSecondary.isGone = true
-        } else dialogView.bandGroup.isGone = true
+        dialogView.bandPrimary.configure(currentChannels)
+        if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
+            dialogView.bandSecondary.configure(listOf(ChannelOption.Disabled) + currentChannels)
+        } else dialogView.bandSecondary.isGone = true
         if (arg.p2pMode || Build.VERSION.SDK_INT < 30) dialogView.accessControlGroup.isGone = true
         else if (!arg.readOnly) {
             dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
@@ -307,11 +298,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.password.setText(base.passphrase)
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
         dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it <= 0) "" else it.toString() })
-        if (Build.VERSION.SDK_INT >= 23 || arg.p2pMode) {
-            dialogView.bandPrimary.setSelection(locate(0))
-            if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
-                dialogView.bandSecondary.setSelection(if (base.channels.size() > 1) locate(1) + 1 else 0)
-            }
+        dialogView.bandPrimary.setSelection(locate(0))
+        if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
+            dialogView.bandSecondary.setSelection(if (base.channels.size() > 1) locate(1) + 1 else 0)
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid
@@ -343,7 +332,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         validate()
     }
 
-    @TargetApi(28)
     private fun validate() {
         if (!started) return
         val ssidLength = dialogView.ssid.text.toString().toByteArray().size
@@ -389,10 +377,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bssidWrapper.isGone = hideBssid
         dialogView.bssidWrapper.error = null
         val bssidValid = hideBssid || dialogView.bssid.length() == 0 || try {
-            val mac = MacAddressCompat.fromString(dialogView.bssid.text.toString())
-            if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) {
-                SoftApConfigurationCompat.testPlatformValidity(mac.toPlatform())
-            }
+            val mac = MacAddress.fromString(dialogView.bssid.text.toString())
+            if (Build.VERSION.SDK_INT >= 30 && !arg.p2pMode) SoftApConfigurationCompat.testPlatformValidity(mac)
             true
         } catch (e: Exception) {
             dialogView.bssidWrapper.error = e.readableMessage
@@ -409,15 +395,15 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.maxClientWrapper.error = maxClientError
         val listsNoError = if (Build.VERSION.SDK_INT >= 30) {
             val (blockedList, blockedListError) = try {
-                (dialogView.blockedList.text ?: "").split(nonMacChars)
-                    .filter { it.isNotEmpty() }.map { MacAddressCompat.fromString(it).toPlatform() }.toSet() to null
+                (dialogView.blockedList.text ?: "").split(nonMacChars).filter { it.isNotEmpty() }
+                    .map(MacAddress::fromString).toSet() to null
             } catch (e: IllegalArgumentException) {
                 null to e.readableMessage
             }
             dialogView.blockedListWrapper.error = blockedListError
             val allowedListError = try {
                 (dialogView.allowedList.text ?: "").split(nonMacChars).filter { it.isNotEmpty() }.forEach {
-                    val mac = MacAddressCompat.fromString(it).toPlatform()
+                    val mac = MacAddress.fromString(it)
                     require(blockedList?.contains(mac) != true) { "A MAC address exists in both client lists" }
                 }
                 null
@@ -449,9 +435,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.vendorElementsWrapper.error = vendorElementsError
         dialogView.persistentRandomizedMacWrapper.error = null
         val persistentRandomizedMacValid = dialogView.persistentRandomizedMac.length() == 0 || try {
-            MacAddressCompat.fromString(dialogView.persistentRandomizedMac.text.toString())
+            MacAddress.fromString(dialogView.persistentRandomizedMac.text.toString())
             true
-        } catch (e: Exception) {
+        } catch (e: IllegalArgumentException) {
             dialogView.persistentRandomizedMacWrapper.error = e.readableMessage
             false
         }
@@ -496,9 +482,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             android.R.id.copy -> try {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
                         Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)).apply {
-                    if (Build.VERSION.SDK_INT >= 24) {
-                        description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
-                    }
+                    description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
                 })
                 true
             } catch (e: RuntimeException) {

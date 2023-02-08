@@ -1,13 +1,8 @@
 package be.mygod.vpnhotspot
 
-import android.annotation.TargetApi
 import android.app.*
 import android.content.Context
 import android.content.Intent
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.ServiceCompat
-import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import java.util.*
@@ -25,16 +20,15 @@ object ServiceNotification {
         val deviceCounts = deviceCountsMap.values.flatMap { it.entries }.sortedBy { it.key }
         val inactive = inactiveMap.values.flatten()
         val isInactive = inactive.isNotEmpty() && deviceCounts.isEmpty()
-        val builder = NotificationCompat.Builder(context, if (isInactive) CHANNEL_INACTIVE else CHANNEL_ACTIVE).apply {
+        val builder = Notification.Builder(context, if (isInactive) CHANNEL_INACTIVE else CHANNEL_ACTIVE).apply {
             setWhen(0)
-            setCategory(NotificationCompat.CATEGORY_SERVICE)
-            color = ContextCompat.getColor(context, R.color.colorPrimary)
+            setCategory(Notification.CATEGORY_SERVICE)
+            setColor(context.resources.getColor(R.color.colorPrimary, context.theme))
             setContentTitle(context.getText(R.string.notification_tethering_title))
             setSmallIcon(R.drawable.ic_quick_settings_tile_on)
             setContentIntent(PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE))
-            setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            priority = if (isInactive) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_LOW
+            setVisibility(Notification.VISIBILITY_PUBLIC)
         }
         var lines = deviceCounts.map { (dev, size) ->
             context.resources.getQuantityString(R.plurals.notification_connected_devices, size, size, dev)
@@ -45,13 +39,13 @@ object ServiceNotification {
         return if (lines.size <= 1) builder.setContentText(lines.singleOrNull()).build() else {
             val deviceCount = deviceCounts.sumOf { it.value }
             val interfaceCount = deviceCounts.size + inactive.size
-            NotificationCompat.BigTextStyle(builder
-                    .setContentText(context.resources.getQuantityString(R.plurals.notification_connected_devices,
-                            deviceCount, deviceCount,
-                            context.resources.getQuantityString(R.plurals.notification_interfaces,
-                                    interfaceCount, interfaceCount))))
-                    .bigText(lines.joinToString("\n"))
-                    .build()!!
+            Notification.BigTextStyle().apply {
+                setBuilder(builder.setContentText(context.resources.getQuantityString(
+                    R.plurals.notification_connected_devices, deviceCount, deviceCount,
+                    context.resources.getQuantityString(R.plurals.notification_interfaces,
+                        interfaceCount, interfaceCount))))
+                bigText(lines.joinToString("\n"))
+            }.build()!!
         }
     }
 
@@ -65,26 +59,23 @@ object ServiceNotification {
     fun stopForeground(service: Service) = synchronized(this) {
         deviceCountsMap.remove(service) ?: return@synchronized
         val shutdown = deviceCountsMap.isEmpty()
-        ServiceCompat.stopForeground(service,
-            if (shutdown) ServiceCompat.STOP_FOREGROUND_REMOVE else ServiceCompat.STOP_FOREGROUND_DETACH)
+        service.stopForeground(if (shutdown) Service.STOP_FOREGROUND_REMOVE else Service.STOP_FOREGROUND_DETACH)
         if (!shutdown) manager.notify(NOTIFICATION_ID, buildNotification(service))
     }
 
     fun updateNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= 26) @TargetApi(26) {
-            NotificationChannel(CHANNEL_ACTIVE,
-                    app.getText(R.string.notification_channel_tethering), NotificationManager.IMPORTANCE_LOW).apply {
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                manager.createNotificationChannel(this)
-            }
-            NotificationChannel(CHANNEL_INACTIVE,
-                    app.getText(R.string.notification_channel_monitor), NotificationManager.IMPORTANCE_LOW).apply {
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                manager.createNotificationChannel(this)
-            }
-            // remove old service channels
-            manager.deleteNotificationChannel("hotspot")
-            manager.deleteNotificationChannel("repeater")
+        NotificationChannel(CHANNEL_ACTIVE,
+                app.getText(R.string.notification_channel_tethering), NotificationManager.IMPORTANCE_LOW).apply {
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            manager.createNotificationChannel(this)
         }
+        NotificationChannel(CHANNEL_INACTIVE,
+                app.getText(R.string.notification_channel_monitor), NotificationManager.IMPORTANCE_LOW).apply {
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            manager.createNotificationChannel(this)
+        }
+        // remove old service channels
+        manager.deleteNotificationChannel("hotspot")
+        manager.deleteNotificationChannel("repeater")
     }
 }

@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import android.net.MacAddress
 import android.os.Build
 import android.system.ErrnoException
 import android.system.Os
@@ -15,7 +16,7 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 
-data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddressCompat, val state: State) {
+data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddress, val state: State) {
     enum class State {
         INCOMPLETE, VALID, FAILED, DELETING
     }
@@ -65,7 +66,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                     return devs.map { IpNeighbour(ip, it, lladdr, State.DELETING) }
                 }
                 if (match.groups[4] != null) try {
-                    lladdr = MacAddressCompat.fromString(match.groupValues[4])
+                    lladdr = MacAddress.fromString(match.groupValues[4])
                 } catch (e: IllegalArgumentException) {
                     if (state != State.INCOMPLETE && state != State.DELETING) {
                         Timber.w(IOException("Failed to find MAC address for $line", e))
@@ -79,7 +80,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                         val list = arp()
                                 .asSequence()
                                 .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
-                                .map { MacAddressCompat.fromString(it[ARP_HW_ADDRESS]) }
+                                .map { MacAddress.fromString(it[ARP_HW_ADDRESS]) }
                                 .filter { it != MacAddressCompat.ALL_ZEROS_ADDRESS }
                                 .distinct()
                                 .toList()
@@ -138,5 +139,4 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
 data class IpDev(val ip: InetAddress, val dev: String) {
     override fun toString() = "$ip%$dev"
 }
-@Suppress("FunctionName")
 fun IpDev(neighbour: IpNeighbour) = IpDev(neighbour.ip, neighbour.dev)

@@ -11,14 +11,12 @@ import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
-import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
@@ -27,7 +25,6 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-@RequiresApi(24)
 sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManager.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
@@ -110,7 +107,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     stop()
                 } catch (e: Exception) {
                     onException(e)
-                } else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                } else startForegroundService(Intent(this, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
             }
         }
@@ -211,7 +208,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                             stop()
                         } catch (e: Exception) {
                             onException(e)
-                        } else ContextCompat.startForegroundService(this, Intent(this, TetheringService::class.java)
+                        } else startForegroundService(Intent(this, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
                     }
                 }
@@ -227,24 +224,5 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
         override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
         override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
-    }
-
-    @Suppress("DEPRECATION")
-    @Deprecated("Not usable since API 25")
-    class WifiLegacy : TetheringTileService() {
-        override val labelString get() = R.string.tethering_manage_wifi_legacy
-        override val tetherType get() = TetherType.WIFI
-        override val icon get() = R.drawable.ic_device_wifi_tethering
-
-        override fun start() = try {
-            WifiApManager.start()
-        } catch (e: Exception) {
-            onException(e)
-        }
-        override fun stop() = try {
-            WifiApManager.stop()
-        } catch (e: Exception) {
-            onException(e)
-        }
     }
 }

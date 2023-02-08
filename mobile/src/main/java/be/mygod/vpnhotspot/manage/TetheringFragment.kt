@@ -15,7 +15,6 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
-import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -51,16 +50,13 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
         TetheringManager.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
-        @get:RequiresApi(26)
-        internal val localOnlyHotspotManager by lazy @TargetApi(26) { LocalOnlyHotspotManager(this@TetheringFragment) }
-        @get:RequiresApi(24)
+        internal val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
         internal val bluetoothManager by lazy {
-            if (Build.VERSION.SDK_INT >= 24) requireContext().getSystemService<BluetoothManager>()?.adapter?.let {
+            requireContext().getSystemService<BluetoothManager>()?.adapter?.let {
                 TetherManager.Bluetooth(this@TetheringFragment, it)
-            } else null
+            }
         }
-        @get:RequiresApi(24)
-        private val tetherManagers by lazy @TargetApi(24) {
+        private val tetherManagers by lazy {
             listOfNotNull(
                 TetherManager.Wifi(this@TetheringFragment),
                 TetherManager.Usb(this@TetheringFragment),
@@ -69,7 +65,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
         @get:RequiresApi(30)
         private val ethernetManager by lazy @TargetApi(30) { TetherManager.Ethernet(this@TetheringFragment) }
-        private val wifiManagerLegacy by lazy { TetherManager.WifiLegacy(this@TetheringFragment) }
 
         var activeIfaces = emptyList<String>()
         var localOnlyIfaces = emptyList<String>()
@@ -106,23 +101,17 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
             val list = ArrayList<Manager>()
             if (Services.p2p != null) list.add(repeaterManager)
-            if (Build.VERSION.SDK_INT >= 26) list.add(localOnlyHotspotManager)
+            list.add(localOnlyHotspotManager)
             val monitoredIfaces = binder?.monitoredIfaces ?: emptyList()
-            updateMonitorList(activeIfaces - monitoredIfaces)
+            updateMonitorList(activeIfaces - monitoredIfaces.toSet())
             list.addAll((activeIfaces + monitoredIfaces).toSortedSet()
                     .map { InterfaceManager(this@TetheringFragment, it) })
             list.add(ManageBar)
-            if (Build.VERSION.SDK_INT >= 24) {
-                list.addAll(tetherManagers)
-                tetherManagers.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
-            }
+            list.addAll(tetherManagers)
+            tetherManagers.forEach { it.updateErrorMessage(erroredIfaces, lastErrors) }
             if (Build.VERSION.SDK_INT >= 30) {
                 list.add(ethernetManager)
                 ethernetManager.updateErrorMessage(erroredIfaces, lastErrors)
-            }
-            if (Build.VERSION.SDK_INT < 26) {
-                list.add(wifiManagerLegacy)
-                wifiManagerLegacy.onTetheringStarted()
             }
             submitList(list) { deferred.complete(list) }
         }
@@ -140,7 +129,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 R.string.repeater_missing_location_permissions, Snackbar.LENGTH_LONG).show()
         }
     }
-    @RequiresApi(26)
     val startLocalOnlyHotspot = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         adapter.localOnlyHotspotManager.start(requireContext())
     }
@@ -170,7 +158,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         item.subMenu!!.apply {
             clear()
             for (iface in canMonitor.sorted()) add(iface).setOnMenuItemClickListener {
-                ContextCompat.startForegroundService(activity, Intent(activity, TetheringService::class.java)
+                activity.startForegroundService(Intent(activity, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                 true
             }
@@ -183,14 +171,14 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             R.id.configuration -> item.subMenu!!.run {
                 findItem(R.id.configuration_repeater).isNotGone = Services.p2p != null
                 findItem(R.id.configuration_temp_hotspot).isNotGone =
-                        Build.VERSION.SDK_INT >= 26 && adapter.localOnlyHotspotManager.binder?.configuration != null
+                    adapter.localOnlyHotspotManager.binder?.configuration != null
                 true
             }
             R.id.configuration_repeater -> {
                 adapter.repeaterManager.configure()
                 true
             }
-            R.id.configuration_temp_hotspot -> @TargetApi(26) {
+            R.id.configuration_temp_hotspot -> {
                 WifiApDialogFragment().apply {
                     arg(WifiApDialogFragment.Arg(adapter.localOnlyHotspotManager.binder?.configuration ?: return false,
                             readOnly = true))
@@ -216,7 +204,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                             null
                         } catch (eRoot: Exception) {
                             eRoot.addSuppressed(e)
-                            if (Build.VERSION.SDK_INT !in 26..29 || eRoot.getRootCause() !is SecurityException) {
+                            if (Build.VERSION.SDK_INT >= 29 || eRoot.getRootCause() !is SecurityException) {
                                 Timber.w(eRoot)
                             }
                             SmartSnackbar.make(eRoot).show()
@@ -245,7 +233,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
                 val configuration = ret!!.configuration
                 @Suppress("DEPRECATION")
-                if (Build.VERSION.SDK_INT in 28 until 30 &&
+                if (Build.VERSION.SDK_INT < 30 &&
                         configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
                     TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
                 } catch (e: Exception) {
@@ -299,7 +287,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     override fun onResume() {
         super.onResume()
-        if (Build.VERSION.SDK_INT >= 27) ManageBar.Data.notifyChange()
+        ManageBar.Data.notifyChange()
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

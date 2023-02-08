@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
@@ -16,16 +17,18 @@ import android.view.WindowManager
 import android.widget.EditText
 import androidx.annotation.MainThread
 import androidx.appcompat.app.AlertDialog
-import androidx.core.content.ContextCompat
 import androidx.databinding.BaseObservable
 import androidx.databinding.Bindable
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
-import be.mygod.vpnhotspot.*
+import be.mygod.vpnhotspot.AlertDialogFragment
+import be.mygod.vpnhotspot.BR
+import be.mygod.vpnhotspot.Empty
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
@@ -34,7 +37,11 @@ import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.net.NetworkInterface
@@ -91,7 +98,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val binder = binder
             when (binder?.service?.status) {
                 RepeaterService.Status.IDLE -> if (Build.VERSION.SDK_INT < 29) parent.requireContext().let { context ->
-                    ContextCompat.startForegroundService(context, Intent(context, RepeaterService::class.java))
+                    context.startForegroundService(Intent(context, RepeaterService::class.java))
                 } else parent.startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
                     Manifest.permission.NEARBY_WIFI_DEVICES
                 } else Manifest.permission.ACCESS_FINE_LOCATION)
@@ -229,7 +236,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     if (e !is CancellationException) Timber.w(e)
                     passphrase = group.passphrase
                     try {
-                        bssid = group.owner?.deviceAddress?.let(MacAddressCompat.Companion::fromString)
+                        bssid = group.owner?.deviceAddress?.let(MacAddress::fromString)
                     } catch (_: IllegalArgumentException) { }
                     this to true
                 }
