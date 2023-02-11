@@ -42,6 +42,7 @@ class App : Application() {
         lateinit var app: App
     }
 
+    @SuppressLint("RestrictedApi")
     override fun onCreate() {
         super.onCreate()
         app = this
