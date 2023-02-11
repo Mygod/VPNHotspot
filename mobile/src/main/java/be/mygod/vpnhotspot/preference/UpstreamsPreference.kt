@@ -69,6 +69,6 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
 
     private fun onUpdate() = (context as LifecycleOwner).lifecycleScope.launchWhenStarted {
         summary = context.getText(R.string.settings_service_upstream_monitor_summary).format(
-            context.resources.configuration.locale, primary.charSequence, fallback.charSequence)
+            context.resources.configuration.locales[0], primary.charSequence, fallback.charSequence)
     }
 }

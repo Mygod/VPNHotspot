@@ -1,6 +1,6 @@
 package be.mygod.vpnhotspot.client
 
-    import android.content.Context
+import android.content.Context
 import android.net.MacAddress
 import androidx.annotation.MainThread
 import be.mygod.vpnhotspot.App.Companion.app

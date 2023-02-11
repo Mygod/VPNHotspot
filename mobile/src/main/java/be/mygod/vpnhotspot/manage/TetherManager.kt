@@ -231,7 +231,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             app.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, numClients).format(locale,
                 numClients)
         }
-        override val text get() = parent.resources.configuration.locale.let { locale ->
+        override val text get() = parent.resources.configuration.locales[0].let { locale ->
             listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError, info.run {
                 if (isEmpty()) null else joinToSpanned("\n") @TargetApi(30) { parcel ->
                     val info = SoftApInfo(parcel)

@@ -97,7 +97,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             override fun toString() = app.getString(R.string.wifi_ap_choose_disabled)
         }
         override fun toString() = if (channel == 0) {
-            val format = DecimalFormat("#.#", DecimalFormatSymbols.getInstance(app.resources.configuration.locale))
+            val format = DecimalFormat("#.#", DecimalFormatSymbols.getInstance(app.resources.configuration.locales[0]))
             app.getString(R.string.wifi_ap_choose_G, arrayOf(
                 SoftApConfigurationCompat.BAND_2GHZ to 2.4,
                 SoftApConfigurationCompat.BAND_5GHZ to 5,

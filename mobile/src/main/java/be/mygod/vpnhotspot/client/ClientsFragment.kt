@@ -87,7 +87,7 @@ class ClientsFragment : Fragment() {
         override fun AlertDialog.Builder.prepare(listener: DialogInterface.OnClickListener) {
             val context = context
             val resources = resources
-            val locale = resources.configuration.locale
+            val locale = resources.configuration.locales[0]
             setTitle(getText(R.string.clients_stats_title).format(locale, arg.title))
             val format = NumberFormat.getIntegerInstance(locale)
             setMessage("%s\n%s\n%s".format(
