@@ -81,16 +81,17 @@ object UpdateChecker {
             val lastFetched = app.pref.getLong(KEY_LAST_FETCHED, -1)
             if (lastFetched in 0..now) delay(lastFetched + UPDATE_INTERVAL - now)
             currentCoroutineContext().ensureActive()
-            val conn = URL("https://api.github.com/repos/Mygod/VPNHotspot/releases?per_page=100")
-                .openConnection() as HttpURLConnection
             var reset: Long? = null
             app.pref.edit {
                 try {
-                    conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                    val update = findUpdate(JSONArray(withContext(Dispatchers.IO) {
-                        reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
-                        conn.inputStream.bufferedReader().readText()
-                    }))
+                    val update = connectCancellable(
+                        "https://api.github.com/repos/Mygod/VPNHotspot/releases?per_page=100") { conn ->
+                        conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
+                        findUpdate(JSONArray(withContext(Dispatchers.IO) {
+                            reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+                            conn.inputStream.bufferedReader().readText()
+                        }))
+                    }
                     putString(KEY_VERSION, update?.let {
                         putLong(KEY_PUBLISHED, update.published)
                         it.message
@@ -103,7 +104,6 @@ object UpdateChecker {
                 } catch (e: Exception) {
                     Timber.w(e)
                 } finally {
-                    conn.disconnect()
                     putLong(KEY_LAST_FETCHED, System.currentTimeMillis())
                 }
             }

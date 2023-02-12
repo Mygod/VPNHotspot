@@ -19,15 +19,20 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.job
 import timber.log.Timber
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
-import java.util.*
+import java.net.URL
+import java.util.Locale
+import kotlin.coroutines.coroutineContext
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -137,7 +142,8 @@ fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     }
 }
 fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://macvendors.co/results/$mac"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    setSpan(CustomTabsUrlSpan("https://maclookup.app/search/result?mac=$mac"), 0, length,
+        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
@@ -233,4 +239,16 @@ fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Me
 
 fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
     if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true)
+}
+
+@OptIn(InternalCoroutinesApi::class)
+suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {
+    val conn = URL(url).openConnection() as HttpURLConnection
+    val handle = coroutineContext.job.invokeOnCompletion(true) { conn.disconnect() }
+    try {
+        return block(conn)
+    } finally {
+        handle.dispose()
+        conn.disconnect()
+    }
 }

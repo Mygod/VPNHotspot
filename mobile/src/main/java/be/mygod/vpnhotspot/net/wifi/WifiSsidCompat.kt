@@ -63,7 +63,5 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         return true
     }
 
-    override fun hashCode(): Int {
-        return bytes.contentHashCode()
-    }
+    override fun hashCode() = bytes.contentHashCode()
 }
