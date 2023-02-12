@@ -19,8 +19,11 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.InternalCoroutinesApi
-import kotlinx.coroutines.job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
@@ -32,7 +35,7 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
 import java.util.Locale
-import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resumeWithException
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -241,14 +244,22 @@ fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
     if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true)
 }
 
-@OptIn(InternalCoroutinesApi::class)
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {
+    @Suppress("BlockingMethodInNonBlockingContext")
     val conn = URL(url).openConnection() as HttpURLConnection
-    val handle = coroutineContext.job.invokeOnCompletion(true) { conn.disconnect() }
-    try {
-        return block(conn)
-    } finally {
-        handle.dispose()
-        conn.disconnect()
+    return suspendCancellableCoroutine { cont ->
+        val job = GlobalScope.launch(Dispatchers.IO) {
+            try {
+                cont.resume(block(conn)) { cont.resumeWithException(it) }
+            } catch (e: Throwable) {
+                cont.resumeWithException(e)
+            } finally {
+                conn.disconnect()
+            }
+        }
+        cont.invokeOnCancellation {
+            job.cancel(it as? CancellationException)
+            conn.disconnect()
+        }
     }
 }

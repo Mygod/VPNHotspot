@@ -5,14 +5,14 @@ import android.net.Uri
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BuildConfig
-import kotlinx.coroutines.*
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.flow
 import org.json.JSONArray
 import timber.log.Timber
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
 import java.time.Instant
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
@@ -84,14 +84,12 @@ object UpdateChecker {
             var reset: Long? = null
             app.pref.edit {
                 try {
-                    val update = connectCancellable(
+                    val update = findUpdate(JSONArray(connectCancellable(
                         "https://api.github.com/repos/Mygod/VPNHotspot/releases?per_page=100") { conn ->
                         conn.setRequestProperty("Accept", "application/vnd.github.v3+json")
-                        findUpdate(JSONArray(withContext(Dispatchers.IO) {
-                            reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
-                            conn.inputStream.bufferedReader().readText()
-                        }))
-                    }
+                        reset = conn.getHeaderField("X-RateLimit-Reset")?.toLongOrNull()
+                        conn.inputStream.bufferedReader().readText()
+                    }))
                     putString(KEY_VERSION, update?.let {
                         putLong(KEY_PUBLISHED, update.published)
                         it.message
