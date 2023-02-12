@@ -57,6 +57,18 @@
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"
                             android:maxSdkVersion="32"/>
 
+    <queries>
+        <intent>
+            <action android:name="android.net.ITetheringConnector" />
+        </intent>
+        <intent>
+            <action android:name="android.net.ITetheringConnector.InProcess" />
+        </intent>
+        <intent>
+            <action android:name="com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK" />
+        </intent>
+    </queries>
+
     <application
         android:name=".App"
         android:allowBackup="false"
