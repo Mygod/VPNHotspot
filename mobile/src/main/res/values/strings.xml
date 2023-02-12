@@ -199,6 +199,7 @@
     <string name="configuration_share">Share via QR code</string>
     <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
     <string name="wifi_ssid">Network name</string>
+    <string name="wifi_ssid_toggle_hex">Toggle hex display</string>
     <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
     <string name="wifi_hotspot_auto_off">Turn off hotspot automatically when no devices are connected</string>

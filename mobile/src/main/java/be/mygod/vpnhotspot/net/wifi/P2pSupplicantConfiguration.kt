@@ -145,10 +145,9 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
         content.target.bssid?.let { MacAddress.fromString(it) }
     }
 
-    suspend fun update(ssid: String, psk: String, bssid: MacAddress?) {
+    suspend fun update(ssid: WifiSsidCompat, psk: String, bssid: MacAddress?) {
         val (lines, block, persistentMacLine, legacy) = content
-        block[block.ssidLine!!] = "\tssid=" + ssid.toByteArray()
-                .joinToString("") { (it.toInt() and 255).toString(16).padStart(2, '0') }
+        block[block.ssidLine!!] = "\tssid=${ssid.hex}"
         block[block.pskLine!!] = "\tpsk=\"$psk\""   // no control chars or weird stuff
         if (bssid != null) {
             persistentMacLine?.let { lines[it] = PERSISTENT_MAC + bssid }

@@ -5,6 +5,7 @@ import android.annotation.TargetApi
 import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.WifiSsid
 import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
@@ -12,6 +13,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.requireSingleBand
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.setChannel
+import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat.Companion.toCompat
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.parcelize.Parcelize
@@ -20,7 +22,7 @@ import java.lang.reflect.InvocationTargetException
 
 @Parcelize
 data class SoftApConfigurationCompat(
-    var ssid: String? = null,
+    var ssid: WifiSsidCompat? = null,
     var bssid: MacAddress? = null,
     var passphrase: String? = null,
     var isHiddenSsid: Boolean = false,
@@ -115,8 +117,6 @@ data class SoftApConfigurationCompat(
             "WPA3-OWE Transition",
             "WPA3-OWE",
         )
-
-        private val qrSanitizer = Regex("([\\\\\":;,])")
 
         /**
          * Based on:
@@ -344,11 +344,15 @@ data class SoftApConfigurationCompat(
         private val setVendorElements by lazy @TargetApi(33) {
             classBuilder.getDeclaredMethod("setVendorElements", java.util.List::class.java)
         }
+        @get:RequiresApi(33)
+        private val setWifiSsid by lazy @TargetApi(33) {
+            classBuilder.getDeclaredMethod("setWifiSsid", WifiSsid::class.java)
+        }
 
         @Deprecated("Class deprecated in framework")
         @Suppress("DEPRECATION")
         fun android.net.wifi.WifiConfiguration.toCompat() = SoftApConfigurationCompat(
-                SSID,
+                WifiSsidCompat.fromUtf8Text(SSID),
                 BSSID?.let { MacAddress.fromString(it) },
                 preSharedKey,
                 hiddenSSID,
@@ -388,7 +392,9 @@ data class SoftApConfigurationCompat(
         @RequiresApi(30)
         @Suppress("UNCHECKED_CAST")
         fun SoftApConfiguration.toCompat() = SoftApConfigurationCompat(
-            ssid,
+            if (Build.VERSION.SDK_INT >= 33) wifiSsid?.toCompat() else @Suppress("DEPRECATION") {
+                WifiSsidCompat.fromUtf8Text(ssid)
+            },
             bssid,
             passphrase,
             isHiddenSsid,
@@ -483,7 +489,7 @@ data class SoftApConfigurationCompat(
         val wc = underlying as? android.net.wifi.WifiConfiguration
         val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
         val original = wc?.toCompat()
-        result.SSID = ssid
+        result.SSID = ssid?.toString()
         result.preSharedKey = passphrase
         result.hiddenSSID = isHiddenSsid
         apBand.setInt(result, when (band) {
@@ -520,7 +526,9 @@ data class SoftApConfigurationCompat(
     fun toPlatform(): SoftApConfiguration {
         val sac = underlying as? SoftApConfiguration
         val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
-        setSsid(builder, ssid)
+        if (Build.VERSION.SDK_INT >= 33) {
+            setWifiSsid(builder, ssid?.toPlatform())
+        } else setSsid(builder, ssid?.toString())
         setPassphrase(builder, when (securityType) {
             SoftApConfiguration.SECURITY_TYPE_OPEN,
             SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
@@ -581,7 +589,6 @@ data class SoftApConfigurationCompat(
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/4a5ff58/src/com/android/settings/wifi/dpp/WifiNetworkConfig.java#161
      */
     fun toQrCode() = StringBuilder("WIFI:").apply {
-        fun String.sanitize() = qrSanitizer.replace(this) { "\\${it.groupValues[1]}" }
         when (securityType) {
             SoftApConfiguration.SECURITY_TYPE_OPEN, SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
             SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> { }
@@ -592,11 +599,11 @@ data class SoftApConfigurationCompat(
             else -> throw IllegalArgumentException("Unsupported authentication type")
         }
         append("S:")
-        append(ssid!!.sanitize())
+        append(ssid!!.toMeCard())
         append(';')
         passphrase?.let { passphrase ->
             append("P:")
-            append(passphrase.sanitize())
+            append(WifiSsidCompat.toMeCard(passphrase))
             append(';')
         }
         if (isHiddenSsid) append("H:true;")

@@ -175,6 +175,7 @@
     <string name="configuration_share">使用 QR 码分享</string>
     <string name="configuration_rejected">Android 系统拒绝使用此配置。（详情参见日志）</string>
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
+    <string name="wifi_ssid_toggle_hex">切换十六进制显示</string>
     <string name="wifi_security" msgid="6603611185592956936">"安全性"</string>
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
     <string name="wifi_hotspot_auto_off">未连接任何设备时自动关闭 WLAN 热点</string>

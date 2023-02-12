@@ -49,6 +49,8 @@
                 android:hint="@string/wifi_ssid"
                 app:counterEnabled="true"
                 app:counterMaxLength="32"
+                app:endIconContentDescription="@string/wifi_ssid_toggle_hex"
+                app:endIconDrawable="@drawable/toggle_hex"
                 app:errorEnabled="true">
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/ssid"

@@ -36,6 +36,7 @@ import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
+import com.google.android.material.textfield.TextInputLayout
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.text.DecimalFormat
@@ -129,6 +130,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         )
     }
     override val ret get() = Arg(generateConfig())
+    private val hexToggleable get() = if (arg.p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
+    private var hexSsid = false
+        set(value) {
+            field = value
+            dialogView.ssidWrapper.setEndIconActivated(value)
+        }
+    private val ssid get() =
+        if (hexSsid) WifiSsidCompat.fromHex(dialogView.ssid.text) else WifiSsidCompat.fromUtf8Text(dialogView.ssid.text)
 
     private fun generateChannels() = SparseIntArray(2).apply {
         if (!arg.p2pMode && Build.VERSION.SDK_INT >= 31) {
@@ -137,7 +146,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         (dialogView.bandPrimary.selectedItem as ChannelOption).apply { put(band, channel) }
     }
     private fun generateConfig(full: Boolean = true) = base.copy(
-            ssid = dialogView.ssid.text.toString(),
+            ssid = ssid,
             passphrase = if (dialogView.password.length() != 0) dialogView.password.text.toString() else null).apply {
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition
@@ -189,7 +198,31 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         setNegativeButton(R.string.donations__button_close, null)
         dialogView.toolbar.inflateMenu(R.menu.toolbar_configuration)
         dialogView.toolbar.setOnMenuItemClickListener(this@WifiApDialogFragment)
-        dialogView.ssidWrapper.setLengthCounter { it.toString().toByteArray().size }
+        dialogView.ssidWrapper.setLengthCounter {
+            try {
+                ssid?.bytes?.size ?: 0
+            } catch (_: IllegalArgumentException) {
+                0
+            }
+        }
+        if (hexToggleable) dialogView.ssidWrapper.apply {
+            endIconMode = TextInputLayout.END_ICON_CUSTOM
+            setEndIconOnClickListener {
+                val ssid = try {
+                    ssid
+                } catch (_: IllegalArgumentException) {
+                    return@setEndIconOnClickListener
+                }
+                val newText = if (hexSsid) ssid?.run {
+                    decode().also { if (it == null) return@setEndIconOnClickListener }
+                } else ssid?.hex
+                hexSsid = !hexSsid
+                dialogView.ssid.setText(newText)
+            }
+            findViewById<View>(com.google.android.material.R.id.text_input_end_icon).apply {
+                tooltipText = contentDescription
+            }
+        }
         if (!arg.readOnly) dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
@@ -293,7 +326,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else selection
     }
     private fun populateFromConfiguration() {
-        dialogView.ssid.setText(base.ssid)
+        dialogView.ssid.setText(base.ssid.let { ssid ->
+            when {
+                ssid == null -> null
+                hexSsid -> ssid.hex
+                hexToggleable -> ssid.decode() ?: ssid.hex.also { hexSsid = true }
+                else -> ssid.toString()
+            }
+        })
         if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
         dialogView.password.setText(base.passphrase)
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
@@ -334,11 +374,18 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
 
     private fun validate() {
         if (!started) return
-        val ssidLength = dialogView.ssid.text.toString().toByteArray().size
-        val ssidLengthOk = ssidLength in 1..32
-        dialogView.ssidWrapper.error = if (arg.p2pMode && RepeaterService.safeMode && ssidLength < 9) {
-            requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
-        } else if (ssidLengthOk) null else " "
+        val (ssidOk, ssidError) = 0.let {
+            val ssid = try {
+                ssid
+            } catch (e: IllegalArgumentException) {
+                return@let false to e.readableMessage
+            }
+            val ssidLength = ssid?.bytes?.size ?: 0
+            if (ssidLength in 1..32) true to if (arg.p2pMode && RepeaterService.safeMode && ssidLength < 9) {
+                requireContext().getString(R.string.settings_service_repeater_safe_mode_warning)
+            } else null else false to " "
+        }
+        dialogView.ssidWrapper.error = ssidError
         val selectedSecurity = if (arg.p2pMode) {
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         } else dialogView.security.selectedItemPosition
@@ -466,7 +513,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 bridgedTimeoutError == null && vendorElementsError == null && persistentRandomizedMacValid &&
                 acsNoError && bandwidthError == null
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-                ssidLengthOk && passwordValid && bandError == null && canCopy
+            ssidOk && passwordValid && bandError == null && canCopy
         dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
     }
 

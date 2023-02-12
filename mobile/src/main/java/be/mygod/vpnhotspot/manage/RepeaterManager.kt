@@ -33,6 +33,7 @@ import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApDialogFragment
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
@@ -215,7 +216,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         } else binder?.let { binder ->
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat(
-                ssid = group.networkName,
+                ssid = WifiSsidCompat.fromUtf8Text(group.networkName),
                 securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
                 isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                 shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
@@ -253,8 +254,12 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             RepeaterService.passphrase = config.passphrase
         } else holder.config?.let { master ->
             val binder = binder
-            if (binder?.group?.networkName != config.ssid || master.psk != config.passphrase ||
-                    master.bssid != config.bssid) try {
+            val mayBeModified = master.psk != config.passphrase || master.bssid != config.bssid || config.ssid.run {
+                if (this != null) decode().let {
+                    it == null || binder?.group?.networkName != it
+                } else binder?.group?.networkName != null
+            }
+            if (mayBeModified) try {
                 withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid) }
                 (this.binder ?: binder)?.group = null
             } catch (e: Exception) {

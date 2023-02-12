@@ -34,6 +34,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupI
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
+import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RepeaterCommands
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.*
@@ -53,6 +54,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         const val KEY_SAFE_MODE = "service.repeater.safeMode"
 
         private const val KEY_NETWORK_NAME = "service.repeater.networkName"
+        private const val KEY_NETWORK_NAME_HEX = "service.repeater.networkNameHex"
         private const val KEY_PASSPHRASE = "service.repeater.passphrase"
         private const val KEY_OPERATING_BAND = "service.repeater.band.v4"
         private const val KEY_OPERATING_CHANNEL = "service.repeater.oc.v3"
@@ -76,9 +78,16 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         @get:RequiresApi(29)
         private val mNetworkName by lazy @TargetApi(29) { UnblockCentral.WifiP2pConfig_Builder_mNetworkName }
 
-        var networkName: String?
-            get() = app.pref.getString(KEY_NETWORK_NAME, null)
-            set(value) = app.pref.edit { putString(KEY_NETWORK_NAME, value) }
+        var networkName: WifiSsidCompat?
+            get() = app.pref.getString(KEY_NETWORK_NAME, null).let { legacy ->
+                if (legacy != null) WifiSsidCompat.fromUtf8Text(legacy).also {
+                    app.pref.edit {
+                        putString(KEY_NETWORK_NAME_HEX, it!!.hex)
+                        remove(KEY_NETWORK_NAME)
+                    }
+                } else WifiSsidCompat.fromHex(app.pref.getString(KEY_NETWORK_NAME_HEX, null))
+            }
+            set(value) = app.pref.edit { putString(KEY_NETWORK_NAME_HEX, value?.hex) }
         var passphrase: String?
             get() = app.pref.getString(KEY_PASSPHRASE, null)
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
@@ -447,10 +456,10 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             setOperatingChannel()
         }
         if (Build.VERSION.SDK_INT >= 33) setVendorElements()
-        val networkName = networkName
+        val networkName = networkName?.toString()
         val passphrase = passphrase
         @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
-        if (!safeMode || networkName.isNullOrEmpty() || passphrase.isNullOrEmpty()) {
+        if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)
         } else @TargetApi(29) {
@@ -510,7 +519,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         }
         binder.group = group
         if (persistNextGroup) {
-            networkName = group.networkName
+            networkName = WifiSsidCompat.fromUtf8Text(group.networkName)
             passphrase = group.passphrase
             persistNextGroup = false
         }
