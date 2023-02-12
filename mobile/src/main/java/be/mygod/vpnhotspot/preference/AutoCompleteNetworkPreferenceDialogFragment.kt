@@ -43,22 +43,19 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
     }
 
     override fun onCreateDialogView(context: Context) = super.onCreateDialogView(context)!!.apply {
-        editText = AlwaysAutoCompleteEditText(context).apply {
-            id = android.R.id.edit
-            minHeight = resources.getDimensionPixelSize(R.dimen.touch_target_min)
-        }
         val oldEditText = findViewById<View>(android.R.id.edit)!!
         val container = oldEditText.parent as ViewGroup
         container.removeView(oldEditText)
-        container.addView(editText, oldEditText.layoutParams)
+        container.addView(layoutInflater.inflate(R.layout.preference_widget_edittext_autocomplete, container, false),
+            oldEditText.layoutParams)
     }
 
     override fun onBindDialogView(view: View) {
         super.onBindDialogView(view)
+        editText = view.findViewById(android.R.id.edit)
         editText.hint = (preference.summaryProvider as SummaryFallbackProvider).fallback
         adapter = ArrayAdapter(view.context, android.R.layout.select_dialog_item)
         editText.setAdapter(adapter)
-        editText.clearFocus()   // having focus is buggy currently
     }
 
     override fun onStart() {
