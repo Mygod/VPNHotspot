@@ -33,7 +33,7 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
     }
 
     init {
-        require(bytes.size <= 32)
+        require(bytes.size <= 32) { "${bytes.size} > 32" }
     }
 
     @RequiresApi(31)
