@@ -33,6 +33,7 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
+
 /**
  * Heavily based on:
  * https://github.com/aegis1980/WifiHotSpot
@@ -153,6 +154,8 @@ object TetheringManager {
      */
     @RequiresApi(30)
     const val TETHERING_ETHERNET = 5
+    @RequiresApi(31)    // TETHERING_WIFI_P2P
+    private val expectedTypes = setOf(TETHERING_WIFI, TETHERING_USB, TETHERING_BLUETOOTH, 3, TETHERING_ETHERNET)
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
@@ -398,6 +401,23 @@ object TetheringManager {
         fun onTetheringSupported(supported: Boolean) {}
 
         /**
+         * Called when tethering supported status changed.
+         *
+         * This will be called immediately after the callback is registered, and may be called
+         * multiple times later upon changes.
+         *
+         * Tethering may be disabled via system properties, device configuration, or device
+         * policy restrictions.
+         *
+         * @param supportedTypes a set of @TetheringType which is supported.
+         */
+        @TargetApi(31)
+        fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) {
+            if ((supportedTypes - expectedTypes).isNotEmpty()) Timber.w(Exception(
+                "Unexpected supported tethering types: ${supportedTypes.joinToString()}"))
+        }
+
+        /**
          * Called when tethering upstream changed.
          *
          * This will be called immediately after the callback is registered, and may be called
@@ -518,6 +538,10 @@ object TetheringManager {
                         return when {
                             method.matches("onTetheringSupported", Boolean::class.java) -> {
                                 callback?.onTetheringSupported(args!![0] as Boolean)
+                            }
+                            method.matches1<java.util.Set<*>>("onSupportedTetheringTypes") -> {
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onSupportedTetheringTypes(args!![0] as Set<Int?>)
                             }
                             method.matches1<Network>("onUpstreamChanged") -> {
                                 callback?.onUpstreamChanged(args!![0] as Network?)
