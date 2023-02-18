@@ -33,7 +33,6 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
-
 /**
  * Heavily based on:
  * https://github.com/aegis1980/WifiHotSpot

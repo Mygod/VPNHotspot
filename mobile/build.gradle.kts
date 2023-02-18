@@ -11,15 +11,15 @@ plugins {
 android {
     namespace = "be.mygod.vpnhotspot"
 
-    val javaVersion = JavaVersion.VERSION_11
+    val javaVersion = 11
     buildToolsVersion = "33.0.2"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
-        sourceCompatibility = javaVersion
-        targetCompatibility = javaVersion
+        sourceCompatibility(javaVersion)
+        targetCompatibility(javaVersion)
     }
+    kotlin.jvmToolchain(javaVersion)
     compileSdk = 33
-    kotlinOptions.jvmTarget = javaVersion.toString()
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
@@ -36,6 +36,7 @@ android {
         buildConfigField("boolean", "DONATIONS", "true")
     }
     buildFeatures {
+        buildConfig = true
         dataBinding = true
         viewBinding = true
     }
@@ -65,7 +66,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.5.1"
+    val lifecycleVersion = "2.6.0-beta01"
     val roomVersion = "2.5.0"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.2")
@@ -82,11 +83,11 @@ dependencies {
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.1")
     implementation("com.android.billingclient:billing-ktx:5.1.0")
     implementation("com.github.tiann:FreeReflection:3.1.0")
-    implementation("com.google.android.gms:play-services-base:18.1.0")  // fix for GoogleApiActivity crash
+    implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.8.0")
     implementation("com.google.firebase:firebase-analytics-ktx:21.2.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.3.3")
+    implementation("com.google.firebase:firebase-crashlytics:18.3.5")
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
