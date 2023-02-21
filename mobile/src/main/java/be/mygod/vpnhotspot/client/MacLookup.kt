@@ -8,6 +8,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.connectCancellable
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
@@ -117,6 +118,7 @@ object MacLookup {
                     if (result != null) nickname = result
                     macLookupPending = false
                 }
+            } catch (_: CancellationException) {
             } catch (e: Throwable) {
                 Timber.w(e)
                 if (explicit) SmartSnackbar.make(e).show()
