@@ -150,35 +150,24 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val upstreams = HashSet<String>()
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
-        /**
-         * The only case when upstream is null is on API 23- and we are using system default rules.
-         */
         inner class Subrouting(priority: Int, val upstream: String) {
-            val ifindex = if (upstream.isEmpty()) 0 else Os.if_nametoindex(upstream).also {
+            val ifindex = Os.if_nametoindex(upstream).also {
                 if (it <= 0) throw InterfaceGoneException(upstream)
             }
             val transaction = RootSession.beginTransaction().safeguard {
-                if (upstream.isEmpty()) {
-                    ipRule("goto $RULE_PRIORITY_TETHERING", priority)   // skip unreachable rule
-                } else ipRuleLookup(ifindex, priority)
+                ipRuleLookup(ifindex, priority)
                 when (masqueradeMode) {
                     MasqueradeMode.None -> { }  // nothing to be done here
-                    MasqueradeMode.Simple -> {
-                        // note: specifying -i wouldn't work for POSTROUTING
-                        iptablesAdd(if (upstream.isEmpty()) {
-                            "vpnhotspot_masquerade -s $hostSubnet -j MASQUERADE"
-                        } else "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
-                    }
-                    MasqueradeMode.Netd -> {
-                        check(upstream.isNotEmpty())    // fallback is only needed for repeater on API 23 < 28
-                        /**
-                         * 0 means that there are no interface addresses coming after, which is unused anyway.
-                         *
-                         * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
-                         * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
-                         */
-                        ndc("Nat", "ndc nat enable $downstream $upstream 0")
-                    }
+                    // note: specifying -i wouldn't work for POSTROUTING
+                    MasqueradeMode.Simple -> iptablesAdd(
+                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
+                    /**
+                     * 0 means that there are no interface addresses coming after, which is unused anyway.
+                     *
+                     * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
+                     * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
+                     */
+                    MasqueradeMode.Netd -> ndc("Nat", "ndc nat enable $downstream $upstream 0")
                 }
             }
         }
