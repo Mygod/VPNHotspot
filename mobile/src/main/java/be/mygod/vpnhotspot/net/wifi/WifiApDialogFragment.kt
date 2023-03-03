@@ -6,6 +6,7 @@ import android.content.ClipDescription
 import android.content.DialogInterface
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Parcelable
 import android.text.Editable
@@ -518,8 +519,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = canGenerate
         dialogView.toolbar.menu.apply {
             findItem(R.id.invalid).isVisible = canGenerate && !arg.p2pMode && !arg.readOnly &&
-                    BuildCompat.isAtLeastU() &&
-                    !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
+                    BuildCompat.isAtLeastU() && !(WifiManager::class.java.getDeclaredMethod(
+                "validateSoftApConfiguration", SoftApConfiguration::class.java).invoke(Services.wifi,
+                generateConfig().toPlatform()) as Boolean)
             findItem(android.R.id.copy).isEnabled = canCopy
         }
     }
