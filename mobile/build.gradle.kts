@@ -66,7 +66,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.6.0-beta01"
+    val lifecycleVersion = "2.6.0-rc01"
     val roomVersion = "2.5.0"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.2")
