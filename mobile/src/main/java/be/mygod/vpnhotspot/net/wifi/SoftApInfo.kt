@@ -12,7 +12,7 @@ import timber.log.Timber
 @RequiresApi(30)
 value class SoftApInfo(val inner: Parcelable) {
     companion object {
-        private val clazz by lazy { Class.forName("android.net.wifi.SoftApInfo") }
+        val clazz by lazy { Class.forName("android.net.wifi.SoftApInfo") }
         private val getFrequency by lazy { clazz.getDeclaredMethod("getFrequency") }
         private val getBandwidth by lazy { clazz.getDeclaredMethod("getBandwidth") }
         @get:RequiresApi(31)
@@ -30,7 +30,7 @@ value class SoftApInfo(val inner: Parcelable) {
     val frequency get() = getFrequency(inner) as Int
     val bandwidth get() = getBandwidth(inner) as Int
     @get:RequiresApi(31)
-    val bssid get() = getBssid(inner) as MacAddress
+    val bssid get() = getBssid(inner) as MacAddress?
     @get:RequiresApi(31)
     val wifiStandard get() = getWifiStandard(inner) as Int
     @get:RequiresApi(31)

@@ -1,7 +1,7 @@
 package be.mygod.vpnhotspot
 
+import android.content.Context
 import android.content.Intent
-import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
@@ -17,6 +18,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
+        const val EXTRA_ADD_INTERFACES_MONITOR = "interface.adds.monitor"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
     }
 
@@ -39,10 +41,19 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         }
     }
 
+    @Parcelize
+    data class Starter(val monitored: ArrayList<String>) : BootReceiver.Startable {
+        override fun start(context: Context) {
+            context.startForegroundService(Intent(context, TetheringService::class.java).apply {
+                putStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR, monitored)
+            })
+        }
+    }
+
     /**
      * Writes and critical reads to downstreams should be protected with this context.
      */
-    private val dispatcher = newSingleThreadContext("TetheringService")
+    private val dispatcher = Dispatchers.IO.limitedParallelism(1)
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
@@ -55,7 +66,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             val toRemove = downstreams.toMutableMap()   // make a copy
             for (iface in interfaces) {
                 val downstream = toRemove.remove(iface) ?: continue
-                if (downstream.monitor) downstream.start()
+                if (downstream.monitor && !downstream.start()) downstream.stop()
             }
             for ((iface, downstream) in toRemove) {
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
@@ -81,6 +92,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
+            binder.monitoredIfaces.also {
+                if (it.isEmpty()) BootReceiver.delete<TetheringService>()
+                else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
+            }
             if (!callbackRegistered) {
                 callbackRegistered = true
                 TetheringManager.registerTetheringEventCallbackCompat(this, this)
@@ -94,8 +109,9 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        BootReceiver.startIfEnabled()
         // call this first just in case we are shutting down immediately
-        if (Build.VERSION.SDK_INT >= 26) updateNotification()
+        updateNotification()
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
@@ -103,10 +119,12 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
                         if (start()) check(downstreams.put(iface, this) == null) else stop()
                     }
                 }
-                intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.also { iface ->
+                val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
+                    intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
+                if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
                     val downstream = downstreams[iface]
                     if (downstream == null) Downstream(this@TetheringService, iface, true).apply {
-                        start()
+                        if (!start(true)) stop()
                         check(downstreams.put(iface, this) == null)
                         downstreams[iface] = this
                     } else downstream.monitor = true
@@ -120,10 +138,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     override fun onDestroy() {
         launch {
+            BootReceiver.delete<TetheringService>()
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             cancel()
-            dispatcher.close()
         }
         super.onDestroy()
     }
@@ -134,5 +152,9 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             IpNeighbourMonitor.unregisterCallback(this)
             callbackRegistered = false
         }
+    }
+
+    override fun updateNotification() {
+        launch { super.updateNotification() }
     }
 }

@@ -17,7 +17,8 @@
             android:layout_height="wrap_content"
             android:focusable="true"
             android:background="?android:attr/selectableItemBackground"
-            android:padding="16dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:onClick="@{_ -> data.toggle()}">
 
             <ImageView
@@ -37,6 +38,8 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_gravity="center_vertical"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
                 android:orientation="vertical">
 
                 <TextView
@@ -54,7 +57,7 @@
                     tools:text="192.168.43.1/24\n01:23:45:ab:cd:ef"/>
             </LinearLayout>
 
-            <Switch
+            <com.google.android.material.materialswitch.MaterialSwitch
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center_vertical"

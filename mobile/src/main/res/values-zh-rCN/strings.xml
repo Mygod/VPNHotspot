@@ -5,6 +5,7 @@
     <string name="title_tethering">共享管理</string>
     <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
+    <string name="title_update">更新应用</string>
 
     <string name="repeater_channel">无线中继 (%1$d MHz, 频道 %2$d)</string>
     <string name="repeater_wps">WPS（不安全）</string>
@@ -22,6 +23,7 @@
     <string name="repeater_remove_group_failure">关闭已有 P2P 群组失败（原因：%s）</string>
     <string name="repeater_remove_old_group_failure">关闭 P2P 群组失败（原因：%s）</string>
     <string name="repeater_set_oc_failure">设置运行频段失败（原因：%s）</string>
+    <string name="repeater_set_vendor_elements_failure">设置供应商特定元素失败（原因：%s）</string>
 
     <string name="repeater_failure_reason_error">内部异常</string>
     <string name="repeater_failure_reason_p2p_unsupported">设备不支持 Wi\u2011Fi 直连</string>
@@ -29,9 +31,11 @@
     <string name="repeater_failure_reason_unsupported_operation">不支持此操作</string>
     <string name="repeater_failure_disconnected">服务不可用，请稍后重试</string>
     <string name="repeater_missing_location_permissions">无线中继需要精确位置权限</string>
+    <string name="repeater_location_off">由于系统限制，关闭位置信息服务可能产生问题并导致续航缩短</string>
+    <string name="repeater_location_off_configure">进入设置</string>
 
     <string name="tethering_temp_hotspot">临时 WLAN 热点</string>
-    <string name="tethering_temp_hotspot_location">使用临时热点需要打开位置服务。</string>
+    <string name="tethering_location_off">使用此功能需要打开位置服务。</string>
     <string name="tethering_temp_hotspot_failure">打开热点失败 (原因：%s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">无频段</string>
     <string name="tethering_temp_hotspot_failure_generic">通用错误</string>
@@ -53,11 +57,9 @@
       -->
     <string name="tethering_manage_usb">USB 网络共享</string>
     <string name="tethering_manage_wifi">WLAN 热点</string>
-    <string name="tethering_manage_wifi_legacy">WLAN 热点 (旧 API)</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"以太网络共享"</string>
     <string name="tethering_manage_ncm">USB 网络共享 (NCM)</string>
-    <string name="tethering_manage_wigig">WiGig 热点</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
         关闭延迟 %6$s</string>
@@ -70,6 +72,7 @@
         <item quantity="other">已连接 %d 个设备</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\n支持频道: %s</string>
+    <string name="tethering_manage_wifi_country_code">\n驱动国家代码：%s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">随机接入点 MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">桥接 AP 并发</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA/AP 并发</string>
@@ -109,7 +112,8 @@
     <string name="settings_service_masquerade_netd">Android Netd 服务</string>
     <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
     <string name="settings_service_disable_ipv6_summary">防止 VPN 通过 IPv6 泄漏。</string>
-    <string name="settings_service_repeater_start_on_boot">开机自启动中继</string>
+    <string name="settings_service_auto_start">自动启动服务</string>
+    <string name="settings_service_auto_start_summary">设备重启或应用升级后自动恢复之前运行的服务</string>
     <string name="settings_service_repeater_safe_mode">中继安全模式</string>
     <string name="settings_service_repeater_safe_mode_summary">不对系统配置进行修改，但是可能须要较长的网络名称。</string>
     <string name="settings_service_repeater_safe_mode_warning">使用短名称可能需要关闭安全模式。</string>
@@ -152,6 +156,7 @@
 
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
+    <string name="notification_channel_monitor">监视不活跃接口</string>
     <plurals name="notification_connected_devices">
         <item quantity="other">%d 个设备已连接到 %s</item>
     </plurals>
@@ -172,6 +177,7 @@
     <string name="configuration_share">使用 QR 码分享</string>
     <string name="configuration_rejected">Android 系统拒绝使用此配置。（详情参见日志）</string>
     <string name="wifi_ssid" msgid="5519636102673067319">"网络名称"</string>
+    <string name="wifi_ssid_toggle_hex">切换十六进制显示</string>
     <string name="wifi_security" msgid="6603611185592956936">"安全性"</string>
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
     <string name="wifi_hotspot_auto_off">未连接任何设备时自动关闭 WLAN 热点</string>
@@ -179,22 +185,29 @@
     <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"自动"</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2.4 GHz 频段"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5 GHz 频段"</string>
-    <string name="wifi_ap_choose_6G">6 GHz 频段</string>
-    <string name="wifi_ap_choose_60G">60 GHz 频段</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">"%s GHz 频段"</string>
+    <string name="wifi_hotspot_acs_channel_2g">2.4 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_acs_channel_5g">5 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_acs_channel_6g">6 GHz ACS 可选频段</string>
+    <string name="wifi_hotspot_max_channel_bandwidth">最大频宽</string>
+    <string name="wifi_hotspot_access_control_title">访问控制</string>
+    <string name="wifi_hotspot_ap_advanced_title">高级接入点设置</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC 地址"</string>
+    <string name="wifi_advanced_mac_address_persistent_randomized">持久性随机 MAC 地址</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"隐藏的网络"</string>
     <string name="wifi_max_clients">允许连接设备数上限</string>
     <string name="wifi_client_user_control">过滤可以连接的设备</string>
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
     <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
-    <string name="wifi_bridged_mode">启用无线接入点桥接模式</string>
+    <string name="wifi_mac_randomization_none">无</string>
+    <string name="wifi_mac_randomization_persistent">持久化</string>
+    <string name="wifi_mac_randomization_non_persistent">不持久化</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
     <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
+    <string name="wifi_ieee_80211be">启用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">用户提供配置</string>
+    <string name="wifi_vendor_elements">供应商特定元素</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->

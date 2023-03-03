@@ -2,18 +2,20 @@ package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
 import android.app.Application
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
+import android.widget.Toast
 import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
-import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
-import androidx.core.provider.FontRequest
-import androidx.emoji.text.EmojiCompat
-import androidx.emoji.text.FontRequestEmojiCompatConfig
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround
@@ -21,6 +23,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.firebase.analytics.ktx.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -39,15 +42,15 @@ class App : Application() {
         lateinit var app: App
     }
 
+    @SuppressLint("RestrictedApi")
     override fun onCreate() {
         super.onCreate()
         app = this
-        if (Build.VERSION.SDK_INT >= 24) @SuppressLint("RestrictedApi") {
-            deviceStorage = DeviceStorageApp(this)
-            // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
-            deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
-            deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
-        } else deviceStorage = this
+        deviceStorage = DeviceStorageApp(this)
+        // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
+        deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
+        deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
+        BootReceiver.migrateIfNecessary()
         Services.init { this }
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
@@ -57,7 +60,7 @@ class App : Application() {
             "REL" -> { }
             else -> FirebaseCrashlytics.getInstance().apply {
                 setCustomKey("codename", codename)
-                if (Build.VERSION.SDK_INT >= 23) setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
+                setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
             }
         }
         Timber.plant(object : Timber.DebugTree() {
@@ -78,18 +81,6 @@ class App : Application() {
             }
         })
         ServiceNotification.updateNotificationChannels()
-        EmojiCompat.init(FontRequestEmojiCompatConfig(deviceStorage, FontRequest(
-                "com.google.android.gms.fonts",
-                "com.google.android.gms",
-                "Noto Color Emoji Compat",
-                R.array.com_google_android_gms_fonts_certs)).apply {
-            setEmojiSpanIndicatorEnabled(BuildConfig.DEBUG)
-            registerInitCallback(object : EmojiCompat.InitCallback() {
-                override fun onInitialized() = Timber.d("EmojiCompat initialized")
-                override fun onFailed(throwable: Throwable?) = Timber.d(throwable)
-            })
-        })
-        EBegFragment.init()
         if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 
@@ -116,6 +107,21 @@ class App : Application() {
         Firebase.analytics.logEvent(event, builder.bundle)
     }
 
+    /**
+     * LOH also requires location to be turned on. So does p2p for some reason. Source:
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
+     */
+    inline fun <reified T> startServiceWithLocation(context: Context) {
+        if (Build.VERSION.SDK_INT < 33 && location?.isLocationEnabled != true) try {
+            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            Toast.makeText(context, R.string.tethering_location_off, Toast.LENGTH_LONG).show()
+        } catch (e: ActivityNotFoundException) {
+            app.logEvent("location_settings") { param("message", e.toString()) }
+            SmartSnackbar.make(R.string.tethering_location_off).show()
+        } else context.startForegroundService(Intent(context, T::class.java))
+    }
+
     lateinit var deviceStorage: Application
     val english by lazy {
         createConfigurationContext(Configuration(resources.configuration).apply {
@@ -124,16 +130,17 @@ class App : Application() {
     }
     val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
+    val location by lazy { getSystemService<LocationManager>() }
 
     val hasTouch by lazy { packageManager.hasSystemFeature("android.hardware.faketouch") }
     val customTabsIntent by lazy {
         CustomTabsIntent.Builder().apply {
             setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
             setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_LIGHT, CustomTabColorSchemeParams.Builder().apply {
-                setToolbarColor(ContextCompat.getColor(app, R.color.light_colorPrimary))
+                setToolbarColor(resources.getColor(R.color.light_colorPrimary, theme))
             }.build())
             setColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK, CustomTabColorSchemeParams.Builder().apply {
-                setToolbarColor(ContextCompat.getColor(app, R.color.dark_colorPrimary))
+                setToolbarColor(resources.getColor(R.color.dark_colorPrimary, theme))
             }.build())
         }.build()
     }

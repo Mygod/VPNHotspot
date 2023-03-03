@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
@@ -18,9 +17,6 @@ abstract class Manager {
         const val VIEW_TYPE_USB = 3
         const val VIEW_TYPE_BLUETOOTH = 4
         const val VIEW_TYPE_ETHERNET = 8
-        const val VIEW_TYPE_NCM = 9
-        const val VIEW_TYPE_WIGIG = 10
-        const val VIEW_TYPE_WIFI_LEGACY = 5
         const val VIEW_TYPE_LOCAL_ONLY_HOTSPOT = 6
         const val VIEW_TYPE_REPEATER = 7
 
@@ -35,13 +31,10 @@ abstract class Manager {
             VIEW_TYPE_WIFI,
             VIEW_TYPE_USB,
             VIEW_TYPE_BLUETOOTH,
-            VIEW_TYPE_ETHERNET,
-            VIEW_TYPE_NCM,
-            VIEW_TYPE_WIGIG,
-            VIEW_TYPE_WIFI_LEGACY -> {
+            VIEW_TYPE_ETHERNET -> {
                 TetherManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             }
-            VIEW_TYPE_LOCAL_ONLY_HOTSPOT -> @TargetApi(26) {
+            VIEW_TYPE_LOCAL_ONLY_HOTSPOT -> {
                 LocalOnlyHotspotManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             }
             VIEW_TYPE_REPEATER -> RepeaterManager.ViewHolder(ListitemRepeaterBinding.inflate(inflater, parent, false))

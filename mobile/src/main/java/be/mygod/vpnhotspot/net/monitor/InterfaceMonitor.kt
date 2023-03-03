@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.allInterfaceNames
+import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -18,7 +19,7 @@ class InterfaceMonitor(private val ifaceRegex: String) : UpstreamMonitor() {
         Timber.d(e);
         { it == ifaceRegex }
     }
-    private val request = networkRequestBuilder().apply {
+    private val request = globalNetworkRequestBuilder().apply {
         removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
         removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
         removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
@@ -76,7 +77,7 @@ class InterfaceMonitor(private val ifaceRegex: String) : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            Services.connectivity.registerNetworkCallback(request, networkCallback)
+            Services.registerNetworkCallback(request, networkCallback)
             registered = true
         }
     }

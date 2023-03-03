@@ -1,31 +1,13 @@
 plugins {
-    id("com.github.ben-manes.versions") version "0.39.0"
+    id("com.android.application") version "8.0.0-beta04" apply false
+    id("com.github.ben-manes.versions") version "0.46.0"
+    id("org.jetbrains.kotlin.android") version "1.8.10" apply false
 }
 
 buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-
     dependencies {
-        classpath(kotlin("gradle-plugin", "1.5.10"))
-        classpath("com.android.tools.build:gradle:7.0.0-beta03")
-        classpath("com.google.firebase:firebase-crashlytics-gradle:2.6.1")
-        classpath("com.google.android.gms:oss-licenses-plugin:0.10.4")
-        classpath("com.google.gms:google-services:4.3.8")
+        classpath("com.google.firebase:firebase-crashlytics-gradle:2.9.4")
+        classpath("com.google.android.gms:oss-licenses-plugin:0.10.6")
+        classpath("com.google.gms:google-services:4.3.15")
     }
-}
-
-allprojects {
-    repositories {
-        google()
-        jcenter()
-        mavenCentral()
-        maven("https://jitpack.io")
-    }
-}
-
-tasks.register<Delete>("clean") {
-    delete(rootProject.buildDir)
 }

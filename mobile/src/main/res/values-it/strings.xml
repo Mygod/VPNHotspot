@@ -38,7 +38,7 @@
     <string name="repeater_failure_disconnected">Servizio non disponibile. Riprova dopo</string>
 
     <string name="tethering_temp_hotspot">Hotspot Wi\u2011Fi temporaneo</string>
-    <string name="tethering_temp_hotspot_location">L\'hotspot temporaneo richiede che la localizzazione sia attiva.</string>
+    <string name="tethering_location_off">L\'hotspot temporaneo richiede che la localizzazione sia attiva.</string>
     <string name="tethering_temp_hotspot_failure">Avvio dell\'hotspot fallito (causa: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">nessun canale</string>
     <string name="tethering_temp_hotspot_failure_generic">errore generico</string>
@@ -53,7 +53,6 @@
         se il tethering VPN non funziona.</string>
     <string name="tethering_manage_usb">Tethering USB</string>
     <string name="tethering_manage_wifi">Hotspot Wi\u2011Fi</string>
-    <string name="tethering_manage_wifi_legacy">Hotspot Wi\u2011Fi (legacy)</string>
     <string name="tethering_manage_bluetooth">Tethering Bluetooth</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"Tethering Ethernet"</string>
 
@@ -91,7 +90,6 @@
     <string name="settings_service_masquerade_netd">Servizio Android Netd</string>
     <string name="settings_service_disable_ipv6">Disabilita tethering IPv6</string>
     <string name="settings_service_disable_ipv6_summary">Abilitando questa funzione si preveniranno perdite della VPN via IPv6.</string>
-    <string name="settings_service_repeater_start_on_boot">Avvia ripetitore all\'avvio</string>
     <string name="settings_service_wifi_lock">Tieni il Wi\u2011Fi attivo</string>
     <string name="settings_service_wifi_lock_none">Default di sistema</string>
     <string name="settings_service_wifi_lock_full">Attivo</string>
@@ -154,9 +152,7 @@
     <string name="wifi_password">Password</string>
     <string name="wifi_hotspot_auto_off" msgid="5858098059725925084">"L\'hotspot Wi‑Fi viene disattivato se non ci sono dispositivi collegati"</string>
     <string name="wifi_hotspot_ap_band_title">Banda AP</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Automatica"</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"Banda a 2,4 GHz"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"Banda a 5 GHz"</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">"Banda a %s GHz"</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"Indirizzo MAC"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"Rete nascosta"</string>
     <string name="wifi_save">Salva</string>

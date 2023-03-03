@@ -1,13 +1,19 @@
 package be.mygod.vpnhotspot.root
 
+import android.annotation.TargetApi
+import android.content.ClipData
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandChannel
-import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*
@@ -15,7 +21,6 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object WifiApCommands {
-    @RequiresApi(28)
     sealed class SoftApCallbackParcel : Parcelable {
         abstract fun dispatch(callback: WifiApManager.SoftApCallbackCompat)
 
@@ -55,7 +60,6 @@ object WifiApCommands {
     }
 
     @Parcelize
-    @RequiresApi(28)
     class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
         override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
@@ -111,7 +115,6 @@ object WifiApCommands {
     private val callbacks = mutableSetOf<WifiApManager.SoftApCallbackCompat>()
     private val lastCallback = AutoFiringCallbacks()
     private var rootCallbackJob: Job? = null
-    @RequiresApi(28)
     private suspend fun handleChannel(channel: ReceiveChannel<SoftApCallbackParcel>) = channel.consumeEach { parcel ->
         when (parcel) {
             is SoftApCallbackParcel.OnStateChanged -> synchronized(callbacks) { lastCallback.state = parcel }
@@ -121,10 +124,22 @@ object WifiApCommands {
             }
             is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
+            is SoftApCallbackParcel.OnBlockedClientConnecting -> @TargetApi(30) {   // passively consume events
+                val client = WifiClient(parcel.client)
+                val macAddress = client.macAddress
+                var name = macAddress.toString()
+                if (Build.VERSION.SDK_INT >= 31) client.apInstanceIdentifier?.let { name += "%$it" }
+                val reason = WifiApManager.clientBlockLookup(parcel.blockedReason, true)
+                Timber.i("$name blocked from connecting: $reason (${parcel.blockedReason})")
+                SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
+                    action(R.string.tethering_manage_wifi_copy_mac) {
+                        app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+                    }
+                }.show()
+            }
         }
         for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
-    @RequiresApi(28)
     fun registerSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
         val wasEmpty = callbacks.isEmpty()
         callbacks.add(callback)
@@ -141,7 +156,6 @@ object WifiApCommands {
             null
         } else lastCallback
     }?.toSequence()?.forEach { it?.dispatch(callback) }
-    @RequiresApi(28)
     fun unregisterSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
         if (callbacks.remove(callback) && callbacks.isEmpty()) {
             rootCallbackJob!!.cancel()
@@ -150,13 +164,29 @@ object WifiApCommands {
     }
 
     @Parcelize
-    class GetConfiguration : RootCommand<SoftApConfigurationCompat> {
-        override suspend fun execute() = WifiApManager.configurationCompat
+    @Deprecated("Use GetConfiguration instead", ReplaceWith("GetConfiguration"))
+    @Suppress("DEPRECATION")
+    class GetConfigurationLegacy : RootCommand<android.net.wifi.WifiConfiguration?> {
+        override suspend fun execute() = WifiApManager.configurationLegacy
+    }
+    @Parcelize
+    @RequiresApi(30)
+    class GetConfiguration : RootCommand<SoftApConfiguration> {
+        override suspend fun execute() = WifiApManager.configuration
     }
 
     @Parcelize
-    data class SetConfiguration(val configuration: SoftApConfigurationCompat) : RootCommand<ParcelableBoolean> {
-        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfigurationCompat(configuration))
+    @Deprecated("Use SetConfiguration instead", ReplaceWith("SetConfiguration"))
+    @Suppress("DEPRECATION")
+    data class SetConfigurationLegacy(
+        val configuration: android.net.wifi.WifiConfiguration?,
+    ) : RootCommand<ParcelableBoolean> {
+        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
+    }
+    @Parcelize
+    @RequiresApi(30)
+    data class SetConfiguration(val configuration: SoftApConfiguration) : RootCommand<ParcelableBoolean> {
+        override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
     }
 
     @Parcelize

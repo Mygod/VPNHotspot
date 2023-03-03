@@ -8,7 +8,6 @@ import android.text.style.StyleSpan
 import android.util.AttributeSet
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
@@ -31,7 +30,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
             if (internet) SpannableStringBuilder(ifname).apply {
                 setSpan(StyleSpan(Typeface.BOLD), 0, length, 0)
             } else ifname
-        }.joinTo(SpannableStringBuilder()).let { if (it.isEmpty()) "∅" else it }
+        }.joinTo(SpannableStringBuilder()).ifEmpty { "∅" }
 
         override fun onAvailable(properties: LinkProperties?) {
             val result = mutableMapOf<String, Boolean>()
@@ -51,15 +50,11 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     }
 
     private val primary = Monitor()
-    private val fallback: Monitor = object : Monitor() {
-        override fun onFallback() {
-            currentInterfaces = mapOf("<default>" to true)
-            onUpdate()
-        }
-    }
+    private val fallback = Monitor()
 
     init {
         (context as LifecycleOwner).lifecycle.addObserver(this)
+        onUpdate()
     }
 
     override fun onStart(owner: LifecycleOwner) {
@@ -71,8 +66,8 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
         FallbackUpstreamMonitor.unregisterCallback(fallback)
     }
 
-    private fun onUpdate() = (context as LifecycleOwner).lifecycleScope.launchWhenStarted {
+    private fun onUpdate() {
         summary = context.getText(R.string.settings_service_upstream_monitor_summary).format(
-            context.resources.configuration.locale, primary.charSequence, fallback.charSequence)
+            context.resources.configuration.locales[0], primary.charSequence, fallback.charSequence)
     }
 }

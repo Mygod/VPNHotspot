@@ -1,15 +1,12 @@
 package be.mygod.vpnhotspot.manage
 
 import android.Manifest
-import android.content.*
-import android.location.LocationManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.ServiceConnection
 import android.os.Build
 import android.os.IBinder
-import android.provider.Settings
 import android.view.View
-import android.widget.Toast
-import androidx.annotation.RequiresApi
-import androidx.core.content.getSystemService
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
@@ -17,15 +14,15 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.formatAddresses
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import java.net.NetworkInterface
 
-@RequiresApi(26)
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
     companion object {
-        val permission = if (Build.VERSION.SDK_INT >= 29) {
-            Manifest.permission.ACCESS_FINE_LOCATION
-        } else Manifest.permission.ACCESS_COARSE_LOCATION
+        val permission = when {
+            Build.VERSION.SDK_INT >= 33 -> Manifest.permission.NEARBY_WIFI_DEVICES
+            Build.VERSION.SDK_INT >= 29 -> Manifest.permission.ACCESS_FINE_LOCATION
+            else -> Manifest.permission.ACCESS_COARSE_LOCATION
+        }
     }
 
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
@@ -57,23 +54,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
         ServiceForegroundConnector(parent, this, LocalOnlyHotspotService::class)
     }
 
-    /**
-     * LOH also requires location to be turned on. Source:
-     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1204
-     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiSettingsStore.java#228
-     */
-    fun start(context: Context) {
-        if (if (Build.VERSION.SDK_INT < 28) @Suppress("DEPRECATION") {
-                    Settings.Secure.getInt(context.contentResolver, Settings.Secure.LOCATION_MODE,
-                            Settings.Secure.LOCATION_MODE_OFF) == Settings.Secure.LOCATION_MODE_OFF
-                } else context.getSystemService<LocationManager>()?.isLocationEnabled != true) try {
-            context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
-            Toast.makeText(context, R.string.tethering_temp_hotspot_location, Toast.LENGTH_LONG).show()
-        } catch (e: ActivityNotFoundException) {
-            app.logEvent("location_settings") { param("message", e.toString()) }
-            SmartSnackbar.make(R.string.tethering_temp_hotspot_location).show()
-        } else context.startForegroundService(Intent(context, LocalOnlyHotspotService::class.java))
-    }
+    fun start(context: Context) = app.startServiceWithLocation<LocalOnlyHotspotService>(context)
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
     private val data = Data()

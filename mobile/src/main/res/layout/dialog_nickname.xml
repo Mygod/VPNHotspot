@@ -5,7 +5,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     tools:viewBindingIgnore="true">
-    <androidx.emoji.widget.EmojiEditText
+    <EditText
         android:id="@android:id/edit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -14,5 +14,5 @@
         android:importantForAutofill="no"
         tools:text="Nick">
         <requestFocus/>
-    </androidx.emoji.widget.EmojiEditText>
+    </EditText>
 </FrameLayout>

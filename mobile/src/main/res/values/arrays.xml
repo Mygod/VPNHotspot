@@ -1,12 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string-array name="wifi_mac_randomization">
+        <item>@string/wifi_mac_randomization_none</item>
+        <item>@string/wifi_mac_randomization_persistent</item>
+        <item>@string/wifi_mac_randomization_non_persistent</item>
+    </string-array>
+
     <string-array name="settings_service_masquerade" tools:ignore="InconsistentArrays">
         <item>@string/settings_service_masquerade_none</item>
         <item>@string/settings_service_masquerade_simple</item>
+        <item>@string/settings_service_masquerade_netd</item>
     </string-array>
     <string-array name="settings_service_masquerade_values" tools:ignore="InconsistentArrays">
         <item>None</item>
         <item>Simple</item>
+        <item>Netd</item>
     </string-array>
 
     <string-array name="settings_service_wifi_lock">

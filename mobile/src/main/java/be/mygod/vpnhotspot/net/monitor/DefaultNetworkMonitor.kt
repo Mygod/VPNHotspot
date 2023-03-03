@@ -1,14 +1,12 @@
 package be.mygod.vpnhotspot.net.monitor
 
-import android.annotation.TargetApi
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 
@@ -20,10 +18,10 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
      * Unfortunately registerDefaultNetworkCallback is going to return VPN interface since Android P DP1:
      * https://android.googlesource.com/platform/frameworks/base/+/dda156ab0c5d66ad82bdcf76cda07cbc0a9c8a2e
      */
-    private val networkRequest = networkRequestBuilder()
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            .build()
+    private val networkRequest = globalNetworkRequestBuilder().apply {
+        addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+    }.build()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
@@ -53,23 +51,10 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            when (Build.VERSION.SDK_INT) {
-                in 31..Int.MAX_VALUE -> @TargetApi(31) {
-                    Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
-                        Handler(Looper.getMainLooper()))
-                }
-                in 24..27 -> @TargetApi(24) {
-                    Services.connectivity.registerDefaultNetworkCallback(networkCallback)
-                }
-                else -> try {
-                    Services.connectivity.requestNetwork(networkRequest, networkCallback)
-                } catch (e: SecurityException) {
-                    // SecurityException would be thrown in requestNetwork on Android 6.0 thanks to Google's stupid bug
-                    if (Build.VERSION.SDK_INT != 23) throw e
-                    GlobalScope.launch { callback.onFallback() }
-                    return
-                }
-            }
+            if (Build.VERSION.SDK_INT >= 31) {
+                Services.connectivity.registerBestMatchingNetworkCallback(networkRequest, networkCallback,
+                    Services.mainHandler)
+            } else Services.connectivity.requestNetwork(networkRequest, networkCallback, Services.mainHandler)
             registered = true
         }
     }

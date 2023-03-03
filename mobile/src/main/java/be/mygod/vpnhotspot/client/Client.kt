@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.client
 
+import android.net.MacAddress
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.StrikethroughSpan
@@ -9,7 +10,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.IpNeighbour
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
@@ -18,7 +18,7 @@ import be.mygod.vpnhotspot.util.makeMacSpan
 import java.net.InetAddress
 import java.util.*
 
-open class Client(val mac: MacAddressCompat, val iface: String) {
+open class Client(val mac: MacAddress, val iface: String) {
     companion object DiffCallback : DiffUtil.ItemCallback<Client>() {
         override fun areItemsTheSame(oldItem: Client, newItem: Client) =
                 oldItem.iface == newItem.iface && oldItem.mac == newItem.mac
@@ -42,10 +42,10 @@ open class Client(val mac: MacAddressCompat, val iface: String) {
          * we hijack the get title process to check if we need to perform MacLookup,
          * as record might not be initialized in other more appropriate places
          */
-        SpannableStringBuilder(if (record.nickname.isEmpty()) {
+        SpannableStringBuilder(record.nickname.ifEmpty {
             if (record.macLookupPending) MacLookup.perform(mac)
             macIface
-        } else emojize(record.nickname)).apply {
+        }).apply {
             if (record.blocked) setSpan(StrikethroughSpan(), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
         }
     }
@@ -65,7 +65,7 @@ open class Client(val mac: MacAddressCompat, val iface: String) {
         }.trimEnd()
     }
 
-    fun obtainRecord() = record.value ?: ClientRecord(mac.addr)
+    fun obtainRecord() = record.value ?: ClientRecord(mac)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

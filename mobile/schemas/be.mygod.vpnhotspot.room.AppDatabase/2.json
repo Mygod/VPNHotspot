@@ -34,10 +34,10 @@
           }
         ],
         "primaryKey": {
+          "autoGenerate": false,
           "columnNames": [
             "mac"
-          ],
-          "autoGenerate": false
+          ]
         },
         "indices": [],
         "foreignKeys": []
@@ -114,10 +114,10 @@
           }
         ],
         "primaryKey": {
+          "autoGenerate": true,
           "columnNames": [
             "id"
-          ],
-          "autoGenerate": true
+          ]
         },
         "indices": [
           {
@@ -126,7 +126,8 @@
             "columnNames": [
               "previousId"
             ],
-            "createSql": "CREATE UNIQUE INDEX `index_TrafficRecord_previousId` ON `${TABLE_NAME}` (`previousId`)"
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_TrafficRecord_previousId` ON `${TABLE_NAME}` (`previousId`)"
           }
         ],
         "foreignKeys": [
@@ -144,9 +145,10 @@
         ]
       }
     ],
+    "views": [],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \"92a6c0406ed7265dbd98eb3c24095651\")"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '92a6c0406ed7265dbd98eb3c24095651')"
     ]
   }
 }

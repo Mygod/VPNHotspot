@@ -1,15 +1,18 @@
 package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.SuppressLint
+import android.net.MacAddress
+import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.matches
 import kotlinx.coroutines.CompletableDeferred
-import timber.log.Timber
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
@@ -50,6 +53,15 @@ object WifiP2pManagerHelper {
             app.logEvent("NoSuchMethod_setWifiP2pChannels")
             return UNSUPPORTED
         }
+        return result.future.await()
+    }
+
+    @SuppressLint("MissingPermission")  // this method will fail correctly if permission is missing
+    @RequiresApi(33)
+    suspend fun WifiP2pManager.setVendorElements(c: WifiP2pManager.Channel,
+                                                 ve: List<ScanResult.InformationElement>): Int? {
+        val result = ResultListener()
+        setVendorElements(c, ve, result)
         return result.future.await()
     }
 
@@ -98,9 +110,8 @@ object WifiP2pManagerHelper {
     private val interfacePersistentGroupInfoListener by lazy {
         Class.forName("android.net.wifi.p2p.WifiP2pManager\$PersistentGroupInfoListener")
     }
-    private val getGroupList by lazy {
-        Class.forName("android.net.wifi.p2p.WifiP2pGroupList").getDeclaredMethod("getGroupList")
-    }
+    private val classWifiP2pGroupList by lazy { Class.forName("android.net.wifi.p2p.WifiP2pGroupList") }
+    private val getGroupList by lazy { classWifiP2pGroupList.getDeclaredMethod("getGroupList") }
     private val requestPersistentGroupInfo by lazy {
         WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
                 WifiP2pManager.Channel::class.java, interfacePersistentGroupInfoListener)
@@ -116,9 +127,8 @@ object WifiP2pManagerHelper {
         val result = CompletableDeferred<Collection<WifiP2pGroup>>()
         requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
                 arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when (method.name) {
-                "onPersistentGroupInfoAvailable" -> {
-                    if (args?.size != 1) Timber.w(IllegalArgumentException("Unexpected args: $args"))
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when {
+                method.matches("onPersistentGroupInfoAvailable", classWifiP2pGroupList) -> {
                     @Suppress("UNCHECKED_CAST")
                     result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
                 }
@@ -128,14 +138,22 @@ object WifiP2pManagerHelper {
         return result.await()
     }
 
-    @SuppressLint("MissingPermission")
+    suspend fun WifiP2pManager.requestConnectionInfo(c: WifiP2pManager.Channel) =
+        CompletableDeferred<WifiP2pInfo?>().apply { requestConnectionInfo(c) { complete(it) } }.await()
+    @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     @RequiresApi(29)
-    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddressCompat? {
+    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddress? {
         val future = CompletableDeferred<String?>()
         requestDeviceInfo(c) { future.complete(it?.deviceAddress) }
         return future.await()?.let {
-            val address = if (it.isEmpty()) null else MacAddressCompat.fromString(it)
+            val address = if (it.isEmpty()) null else MacAddress.fromString(it)
             if (address == MacAddressCompat.ANY_ADDRESS) null else address
         }
     }
+    @SuppressLint("MissingPermission")  // missing permission simply leads to null result
+    suspend fun WifiP2pManager.requestGroupInfo(c: WifiP2pManager.Channel) =
+        CompletableDeferred<WifiP2pGroup?>().apply { requestGroupInfo(c) { complete(it) } }.await()
+    @RequiresApi(29)
+    suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =
+        CompletableDeferred<Int>().apply { requestP2pState(c) { complete(it) } }.await()
 }

@@ -1,10 +1,12 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import androidx.annotation.RequiresApi
-import timber.log.Timber
+import be.mygod.vpnhotspot.App.Companion.app
+import me.weishu.reflection.Reflection
 
 /**
  * The central object for accessing all the useful blocked APIs. Thanks Google!
@@ -12,26 +14,19 @@ import timber.log.Timber
  * Lazy cannot be used directly as it will create inner classes.
  */
 @SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi")
-@Suppress("FunctionName")
 object UnblockCentral {
+    var needInit = true
     /**
      * Retrieve this property before doing dangerous shit.
      */
-    @get:RequiresApi(28)
-    private val init by lazy {
-        try {
-            Class.forName("dalvik.system.VMDebug").getDeclaredMethod("allowHiddenApiReflectionFrom", Class::class.java)
-                .invoke(null, UnblockCentral::class.java)
-            true
-        } catch (e: ReflectiveOperationException) {
-            Timber.w(e)
-            false
-        }
-    }
+    private val init by lazy { if (needInit) check(Reflection.unseal(app.deviceStorage) == 0) }
 
-    @RequiresApi(31)
-    fun setUserConfiguration(clazz: Class<*>) = init.let {
-        clazz.getDeclaredMethod("setUserConfiguration", Boolean::class.java)
+    @RequiresApi(33)
+    fun getCountryCode(clazz: Class<*>) = init.let { clazz.getDeclaredMethod("getCountryCode") }
+
+    @RequiresApi(33)
+    fun setRandomizedMacAddress(clazz: Class<*>) = init.let {
+        clazz.getDeclaredMethod("setRandomizedMacAddress", MacAddress::class.java)
     }
 
     @get:RequiresApi(31)

@@ -1,12 +1,13 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
 
-    <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:navigationBarColor">@color/navigationBarColor</item>
-        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">@bool/is_day</item>
+        <item name="android:windowLightNavigationBar">@bool/is_day</item>
         <item name="actionBarStyle">@style/Widget.MaterialComponents.Light.ActionBar.Solid</item>
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
         <item name="colorSecondary">@color/colorSecondary</item>
+        <item name="switchPreferenceCompatStyle">@style/AppTheme.Preference.MaterialSwitchPreference</item>
 
         <!-- Remove ActionBar but keep styles and themes -->
         <item name="windowActionBar">false</item>
@@ -15,6 +16,9 @@
     <style name="AppTheme.ActionBar">
         <item name="windowActionBar">true</item>
         <item name="windowNoTitle">false</item>
+    </style>
+    <style name="AppTheme.Preference.MaterialSwitchPreference" parent="Preference.SwitchPreferenceCompat.Material">
+        <item name="android:widgetLayout">@layout/preference_widget_material_switch</item>
     </style>
 
     <!-- https://android.googlesource.com/platform/packages/apps/Settings/+/7efcc35/res/values/styles.xml -->
@@ -42,6 +46,17 @@
         <item name="android:paddingStart">4dip</item>
         <item name="android:layout_marginStart">4dip</item>
         <item name="android:textSize">18sp</item>
+    </style>
+    <style name="wifi_item_divider">
+        <item name="dividerInsetStart">8dip</item>
+        <item name="android:layout_marginTop">8dip</item>
+    </style>
+    <style name="wifi_item_subhead">
+        <item name="android:layout_marginTop">8dip</item>
+        <item name="android:paddingStart">8dip</item>
+        <item name="android:textAppearance">@style/TextAppearance.MaterialComponents.Subtitle1</item>
+        <item name="android:textColor">?attr/colorPrimary</item>
+        <item name="android:textStyle">bold</item>
     </style>
 
 </resources>

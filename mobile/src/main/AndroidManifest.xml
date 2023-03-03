@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          xmlns:tools="http://schemas.android.com/tools"
-          package="be.mygod.vpnhotspot">
+          xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature
         android:name="android.hardware.bluetooth"
         android:required="false"/>
     <uses-feature
         android:name="android.hardware.ethernet"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.software.leanback"
         android:required="false"/>
     <uses-feature
         android:name="android.hardware.touchscreen"
@@ -24,11 +20,15 @@
     <uses-feature
         android:name="android.hardware.wifi.direct"
         android:required="false"/>
+    <uses-feature
+        android:name="android.software.leanback"
+        android:required="false"/>
 
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.BLUETOOTH"/>
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
@@ -37,8 +37,11 @@
                      tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.MANAGE_USB"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+                     android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG"
                      tools:ignore="ProtectedPermissions"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.READ_WIFI_CREDENTIAL"
                      tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -49,11 +52,22 @@
                      tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.WRITE_SETTINGS"
                      tools:ignore="ProtectedPermissions"/>
-    <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"/>
-    <!-- Required since API 29 -->
-    <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <!-- Required since API 31 -->
-    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"
+                            android:maxSdkVersion="32"/>
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"
+                            android:maxSdkVersion="32"/>
+
+    <queries>
+        <intent>
+            <action android:name="android.net.ITetheringConnector" />
+        </intent>
+        <intent>
+            <action android:name="android.net.ITetheringConnector.InProcess" />
+        </intent>
+        <intent>
+            <action android:name="com.android.server.wifi.intent.action.SERVICE_WIFI_RESOURCES_APK" />
+        </intent>
+    </queries>
 
     <application
         android:name=".App"
@@ -63,7 +77,8 @@
         android:banner="@mipmap/banner"
         android:hasFragileUserData="true"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:localeConfig="@xml/locales_config"
+        android:enableOnBackInvokedCallback="true"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         tools:ignore="GoogleAppIndexingWarning">
@@ -71,7 +86,6 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:launchMode="singleTask"
             android:windowSoftInputMode="stateAlwaysHidden">
             <intent-filter>
@@ -88,8 +102,7 @@
         <service
             android:name=".LocalOnlyHotspotService"
             android:directBootAware="true"
-            android:foregroundServiceType="location|connectedDevice"
-            tools:targetApi="26"/>
+            android:foregroundServiceType="location|connectedDevice"/>
         <service
             android:name=".RepeaterService"
             android:directBootAware="true"
@@ -105,8 +118,7 @@
             android:exported="true"
             android:icon="@drawable/ic_action_settings_input_antenna"
             android:label="@string/title_repeater"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="24">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
@@ -117,12 +129,10 @@
         <service
             android:name=".manage.LocalOnlyHotspotTileService"
             android:directBootAware="true"
-            android:enabled="@bool/api_ge_26"
             android:exported="true"
             android:icon="@drawable/ic_action_perm_scan_wifi"
             android:label="@string/tethering_temp_hotspot"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="26">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
@@ -136,11 +146,13 @@
             android:exported="true"
             android:icon="@drawable/ic_device_wifi_tethering"
             android:label="@string/tethering_manage_wifi"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="24">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
         <service
             android:name=".manage.TetheringTileService$Usb"
@@ -148,11 +160,13 @@
             android:exported="true"
             android:icon="@drawable/ic_device_usb"
             android:label="@string/tethering_manage_usb"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="24">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
         <service
             android:name=".manage.TetheringTileService$Bluetooth"
@@ -160,11 +174,13 @@
             android:exported="true"
             android:icon="@drawable/ic_device_bluetooth"
             android:label="@string/tethering_manage_bluetooth"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="24">
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
         <service
             android:name=".manage.TetheringTileService$Ethernet"
@@ -178,46 +194,9 @@
             <intent-filter>
                 <action android:name="android.service.quicksettings.action.QS_TILE" />
             </intent-filter>
-        </service>
-        <service
-            android:name=".manage.TetheringTileService$Ncm"
-            android:directBootAware="true"
-            android:enabled="@bool/api_ge_30"
-            android:exported="true"
-            android:icon="@drawable/ic_action_settings_ethernet"
-            android:label="@string/tethering_manage_ncm"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="30">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-        <service
-            android:name=".manage.TetheringTileService$WiGig"
-            android:directBootAware="true"
-            android:enabled="@bool/api_ge_30"
-            android:exported="true"
-            android:icon="@drawable/ic_image_flash_on"
-            android:label="@string/tethering_manage_wigig"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="30">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
-        </service>
-        <!--suppress DeprecatedClassUsageInspection -->
-        <service
-            android:name=".manage.TetheringTileService$WifiLegacy"
-            android:directBootAware="true"
-            android:enabled="@bool/api_lt_25"
-            android:exported="true"
-            android:icon="@drawable/ic_device_wifi_tethering"
-            android:label="@string/tethering_manage_wifi_legacy"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            tools:targetApi="24">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
         </service>
 
         <receiver
@@ -228,6 +207,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

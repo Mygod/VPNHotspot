@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.room
 
+import android.net.MacAddress
 import android.os.Parcelable
 import androidx.room.*
 import kotlinx.parcelize.Parcelize
@@ -22,7 +23,7 @@ data class TrafficRecord(
         /**
          * Foreign key/ID for (possibly non-existent, i.e. default) entry in ClientRecord.
          */
-        val mac: Long,
+        val mac: MacAddress,
         /**
          * For now only stats for IPv4 will be recorded. But I'm going to put the more general class here just in case.
          */
@@ -58,7 +59,7 @@ data class TrafficRecord(
                 /* We only want to find the last record for each chain so that we don't double count */
                 WHERE TrafficRecord.mac = :mac AND Next.id IS NULL
                 """)
-        abstract suspend fun queryStats(mac: Long): ClientStats
+        abstract suspend fun queryStats(mac: MacAddress): ClientStats
     }
 }
 

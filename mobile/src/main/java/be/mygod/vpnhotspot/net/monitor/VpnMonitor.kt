@@ -5,15 +5,16 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 object VpnMonitor : UpstreamMonitor() {
-    private val request = networkRequestBuilder()
-            .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
-            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-            .build()
+    private val request = globalNetworkRequestBuilder().apply {
+        addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+        removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+    }.build()
     private var registered = false
 
     private val available = HashMap<Network, LinkProperties?>()
@@ -60,7 +61,7 @@ object VpnMonitor : UpstreamMonitor() {
                 callback.onAvailable(currentLinkProperties)
             }
         } else {
-            Services.connectivity.registerNetworkCallback(request, networkCallback)
+            Services.registerNetworkCallback(request, networkCallback)
             registered = true
         }
     }

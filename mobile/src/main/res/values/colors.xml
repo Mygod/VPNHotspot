@@ -6,5 +6,5 @@
     <color name="colorPrimary">@color/light_colorPrimary</color>
     <color name="colorPrimaryDark">#087f23</color>
     <color name="colorSecondary">#AEEA00</color>
-    <color name="navigationBarColor">@android:color/black</color>
+    <color name="navigationBarColor">#6000</color>
 </resources>

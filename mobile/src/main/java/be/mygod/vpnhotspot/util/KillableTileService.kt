@@ -1,14 +1,15 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.ComponentName
+import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Build
+import android.os.DeadObjectException
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.annotation.RequiresApi
+import be.mygod.vpnhotspot.BootReceiver
 
-@RequiresApi(24)
 abstract class KillableTileService : TileService(), ServiceConnection {
     protected var tapPending = false
 
@@ -25,4 +26,10 @@ abstract class KillableTileService : TileService(), ServiceConnection {
             onClick()
         }
     }
+
+    override fun onBind(intent: Intent?) = try {
+        super.onBind(intent)
+    } catch (_: DeadObjectException) {
+        null
+    }.also { BootReceiver.startIfEnabled() }
 }

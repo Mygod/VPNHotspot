@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
 import android.view.View
-import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
@@ -25,7 +24,7 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
             val data = binding.data as Data
             if (data.active) context.startService(Intent(context, TetheringService::class.java)
                     .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
-            else ContextCompat.startForegroundService(context, Intent(context, TetheringService::class.java)
+            else context.startForegroundService(Intent(context, TetheringService::class.java)
                     .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
         }
     }

@@ -6,6 +6,8 @@ import android.util.Log
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.UnblockCentral
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
@@ -31,6 +33,7 @@ object RootManager : RootSession(), Logger {
             })
             Logger.me = RootManager
             Services.init { systemContext }
+            UnblockCentral.needInit = false
             return null
         }
     }
@@ -42,7 +45,10 @@ object RootManager : RootSession(), Logger {
 
     override suspend fun initServer(server: RootServer) {
         Logger.me = this
-        server.init(app.deviceStorage)
+        AppProcess.shouldRelocateHeuristics.let {
+            FirebaseCrashlytics.getInstance().setCustomKey("RootManager.relocateEnabled", it)
+            server.init(app.deviceStorage, it)
+        }
         server.execute(RootInit())
     }
 }

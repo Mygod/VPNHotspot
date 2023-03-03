@@ -21,6 +21,7 @@
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
+    <string name="title_update">Update</string>
 
     <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (insecure)</string>
@@ -39,6 +40,7 @@
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
     <string name="repeater_remove_old_group_failure">Failed to remove old P2P group (reason: %s)</string>
     <string name="repeater_set_oc_failure">Failed to set operating channel (reason: %s)</string>
+    <string name="repeater_set_vendor_elements_failure">Failed to set vendor elements (reason: %s)</string>
 
     <string name="repeater_failure_reason_error">internal error</string>
     <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi direct unsupported</string>
@@ -47,9 +49,12 @@
     <string name="repeater_failure_disconnected">Service unavailable. Try again later</string>
     <string name="repeater_missing_location_permissions">Repeater requires permissions for accessing fine
         location</string>
+    <string name="repeater_location_off">Due to system restrictions, turning Location off may lead to things not working
+        properly and increased battery usage</string>
+    <string name="repeater_location_off_configure">Configure</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
-    <string name="tethering_temp_hotspot_location">Temporary hotspot requires location to be turned on.</string>
+    <string name="tethering_location_off">This feature requires location to be turned on.</string>
     <string name="tethering_temp_hotspot_failure">Failed to start hotspot (reason: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">no channel</string>
     <string name="tethering_temp_hotspot_failure_generic">generic error</string>
@@ -64,11 +69,9 @@
         if VPN tethering does not work.</string>
     <string name="tethering_manage_usb">USB tethering</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
-    <string name="tethering_manage_wifi_legacy">Wi\u2011Fi hotspot (legacy)</string>
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
     <string name="tethering_manage_ncm">USB tethering (NCM)</string>
-    <string name="tethering_manage_wigig">WiGig hotspot</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
         width %3$s, idle timeout in %6$s</string>
@@ -83,6 +86,7 @@
         <item quantity="other">%1d clients connected</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %s</string>
+    <string name="tethering_manage_wifi_country_code">\nDriver country code: %s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP concurrency</string>
@@ -125,7 +129,9 @@
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
     <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
     <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
-    <string name="settings_service_repeater_start_on_boot">Start repeater on boot</string>
+    <string name="settings_service_auto_start">Auto start services</string>
+    <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
+        update</string>
     <string name="settings_service_repeater_safe_mode">Repeater safe mode</string>
     <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
         not work with short network names.</string>
@@ -170,8 +176,9 @@
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
-    <string name="notification_tethering_title">VPN tethering active</string>
+    <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
+    <string name="notification_channel_monitor">Monitor Inactive Interfaces</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d device connected to %s</item>
         <item quantity="other">%d devices connected to %s</item>
@@ -195,6 +202,7 @@
     <string name="configuration_share">Share via QR code</string>
     <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
     <string name="wifi_ssid">Network name</string>
+    <string name="wifi_ssid_toggle_hex">Toggle hex display</string>
     <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
     <string name="wifi_hotspot_auto_off">Turn off hotspot automatically when no devices are connected</string>
@@ -202,22 +210,30 @@
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
-    <string name="wifi_ap_choose_auto">Auto</string>
-    <string name="wifi_ap_choose_2G">2.4 GHz Band</string>
-    <string name="wifi_ap_choose_5G">5 GHz Band</string>
-    <string name="wifi_ap_choose_6G">6 GHz Band</string>
-    <string name="wifi_ap_choose_60G">60 GHz Band</string>
+    <string name="wifi_ap_choose_G">%s GHz Band</string>
+    <string name="wifi_hotspot_acs_channel_2g">Allowed 2.4 GHz ACS channels</string>
+    <string name="wifi_hotspot_acs_channel_5g">Allowed 5 GHz ACS channels</string>
+    <string name="wifi_hotspot_acs_channel_6g">Allowed 6 GHz ACS channels</string>
+    <string name="wifi_hotspot_max_channel_bandwidth">Maximum channel bandwidth</string>
+    <string name="wifi_hotspot_access_control_title">Access Control</string>
+    <string name="wifi_hotspot_ap_advanced_title">Advanced AP Options</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
+    <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
     <string name="wifi_client_user_control">Control which client can use hotspot</string>
     <string name="wifi_blocked_list">Blocked list of clients</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
     <string name="wifi_mac_randomization">Use randomized MAC</string>
-    <string name="wifi_bridged_mode">Enable Bridged Access point (AP) concurrency</string>
-    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable Bridged mode opportunistic shutdown</string>
+    <string name="wifi_mac_randomization_none">None</string>
+    <string name="wifi_mac_randomization_persistent">Persistent</string>
+    <string name="wifi_mac_randomization_non_persistent">Non-persistent</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">Enable opportunistic shutdown of an instance in bridged AP</string>
+    <string name="wifi_hotspot_timeout_bridged">Inactive timeout for a bridged instance</string>
     <string name="wifi_ieee_80211ax">Enable Wi\u2011Fi 6</string>
-    <string name="wifi_user_config">User Supplied Configuration</string>
+    <string name="wifi_ieee_80211be">Enable Wi\u2011Fi 7</string>
+    <string name="wifi_user_config">User supplied configuration</string>
+    <string name="wifi_vendor_elements">Vendor elements</string>
     <string name="wifi_save">Save</string>
 
     <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->

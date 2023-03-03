@@ -59,9 +59,7 @@
     <string name="wifi_password" msgid="5948219759936151048">"Пароль"</string>
     <string name="wifi_hotspot_auto_off" msgid="5858098059725925084">"Выключать точку доступа Wi‑Fi автоматически, если к ней не подключено ни одного устройства"</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"Диапазон частот Wi-Fi"</string>
-    <string name="wifi_ap_choose_auto" msgid="2677800651271769965">"Авто"</string>
-    <string name="wifi_ap_choose_2G" msgid="8724267386885036210">"2,4 ГГц"</string>
-    <string name="wifi_ap_choose_5G" msgid="8813128641914385634">"5,0 ГГц"</string>
+    <string name="wifi_ap_choose_G" msgid="8724267386885036210">"%s ГГц"</string>
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC-адрес"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"Скрытая сеть"</string>
     <string name="wifi_save" msgid="3331121567988522826">"Сохранить"</string>
