@@ -199,6 +199,7 @@
     <string name="permission_missing">Permission missing</string>
 
     <string name="configuration_view">Wi\u2011Fi configuration</string>
+    <string name="configuration_invalid">Possibly invalid configuration</string>
     <string name="configuration_share">Share via QR code</string>
     <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
     <string name="wifi_ssid">Network name</string>

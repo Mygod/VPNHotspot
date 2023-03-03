@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
-      xmlns:app="http://schemas.android.com/apk/res-auto">
+      xmlns:app="http://schemas.android.com/apk/res-auto"
+      xmlns:tools="http://schemas.android.com/tools">
+    <item android:id="@+id/invalid"
+        android:icon="@drawable/ic_alert_warning"
+        android:visible="false"
+        android:title="@string/configuration_invalid"
+        app:iconTint="@color/design_default_color_error"
+        app:showAsAction="always"
+        tools:visible="true"/>
     <item android:id="@android:id/copy"
           android:alphabeticShortcut="c"
           android:icon="?attr/actionModeCopyDrawable"

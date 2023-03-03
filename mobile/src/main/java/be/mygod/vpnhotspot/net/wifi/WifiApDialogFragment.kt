@@ -22,6 +22,7 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
+import androidx.core.os.BuildCompat
 import androidx.core.os.persistableBundleOf
 import androidx.core.view.isGone
 import be.mygod.librootkotlinx.toByteArray
@@ -34,6 +35,7 @@ import be.mygod.vpnhotspot.databinding.DialogWifiApBinding
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.util.QRCodeDialog
 import be.mygod.vpnhotspot.util.RangeInput
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import com.google.android.material.textfield.TextInputLayout
@@ -512,9 +514,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError &&
                 bridgedTimeoutError == null && vendorElementsError == null && persistentRandomizedMacValid &&
                 acsNoError && bandwidthError == null
-        (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled =
-            ssidOk && passwordValid && bandError == null && canCopy
-        dialogView.toolbar.menu.findItem(android.R.id.copy).isEnabled = canCopy
+        val canGenerate = ssidOk && passwordValid && bandError == null && canCopy
+        (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = canGenerate
+        dialogView.toolbar.menu.apply {
+            findItem(R.id.invalid).isVisible = canGenerate && !arg.p2pMode && !arg.readOnly &&
+                    BuildCompat.isAtLeastU() &&
+                    !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
+            findItem(android.R.id.copy).isEnabled = canCopy
+        }
     }
 
     override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) { }
