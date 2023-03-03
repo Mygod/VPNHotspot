@@ -1,5 +1,3 @@
-@file:Suppress("DEPRECATION")
-
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.TargetApi
@@ -18,6 +16,7 @@ import androidx.appcompat.widget.Toolbar
 import androidx.core.content.getSystemService
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -41,6 +40,8 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.NetworkInterface
@@ -84,9 +85,13 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             updateEnabledTypes()
             val lastList = listDeferred.await()
             var first = lastList.indexOfFirst { it is InterfaceManager }
-            if (first >= 0) notifyItemRangeChanged(first, lastList.indexOfLast { it is InterfaceManager } - first + 1)
-            first = lastList.indexOfLast { it !is TetherManager } + 1
-            notifyItemRangeChanged(first, lastList.size - first)
+            withStarted {
+                if (first >= 0) {
+                    notifyItemRangeChanged(first, lastList.indexOfLast { it is InterfaceManager } - first + 1)
+                }
+                first = lastList.indexOfLast { it !is TetherManager } + 1
+                notifyItemRangeChanged(first, lastList.size - first)
+            }
         }
 
         fun update() {
@@ -188,33 +193,34 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             }
             R.id.configuration_ap -> if (apConfigurationRunning) false else {
                 apConfigurationRunning = true
-                viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-                    try {
-                        if (Build.VERSION.SDK_INT < 30) {
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val configuration = try {
+                        if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                             WifiApManager.configurationLegacy?.toCompat() ?: SoftApConfigurationCompat()
                         } else WifiApManager.configuration.toCompat()
                     } catch (e: InvocationTargetException) {
                         if (e.targetException !is SecurityException) Timber.w(e)
                         try {
-                            if (Build.VERSION.SDK_INT < 30) {
+                            if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                                 RootManager.use { it.execute(WifiApCommands.GetConfigurationLegacy()) }?.toCompat()
                                     ?: SoftApConfigurationCompat()
                             } else RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }.toCompat()
                         } catch (_: CancellationException) {
-                            null
+                            return@launch
                         } catch (eRoot: Exception) {
                             eRoot.addSuppressed(e)
                             if (Build.VERSION.SDK_INT >= 29 || eRoot.getRootCause() !is SecurityException) {
                                 Timber.w(eRoot)
                             }
                             SmartSnackbar.make(eRoot).show()
-                            null
+                            return@launch
                         }
                     } catch (e: IllegalArgumentException) {
                         Timber.w(e)
                         SmartSnackbar.make(e).show()
-                        null
-                    }?.let { configuration ->
+                        return@launch
+                    }
+                    withStarted {
                         WifiApDialogFragment().apply {
                             arg(WifiApDialogFragment.Arg(configuration))
                             key()
@@ -230,7 +236,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
-            if (which == DialogInterface.BUTTON_POSITIVE) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+            if (which == DialogInterface.BUTTON_POSITIVE) GlobalScope.launch {
                 val configuration = ret!!.configuration
                 @Suppress("DEPRECATION")
                 if (Build.VERSION.SDK_INT < 30 &&
@@ -241,12 +247,12 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                     SmartSnackbar.make(e).show()
                 }
                 val success = try {
-                    if (Build.VERSION.SDK_INT < 30) {
+                    if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                         WifiApManager.setConfiguration(configuration.toWifiConfiguration())
                     } else WifiApManager.setConfiguration(configuration.toPlatform())
                 } catch (e: InvocationTargetException) {
                     try {
-                        if (Build.VERSION.SDK_INT < 30) {
+                        if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                             val wc = configuration.toWifiConfiguration()
                             RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }
                         } else {
@@ -292,11 +298,17 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as TetheringService.Binder
-        service.routingsChanged[this] = { lifecycleScope.launchWhenStarted { adapter.update() } }
+        service.routingsChanged[this] = {
+            lifecycleScope.launch {
+                withStarted { adapter.update() }
+            }
+        }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         if (Build.VERSION.SDK_INT >= 30) {
             TetheringManager.registerTetheringEventCallback(null, adapter)
-            TetherType.listener[this] = { lifecycleScope.launchWhenStarted { adapter.notifyTetherTypeChanged() } }
+            TetherType.listener[this] = {
+                lifecycleScope.launch { adapter.notifyTetherTypeChanged() }
+            }
         }
     }
 

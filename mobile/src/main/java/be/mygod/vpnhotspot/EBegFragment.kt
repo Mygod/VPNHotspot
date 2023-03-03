@@ -105,7 +105,7 @@ class EBegFragment : AppCompatDialogFragment() {
         billingClient.startConnection(EBegFragment)
     }
 
-    private fun onBillingConnected() = viewLifecycleOwner.lifecycleScope.launchWhenStarted {
+    private fun onBillingConnected() = viewLifecycleOwner.lifecycleScope.launch {
         billingClient.queryProductDetails(QueryProductDetailsParams.newBuilder().apply {
             setProductList(listOf(
                 "donate001", "donate002", "donate005", "donate010", "donate020", "donate050",

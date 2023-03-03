@@ -22,6 +22,7 @@ import androidx.databinding.Bindable
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.BR
@@ -156,8 +157,10 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     fun configure() {
         if (configuring) return
         configuring = true
-        parent.viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-            getConfiguration()?.let { (config, readOnly) ->
+        val owner = parent.viewLifecycleOwner
+        owner.lifecycleScope.launch {
+            val (config, readOnly) = getConfiguration() ?: return@launch
+            owner.withStarted {
                 WifiApDialogFragment().apply {
                     arg(WifiApDialogFragment.Arg(config, readOnly, true))
                     key(this@RepeaterManager.javaClass.name)

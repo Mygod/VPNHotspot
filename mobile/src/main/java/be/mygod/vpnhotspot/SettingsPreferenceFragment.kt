@@ -49,7 +49,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
             isChecked = TetherOffloadManager.enabled
             setOnPreferenceChangeListener { _, newValue ->
-                if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launchWhenCreated {
+                if (TetherOffloadManager.enabled != newValue) viewLifecycleOwner.lifecycleScope.launch {
                     isEnabled = false
                     try {
                         TetherOffloadManager.setEnabled(newValue as Boolean)

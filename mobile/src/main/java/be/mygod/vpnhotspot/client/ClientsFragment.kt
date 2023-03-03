@@ -21,6 +21,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.ListAdapter
@@ -158,14 +159,16 @@ class ClientsFragment : Fragment() {
                     true
                 }
                 R.id.stats -> {
-                    binding.client?.let { client ->
-                        viewLifecycleOwner.lifecycleScope.launchWhenCreated {
-                            withContext(Dispatchers.Unconfined) {
-                                StatsDialogFragment().apply {
-                                    arg(StatsArg(client.title.value ?: return@withContext,
-                                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac)))
-                                }.showAllowingStateLoss(parentFragmentManager)
-                            }
+                    val client = binding.client
+                    val title = client?.title?.value ?: return false
+                    viewLifecycleOwner.lifecycleScope.launch {
+                        val stats = withContext(Dispatchers.Unconfined) {
+                            AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
+                        }
+                        withStarted {
+                            StatsDialogFragment().apply {
+                                arg(StatsArg(title, stats))
+                            }.showAllowingStateLoss(parentFragmentManager)
                         }
                     }
                     true
@@ -238,14 +241,19 @@ class ClientsFragment : Fragment() {
     override fun onStart() {
         // icon might be changed due to TetherType changes
         if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-            lifecycleScope.launchWhenStarted { adapter.notifyItemRangeChanged(0, adapter.size.await()) }
+            lifecycleScope.launch {
+                val size = adapter.size.await()
+                withStarted { adapter.notifyItemRangeChanged(0, size) }
+            }
         }
         super.onStart()
         // we just put these two thing together as this is the only place we need to use this event for now
         TrafficRecorder.foregroundListeners[this] = { newRecords, oldRecords ->
-            lifecycleScope.launchWhenStarted { adapter.updateTraffic(newRecords, oldRecords) }
+            lifecycleScope.launch {
+                withStarted { adapter.updateTraffic(newRecords, oldRecords) }
+            }
         }
-        lifecycleScope.launchWhenStarted {
+        lifecycleScope.launch {
             withContext(Dispatchers.Default) {
                 TrafficRecorder.rescheduleUpdate()  // next schedule time might be 1 min, force reschedule to <= 1s
             }

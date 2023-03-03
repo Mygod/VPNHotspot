@@ -10,12 +10,14 @@ import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.withStarted
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import be.mygod.vpnhotspot.widget.AlwaysAutoCompleteEditText
+import kotlinx.coroutines.launch
 
 class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFragmentCompat() {
     fun setArguments(key: String) {
@@ -33,12 +35,16 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             interfaceNames[network] = properties.allInterfaceNames
-            lifecycleScope.launchWhenStarted { updateAdapter() }
+            lifecycleScope.launch {
+                withStarted { updateAdapter() }
+            }
         }
 
         override fun onLost(network: Network) {
             interfaceNames.remove(network)
-            lifecycleScope.launchWhenStarted { updateAdapter() }
+            lifecycleScope.launch {
+                withStarted { updateAdapter() }
+            }
         }
     }
 
