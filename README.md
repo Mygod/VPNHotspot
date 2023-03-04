@@ -113,6 +113,10 @@ Default settings are picked to suit general use cases and maximize compatibility
   You might be required to turn this mode off if you want to use short SSID (at most 8 bytes long).
   Unsafe mode might not work for your device, and there is a small chance you will soft brick your device (recoverable).
   See [#153](https://github.com/Mygod/VPNHotspot/issues/153) for more information.
+* Use system configuration for temporary hotspot: (Android 11 or newer)
+  Attempt to start a temporary hotspot using system Wi-Fi hotspot configuration.
+  This feature is most likely only functional on Android 12 or newer.
+  Enabling this switch will also prevent other apps from using the [local-only hotspot](https://developer.android.com/guide/topics/connectivity/localonlyhotspot) functionality.
 * Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
   (when custom upstream is used).
   Requires restarting the app to take effects. (best way is to go to app info and force stop)
