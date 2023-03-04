@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.content.res.Resources
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
@@ -27,11 +28,24 @@ object WifiApManager {
     @RequiresApi(30)
     const val RESOURCES_PACKAGE = "com.android.wifi.resources"
     /**
-     * Based on: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/000ad45/service/java/com/android/server/wifi/WifiContext.java#66
+     * Based on: https://cs.android.com/android/platform/superproject/+/master:packages/modules/Wifi/framework/java/android/net/wifi/WifiContext.java;l=66;drc=5ca657189aac546af0aafaba11bbc9c5d889eab3
      */
     @get:RequiresApi(30)
-    val resolvedActivity get() = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
-            PackageManager.MATCH_SYSTEM_ONLY).single()
+    val resolvedActivity: ResolveInfo get() {
+        val list = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
+            PackageManager.MATCH_SYSTEM_ONLY)
+        require(list.isNotEmpty()) { "Missing $ACTION_RESOURCES_APK" }
+        if (list.size > 1) {
+            list.singleOrNull {
+                it.activityInfo.applicationInfo.sourceDir.startsWith("/apex/com.android.wifi")
+            }?.let { return it }
+            Timber.w(Exception("Found > 1 apk: " + list.joinToString {
+                val info = it.activityInfo.applicationInfo
+                "${info.packageName} (${info.sourceDir})"
+            }))
+        }
+        return list[0]
+    }
 
     private const val CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED = "config_wifi_p2p_mac_randomization_supported"
     val p2pMacRandomizationSupported get() = try {
