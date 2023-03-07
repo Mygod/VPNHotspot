@@ -19,7 +19,7 @@ android {
         targetCompatibility(javaVersion)
     }
     kotlin.jvmToolchain(javaVersion)
-    compileSdk = 33
+    compileSdkPreview = "UpsideDownCake"
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
