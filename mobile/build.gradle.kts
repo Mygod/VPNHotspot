@@ -12,7 +12,7 @@ android {
     namespace = "be.mygod.vpnhotspot"
 
     val javaVersion = 11
-    buildToolsVersion = "33.0.2"
+    buildToolsVersion = "34.0.0-rc2"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility(javaVersion)
