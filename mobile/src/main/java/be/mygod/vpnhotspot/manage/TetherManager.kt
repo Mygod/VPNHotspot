@@ -209,7 +209,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     }
                     if (features != 0L) while (features != 0L) {
                         val bit = features.takeLowestOneBit()
-                        yield(SoftApCapability.featureLookup(bit, true))
+                        yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
                         features = features and bit.inv()
                     }
                 }.joinToSpanned().ifEmpty { parent.getText(R.string.tethering_manage_wifi_no_features) })
