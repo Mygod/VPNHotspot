@@ -257,7 +257,9 @@ data class SoftApConfigurationCompat(
         @get:RequiresApi(30)
         private val classBuilder by lazy { Class.forName("android.net.wifi.SoftApConfiguration\$Builder") }
         @get:RequiresApi(30)
-        private val newBuilder by lazy @TargetApi(30) { classBuilder.getConstructor(SoftApConfiguration::class.java) }
+        private val newBuilder0 by lazy @TargetApi(30) { classBuilder.getConstructor() }
+        @get:RequiresApi(30)
+        private val newBuilder1 by lazy @TargetApi(30) { classBuilder.getConstructor(SoftApConfiguration::class.java) }
         @get:RequiresApi(30)
         private val build by lazy @TargetApi(30) { classBuilder.getDeclaredMethod("build") }
         @get:RequiresApi(33)
@@ -446,7 +448,7 @@ data class SoftApConfigurationCompat(
             if (channel == 0) setBand(builder, band) else setChannel(builder, channel, band)
         } else setChannels(builder, channels)
         @get:RequiresApi(30)
-        private val staticBuilder by lazy @TargetApi(30) { classBuilder.newInstance() }
+        private val staticBuilder by lazy @TargetApi(30) { newBuilder0.newInstance() }
         @RequiresApi(30)
         fun testPlatformValidity(channels: SparseIntArray) = setChannelsCompat(staticBuilder, channels)
         @RequiresApi(30)
@@ -525,7 +527,7 @@ data class SoftApConfigurationCompat(
     @RequiresApi(30)
     fun toPlatform(): SoftApConfiguration {
         val sac = underlying as? SoftApConfiguration
-        val builder = if (sac == null) classBuilder.newInstance() else newBuilder.newInstance(sac)
+        val builder = if (sac == null) newBuilder0.newInstance() else newBuilder1.newInstance(sac)
         if (Build.VERSION.SDK_INT >= 33) {
             setWifiSsid(builder, ssid?.toPlatform())
         } else setSsid(builder, ssid?.toString())
