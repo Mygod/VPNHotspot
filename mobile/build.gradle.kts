@@ -19,6 +19,9 @@ android {
         targetCompatibility(javaVersion)
     }
     kotlinOptions.jvmTarget = javaVersion.toString()
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+        kotlinOptions.jvmTarget = javaVersion.toString()
+    }
     compileSdkPreview = "UpsideDownCake"
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
@@ -50,7 +53,10 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
-    packagingOptions.resources.excludes.add("**/*.kotlin_*")
+    packagingOptions.resources.excludes.addAll(listOf(
+        "**/*.kotlin_*",
+        "META-INF/versions/**",
+    ))
     flavorDimensions.add("freedom")
     productFlavors {
         create("freedom") {
@@ -66,7 +72,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.6.0-rc01"
+    val lifecycleVersion = "2.6.0"
     val roomVersion = "2.5.0"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.2")
@@ -93,7 +99,7 @@ dependencies {
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.5")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.0-Beta")
     add("googleImplementation", "com.google.android.play:core:1.10.3")
     add("googleImplementation", "com.google.android.play:core-ktx:1.8.1")
     testImplementation("junit:junit:4.13.2")
