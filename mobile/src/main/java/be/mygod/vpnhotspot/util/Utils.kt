@@ -1,9 +1,12 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.content.*
 import android.content.res.Resources
 import android.net.*
+import android.net.http.ConnectionMigrationOptions
+import android.net.http.HttpEngine
 import android.os.Build
 import android.os.RemoteException
 import android.text.*
@@ -11,12 +14,15 @@ import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
+import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
+import androidx.core.os.BuildCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.client.MacLookup
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
@@ -25,6 +31,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
+import java.io.File
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -244,9 +251,26 @@ fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
     if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true)
 }
 
+@get:RequiresApi(34)
+private val engine by lazy @TargetApi(34) {
+    val cache = File(app.deviceStorage.cacheDir, "httpEngine")
+    HttpEngine.Builder(app.deviceStorage).apply {
+        if (cache.mkdirs() || cache.isDirectory) {
+            setStoragePath(cache.absolutePath)
+            setEnableHttpCache(HttpEngine.Builder.HTTP_CACHE_DISK, 1024 * 1024)
+        }
+        setConnectionMigrationOptions(ConnectionMigrationOptions.Builder().apply {
+            setEnableDefaultNetworkMigration(true)
+            setEnablePathDegradationMigration(true)
+        }.build())
+        setEnableBrotli(true)
+        addQuicHint(MacLookup.HOST, 443, 443)
+    }.build()
+}
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {
-    @Suppress("BlockingMethodInNonBlockingContext")
-    val conn = URL(url).openConnection() as HttpURLConnection
+    val conn = (if (BuildCompat.isAtLeastU()) {
+        engine.openConnection(URL(url))
+    } else @Suppress("BlockingMethodInNonBlockingContext") URL(url).openConnection()) as HttpURLConnection
     return suspendCancellableCoroutine { cont ->
         val job = GlobalScope.launch(Dispatchers.IO) {
             try {
