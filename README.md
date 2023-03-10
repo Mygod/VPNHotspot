@@ -154,7 +154,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [SHA-256 checksum `233a277aa8ac475b6df61bffd95665d86aac6eb2ad187b90bf42a98f5f2a11a3`](https://dl.google.com/developers/android/tm/non-sdk/hiddenapi-flags.csv).
+API restrictions are updated up to [SHA-256 checksum `cdd43f463f11ce91786fe94b4e5893dbd5d1b03c784f9e578109daa4d43917ae`](https://dl.google.com/developers/android/udc/non-sdk/hiddenapi-flags.csv).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
