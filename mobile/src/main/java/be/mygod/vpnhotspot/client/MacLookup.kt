@@ -18,8 +18,6 @@ import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.IOException
-import java.math.BigInteger
-import java.security.MessageDigest
 
 /**
  * This class generates a default nickname for new clients.
@@ -33,7 +31,8 @@ object MacLookup {
         override fun getLocalizedMessage() = formatMessage(app)
     }
 
-    private val sha1 = MessageDigest.getInstance("SHA-1")
+    const val HOST = "app.maclookup.app"
+//    private val sha1 = MessageDigest.getInstance("SHA-1")
     private val macLookupBusy = mutableMapOf<MacAddress, Job>()
     // http://en.wikipedia.org/wiki/ISO_3166-1
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
@@ -47,31 +46,31 @@ object MacLookup {
         macLookupBusy[mac] = GlobalScope.launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
             var response: String? = null
             try {
-                response = connectCancellable("https://api.maclookup.app/v2/macs/$mac") { conn ->
+                response = connectCancellable("https://$HOST/v2/app/search/macs?q=$mac") { conn ->
 //                    conn.setRequestProperty("X-App-Id", "net.mobizme.macaddress")
 //                    conn.setRequestProperty("X-App-Version", "2.0.11")
 //                    conn.setRequestProperty("X-App-Version-Code", "111")
-                    val epoch = System.currentTimeMillis()
-                    conn.setRequestProperty("X-App-Epoch", epoch.toString())
-                    conn.setRequestProperty("X-App-Sign", "%032x".format(BigInteger(1,
-                        sha1.digest("aBA6AEkfg8cbHlWrBDYX_${mac}_$epoch".toByteArray()))))
+//                    val epoch = System.currentTimeMillis()
+//                    conn.setRequestProperty("X-App-Epoch", epoch.toString())
+//                    conn.setRequestProperty("X-App-Sign", "%032x".format(BigInteger(1,
+//                        sha1.digest("aBA6AEkfg8cbHlWrBDYX_${mac}_$epoch".toByteArray()))))
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.bufferedReader().readText()
-                        400, 401, 429 -> throw UnexpectedError(mac, conn.inputStream.bufferedReader().readText())
+//                        400, 401, 429 -> throw UnexpectedError(mac, conn.inputStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
                                 conn.inputStream.bufferedReader().readText())
                     }
                 }
                 val obj = JSONObject(response)
-                if (!obj.getBoolean("success")) throw UnexpectedError(mac, response)
                 val result = if (obj.getBoolean("found")) {
-                    val company = obj.getString("company")
+                    val company = obj.getString("vendor")
                     val match = extractCountry(mac, response, obj)
                     if (match != null) {
                         String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' +
                                 company
                     } else company
                 } else null
+                Timber.d("$mac -> $result")
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
                     if (result != null) nickname = result
                     macLookupPending = false
@@ -89,7 +88,6 @@ object MacLookup {
     }
 
     private fun extractCountry(mac: MacAddress, response: String, obj: JSONObject): MatchResult? {
-        countryCodeRegex.matchEntire(obj.optString("country"))?.also { return it }
         val address = obj.optString("address")
         if (address.isBlank()) return null
         countryCodeRegex.find(address)?.also { return it }
