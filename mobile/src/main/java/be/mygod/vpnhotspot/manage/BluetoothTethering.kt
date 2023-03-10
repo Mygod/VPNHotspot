@@ -80,8 +80,8 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
     fun ensureInit(context: Context) {
         activeFailureCause = null
         if (!proxyCreated) try {
-            check(adapter.getProfileProxy(context, this, PAN))
-            proxyCreated = true
+            if (adapter.getProfileProxy(context, this, PAN)) proxyCreated = true
+            else activeFailureCause = Exception("getProfileProxy failed")
         } catch (e: SecurityException) {
             if (Build.VERSION.SDK_INT >= 31) Timber.d(e.readableMessage) else Timber.w(e)
             activeFailureCause = e
