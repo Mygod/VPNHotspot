@@ -8,6 +8,7 @@ import android.text.style.StyleSpan
 import android.util.AttributeSet
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
@@ -15,6 +16,7 @@ import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.parseNumericAddress
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs),
@@ -67,7 +69,9 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     }
 
     private fun onUpdate() {
-        summary = context.getText(R.string.settings_service_upstream_monitor_summary).format(
-            context.resources.configuration.locales[0], primary.charSequence, fallback.charSequence)
+        (context as LifecycleOwner).lifecycleScope.launch {
+            summary = context.getText(R.string.settings_service_upstream_monitor_summary).format(
+                context.resources.configuration.locales[0], primary.charSequence, fallback.charSequence)
+        }
     }
 }
