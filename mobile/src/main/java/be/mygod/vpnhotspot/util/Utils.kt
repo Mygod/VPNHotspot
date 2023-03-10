@@ -42,6 +42,7 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
 import java.util.Locale
+import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 tailrec fun Throwable.getRootCause(): Throwable {
@@ -274,7 +275,7 @@ suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnectio
     return suspendCancellableCoroutine { cont ->
         val job = GlobalScope.launch(Dispatchers.IO) {
             try {
-                cont.resume(block(conn)) { cont.resumeWithException(it) }
+                cont.resume(block(conn))
             } catch (e: Throwable) {
                 cont.resumeWithException(e)
             } finally {
