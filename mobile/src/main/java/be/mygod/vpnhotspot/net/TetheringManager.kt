@@ -153,8 +153,6 @@ object TetheringManager {
      */
     @RequiresApi(30)
     const val TETHERING_ETHERNET = 5
-    @RequiresApi(31)    // TETHERING_WIFI_P2P
-    private val expectedTypes = setOf(TETHERING_WIFI, TETHERING_USB, TETHERING_BLUETOOTH, 3, TETHERING_ETHERNET)
 
     @get:RequiresApi(30)
     private val clazz by lazy { Class.forName("android.net.TetheringManager") }
@@ -412,8 +410,9 @@ object TetheringManager {
          */
         @TargetApi(31)
         fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) {
-            if ((supportedTypes - expectedTypes).isNotEmpty()) Timber.w(Exception(
-                "Unexpected supported tethering types: ${supportedTypes.joinToString()}"))
+            val filtered = supportedTypes.filter { it !in 0..5 }
+            if (filtered.isNotEmpty()) Timber.w(Exception(
+                "Unexpected supported tethering types: ${filtered.joinToString()}"))
         }
 
         /**
