@@ -101,7 +101,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
                 TetheringManager.registerTetheringEventCallbackCompat(this, this)
                 IpNeighbourMonitor.registerCallback(this)
             }
-            updateNotification()
+            super.updateNotification()
         }
         launch(Dispatchers.Main) { binder.routingsChanged() }
     }
@@ -111,7 +111,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
         // call this first just in case we are shutting down immediately
-        updateNotification()
+        super.updateNotification()
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
