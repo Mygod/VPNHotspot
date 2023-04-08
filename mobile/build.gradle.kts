@@ -89,7 +89,7 @@ dependencies {
     implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.android.material:material:1.10.0-alpha01")
     implementation("com.google.firebase:firebase-analytics-ktx:21.2.1")
     implementation("com.google.firebase:firebase-crashlytics:18.3.6")
     implementation("com.google.zxing:core:3.5.1")
