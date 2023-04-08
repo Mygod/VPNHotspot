@@ -25,7 +25,7 @@ android {
         minSdk = 21
         targetSdk = 33
         resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 305
+        versionCode = 306
         versionName = "2.15.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
@@ -65,28 +65,28 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.5.1"
-    val roomVersion = "2.5.0"
+    val lifecycleVersion = "2.6.1"
+    val roomVersion = "2.5.1"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.browser:browser:1.5.0-beta01")
-    implementation("androidx.core:core-ktx:1.9.0")
-    implementation("androidx.fragment:fragment-ktx:1.5.5")
+    implementation("androidx.browser:browser:1.5.0")
+    implementation("androidx.core:core-ktx:1.10.0")
+    implementation("androidx.fragment:fragment-ktx:1.5.6")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.0")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.1")
-    implementation("com.android.billingclient:billing-ktx:5.1.0")
+    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.2")
+    implementation("com.android.billingclient:billing-ktx:5.2.0")
     implementation("com.github.tiann:FreeReflection:3.1.0")
-    implementation("com.google.android.gms:play-services-base:18.1.0")  // fix for GoogleApiActivity crash
+    implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.8.0-rc01")
-    implementation("com.google.firebase:firebase-analytics-ktx:21.2.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.3.3")
+    implementation("com.google.android.material:material:1.8.0")
+    implementation("com.google.firebase:firebase-analytics-ktx:21.2.1")
+    implementation("com.google.firebase:firebase-crashlytics:18.3.6")
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
