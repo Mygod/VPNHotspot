@@ -146,7 +146,7 @@
     <string name="settings_misc_source_summary">Leia o manual, marque com estrela, envie problemas e contribua (Tipo o Konny :D)</string>
     <string name="settings_misc_donate">Doe</string>
     <string name="settings_misc_donate_summary">Eu amo dinheiro!</string>
-    <string name="settings_misc_donate_more">PayPal, Flattr, e mais…</string>
+    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, e mais…</string>
     <string name="settings_restart_required">Reinicie o aplicativo para aplicar essa função.</string>
     <string name="settings_exit_app">Sair</string>
 

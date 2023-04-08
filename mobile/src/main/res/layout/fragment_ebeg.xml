@@ -77,11 +77,11 @@
 
         </LinearLayout>
 
-        <ViewStub
-            android:id="@+id/donations__more_stub"
+        <Button
+            android:id="@+id/donations__more_donate_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout="@layout/fragment_ebeg_more" />
+            android:text="@string/settings_misc_donate_more"/>
 
     </LinearLayout>
 </ScrollView>
