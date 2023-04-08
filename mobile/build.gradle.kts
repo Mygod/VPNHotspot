@@ -33,7 +33,6 @@ android {
             put("room.incremental", "true")
             put("room.schemaLocation", "$projectDir/schemas")
         }
-        buildConfigField("boolean", "DONATIONS", "true")
     }
     buildFeatures {
         dataBinding = true
@@ -58,7 +57,6 @@ android {
         create("google") {
             dimension = "freedom"
             versionNameSuffix = "-g"
-            buildConfigField("boolean", "DONATIONS", "false")
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
