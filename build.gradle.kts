@@ -1,7 +1,7 @@
 plugins {
-    id("com.android.application") version "8.1.0-alpha08" apply false
+    id("com.android.application") version "8.1.0-alpha11" apply false
     id("com.github.ben-manes.versions") version "0.46.0"
-    id("org.jetbrains.kotlin.android") version "1.8.10" apply false
+    id("org.jetbrains.kotlin.android") version "1.8.20" apply false
 }
 
 buildscript {

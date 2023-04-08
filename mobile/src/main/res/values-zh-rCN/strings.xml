@@ -150,7 +150,7 @@
     <string name="settings_misc_source_summary">查看使用手册，star, 提交 issues, 合作</string>
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
-    <string name="settings_misc_donate_more">PayPal, Flattr 等其他方式…</string>
+    <string name="settings_misc_donate_more">GitHub sponsors, PayPal 等其他方式…</string>
     <string name="settings_restart_required">重启应用以应用新的设置。</string>
     <string name="settings_exit_app">退出</string>
 

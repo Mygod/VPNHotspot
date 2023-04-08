@@ -120,7 +120,7 @@
     <string name="settings_misc_source_summary">Leggi il manuale, metti tra i preferiti, segnala problemi e contribuisci</string>
     <string name="settings_misc_donate">Dona</string>
     <string name="settings_misc_donate_summary">Amo i soldi</string>
-    <string name="settings_misc_donate_more">PayPal, Flattr, altro…</string>
+    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, altro…</string>
     <string name="settings_restart_required">Riavvia l\'applicazione per applicare questa impostazione.</string>
     <string name="settings_exit_app">Esci</string>
 

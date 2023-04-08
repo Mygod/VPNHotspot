@@ -172,7 +172,7 @@
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
-    <string name="settings_misc_donate_more">PayPal, Flattr, more…</string>
+    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, more…</string>
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
