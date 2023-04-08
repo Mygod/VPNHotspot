@@ -18,7 +18,10 @@ android {
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
-    kotlin.jvmToolchain(javaVersion)
+    kotlinOptions.jvmTarget = javaVersion.toString()
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
+        kotlinOptions.jvmTarget = javaVersion.toString()
+    }
     compileSdk = 33
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
@@ -78,7 +81,7 @@ dependencies {
     implementation("androidx.preference:preference:1.2.0")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.2")
+    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.3")
     implementation("com.android.billingclient:billing-ktx:5.2.0")
     implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
