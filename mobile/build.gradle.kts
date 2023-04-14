@@ -52,6 +52,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
+    androidResources.generateLocaleConfig = true
     packagingOptions.resources.excludes.addAll(listOf(
         "**/*.kotlin_*",
         "META-INF/versions/**",
