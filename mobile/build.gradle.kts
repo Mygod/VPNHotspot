@@ -90,7 +90,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
     implementation("com.google.android.material:material:1.10.0-alpha01")
-    implementation("com.google.firebase:firebase-analytics-ktx:21.2.1")
+    implementation("com.google.firebase:firebase-analytics-ktx:21.2.2")
     implementation("com.google.firebase:firebase-crashlytics:18.3.6")
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
