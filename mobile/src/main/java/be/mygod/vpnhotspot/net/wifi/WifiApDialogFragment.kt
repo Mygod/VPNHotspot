@@ -517,9 +517,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val canGenerate = ssidOk && passwordValid && bandError == null && canCopy
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = canGenerate
         dialogView.toolbar.menu.apply {
-            findItem(R.id.invalid).isVisible = canGenerate && !arg.p2pMode && !arg.readOnly &&
-                    BuildCompat.isAtLeastU() &&
-                    !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
+            findItem(R.id.invalid).isVisible = canGenerate && BuildCompat.isAtLeastU() && !arg.p2pMode &&
+                    !arg.readOnly && !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
             findItem(android.R.id.copy).isEnabled = canCopy
         }
     }

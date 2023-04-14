@@ -56,6 +56,7 @@ android {
         "**/*.kotlin_*",
         "META-INF/versions/**",
     ))
+    lint.warning += "UnsafeOptInUsageError"
     flavorDimensions.add("freedom")
     productFlavors {
         create("freedom") {
