@@ -42,7 +42,7 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
                 if (Build.VERSION.SDK_INT < 30) Resources.getSystem().run {
                     getInteger(getIdentifier("config_wifi_framework_soft_ap_timeout_delay", "integer", "android"))
                 } else {
-                    val info = WifiApManager.resolvedActivity.activityInfo
+                    val info = WifiApManager.resolvedActivity
                     val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
                     resources.getInteger(resources.findIdentifier(
                         "config_wifiFrameworkSoftApShutDownTimeoutMilliseconds", "integer",
@@ -59,7 +59,7 @@ class TetherTimeoutMonitor(private val timeout: Long = 0,
         }
         @get:RequiresApi(31)
         val defaultTimeoutBridged: Int get() = try {
-            val info = WifiApManager.resolvedActivity.activityInfo
+            val info = WifiApManager.resolvedActivity
             val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
             resources.getInteger(resources.findIdentifier(
                 "config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond", "integer",

@@ -2,8 +2,8 @@ package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.TargetApi
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.content.res.Resources
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiManager
@@ -31,20 +31,20 @@ object WifiApManager {
      * Based on: https://cs.android.com/android/platform/superproject/+/master:packages/modules/Wifi/framework/java/android/net/wifi/WifiContext.java;l=66;drc=5ca657189aac546af0aafaba11bbc9c5d889eab3
      */
     @get:RequiresApi(30)
-    val resolvedActivity: ResolveInfo get() {
+    val resolvedActivity: ActivityInfo get() {
         val list = app.packageManager.queryIntentActivities(Intent(ACTION_RESOURCES_APK),
-            PackageManager.MATCH_SYSTEM_ONLY)
+            PackageManager.MATCH_SYSTEM_ONLY).distinctBy { it.activityInfo.applicationInfo.packageName }
         require(list.isNotEmpty()) { "Missing $ACTION_RESOURCES_APK" }
         if (list.size > 1) {
             list.singleOrNull {
                 it.activityInfo.applicationInfo.sourceDir.startsWith("/apex/com.android.wifi")
-            }?.let { return it }
+            }?.let { return it.activityInfo }
             Timber.w(Exception("Found > 1 apk: " + list.joinToString {
                 val info = it.activityInfo.applicationInfo
                 "${info.packageName} (${info.sourceDir})"
             }))
         }
-        return list[0]
+        return list[0].activityInfo
     }
 
     private const val CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED = "config_wifi_p2p_mac_randomization_supported"
@@ -54,7 +54,7 @@ object WifiApManager {
                 getBoolean(getIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool", "android"))
             }
             in 30..Int.MAX_VALUE -> @TargetApi(30) {
-                val info = resolvedActivity.activityInfo
+                val info = resolvedActivity
                 val resources = app.packageManager.getResourcesForApplication(info.applicationInfo)
                 resources.getBoolean(resources.findIdentifier(CONFIG_P2P_MAC_RANDOMIZATION_SUPPORTED, "bool",
                     RESOURCES_PACKAGE, info.packageName))
