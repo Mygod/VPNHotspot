@@ -265,7 +265,6 @@ private val engine by lazy @TargetApi(34) {
             setPathDegradationMigration(ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
         }.build())
         setEnableBrotli(true)
-        addQuicHint(MacLookup.HOST, 443, 443)
     }.build()
 }
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {

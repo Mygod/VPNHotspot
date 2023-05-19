@@ -31,7 +31,6 @@ object MacLookup {
         override fun getLocalizedMessage() = formatMessage(app)
     }
 
-    const val HOST = "app.maclookup.app"
 //    private val sha1 = MessageDigest.getInstance("SHA-1")
     private val macLookupBusy = mutableMapOf<MacAddress, Job>()
     // http://en.wikipedia.org/wiki/ISO_3166-1
@@ -46,25 +45,32 @@ object MacLookup {
         macLookupBusy[mac] = GlobalScope.launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
             var response: String? = null
             try {
-                response = connectCancellable("https://$HOST/v2/app/search/macs?q=$mac") { conn ->
-//                    conn.setRequestProperty("X-App-Id", "net.mobizme.macaddress")
-//                    conn.setRequestProperty("X-App-Version", "2.0.11")
-//                    conn.setRequestProperty("X-App-Version-Code", "111")
-//                    val epoch = System.currentTimeMillis()
-//                    conn.setRequestProperty("X-App-Epoch", epoch.toString())
-//                    conn.setRequestProperty("X-App-Sign", "%032x".format(BigInteger(1,
-//                        sha1.digest("aBA6AEkfg8cbHlWrBDYX_${mac}_$epoch".toByteArray()))))
+                response = connectCancellable("https://mac-address.alldatafeeds.com/api/mac-address/lookup") { conn ->
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.outputStream.writer().use { it.write("{\"mac-address\":\"$mac\"}") }
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.bufferedReader().readText()
-//                        400, 401, 429 -> throw UnexpectedError(mac, conn.inputStream.bufferedReader().readText())
+                        400, 401, 402, 404, 422, 429, 500 -> throw UnexpectedError(mac,
+                            conn.inputStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
                                 conn.inputStream.bufferedReader().readText())
                     }
                 }
-                val obj = JSONObject(response)
-                val result = if (obj.getBoolean("found")) {
-                    val company = obj.getString("vendor")
-                    val match = extractCountry(mac, response, obj)
+                val reportId = JSONObject(response).getString("report_id")
+                response = connectCancellable("https://mac-address.alldatafeeds.com/_next/data/aIw2msYEY99JzKeaEXrix" +
+                        "/mac-address-lookup/$reportId.json") { conn ->
+                    when (val responseCode = conn.responseCode) {
+                        200 -> conn.inputStream.bufferedReader().readText()
+                        else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
+                                conn.inputStream.bufferedReader().readText())
+                    }
+                }
+                val obj = JSONObject(response).getJSONObject("pageProps").getJSONObject("lookupResults")
+                val result = if (obj.getJSONObject("blockDetails").getBoolean("blockFound")) {
+                    val vendor = obj.getJSONObject("vendorDetails")
+                    val company = vendor.getString("companyName")
+                    val match = extractCountry(mac, response, vendor, obj)
                     if (match != null) {
                         String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' +
                                 company
@@ -87,10 +93,14 @@ object MacLookup {
         }
     }
 
-    private fun extractCountry(mac: MacAddress, response: String, obj: JSONObject): MatchResult? {
-        val address = obj.optString("address")
-        if (address.isBlank()) return null
-        countryCodeRegex.find(address)?.also { return it }
+    private fun extractCountry(mac: MacAddress, response: String, vendor: JSONObject, obj: JSONObject): MatchResult? {
+        for (candidate in sequence {
+            yield(vendor)
+            val history = obj.optJSONArray("blockHistory") ?: return@sequence
+            for (i in history.length() - 1 downTo 0) {
+                yield(history.getJSONObject(i))
+            }
+        }) countryCodeRegex.matchEntire(candidate.getString("countryCode"))?.also { return it }
         Timber.w(UnexpectedError(mac, response))
         return null
     }
