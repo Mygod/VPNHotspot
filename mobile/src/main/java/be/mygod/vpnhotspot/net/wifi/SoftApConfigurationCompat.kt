@@ -354,7 +354,7 @@ data class SoftApConfigurationCompat(
         @Deprecated("Class deprecated in framework")
         @Suppress("DEPRECATION")
         fun android.net.wifi.WifiConfiguration.toCompat() = SoftApConfigurationCompat(
-                WifiSsidCompat.fromUtf8Text(SSID),
+                WifiSsidCompat.fromUtf8Text(SSID, true),
                 BSSID?.let { MacAddress.fromString(it) },
                 preSharedKey,
                 hiddenSSID,

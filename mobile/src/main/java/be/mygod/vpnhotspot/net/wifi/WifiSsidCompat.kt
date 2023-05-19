@@ -24,7 +24,9 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         }
 
         @Contract("null -> null; !null -> !null")
-        fun fromUtf8Text(text: CharSequence?) = text?.toString()?.toByteArray()?.let { WifiSsidCompat(it) }
+        fun fromUtf8Text(text: CharSequence?, truncate: Boolean = false) = text?.toString()?.toByteArray()?.let {
+            WifiSsidCompat(if (truncate && it.size > 32) it.sliceArray(0 until 32) else it)
+        }
 
         fun toMeCard(text: String) = qrSanitizer.replace(text) { "\\${it.groupValues[1]}" }
 
