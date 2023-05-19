@@ -29,7 +29,8 @@ abstract class KillableTileService : TileService(), ServiceConnection {
 
     override fun onBind(intent: Intent?) = try {
         super.onBind(intent)
-    } catch (_: DeadObjectException) {
+    } catch (e: RuntimeException) {
+        if (e.cause !is DeadObjectException) throw e
         null
     }.also { BootReceiver.startIfEnabled() }
 }
