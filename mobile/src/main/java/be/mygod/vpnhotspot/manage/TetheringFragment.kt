@@ -238,36 +238,51 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         AlertDialogFragment.setResultListener<WifiApDialogFragment, WifiApDialogFragment.Arg>(this) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) GlobalScope.launch {
                 val configuration = ret!!.configuration
-                @Suppress("DEPRECATION")
-                if (Build.VERSION.SDK_INT < 30 &&
-                        configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
-                    TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
-                } catch (e: Exception) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
-                }
-                val success = try {
-                    if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-                        WifiApManager.setConfiguration(configuration.toWifiConfiguration())
-                    } else WifiApManager.setConfiguration(configuration.toPlatform())
-                } catch (e: InvocationTargetException) {
+                if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                    if (configuration.isAutoShutdownEnabled != TetherTimeoutMonitor.enabled) try {
+                        TetherTimeoutMonitor.setEnabled(configuration.isAutoShutdownEnabled)
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                    }
+                    val wc = configuration.toWifiConfiguration()
                     try {
-                        if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-                            val wc = configuration.toWifiConfiguration()
-                            RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }
-                        } else {
-                            val platform = configuration.toPlatform()
-                            RootManager.use { it.execute(WifiApCommands.SetConfiguration(platform)) }
+                        if (WifiApManager.setConfiguration(wc)) return@launch
+                    } catch (e: InvocationTargetException) {
+                        try {
+                            if (RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }
+                                .value) return@launch
+                        } catch (e: CancellationException) {
+                            return@launch SmartSnackbar.make(e).show()
+                        } catch (eRoot: Exception) {
+                            eRoot.addSuppressed(e)
+                            Timber.w(eRoot)
+                            return@launch SmartSnackbar.make(eRoot).show()
                         }
-                    } catch (_: CancellationException) {
-                    } catch (eRoot: Exception) {
-                        eRoot.addSuppressed(e)
-                        Timber.w(eRoot)
-                        SmartSnackbar.make(eRoot).show()
-                        null
+                    }
+                } else {
+                    val platform = try {
+                        configuration.toPlatform()
+                    } catch (e: InvocationTargetException) {
+                        Timber.w(e)
+                        return@launch SmartSnackbar.make(e).show()
+                    }
+                    try {
+                        if (WifiApManager.setConfiguration(platform)) return@launch
+                    } catch (e: InvocationTargetException) {
+                        try {
+                            if (RootManager.use { it.execute(WifiApCommands.SetConfiguration(platform)) }
+                                    .value) return@launch
+                        } catch (e: CancellationException) {
+                            return@launch SmartSnackbar.make(e).show()
+                        } catch (eRoot: Exception) {
+                            eRoot.addSuppressed(e)
+                            Timber.w(eRoot)
+                            return@launch SmartSnackbar.make(eRoot).show()
+                        }
                     }
                 }
-                if (success == false) SmartSnackbar.make(R.string.configuration_rejected).show()
+                SmartSnackbar.make(R.string.configuration_rejected).show()
             }
         }
         binding = FragmentTetheringBinding.inflate(inflater, container, false)
