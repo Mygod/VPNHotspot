@@ -261,8 +261,8 @@ private val engine by lazy @TargetApi(34) {
             setEnableHttpCache(HttpEngine.Builder.HTTP_CACHE_DISK, 1024 * 1024)
         }
         setConnectionMigrationOptions(ConnectionMigrationOptions.Builder().apply {
-            setEnableDefaultNetworkMigration(true)
-            setEnablePathDegradationMigration(true)
+            setDefaultNetworkMigration(ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
+            setPathDegradationMigration(ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
         }.build())
         setEnableBrotli(true)
         addQuicHint(MacLookup.HOST, 443, 443)

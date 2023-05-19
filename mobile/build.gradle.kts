@@ -12,7 +12,7 @@ android {
     namespace = "be.mygod.vpnhotspot"
 
     val javaVersion = 11
-    buildToolsVersion = "34.0.0-rc2"
+    buildToolsVersion = "34.0.0-rc4"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility(javaVersion)
@@ -79,27 +79,27 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.5.0")
-    implementation("androidx.core:core-ktx:1.10.0")
-    implementation("androidx.fragment:fragment-ktx:1.5.6")
+    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.fragment:fragment-ktx:1.6.0-rc01")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.0")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.2")
-    implementation("com.android.billingclient:billing-ktx:5.2.0")
+    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.4")
+    implementation("com.android.billingclient:billing-ktx:6.0.0")
     implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
-    implementation("com.google.android.gms:play-services-oss-licenses:17.0.0")
-    implementation("com.google.android.material:material:1.10.0-alpha01")
+    implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
+    implementation("com.google.android.material:material:1.10.0-alpha03")
     implementation("com.google.firebase:firebase-analytics-ktx:21.2.2")
-    implementation("com.google.firebase:firebase-crashlytics:18.3.6")
+    implementation("com.google.firebase:firebase-crashlytics:18.3.7")
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.5")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.0-Beta")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
     add("googleImplementation", "com.google.android.play:core:1.10.3")
     add("googleImplementation", "com.google.android.play:core-ktx:1.8.1")
     testImplementation("junit:junit:4.13.2")
