@@ -79,7 +79,7 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.5.0")
-    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.core:core-ktx:1.11.0-beta01")
     implementation("androidx.fragment:fragment-ktx:1.6.0-rc01")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
@@ -92,7 +92,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
     implementation("com.google.android.material:material:1.10.0-alpha03")
-    implementation("com.google.firebase:firebase-analytics-ktx:21.2.2")
+    implementation("com.google.firebase:firebase-analytics-ktx:21.3.0")
     implementation("com.google.firebase:firebase-crashlytics:18.3.7")
     implementation("com.google.zxing:core:3.5.1")
     implementation("com.jakewharton.timber:timber:5.0.1")
