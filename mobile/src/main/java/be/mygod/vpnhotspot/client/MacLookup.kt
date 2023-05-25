@@ -18,6 +18,7 @@ import org.json.JSONException
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.IOException
+import java.net.HttpURLConnection
 
 /**
  * This class generates a default nickname for new clients.
@@ -36,6 +37,8 @@ object MacLookup {
     // http://en.wikipedia.org/wiki/ISO_3166-1
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
 
+    private val HttpURLConnection.findErrorStream get() = errorStream ?: inputStream
+
     @MainThread
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
@@ -52,9 +55,9 @@ object MacLookup {
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.bufferedReader().readText()
                         400, 401, 402, 404, 422, 429, 500 -> throw UnexpectedError(mac,
-                            conn.inputStream.bufferedReader().readText())
+                            conn.findErrorStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
-                                conn.inputStream.bufferedReader().readText())
+                                conn.findErrorStream.bufferedReader().readText())
                     }
                 }
                 val reportId = JSONObject(response).getString("report_id")
@@ -63,7 +66,7 @@ object MacLookup {
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.bufferedReader().readText()
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
-                                conn.inputStream.bufferedReader().readText())
+                                conn.findErrorStream.bufferedReader().readText())
                     }
                 }
                 val obj = JSONObject(response).getJSONObject("pageProps").getJSONObject("lookupResults")
