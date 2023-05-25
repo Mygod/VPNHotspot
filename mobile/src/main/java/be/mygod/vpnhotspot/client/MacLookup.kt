@@ -19,6 +19,8 @@ import org.json.JSONObject
 import timber.log.Timber
 import java.io.IOException
 import java.net.HttpURLConnection
+import java.util.Scanner
+import java.util.regex.Pattern
 
 /**
  * This class generates a default nickname for new clients.
@@ -36,12 +38,34 @@ object MacLookup {
     private val macLookupBusy = mutableMapOf<MacAddress, Job>()
     // http://en.wikipedia.org/wiki/ISO_3166-1
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
+    // nanoid matcher with preceding pattern
+    private val buildIdPattern by lazy { Pattern.compile("(?<=_next/static/|\"buildId\":\")[A-Za-z0-9_-]{21}") }
 
     private val HttpURLConnection.findErrorStream get() = errorStream ?: inputStream
 
     @MainThread
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
+    private var buildId = "Tf9pzEFow9scQ87pOfWw3"
+    private suspend fun readResponse(mac: MacAddress, reportId: String): String {
+        repeat(5) {
+            connectCancellable(
+                "https://mac-address.alldatafeeds.com/_next/data/$buildId/mac-address-lookup/$reportId.json") { conn ->
+                when (val responseCode = conn.responseCode) {
+                    200 -> conn.inputStream.bufferedReader().readText()
+                    404 -> {
+                        buildId = conn.errorStream.use { Scanner(it).findWithinHorizon(buildIdPattern, 0) }
+                            ?: throw UnexpectedError(mac, "failed to locate buildId in 404")
+                        Timber.d("Obtained new buildId: $buildId")
+                        null
+                    }
+                    else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
+                            conn.findErrorStream.bufferedReader().readText())
+                }
+            }?.let { return it }
+        }
+        throw UnexpectedError(mac, "Repeated 404")
+    }
     @MainThread
     fun perform(mac: MacAddress, explicit: Boolean = false) {
         abort(mac)
@@ -60,15 +84,7 @@ object MacLookup {
                                 conn.findErrorStream.bufferedReader().readText())
                     }
                 }
-                val reportId = JSONObject(response).getString("report_id")
-                response = connectCancellable("https://mac-address.alldatafeeds.com/_next/data/Tf9pzEFow9scQ87pOfWw3" +
-                        "/mac-address-lookup/$reportId.json") { conn ->
-                    when (val responseCode = conn.responseCode) {
-                        200 -> conn.inputStream.bufferedReader().readText()
-                        else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
-                                conn.findErrorStream.bufferedReader().readText())
-                    }
-                }
+                response = readResponse(mac, JSONObject(response).getString("report_id"))
                 val obj = JSONObject(response).getJSONObject("pageProps").getJSONObject("lookupResults")
                 val result = if (obj.getJSONObject("blockDetails").getBoolean("blockFound")) {
                     val vendor = obj.getJSONObject("vendorDetails")

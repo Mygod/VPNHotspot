@@ -22,7 +22,6 @@ import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.client.MacLookup
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
