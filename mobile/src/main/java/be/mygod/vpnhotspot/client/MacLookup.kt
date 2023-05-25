@@ -61,7 +61,7 @@ object MacLookup {
                     }
                 }
                 val reportId = JSONObject(response).getString("report_id")
-                response = connectCancellable("https://mac-address.alldatafeeds.com/_next/data/aIw2msYEY99JzKeaEXrix" +
+                response = connectCancellable("https://mac-address.alldatafeeds.com/_next/data/Tf9pzEFow9scQ87pOfWw3" +
                         "/mac-address-lookup/$reportId.json") { conn ->
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.bufferedReader().readText()
