@@ -56,13 +56,7 @@ class App : Application() {
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
         Firebase.initialize(deviceStorage)
-        when (val codename = Build.VERSION.CODENAME) {
-            "REL" -> { }
-            else -> FirebaseCrashlytics.getInstance().apply {
-                setCustomKey("codename", codename)
-                setCustomKey("preview_sdk", Build.VERSION.PREVIEW_SDK_INT)
-            }
-        }
+        FirebaseCrashlytics.getInstance().setCustomKey("build", Build.DISPLAY)
         Timber.plant(object : Timber.DebugTree() {
             @SuppressLint("LogNotTimber")
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
