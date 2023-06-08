@@ -12,7 +12,7 @@ android {
     namespace = "be.mygod.vpnhotspot"
 
     val javaVersion = 11
-    buildToolsVersion = "34.0.0-rc4"
+    buildToolsVersion = "34.0.0"
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility(javaVersion)
@@ -22,7 +22,7 @@ android {
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = javaVersion.toString()
     }
-    compileSdkPreview = "UpsideDownCake"
+    compileSdk = 34
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
@@ -78,8 +78,8 @@ dependencies {
     kapt("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.5.0")
-    implementation("androidx.core:core-ktx:1.11.0-beta01")
-    implementation("androidx.fragment:fragment-ktx:1.6.0-rc01")
+    implementation("androidx.core:core-ktx:1.11.0-beta02")
+    implementation("androidx.fragment:fragment-ktx:1.6.0")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.0")
@@ -90,7 +90,7 @@ dependencies {
     implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
-    implementation("com.google.android.material:material:1.10.0-alpha03")
+    implementation("com.google.android.material:material:1.9.0")
     implementation("com.google.firebase:firebase-analytics-ktx:21.3.0")
     implementation("com.google.firebase:firebase-crashlytics:18.3.7")
     implementation("com.google.zxing:core:3.5.1")
