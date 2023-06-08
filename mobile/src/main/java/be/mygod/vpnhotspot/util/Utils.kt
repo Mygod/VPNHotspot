@@ -16,7 +16,6 @@ import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
 import androidx.core.net.toUri
-import androidx.core.os.BuildCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
@@ -267,9 +266,9 @@ private val engine by lazy @TargetApi(34) {
     }.build()
 }
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {
-    val conn = (if (BuildCompat.isAtLeastU()) {
-        engine.openConnection(URL(url))
-    } else @Suppress("BlockingMethodInNonBlockingContext") URL(url).openConnection()) as HttpURLConnection
+    val conn = (if (Build.VERSION.SDK_INT < 34) @Suppress("BlockingMethodInNonBlockingContext") {
+        URL(url).openConnection()
+    } else engine.openConnection(URL(url))) as HttpURLConnection
     return suspendCancellableCoroutine { cont ->
         val job = GlobalScope.launch(Dispatchers.IO) {
             try {

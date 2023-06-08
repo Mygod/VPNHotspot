@@ -22,7 +22,6 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.BuildCompat
 import androidx.core.os.persistableBundleOf
 import androidx.core.view.isGone
 import be.mygod.librootkotlinx.toByteArray
@@ -517,7 +516,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         val canGenerate = ssidOk && passwordValid && bandError == null && canCopy
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = canGenerate
         dialogView.toolbar.menu.apply {
-            findItem(R.id.invalid).isVisible = canGenerate && BuildCompat.isAtLeastU() && !arg.p2pMode &&
+            findItem(R.id.invalid).isVisible = canGenerate && Build.VERSION.SDK_INT >= 34 && !arg.p2pMode &&
                     !arg.readOnly && !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
             findItem(android.R.id.copy).isEnabled = canCopy
         }
