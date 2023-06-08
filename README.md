@@ -94,6 +94,9 @@ Default settings are picked to suit general use cases and maximize compatibility
      An example use case is when a voice connection needs to be kept active even after the device screen goes off.
      Using this mode may improve the call quality.
      Requires support from the hardware.
+     Deprecated in Android 14 and is automatically replaced with "Low latency mode".
+     Deprecation is due to the impact of it on power dissipation.
+     The "Low latency mode" provides much of the same desired functionality with less impact on power dissipation.
    - (since Android 10) Choose "Low latency mode" to optimize for reduced packet latency, and this might result in:
      1. Reduced battery life.
      2. Reduced throughput.

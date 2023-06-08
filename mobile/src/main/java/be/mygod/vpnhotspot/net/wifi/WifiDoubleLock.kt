@@ -64,6 +64,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
         @Deprecated("This constant was deprecated in API level Q.\n" +
                 "This API is non-functional and will have no impact.")
         Full(WifiManager.WIFI_MODE_FULL),
+        @Suppress("DEPRECATION")
         HighPerf(WifiManager.WIFI_MODE_FULL_HIGH_PERF),
         @RequiresApi(29)
         LowLatency(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, true),
