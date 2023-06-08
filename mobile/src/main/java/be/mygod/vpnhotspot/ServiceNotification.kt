@@ -3,6 +3,8 @@ package be.mygod.vpnhotspot
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import java.util.*
@@ -53,7 +55,10 @@ object ServiceNotification {
         synchronized(this) {
             deviceCountsMap[service] = deviceCounts
             if (inactive.isEmpty()) inactiveMap.remove(service) else inactiveMap[service] = inactive
-            service.startForeground(NOTIFICATION_ID, buildNotification(service))
+            if (Build.VERSION.SDK_INT >= 33) {
+                service.startForeground(NOTIFICATION_ID, buildNotification(service),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            } else service.startForeground(NOTIFICATION_ID, buildNotification(service))
         }
     }
     fun stopForeground(service: Service) = synchronized(this) {

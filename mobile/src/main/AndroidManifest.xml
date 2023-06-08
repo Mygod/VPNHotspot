@@ -32,6 +32,7 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.LOCAL_MAC_ADDRESS"
                      tools:ignore="ProtectedPermissions" />
@@ -102,11 +103,13 @@
         <service
             android:name=".LocalOnlyHotspotService"
             android:directBootAware="true"
-            android:foregroundServiceType="location|connectedDevice"/>
+            android:foregroundServiceType="location|connectedDevice"
+            tools:ignore="ForegroundServicePermission"/>
         <service
             android:name=".RepeaterService"
             android:directBootAware="true"
-            android:foregroundServiceType="location|connectedDevice"/>
+            android:foregroundServiceType="location|connectedDevice"
+            tools:ignore="ForegroundServicePermission"/>
         <service
             android:name=".TetheringService"
             android:directBootAware="true"
