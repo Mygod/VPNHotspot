@@ -87,7 +87,6 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.4")
     implementation("com.android.billingclient:billing-ktx:6.0.0")
-    implementation("com.github.tiann:FreeReflection:3.1.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
     implementation("com.google.android.material:material:1.9.0")
@@ -97,6 +96,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.5")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
     add("googleImplementation", "com.google.android.play:app-update-ktx:2.1.0")
