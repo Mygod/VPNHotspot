@@ -28,8 +28,8 @@ android {
         minSdk = 28
         targetSdk = 34
         resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
-        versionCode = 1004
-        versionName = "2.16.4"
+        versionCode = 1005
+        versionName = "2.16.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions.annotationProcessorOptions.arguments.apply {
             put("room.expandProjection", "true")
@@ -85,7 +85,7 @@ dependencies {
     implementation("androidx.preference:preference:1.2.0")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.4")
+    implementation("be.mygod.librootkotlinx:librootkotlinx:1.0.5")
     implementation("com.android.billingclient:billing-ktx:6.0.0")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
