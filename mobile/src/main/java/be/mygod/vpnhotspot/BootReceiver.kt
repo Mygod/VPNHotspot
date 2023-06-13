@@ -29,12 +29,7 @@ class BootReceiver : BroadcastReceiver() {
                     else PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
         private val userEnabled get() = app.pref.getBoolean(KEY, false)
         fun onUserSettingUpdated(shouldStart: Boolean) {
-            enabled = shouldStart && try {
-                config
-            } catch (e: Exception) {
-                Timber.w(e)
-                null
-            }?.startables?.isEmpty() == false
+            enabled = shouldStart && config?.startables?.isEmpty() == false
         }
         private fun onConfigUpdated(isNotEmpty: Boolean) {
             enabled = isNotEmpty && userEnabled
@@ -46,14 +41,12 @@ class BootReceiver : BroadcastReceiver() {
             DataInputStream(configFile.inputStream()).use { it.readBytes().toParcelable() }
         } catch (_: FileNotFoundException) {
             null
+        } catch (e: Exception) {
+            Timber.d("Boot config corrupted", e)
+            null
         }
         private fun updateConfig(work: Config.() -> Unit) = synchronized(BootReceiver) {
-            val config = try {
-                config
-            } catch (e: Exception) {
-                Timber.i("Boot config corrupted", e)
-                null
-            } ?: Config()
+            val config = config ?: Config()
             config.work()
             DataOutputStream(configFile.outputStream()).use { it.write(config.toByteArray()) }
             config
@@ -85,12 +78,7 @@ class BootReceiver : BroadcastReceiver() {
         private var started = false
         private fun startIfNecessary() {
             if (started) return
-            val config = try {
-                synchronized(BootReceiver) { config }
-            } catch (e: Exception) {
-                Timber.w(e)
-                null
-            }
+            val config = synchronized(BootReceiver) { config }
             if (config == null || config.startables.isEmpty()) {
                 enabled = false
             } else for (startable in config.startables.values) startable.start(app)
