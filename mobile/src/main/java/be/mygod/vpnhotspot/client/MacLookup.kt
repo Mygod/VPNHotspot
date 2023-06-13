@@ -73,6 +73,7 @@ object MacLookup {
             var response: String? = null
             try {
                 response = connectCancellable("https://mac-address.alldatafeeds.com/api/mac-address/lookup") { conn ->
+                    conn.doOutput = true
                     conn.requestMethod = "POST"
                     conn.setRequestProperty("Content-Type", "application/json")
                     conn.outputStream.writer().use { it.write("{\"mac-address\":\"$mac\"}") }
