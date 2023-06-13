@@ -9,12 +9,14 @@ import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
 import android.os.RemoteException
+import android.os.ext.SdkExtensions
 import android.text.*
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
+import androidx.annotation.RequiresExtension
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
@@ -250,8 +252,8 @@ fun globalNetworkRequestBuilder() = NetworkRequest.Builder().apply {
     if (Build.VERSION.SDK_INT >= 31) setIncludeOtherUidNetworks(true)
 }
 
-@get:RequiresApi(34)
-private val engine by lazy @TargetApi(34) {
+@get:RequiresExtension(Build.VERSION_CODES.S, 7)
+private val engine by lazy @RequiresExtension(Build.VERSION_CODES.S, 7) {
     val cache = File(app.deviceStorage.cacheDir, "httpEngine")
     HttpEngine.Builder(app.deviceStorage).apply {
         if (cache.mkdirs() || cache.isDirectory) {
@@ -266,9 +268,10 @@ private val engine by lazy @TargetApi(34) {
     }.build()
 }
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {
-    val conn = (if (Build.VERSION.SDK_INT < 34) @Suppress("BlockingMethodInNonBlockingContext") {
-        URL(url).openConnection()
-    } else engine.openConnection(URL(url))) as HttpURLConnection
+    val conn = (if (Build.VERSION.SDK_INT >= 34 || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 7) {
+        engine.openConnection(URL(url))
+    } else @Suppress("BlockingMethodInNonBlockingContext") URL(url).openConnection()) as HttpURLConnection
     return suspendCancellableCoroutine { cont ->
         val job = GlobalScope.launch(Dispatchers.IO) {
             try {
