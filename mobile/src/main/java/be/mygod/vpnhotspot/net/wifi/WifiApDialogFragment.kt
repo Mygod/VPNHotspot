@@ -510,15 +510,16 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         } else null
         dialogView.maxChannelBandwidthError.isGone = bandwidthError.isNullOrEmpty()
         dialogView.maxChannelBandwidthError.text = bandwidthError
-        val canCopy = timeoutError == null && bssidValid && maxClientError == null && listsNoError &&
+        val canCopy = ssidOk && timeoutError == null && bssidValid && maxClientError == null && listsNoError &&
                 bridgedTimeoutError == null && vendorElementsError == null && persistentRandomizedMacValid &&
                 acsNoError && bandwidthError == null
-        val canGenerate = ssidOk && passwordValid && bandError == null && canCopy
+        val canGenerate = canCopy && passwordValid && bandError == null
         (dialog as? AlertDialog)?.getButton(DialogInterface.BUTTON_POSITIVE)?.isEnabled = canGenerate
         dialogView.toolbar.menu.apply {
             findItem(R.id.invalid).isVisible = canGenerate && Build.VERSION.SDK_INT >= 34 && !arg.p2pMode &&
                     !arg.readOnly && !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
             findItem(android.R.id.copy).isEnabled = canCopy
+            findItem(R.id.share_qr).isEnabled = ssidOk
         }
     }
 
