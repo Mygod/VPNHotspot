@@ -56,6 +56,7 @@
                     android:id="@+id/ssid"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:autofillHints="newUsername,username"
                     style="@style/wifi_item_edit_content" />
             </com.google.android.material.textfield.TextInputLayout>
             <LinearLayout
@@ -96,6 +97,7 @@
                     android:inputType="textPassword"
                     android:typeface="monospace"
                     android:maxLength="63"
+                    android:autofillHints="wifiPassword,password"
                     android:imeOptions="flagForceAscii" />
             </com.google.android.material.textfield.TextInputLayout>
             <com.google.android.material.materialswitch.MaterialSwitch
