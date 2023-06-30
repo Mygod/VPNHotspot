@@ -121,7 +121,7 @@ object MacLookup {
                 yield(history.getJSONObject(i))
             }
         }) countryCodeRegex.matchEntire(candidate.getString("countryCode"))?.also { return it }
-        Timber.w(UnexpectedError(mac, response))
+        if (!vendor.getBoolean("isPrivate")) Timber.w(UnexpectedError(mac, response))
         return null
     }
 }
