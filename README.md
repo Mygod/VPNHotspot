@@ -7,6 +7,10 @@
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/e70e52b1a58045819b505c09edcae816)](https://www.codacy.com/gh/Mygod/VPNHotspot/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Mygod/VPNHotspot&amp;utm_campaign=Badge_Grade)
 [![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](LICENSE)
 
+<a href="https://play.google.com/store/apps/details?id=be.mygod.vpnhotspot"><img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png" height="48"></a>
+([beta](https://play.google.com/apps/testing/be.mygod.vpnhotspot))
+SHA-256 fingerprint of the [code transparency](https://developer.android.com/guide/app-bundle/code-transparency#verify_code_transparency) key certificate (must be compared with the developer's public key manually): `C8 70 92 46 B3 32 22 6F 33 57 05 B4 5C 37 83 81 65 67 42 44 1B DC CC B2 96 1B 66 4D CF 4C 74 BC`
+
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 
 This app is useful for:

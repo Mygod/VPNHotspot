@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.google.android.gms.oss-licenses-plugin")
@@ -27,7 +29,6 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 34
-        resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
         versionCode = 1006
         versionName = "2.16.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -61,10 +62,23 @@ android {
     productFlavors {
         create("freedom") {
             dimension = "freedom"
+            resourceConfigurations.addAll(arrayOf("it", "pt-rBR", "ru", "zh-rCN", "zh-rTW"))
         }
         create("google") {
             dimension = "freedom"
             versionNameSuffix = "-g"
+            val prop = Properties().apply {
+                val f = rootProject.file("local.properties")
+                if (f.exists()) load(f.inputStream())
+            }
+            if (prop.containsKey("codeTransparency.storeFile")) bundle.codeTransparency.signing {
+                storeFile = file(prop["codeTransparency.storeFile"]!!)
+                storePassword = prop["codeTransparency.storePassword"] as? String
+                keyAlias = prop["codeTransparency.keyAlias"] as? String
+                keyPassword = if (prop.containsKey("codeTransparency.keyPassword")) {
+                    prop["codeTransparency.keyPassword"] as? String
+                } else storePassword
+            }
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
