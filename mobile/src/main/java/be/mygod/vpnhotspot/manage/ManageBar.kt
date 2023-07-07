@@ -24,17 +24,18 @@ object ManageBar : Manager() {
             binding.root.setOnClickListener(this)
         }
 
-        override fun onClick(v: View?) = start(itemView.context)
+        override fun onClick(v: View?) = start(itemView.context::startActivity)
     }
 
     override val type: Int get() = VIEW_TYPE_MANAGE
 
-    fun start(context: Context) {
+    fun start(startActivity: (Intent) -> Unit) {
+        val intent = Intent().setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_1))
+            startActivity(intent.setClassName(SETTINGS_PACKAGE, SETTINGS_1))
         } catch (e1: RuntimeException) {
             try {
-                context.startActivity(Intent().setClassName(SETTINGS_PACKAGE, SETTINGS_2))
+                startActivity(intent.setClassName(SETTINGS_PACKAGE, SETTINGS_2))
                 app.logEvent(TAG) { param(SETTINGS_1, e1.toString()) }
             } catch (e2: RuntimeException) {
                 app.logEvent(TAG) {

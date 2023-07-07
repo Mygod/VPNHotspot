@@ -107,8 +107,12 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     stop()
                 } catch (e: Exception) {
                     onException(e)
-                } else startForegroundService(Intent(this, TetheringService::class.java)
+                    dismiss()
+                } else {
+                    TetheringService.dismissHandle = dismissHandle
+                    startForegroundService(Intent(this, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+                }
             }
         }
     }
@@ -117,6 +121,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     override fun onTetheringFailed(error: Int?) {
         Timber.d("onTetheringFailed: $error")
         if (error != null) GlobalScope.launch(Dispatchers.Main.immediate) {
+            dismiss()
             Toast.makeText(this@TetheringTileService, TetheringManager.tetherErrorLookup(error),
                     Toast.LENGTH_LONG).show()
         }
@@ -125,6 +130,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     override fun onException(e: Exception) {
         super.onException(e)
         GlobalScope.launch(Dispatchers.Main.immediate) {
+            dismiss()
             Toast.makeText(this@TetheringTileService, e.readableMessage, Toast.LENGTH_LONG).show()
         }
     }
@@ -208,12 +214,16 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                             stop()
                         } catch (e: Exception) {
                             onException(e)
-                        } else startForegroundService(Intent(this, TetheringService::class.java)
+                            dismiss()
+                        } else {
+                            TetheringService.dismissHandle = dismissHandle
+                            startForegroundService(Intent(this, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
+                        }
                     }
                 }
                 false -> start()
-                else -> ManageBar.start(this)
+                else -> ManageBar.start(this::runActivity)
             }
         }
     }

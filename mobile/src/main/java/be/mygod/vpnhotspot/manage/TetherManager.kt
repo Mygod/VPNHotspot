@@ -107,7 +107,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         } else GlobalScope.launch(Dispatchers.Main.immediate) {
             val context = parent.context ?: app
             Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
-            ManageBar.start(context)
+            ManageBar.start(context::startActivity)
         }
         data.notifyChange()
     }
@@ -116,7 +116,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         GlobalScope.launch(Dispatchers.Main.immediate) {
             val context = parent.context ?: app
             Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
-            ManageBar.start(context)
+            ManageBar.start(context::startActivity)
         }
     }
 
@@ -305,7 +305,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             tethering.stop(this::onException)
             onTetheringStarted()    // force flush state
         }
-        override fun onClickNull() = ManageBar.start(parent.requireContext())
+        override fun onClickNull() = ManageBar.start(parent.requireContext()::startActivity)
     }
     @RequiresApi(30)
     class Ethernet(parent: TetheringFragment) : TetherManager(parent) {

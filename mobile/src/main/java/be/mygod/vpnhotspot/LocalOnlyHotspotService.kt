@@ -20,9 +20,16 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
+import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.net.Inet4Address
@@ -30,6 +37,12 @@ import java.net.Inet4Address
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     companion object {
         const val KEY_USE_SYSTEM = "service.tempHotspot.useSystem"
+
+        var dismissHandle: TileServiceDismissHandle? = null
+        private fun dismissIfApplicable() = dismissHandle?.run {
+            get()?.dismiss()
+            dismissHandle = null
+        }
     }
 
     inner class Binder : android.os.Binder() {
@@ -121,6 +134,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             if (state.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                 SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
                     WifiApManager.failureReasonLookup(state.third))).show()
+                dismissIfApplicable()
             }
             return stopService()
         }
@@ -146,6 +160,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             }
             else -> getString(R.string.failure_reason_unknown, reason)
         })).show()
+        dismissIfApplicable()
         stopService()
     }
 
@@ -212,9 +227,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
             WifiApManager.cancelLocalOnlyHotspotRequest()
             SmartSnackbar.make(e).show()
+            dismissIfApplicable()
             stopService()
         } catch (e: SecurityException) {
             SmartSnackbar.make(e).show()
+            dismissIfApplicable()
             stopService()
         }
     }

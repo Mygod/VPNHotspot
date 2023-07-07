@@ -33,8 +33,14 @@ class RepeaterTileService : KillableTileService() {
     override fun onClick() {
         val binder = binder
         if (binder == null) tapPending = true else when (binder.service.status) {
-            RepeaterService.Status.ACTIVE -> binder.shutdown()
-            RepeaterService.Status.IDLE -> startForegroundService(Intent(this, RepeaterService::class.java))
+            RepeaterService.Status.ACTIVE -> {
+                RepeaterService.dismissHandle = dismissHandle
+                binder.shutdown()
+            }
+            RepeaterService.Status.IDLE -> {
+                RepeaterService.dismissHandle = dismissHandle
+                startForegroundService(Intent(this, RepeaterService::class.java))
+            }
             else -> { }
         }
     }

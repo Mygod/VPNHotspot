@@ -8,8 +8,13 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -20,6 +25,12 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
         const val EXTRA_ADD_INTERFACES_MONITOR = "interface.adds.monitor"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
+
+        var dismissHandle: TileServiceDismissHandle? = null
+        private fun dismissIfApplicable() = dismissHandle?.run {
+            get()?.dismiss()
+            dismissHandle = null
+        }
     }
 
     inner class Binder : android.os.Binder() {
@@ -116,7 +127,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
                     if (downstreams[iface] == null) Downstream(this@TetheringService, iface).apply {
-                        if (start()) check(downstreams.put(iface, this) == null) else stop()
+                        if (start()) check(downstreams.put(iface, this) == null) else {
+                            dismissIfApplicable()
+                            stop()
+                        }
                     }
                 }
                 val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
@@ -124,7 +138,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
                 if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
                     val downstream = downstreams[iface]
                     if (downstream == null) Downstream(this@TetheringService, iface, true).apply {
-                        if (!start(true)) stop()
+                        if (!start(true)) {
+                            dismissIfApplicable()
+                            stop()
+                        }
                         check(downstreams.put(iface, this) == null)
                         downstreams[iface] = this
                     } else downstream.monitor = true

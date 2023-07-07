@@ -126,6 +126,12 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         var vendorElements: List<ScanResult.InformationElement>
             get() = VendorElements.deserialize(app.pref.getString(KEY_VENDOR_ELEMENTS, null))
             set(value) = app.pref.edit { putString(KEY_VENDOR_ELEMENTS, VendorElements.serialize(value)) }
+
+        var dismissHandle: TileServiceDismissHandle? = null
+        private fun dismissIfApplicable() = dismissHandle?.run {
+            get()?.dismiss()
+            dismissHandle = null
+        }
     }
 
     enum class Status {
@@ -530,6 +536,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         BootReceiver.add<RepeaterService>(Starter())
     }
     private fun startFailure(msg: CharSequence, group: WifiP2pGroup? = null, showWifiEnable: Boolean = false) {
+        dismissIfApplicable()
         SmartSnackbar.make(msg).apply {
             if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
                 if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
@@ -551,6 +558,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
             override fun onFailure(reason: Int) {
                 if (reason != WifiP2pManager.BUSY) {
+                    dismissIfApplicable()
                     SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                 }   // else assuming it's already gone
                 onSuccess()
