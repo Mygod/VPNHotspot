@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.os.ext.SdkExtensions
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -56,7 +57,11 @@ class App : Application() {
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
         Firebase.initialize(deviceStorage)
-        FirebaseCrashlytics.getInstance().setCustomKey("build", Build.DISPLAY)
+        FirebaseCrashlytics.getInstance().apply {
+            setCustomKey("build", Build.DISPLAY)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setCustomKey("extension_s",
+                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S))
+        }
         Timber.plant(object : Timber.DebugTree() {
             @SuppressLint("LogNotTimber")
             override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {

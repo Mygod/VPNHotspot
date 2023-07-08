@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.ext.SdkExtensions
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
@@ -97,7 +98,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                 val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
                 logFile.outputStream().use { out ->
                     PrintWriter(out.bufferedWriter()).use { writer ->
-                        writer.println("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}\n")
+                        writer.println("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) writer.println(
+                            "S extension ${SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S)}")
+                        writer.println()
                         writer.flush()
                         try {
                             Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
