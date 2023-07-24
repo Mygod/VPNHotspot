@@ -137,8 +137,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             field = value
             dialogView.ssidWrapper.setEndIconActivated(value)
         }
-    private val ssid get() =
-        if (hexSsid) WifiSsidCompat.fromHex(dialogView.ssid.text) else WifiSsidCompat.fromUtf8Text(dialogView.ssid.text)
+    private val ssid get() = if (hexSsid) {
+        WifiSsidCompat.fromHex(dialogView.ssid.text?.toString())
+    } else WifiSsidCompat.fromUtf8Text(dialogView.ssid.text?.toString())
 
     private fun generateChannels() = SparseIntArray(2).apply {
         if (!arg.p2pMode && Build.VERSION.SDK_INT >= 31) {

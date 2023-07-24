@@ -16,15 +16,11 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         private val hexTester = Regex("^(?:[0-9a-f]{2})*$", RegexOption.IGNORE_CASE)
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
-        fun fromHex(hex: CharSequence?) = hex?.run {
-            require(length % 2 == 0) { "Input should be hex: $hex" }
-            WifiSsidCompat((0 until length / 2).map {
-                Integer.parseInt(substring(it * 2, it * 2 + 2), 16).toByte()
-            }.toByteArray())
-        }
+        @OptIn(ExperimentalStdlibApi::class)
+        fun fromHex(hex: String?) = hex?.run { WifiSsidCompat(hexToByteArray()) }
 
         @Contract("null -> null; !null -> !null")
-        fun fromUtf8Text(text: CharSequence?, truncate: Boolean = false) = text?.toString()?.toByteArray()?.let {
+        fun fromUtf8Text(text: String?, truncate: Boolean = false) = text?.toByteArray()?.let {
             WifiSsidCompat(if (truncate && it.size > 32) it.sliceArray(0 until 32) else it)
         }
 
@@ -48,7 +44,8 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         }.decode(ByteBuffer.wrap(bytes), this, true)
         if (result.isError) null else flip().toString()
     }
-    val hex get() = bytes.joinToString("") { "%02x".format(it.toUByte().toInt()) }
+    @OptIn(ExperimentalStdlibApi::class)
+    val hex get() = bytes.toHexString()
 
     fun toMeCard(): String {
         val utf8 = decode() ?: return hex

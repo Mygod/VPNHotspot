@@ -29,7 +29,8 @@ object MacLookup {
     class UnexpectedError(val mac: MacAddress, val error: String) : JSONException("") {
         private fun formatMessage(context: Context) =
             context.getString(R.string.clients_mac_lookup_unexpected_error,
-                mac.toByteArray().joinToString("") { "%02x".format(it) }.substring(0, 9), error)
+                @OptIn(ExperimentalStdlibApi::class)
+                mac.toByteArray().toHexString(0, 5).substring(0, 9), error)
         override val message get() = formatMessage(app.english)
         override fun getLocalizedMessage() = formatMessage(app)
     }
