@@ -54,7 +54,7 @@ object MacLookup {
                 "https://mac-address.alldatafeeds.com/_next/data/$buildId/mac-address-lookup/$reportId.json") { conn ->
                 when (val responseCode = conn.responseCode) {
                     200 -> conn.inputStream.bufferedReader().readText()
-                    404 -> {
+                    404, 500 -> {
                         buildId = conn.errorStream.use { Scanner(it).findWithinHorizon(buildIdPattern, 0) }
                             ?: throw UnexpectedError(mac, "failed to locate buildId in 404")
                         Timber.d("Obtained new buildId: $buildId")
