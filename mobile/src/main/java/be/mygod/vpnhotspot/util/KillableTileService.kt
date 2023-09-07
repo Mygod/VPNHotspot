@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.util
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
@@ -37,7 +38,7 @@ abstract class KillableTileService : TileService(), ServiceConnection {
     }.also { BootReceiver.startIfEnabled() }
 
     protected fun runActivity(intent: Intent) = unlockAndRun {
-        if (Build.VERSION.SDK_INT < 34) @Suppress("DEPRECATION") {
+        if (Build.VERSION.SDK_INT < 34) @Suppress("DEPRECATION") @SuppressLint("StartActivityAndCollapseDeprecated") {
             startActivityAndCollapse(intent)
         } else startActivityAndCollapse(PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE))
     }
