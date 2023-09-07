@@ -33,10 +33,10 @@ android {
         versionCode = 1006
         versionName = "2.16.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        javaCompileOptions.annotationProcessorOptions.arguments.apply {
-            put("room.expandProjection", "true")
-            put("room.incremental", "true")
-            put("room.schemaLocation", "$projectDir/schemas")
+        ksp {
+            arg("room.expandProjection", "true")
+            arg("room.incremental", "true")
+            arg("room.schemaLocation", "$projectDir/schemas")
         }
     }
     buildFeatures {
@@ -89,7 +89,6 @@ dependencies {
     val lifecycleVersion = "2.6.2"
     val roomVersion = "2.5.2"
 
-    annotationProcessor("androidx.room:room-compiler:$roomVersion")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
