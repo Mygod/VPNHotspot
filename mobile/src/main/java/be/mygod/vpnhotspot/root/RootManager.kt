@@ -47,7 +47,7 @@ object RootManager : RootSession(), Logger {
         Logger.me = this
         AppProcess.shouldRelocateHeuristics.let {
             FirebaseCrashlytics.getInstance().setCustomKey("RootManager.relocateEnabled", it)
-            server.init(app.deviceStorage, it)
+            server.init(app, it)
         }
         server.execute(RootInit())
     }
