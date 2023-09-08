@@ -39,10 +39,10 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
-            val statusBarInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars())
-            view.setPadding(statusBarInsets.left, statusBarInsets.top, statusBarInsets.right, statusBarInsets.bottom)
+            val tappable = insets.getInsets(WindowInsetsCompat.Type.tappableElement())
+            view.setPadding(tappable.left, tappable.top, tappable.right, 0)
             WindowInsetsCompat.Builder(insets).apply {
-                setInsets(WindowInsetsCompat.Type.statusBars(), Insets.NONE)
+                setInsets(WindowInsetsCompat.Type.tappableElement(), Insets.of(0, 0, 0, tappable.bottom))
             }.build()
         }
         binding = ActivityMainBinding.inflate(layoutInflater)
