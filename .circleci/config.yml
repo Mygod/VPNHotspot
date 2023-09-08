@@ -9,14 +9,12 @@ jobs:
       name: android/android-docker
       tag: 2023.09.1
       resource-class: large
-    environment:
-      GRADLE_OPTS: -Dorg.gradle.workers.max=1 -Dorg.gradle.daemon=false -Dkotlin.compiler.execution.strategy="in-process"
     steps:
       - checkout
       - android/restore-gradle-cache
       - run:
           name: Run Build and Tests
-          command: ./gradlew --no-daemon assembleDebug check
+          command: ./gradlew assembleDebug check --no-daemon
       - android/save-gradle-cache
       - store_artifacts:
           path: mobile/build/outputs/apk
