@@ -37,7 +37,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 monitor.flushAsync()
                 monitor.neighbours.values
             }
-        }?.let { GlobalScope.launch(Dispatchers.Main) { callback.onIpNeighbourAvailable(it) } }
+        }?.let { GlobalScope.launch { callback.onIpNeighbourAvailable(it) } }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (callbacks.remove(callback) == null) return@synchronized
             fullMode = callbacks.any { it.value }
