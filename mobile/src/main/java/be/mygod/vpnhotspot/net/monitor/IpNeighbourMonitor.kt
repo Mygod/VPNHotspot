@@ -5,8 +5,13 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.channels.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.actor
+import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.channels.trySendBlocking
+import kotlinx.coroutines.launch
 
 class IpNeighbourMonitor private constructor() : IpMonitor() {
     companion object {
@@ -32,7 +37,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
                 monitor.flushAsync()
                 monitor.neighbours.values
             }
-        }?.let { callback.onIpNeighbourAvailable(it) }
+        }?.let { GlobalScope.launch(Dispatchers.Main) { callback.onIpNeighbourAvailable(it) } }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (callbacks.remove(callback) == null) return@synchronized
             fullMode = callbacks.any { it.value }
