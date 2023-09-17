@@ -235,8 +235,6 @@
                   android:theme="@style/AppTheme.ActionBar"/>
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>
-        <service android:name="com.google.firebase.components.ComponentDiscoveryService"
-                 android:directBootAware="true"/>
 
     </application>
 
