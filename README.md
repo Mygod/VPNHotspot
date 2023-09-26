@@ -155,7 +155,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [SHA-256 checksum `cdd43f463f11ce91786fe94b4e5893dbd5d1b03c784f9e578109daa4d43917ae`](https://dl.google.com/developers/android/udc/non-sdk/hiddenapi-flags.csv).
+API restrictions are updated up to [SHA-256 checksum `7e00db074cbe51c51ff4b411f7b48e98692951395c5c17d069c822cc1d0eae0f`](https://github.com/Mygod/hiddenapi/commit/d339264309c2bbfed1379bacbd00387eeeb38896).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
