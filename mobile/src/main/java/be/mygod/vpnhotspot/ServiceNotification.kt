@@ -69,16 +69,17 @@ object ServiceNotification {
     }
 
     fun updateNotificationChannels() {
-        NotificationChannel(CHANNEL_ACTIVE,
+        manager.createNotificationChannels(listOf(
+            NotificationChannel(CHANNEL_ACTIVE,
                 app.getText(R.string.notification_channel_tethering), NotificationManager.IMPORTANCE_LOW).apply {
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            manager.createNotificationChannel(this)
-        }
-        NotificationChannel(CHANNEL_INACTIVE,
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setShowBadge(false)
+            },
+            NotificationChannel(CHANNEL_INACTIVE,
                 app.getText(R.string.notification_channel_monitor), NotificationManager.IMPORTANCE_LOW).apply {
-            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            manager.createNotificationChannel(this)
-        }
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setShowBadge(false)
+            }))
         // remove old service channels
         manager.deleteNotificationChannel("hotspot")
         manager.deleteNotificationChannel("repeater")
