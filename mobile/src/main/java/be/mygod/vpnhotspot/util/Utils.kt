@@ -1,21 +1,30 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
-import android.annotation.TargetApi
-import android.content.*
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
 import android.content.res.Resources
-import android.net.*
+import android.net.InetAddresses
+import android.net.LinkProperties
+import android.net.MacAddress
+import android.net.NetworkRequest
+import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
-import android.text.*
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
-import androidx.annotation.RequiresApi
 import androidx.annotation.RequiresExtension
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
@@ -159,10 +168,18 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
 
 fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
     try {
-        val address = hardwareAddress?.let(MacAddress::fromBytes)
+        val hardwareAddress = hardwareAddress
+        val address = try {
+            hardwareAddress?.let(MacAddress::fromBytes)
+        } catch (e: IllegalArgumentException) {
+            try {
+                hardwareAddress?.let { MacAddress.fromString(String(it)) }.also { Timber.d(e) }
+            } catch (e2: IllegalArgumentException) {
+                e.addSuppressed(e2)
+                Timber.w(e)
+            }
+        }
         if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
-    } catch (e: IllegalArgumentException) {
-        Timber.w(e)
     } catch (_: SocketException) { }
     if (!macOnly) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))
