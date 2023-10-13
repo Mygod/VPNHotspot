@@ -35,7 +35,7 @@ abstract class KillableTileService : TileService(), ServiceConnection {
     } catch (e: RuntimeException) {
         if (e.cause !is DeadObjectException) throw e
         null
-    }.also { BootReceiver.startIfEnabled() }
+    }
 
     protected fun runActivity(intent: Intent) = unlockAndRun {
         if (Build.VERSION.SDK_INT < 34) @Suppress("DEPRECATION") @SuppressLint("StartActivityAndCollapseDeprecated") {
