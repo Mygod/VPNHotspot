@@ -7,7 +7,7 @@ jobs:
   test:
     executor:
       name: android/android-docker
-      tag: 2023.09.1
+      tag: 2023.10.1
       resource-class: large
     steps:
       - checkout
