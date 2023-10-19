@@ -47,7 +47,7 @@ object MacLookup {
     @MainThread
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
-    private var buildId = "ARjGO5IbEdErOOY_T4n26"
+    private var buildId = "er_PDXcqFFbzN-PV9pGR_"
     private suspend fun readResponse(mac: MacAddress, reportId: String): String {
         repeat(5) {
             connectCancellable(
