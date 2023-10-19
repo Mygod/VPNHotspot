@@ -87,7 +87,7 @@ android {
 
 dependencies {
     val lifecycleVersion = "2.6.2"
-    val roomVersion = "2.5.2"
+    val roomVersion = "2.6.0"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     ksp("androidx.room:room-compiler:$roomVersion")
@@ -100,13 +100,13 @@ dependencies {
     implementation("androidx.preference:preference:1.2.1")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.1.0")
+    implementation("be.mygod.librootkotlinx:librootkotlinx:1.1.1")
     implementation("com.android.billingclient:billing-ktx:6.0.1")
     implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
     implementation("com.google.android.material:material:1.10.0")
-    implementation("com.google.firebase:firebase-analytics-ktx:21.3.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.4.3")
+    implementation("com.google.firebase:firebase-analytics:21.4.0")
+    implementation("com.google.firebase:firebase-crashlytics:18.5.0")
     implementation("com.google.zxing:core:3.5.2")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
