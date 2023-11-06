@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<lint>
-    <issue id="InvalidPackage">
-        <ignore regexp="org.mockito.*" />
-    </issue>
-    <issue id="MissingTranslation" severity="ignore" />
-    <issue id="NewApi" severity="warning" />
-    <issue id="UseAppTint" severity="informational" />
-</lint>
