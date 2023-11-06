@@ -2,18 +2,18 @@ comments:
   active: false
 
 complexity:
-  LabeledExpression:
+  LabeledExpression: false
     active: false
   TooManyFunctions:
-    ignoreDeprecated: true
-    ignoreOverridden: true
+    ignoreDeprecated: false
+    ignoreOverridden: false
 
 exceptions:
-  TooGenericExceptionCaught:
+  TooGenericExceptionCaught: false
     active: false
 
 formatting:
-  CommentSpacing:
+  CommentSpacing: false
     active: false
   Indentation:
     active: false
