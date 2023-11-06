@@ -194,7 +194,7 @@ if "$cygwin" || "$msys" ; then
         # changing the positional parameters here affects neither the number of
         # iterations, nor the values presented in `arg`.
         shift                   # remove old arg
-        set -- "$@" "$arg"      # push replacement arg
+        set -- "$@" "$arg"      # null replacement arg
     done
 fi
 
