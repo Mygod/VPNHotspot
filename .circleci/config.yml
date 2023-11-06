@@ -21,7 +21,7 @@ jobs:
           destination: apk
       - store_artifacts:
           path: mobile/build/reports
-          destination: reports
+          destination: false
 
 workflows:
   test:
