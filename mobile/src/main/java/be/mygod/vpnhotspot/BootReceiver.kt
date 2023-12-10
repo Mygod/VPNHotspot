@@ -45,21 +45,20 @@ class BootReceiver : BroadcastReceiver() {
             Timber.d("Boot config corrupted", e)
             null
         }
-        private fun updateConfig(work: Config.() -> Unit) = synchronized(BootReceiver) {
+        private fun updateConfig(work: Config.() -> Boolean) = synchronized(BootReceiver) {
             val config = config ?: Config()
-            config.work()
-            DataOutputStream(configFile.outputStream()).use { it.write(config.toByteArray()) }
+            if (config.work()) DataOutputStream(configFile.outputStream()).use { it.write(config.toByteArray()) }
             config
         }
 
         fun add(key: String, value: Startable) = try {
-            updateConfig { startables[key] = value }
+            updateConfig { startables.put(key, value).let { true } }
             onConfigUpdated(true)
         } catch (e: Exception) {
             Timber.w(e)
         }
         fun delete(key: String) = try {
-            onConfigUpdated(updateConfig { startables.remove(key) }.startables.isNotEmpty())
+            onConfigUpdated(updateConfig { startables.remove(key) != null }.startables.isNotEmpty())
         } catch (e: Exception) {
             Timber.w(e)
         }
