@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
@@ -49,7 +50,6 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             ipForward() // local only interfaces need to enable ip_forward
             forward()
             masquerade(masqueradeMode)
-            commit()
         }
     }
 
@@ -88,7 +88,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     private fun initRoutingLocked(fromMonitor: Boolean = false) = try {
         routing = Routing(caller, downstream).apply {
             try {
+                transaction = RootSession.beginTransaction()
                 configure()
+                commit()
             } catch (e: Exception) {
                 revert()
                 throw e

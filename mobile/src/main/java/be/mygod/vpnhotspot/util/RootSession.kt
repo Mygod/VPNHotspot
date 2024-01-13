@@ -16,13 +16,12 @@ class RootSession : AutoCloseable {
         fun <T> use(operation: (RootSession) -> T) = monitor.withLock { operation(RootSession()) }
         fun beginTransaction(): Transaction {
             monitor.lock()
-            val instance = try {
-                RootSession()
+            try {
+                return RootSession().Transaction()
             } catch (e: Exception) {
                 monitor.unlock()
                 throw e
             }
-            return instance.Transaction()
         }
     }
 
@@ -57,9 +56,9 @@ class RootSession : AutoCloseable {
         fun commit() = monitor.unlock()
 
         fun revert() {
-            if (revertCommands.isEmpty()) return
             var locked = monitor.isHeldByCurrentThread
             try {
+                if (revertCommands.isEmpty()) return
                 val shell = if (locked) this@RootSession else {
                     monitor.lock()
                     locked = true

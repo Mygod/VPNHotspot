@@ -48,7 +48,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             forward()
             masquerade(masqueradeMode)
             if (app.pref.getBoolean("service.disableIpv6", true)) disableIpv6()
-            commit()
         }
     }
 

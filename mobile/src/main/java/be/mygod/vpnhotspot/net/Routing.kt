@@ -141,7 +141,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         throw InterfaceNotFoundException(e)
     }
     private val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
-    private val transaction = RootSession.beginTransaction()
+    lateinit var transaction: RootSession.Transaction
 
     @Volatile
     private var stopped = false
@@ -356,12 +356,12 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         IpNeighbourMonitor.registerCallback(this, true)
     }
     fun revert() {
+        transaction.revert()
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
         currentDns?.transaction?.revert()
         fallbackUpstream.subrouting.values.forEach { it.transaction.revert() }
         upstream.subrouting.values.forEach { it.transaction.revert() }
-        transaction.revert()
     }
 }
