@@ -60,7 +60,7 @@ object MacLookup {
                         Timber.d("Obtained new buildId: $buildId")
                         null
                     }
-                    else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
+                    else -> throw UnexpectedError(mac, "$responseCode-" +
                             conn.findErrorStream.bufferedReader().readText())
                 }
             }?.let { return it }
