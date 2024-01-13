@@ -45,12 +45,13 @@ android {
         viewBinding = true
     }
     buildTypes {
-        getByName("debug") {
+        debug {
             isPseudoLocalesEnabled = true
         }
-        getByName("release") {
+        release {
             isShrinkResources = true
             isMinifyEnabled = true
+            vcsInfo.include = true
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
         }
     }
@@ -86,33 +87,33 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.6.2"
-    val roomVersion = "2.6.0"
+    val lifecycleVersion = "2.7.0"
+    val roomVersion = "2.6.1"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.browser:browser:1.6.0")
+    implementation("androidx.browser:browser:1.8.0-beta01")
     implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.fragment:fragment-ktx:1.6.1")
+    implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.1")
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.1.1")
-    implementation("com.android.billingclient:billing-ktx:6.0.1")
-    implementation("com.google.android.gms:play-services-base:18.2.0")  // fix for GoogleApiActivity crash @ 18.1.0+
+    implementation("com.android.billingclient:billing-ktx:6.1.0")
+    implementation("com.google.android.gms:play-services-base:18.3.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
-    implementation("com.google.android.material:material:1.10.0")
-    implementation("com.google.firebase:firebase-analytics:21.4.0")
-    implementation("com.google.firebase:firebase-crashlytics:18.5.0")
+    implementation("com.google.android.material:material:1.11.0")
+    implementation("com.google.firebase:firebase-analytics:21.5.0")
+    implementation("com.google.firebase:firebase-crashlytics:18.6.0")
     implementation("com.google.zxing:core:3.5.2")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.6")
+    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     add("googleImplementation", "com.google.android.play:app-update-ktx:2.1.0")
     testImplementation("junit:junit:4.13.2")
