@@ -87,8 +87,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     private fun initRoutingLocked(fromMonitor: Boolean = false) = try {
         routing = Routing(caller, downstream).apply {
+            transaction = RootSession.beginTransaction()
             try {
-                transaction = RootSession.beginTransaction()
                 configure()
                 commit()
             } catch (e: Exception) {
