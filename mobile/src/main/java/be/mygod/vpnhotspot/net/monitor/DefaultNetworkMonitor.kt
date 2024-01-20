@@ -25,23 +25,28 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            synchronized(this@DefaultNetworkMonitor) {
+            val callbacks = synchronized(this@DefaultNetworkMonitor) {
                 currentLinkProperties = properties
                 callbacks.toList()
-            }.forEach { it.onAvailable(properties) }
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            synchronized(this@DefaultNetworkMonitor) {
+            val callbacks = synchronized(this@DefaultNetworkMonitor) {
                 currentLinkProperties = properties
                 callbacks.toList()
-            }.forEach { it.onAvailable(properties) }
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
         }
 
-        override fun onLost(network: Network) = synchronized(this@DefaultNetworkMonitor) {
-            currentLinkProperties = null
-            callbacks.toList()
-        }.forEach { it.onAvailable() }
+        override fun onLost(network: Network) {
+            val callbacks = synchronized(this@DefaultNetworkMonitor) {
+                currentLinkProperties = null
+                callbacks.toList()
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable() } }
+        }
     }
 
     override fun registerCallbackLocked(callback: Callback) {

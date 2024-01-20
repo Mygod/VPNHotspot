@@ -23,25 +23,27 @@ object VpnMonitor : UpstreamMonitor() {
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            synchronized(this@VpnMonitor) {
+            val callbacks = synchronized(this@VpnMonitor) {
                 available[network] = properties
                 currentNetwork = network
                 callbacks.toList()
-            }.forEach { it.onAvailable(properties) }
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            synchronized(this@VpnMonitor) {
+            val callbacks = synchronized(this@VpnMonitor) {
                 available[network] = properties
                 if (currentNetwork == null) currentNetwork = network
                 else if (currentNetwork != network) return
                 callbacks.toList()
-            }.forEach { it.onAvailable(properties) }
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
         }
 
         override fun onLost(network: Network) {
             var properties: LinkProperties? = null
-            synchronized(this@VpnMonitor) {
+            val callbacks = synchronized(this@VpnMonitor) {
                 if (available.remove(network) == null || currentNetwork != network) return
                 if (available.isNotEmpty()) {
                     val next = available.entries.first()
@@ -50,7 +52,8 @@ object VpnMonitor : UpstreamMonitor() {
                     properties = next.value
                 } else currentNetwork = null
                 callbacks.toList()
-            }.forEach { it.onAvailable(properties) }
+            }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
         }
     }
 
