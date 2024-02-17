@@ -7,7 +7,6 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withStarted
@@ -25,11 +24,7 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
     }
 
     private lateinit var editText: AlwaysAutoCompleteEditText
-    private lateinit var adapter: ArrayAdapter<String>
-    private fun updateAdapter() {
-        adapter.clear()
-        adapter.addAll(interfaceNames.flatMap { it.value })
-    }
+    private fun updateAdapter() = editText.setSimpleItems(interfaceNames.flatMap { it.value }.toTypedArray())
 
     private val interfaceNames = mutableMapOf<Network, List<String>>()
     private val callback = object : ConnectivityManager.NetworkCallback() {
@@ -60,8 +55,6 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
         super.onBindDialogView(view)
         editText = view.findViewById(android.R.id.edit)
         editText.hint = (preference.summaryProvider as SummaryFallbackProvider).fallback
-        adapter = ArrayAdapter(view.context, android.R.layout.select_dialog_item)
-        editText.setAdapter(adapter)
     }
 
     override fun onStart() {
