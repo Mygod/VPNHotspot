@@ -59,6 +59,7 @@ android {
         "**/*.kotlin_*",
         "META-INF/versions/**",
     ))
+    lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
     flavorDimensions.add("freedom")
     productFlavors {
