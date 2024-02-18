@@ -77,7 +77,8 @@
     <application
         android:name=".App"
         android:allowBackup="false"
-        android:dataExtractionRules="@xml/no_backup"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/full_backup_content"
         android:label="@string/app_name"
         android:banner="@mipmap/banner"
         android:hasFragileUserData="true"

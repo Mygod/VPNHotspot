@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="device_database" path="app.db" />
+        <include domain="device_sharedpref" path="be.mygod.vpnhotspot_preferences.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="device_database" path="app.db" />
+        <include domain="device_sharedpref" path="be.mygod.vpnhotspot_preferences.xml" />
+    </device-transfer>
+</data-extraction-rules>
