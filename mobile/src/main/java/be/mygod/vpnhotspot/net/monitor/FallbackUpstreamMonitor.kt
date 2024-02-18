@@ -18,6 +18,7 @@ abstract class FallbackUpstreamMonitor private constructor() : UpstreamMonitor()
             return if (upstream.isNullOrEmpty()) DefaultNetworkMonitor else InterfaceMonitor(upstream)
         }
         private var monitor = generateMonitor()
+        val currentNetwork get() = monitor.currentNetwork
 
         fun registerCallback(callback: Callback) = synchronized(this) { monitor.registerCallback(callback) }
         fun unregisterCallback(callback: Callback) = synchronized(this) { monitor.unregisterCallback(callback) }

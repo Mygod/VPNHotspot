@@ -26,6 +26,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
             val callbacks = synchronized(this@DefaultNetworkMonitor) {
+                currentNetwork = network
                 currentLinkProperties = properties
                 callbacks.toList()
             }
@@ -34,6 +35,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             val callbacks = synchronized(this@DefaultNetworkMonitor) {
+                currentNetwork = network
                 currentLinkProperties = properties
                 callbacks.toList()
             }
@@ -42,6 +44,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
 
         override fun onLost(network: Network) {
             val callbacks = synchronized(this@DefaultNetworkMonitor) {
+                currentNetwork = null
                 currentLinkProperties = null
                 callbacks.toList()
             }

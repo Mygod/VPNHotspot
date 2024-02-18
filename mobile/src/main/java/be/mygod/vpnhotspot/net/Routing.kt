@@ -2,10 +2,10 @@ package be.mygod.vpnhotspot.net
 
 import android.net.LinkProperties
 import android.net.MacAddress
-import android.net.RouteInfo
 import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.dns.DnsForwarder
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
@@ -15,7 +15,6 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
-import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
@@ -41,11 +40,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          *
          * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
          */
-        private const val RULE_PRIORITY_DNS = 17700
         private const val RULE_PRIORITY_UPSTREAM = 17800
         private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
         private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
-        private const val RULE_PRIORITY_TETHERING = 18000
 
         private const val ROOT_DIR = "/system/bin/"
         const val IP = "${ROOT_DIR}ip"
@@ -67,7 +64,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
             commands.appendLine("$IP6TABLES -F vpnhotspot_filter")
             commands.appendLine("$IP6TABLES -X vpnhotspot_filter")
-            commands.appendLine("while $IP rule del priority $RULE_PRIORITY_DNS; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
@@ -173,7 +169,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
 
         var subrouting = mutableMapOf<String, Subrouting>()
-        var dns = emptyList<Pair<InetAddress, String?>>()
 
         override fun onAvailable(properties: LinkProperties?) = synchronized(this@Routing) {
             if (stopped) return
@@ -191,26 +186,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 subrouting.remove(ifname)?.transaction?.revert()
                 check(upstreams.remove(ifname))
             }
-            val routes = properties?.allRoutes
-            dns = properties?.dnsServers?.map { dest ->
-                // based on:
-                // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/packages/Tethering/src/com/android/networkstack/tethering/TetheringInterfaceUtils.java;l=88;drc=master
-                // https://cs.android.com/android/platform/superproject/+/master:frameworks/libs/net/common/framework/android/net/util/NetUtils.java;l=44;drc=de5905fe0407a1f5e115423d56c948ee2400683d
-                val size = dest.address.size
-                var bestRoute: RouteInfo? = null
-                for (route in routes!!) {
-                    if (route.destination.rawAddress.size == size && (bestRoute == null ||
-                                    bestRoute.destination.prefixLength < route.destination.prefixLength)) {
-                        try {
-                            if (route.matches(dest)) bestRoute = route
-                        } catch (e: RuntimeException) {
-                            Timber.w(e)
-                        }
-                    }
-                }
-                dest to bestRoute?.`interface`
-            } ?: emptyList()
-            updateDnsRoute()
         }
     }
     private val fallbackUpstream = Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK)
@@ -307,41 +282,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    private inner class DnsRoute(val ifindex: Int, val dns: String) {
-        val transaction = RootSession.beginTransaction().safeguard {
-            val hostAddress = hostAddress.address.hostAddress
-            if (ifindex != 0) ipRuleLookup(ifindex, RULE_PRIORITY_DNS, "to $dns")
-            iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
-            iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $dns", "nat")
-        }
-    }
-    private var currentDns: DnsRoute? = null
-    private fun updateDnsRoute() {
-        val selected = sequenceOf(upstream, fallbackUpstream).flatMap { upstream ->
-            upstream.dns.asSequence().map { (server, iface) ->
-                ((if (iface != null) upstream.subrouting[iface]?.ifindex else null) ?: 0) to server
-            }
-        }.firstOrNull { it.second is Inet4Address }
-        val ifindex = selected?.first ?: 0
-        var dns = selected?.second?.hostAddress
-        if (dns.isNullOrBlank()) dns = null
-        if (ifindex != currentDns?.ifindex || dns != currentDns?.dns) {
-            currentDns?.transaction?.revert()
-            currentDns = if (dns == null) null else try {
-                DnsRoute(ifindex, dns)
-            } catch (_: CancellationException) {
-                null
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-                null
-            }
-        }
-    }
-
     fun stop() {
         synchronized(this) { stopped = true }
         IpNeighbourMonitor.unregisterCallback(this)
+        DnsForwarder.unregisterClient(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         Timber.i("Stopped routing for $downstream by $caller")
@@ -349,6 +293,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
+        val forwarder = DnsForwarder.registerClient(this)
+        val hostAddress = hostAddress.address.hostAddress
+        transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
+        transaction.iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
+        transaction.iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
@@ -360,7 +309,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         synchronized(this) { clients.values.forEach { it.close() } }
-        currentDns?.transaction?.revert()
         fallbackUpstream.subrouting.values.forEach { it.transaction.revert() }
         upstream.subrouting.values.forEach { it.transaction.revert() }
     }

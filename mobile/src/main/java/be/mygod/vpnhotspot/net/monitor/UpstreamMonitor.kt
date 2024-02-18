@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.content.SharedPreferences
 import android.net.LinkProperties
+import android.net.Network
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
@@ -19,6 +20,7 @@ abstract class UpstreamMonitor {
             return if (upstream.isNullOrEmpty()) VpnMonitor else InterfaceMonitor(upstream)
         }
         private var monitor = generateMonitor()
+        val currentNetwork get() = monitor.currentNetwork
 
         fun registerCallback(callback: Callback) = synchronized(this) { monitor.registerCallback(callback) }
         fun unregisterCallback(callback: Callback) = synchronized(this) { monitor.unregisterCallback(callback) }
@@ -49,6 +51,8 @@ abstract class UpstreamMonitor {
     }
 
     val callbacks = mutableSetOf<Callback>()
+    var currentNetwork: Network? = null
+        protected set
     protected abstract val currentLinkProperties: LinkProperties?
     protected abstract fun registerCallbackLocked(callback: Callback)
     abstract fun destroyLocked()

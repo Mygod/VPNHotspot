@@ -18,7 +18,6 @@ object VpnMonitor : UpstreamMonitor() {
     private var registered = false
 
     private val available = HashMap<Network, LinkProperties?>()
-    private var currentNetwork: Network? = null
     override val currentLinkProperties: LinkProperties? get() = currentNetwork?.let { available[it] }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
