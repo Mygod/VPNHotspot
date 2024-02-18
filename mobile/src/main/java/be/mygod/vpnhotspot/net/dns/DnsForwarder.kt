@@ -23,6 +23,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
@@ -114,6 +115,9 @@ class DnsForwarder : CoroutineScope {
                 } catch (e: IOException) {
                     Timber.d(e, "Failed to handle connection to tcp:${socket.remoteAddress.toJavaAddress()}")
                     cancel("Main loop error")
+                } catch (e: ClosedReceiveChannelException) {
+                    Timber.d(e, "EOF from tcp:${socket.remoteAddress.toJavaAddress()}")
+                    cancel("EOF from read")
                 }
             }
         }
