@@ -93,7 +93,7 @@ class DnsForwarder : CoroutineScope {
             coroutineScope {
                 try {
                     val reader = socket.openReadChannel()
-                    val writer = socket.openWriteChannel(true)
+                    val writer = socket.openWriteChannel()
                     val writerMutex = Mutex()
                     while (!reader.isClosedForRead) {
                         val query = ByteArray(reader.readShort().toUShort().toInt())
@@ -104,7 +104,9 @@ class DnsForwarder : CoroutineScope {
                             } ?: return@launch
                             writerMutex.withLock {
                                 try {
+                                    writer.writeShort(response.size.toShort())
                                     writer.writeFully(response)
+                                    writer.flush()
                                 } catch (e: IOException) {
                                     Timber.d(e, "Cannot write to tcp:${socket.remoteAddress.toJavaAddress()}")
                                     cancel("Write fail")
