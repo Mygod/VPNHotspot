@@ -132,7 +132,7 @@ class DnsForwarder : CoroutineScope {
             val response = resolve(query) { "Packet from udp:${datagram.address.toJavaAddress()}" } ?: return@launch
             udp!!.send(Datagram(ByteReadPacket(response), datagram.address))
         } catch (e: IOException) {
-            Timber.d(e, "Failed to handle connection")
+            Timber.d(e, "Failed to handle connection from udp:${datagram.address.toJavaAddress()}")
         }
     }
 
