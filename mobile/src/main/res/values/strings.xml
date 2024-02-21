@@ -95,6 +95,8 @@
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
 
+    <string name="tethering_static_ip">Static IP</string>
+
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>
     <string name="connected_state_failed">" (lost)"</string>

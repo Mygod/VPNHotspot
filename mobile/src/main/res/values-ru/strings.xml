@@ -24,6 +24,8 @@
     <string name="tethering_manage_bluetooth" msgid="2379175828878753652">"Bluetooth-модем"</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"Режим Ethernet-модема"</string>
 
+    <string name="tethering_static_ip">Статический IP</string>
+
     <string name="connected_state_incomplete">" (подключение)"</string>
     <string name="connected_state_valid">" (доступный)"</string>
     <string name="connected_state_failed">" (потеря)"</string>

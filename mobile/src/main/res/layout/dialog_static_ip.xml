@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.textfield.TextInputLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    tools:viewBindingIgnore="true">
+
+    <com.google.android.material.textfield.TextInputEditText
+        android:id="@android:id/edit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="8dp"
+        android:hint="@null"
+        android:imeOptions="flagNoExtractUi"
+        android:importantForAutofill="no"
+        android:inputType="textUri|textMultiLine"
+        android:minHeight="@dimen/touch_target_min"
+        tools:text="10.9.8.7\nfce5::1">
+
+        <requestFocus />
+    </com.google.android.material.textfield.TextInputEditText>
+</com.google.android.material.textfield.TextInputLayout>

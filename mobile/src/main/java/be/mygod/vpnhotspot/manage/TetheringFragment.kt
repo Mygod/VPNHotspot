@@ -52,6 +52,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         TetheringManager.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         internal val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
+        private val staticIpManager by lazy { StaticIpManager(this@TetheringFragment) }
         internal val bluetoothManager by lazy {
             requireContext().getSystemService<BluetoothManager>()?.adapter?.let {
                 TetherManager.Bluetooth(this@TetheringFragment, it)
@@ -107,6 +108,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             val list = ArrayList<Manager>()
             if (Services.p2p != null) list.add(repeaterManager)
             list.add(localOnlyHotspotManager)
+            list.add(staticIpManager)
             val monitoredIfaces = binder?.monitoredIfaces ?: emptyList()
             updateMonitorList(activeIfaces - monitoredIfaces.toSet())
             list.addAll((activeIfaces + monitoredIfaces).toSortedSet()

@@ -56,6 +56,8 @@
     <string name="tethering_manage_bluetooth">Tethering Bluetooth</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"Tethering Ethernet"</string>
 
+    <string name="tethering_static_ip">IP Statico</string>
+
     <string name="connected_state_incomplete">" (in connessione)"</string>
     <string name="connected_state_valid">" (raggiungibile)"</string>
     <string name="connected_state_failed">" (perso)"</string>

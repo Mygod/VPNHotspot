@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <data>
+        <variable
+            name="data"
+            type="be.mygod.vpnhotspot.manage.StaticIpManager.Data"/>
+    </data>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:focusable="true"
+        android:background="?android:attr/selectableItemBackground"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:onClick="@{_ -> data.configure()}">
+
+        <ImageView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:importantForAccessibility="no"
+            android:src="@drawable/ic_content_push_pin"
+            android:tint="?android:attr/textColorPrimary"/>
+
+        <Space
+            android:layout_width="16dp"
+            android:layout_height="0dp"/>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="16dp"
+            android:orientation="vertical"
+            android:layout_gravity="center_vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/tethering_static_ip"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"/>
+
+            <be.mygod.vpnhotspot.widget.AutoCollapseTextView
+                android:id="@+id/text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@{data.addresses}"
+                android:textIsSelectable="true"
+                tools:text="01:23:45:ab:cd:ef\n10.9.8.7"/>
+        </LinearLayout>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:checked="@{data.active}"
+            android:ellipsize="end"
+            android:gravity="center_vertical"
+            android:onClick="@{_ -> data.toggle()}"/>
+
+    </LinearLayout>
+</layout>

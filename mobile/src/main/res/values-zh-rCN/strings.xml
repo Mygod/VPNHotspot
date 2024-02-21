@@ -81,6 +81,8 @@
     <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>
 
+    <string name="tethering_static_ip">静态 IP</string>
+
     <string name="connected_state_incomplete">（正在连接）</string>
     <string name="connected_state_valid">（已连接）</string>
     <string name="connected_state_failed">（已断开）</string>

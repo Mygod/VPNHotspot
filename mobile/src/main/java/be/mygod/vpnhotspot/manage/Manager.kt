@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.databinding.ListitemManageBinding
 import be.mygod.vpnhotspot.databinding.ListitemRepeaterBinding
+import be.mygod.vpnhotspot.databinding.ListitemStaticIpBinding
 
 abstract class Manager {
     companion object DiffCallback : DiffUtil.ItemCallback<Manager>() {
@@ -19,6 +20,7 @@ abstract class Manager {
         const val VIEW_TYPE_ETHERNET = 8
         const val VIEW_TYPE_LOCAL_ONLY_HOTSPOT = 6
         const val VIEW_TYPE_REPEATER = 7
+        const val VIEW_TYPE_STATIC_IP = 9
 
         override fun areItemsTheSame(oldItem: Manager, newItem: Manager) = oldItem.isSameItemAs(newItem)
         @SuppressLint("DiffUtilEquals")
@@ -38,6 +40,7 @@ abstract class Manager {
                 LocalOnlyHotspotManager.ViewHolder(ListitemInterfaceBinding.inflate(inflater, parent, false))
             }
             VIEW_TYPE_REPEATER -> RepeaterManager.ViewHolder(ListitemRepeaterBinding.inflate(inflater, parent, false))
+            VIEW_TYPE_STATIC_IP -> StaticIpManager.ViewHolder(ListitemStaticIpBinding.inflate(inflater, parent, false))
             else -> throw IllegalArgumentException("Invalid view type")
         }
     }
