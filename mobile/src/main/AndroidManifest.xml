@@ -2,65 +2,43 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
           xmlns:tools="http://schemas.android.com/tools">
 
-    <uses-feature
-        android:name="android.hardware.bluetooth"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.hardware.ethernet"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.hardware.touchscreen"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.hardware.usb.accessory"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.hardware.wifi"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.hardware.wifi.direct"
-        android:required="false"/>
-    <uses-feature
-        android:name="android.software.leanback"
-        android:required="false"/>
+    <uses-feature android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <uses-feature android:name="android.software.leanback"
+        android:required="false" />
 
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
-                     android:maxSdkVersion="32"/>
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-                     android:minSdkVersion="29"
-                     android:maxSdkVersion="32"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.LOCAL_MAC_ADDRESS"
-                     tools:ignore="ProtectedPermissions" />
-    <uses-permission android:name="android.permission.MANAGE_USB"
-                     tools:ignore="ProtectedPermissions"/>
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
-                     android:usesPermissionFlags="neverForLocation"/>
-    <uses-permission android:name="android.permission.OVERRIDE_WIFI_CONFIG"
-                     tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-    <uses-permission android:name="android.permission.READ_WIFI_CREDENTIAL"
-                     tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- https://issuetracker.google.com/issues/299506164 -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"
                      android:minSdkVersion="34"/>
-    <uses-permission android:name="android.permission.TETHER_PRIVILEGED"
-                     tools:ignore="ProtectedPermissions"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
-                     tools:ignore="ProtectedPermissions"/>
-    <uses-permission android:name="android.permission.WRITE_SETTINGS"
-                     tools:ignore="ProtectedPermissions"/>
+
+    <!-- https://developer.android.com/guide/topics/manifest/uses-feature-element#permissions -->
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="32"/>
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:minSdkVersion="29"
+        android:maxSdkVersion="32"/>
+    <uses-permission-sdk-23 android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH"/>
+    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission-sdk-23 android:name="android.permission.CHANGE_WIFI_STATE"/>
+    <uses-permission-sdk-23 android:name="android.permission.LOCAL_MAC_ADDRESS"/>
+    <uses-permission-sdk-23 android:name="android.permission.MANAGE_USB"/>
+    <uses-permission-sdk-23 android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"/>
+    <uses-permission-sdk-23 android:name="android.permission.OVERRIDE_WIFI_CONFIG"/>
+    <uses-permission-sdk-23 android:name="android.permission.READ_WIFI_CREDENTIAL"/>
+    <uses-permission-sdk-23 android:name="android.permission.TETHER_PRIVILEGED"/>
+    <uses-permission-sdk-23 android:name="android.permission.WRITE_SECURE_SETTINGS"/>
+    <uses-permission-sdk-23 android:name="android.permission.WRITE_SETTINGS"/>
 
     <queries>
         <intent>
