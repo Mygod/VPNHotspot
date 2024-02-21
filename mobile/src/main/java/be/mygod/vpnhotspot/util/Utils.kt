@@ -183,7 +183,8 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
     } catch (_: SocketException) { }
     if (!macOnly) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))
-        appendLine("/${address.networkPrefixLength}")
+        address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
+        appendLine()
     }
 }.trimEnd()
 
