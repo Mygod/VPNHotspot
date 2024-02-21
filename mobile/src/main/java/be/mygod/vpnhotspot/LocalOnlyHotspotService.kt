@@ -199,9 +199,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     }
     private suspend fun doStart() {
         if (!receiverRegistered) {
-            receiverRegistered = true
-            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))
-                ?.let(this@LocalOnlyHotspotService::updateState)
+            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let {
+                receiverRegistered = true
+                updateState(it)
+            }
         }
         if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) try {
             RootManager.use {
