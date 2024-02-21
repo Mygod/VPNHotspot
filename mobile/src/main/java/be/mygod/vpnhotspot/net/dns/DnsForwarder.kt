@@ -149,7 +149,8 @@ class DnsForwarder : CoroutineScope {
             DnsResolverCompat.prepareDnsResponse(Message(query)).apply {
                 header.rcode = if (e is UnsupportedOperationException) Rcode.NOTIMP else Rcode.SERVFAIL
             }.toWire()
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Timber.d("Malformed ${source()}", e)
             null    // return empty if cannot parse packet
         }
     }
