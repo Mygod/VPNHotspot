@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.root
 
 import android.content.Context
+import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
 import android.provider.Settings
@@ -33,6 +34,12 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
         FileOutputStream(path, true).use { out ->
             val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use { commands ->
+                val trafficController = when (Build.VERSION.SDK_INT) {
+                    28 -> ""
+                    in 29 until 33 -> "echo dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller\n" +
+                            "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller\necho\n"
+                    else -> "echo dumpsys netd trafficcontroller\ndumpsys netd trafficcontroller\necho\n"
+                }
                 commands.appendLine("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}
@@ -40,7 +47,7 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |echo
-                    |echo iptables -t filter
+                    |${trafficController}echo iptables -t filter
                     |iptables-save -t filter
                     |echo
                     |echo iptables -t nat
