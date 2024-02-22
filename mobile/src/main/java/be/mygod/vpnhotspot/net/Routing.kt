@@ -1,8 +1,13 @@
 package be.mygod.vpnhotspot.net
 
+import android.content.pm.PackageManager
 import android.net.LinkProperties
 import android.net.MacAddress
+import android.os.Build
+import android.os.Process
+import android.provider.Settings
 import android.system.Os
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.dns.DnsForwarder
@@ -32,6 +37,18 @@ import java.net.SocketException
  */
 class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
     companion object {
+        /**
+         * Since Android 12, RULE_PRIORITY_SECURE_VPN = 13000 changed from 12000.
+         * https://android.googlesource.com/platform//system/netd/+/android-12.0.0_r1/server/RouteController.h#36
+         *
+         * We use 11900 to be safe.
+         */
+        private const val RULE_PRIORITY_DNS_RESPONSE = 11900
+        /**
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/framework/src/android/net/ConnectivitySettingsManager.java#378
+         */
+        @RequiresApi(31)
+        private const val UIDS_ALLOWED_ON_RESTRICTED_NETWORKS = "uids_allowed_on_restricted_networks"
         /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
          * This also works for Wi-Fi direct where there's no rule at 18000.
@@ -64,6 +81,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
             commands.appendLine("$IP6TABLES -F vpnhotspot_filter")
             commands.appendLine("$IP6TABLES -X vpnhotspot_filter")
+            commands.appendLine("while $IP rule del priority $RULE_PRIORITY_DNS_RESPONSE; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
@@ -291,11 +309,26 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
+    @RequiresApi(31)
+    private fun setupDnsRules() {
+        val uid = Process.myUid()
+        if (app.checkSelfPermission("android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS") !=
+            PackageManager.PERMISSION_GRANTED) {
+            val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
+                .splitToSequence(';').mapNotNull { it.toIntOrNull() }.toMutableSet()
+            allowed.add(uid)
+            transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
+        }
+        val dnsOutboundRule = " iif lo uidrange $uid-$uid lookup $downstream priority $RULE_PRIORITY_DNS_RESPONSE"
+        transaction.exec("$IP rule add$dnsOutboundRule", "$IP rule del$dnsOutboundRule")
+    }
+
     fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         val forwarder = DnsForwarder.registerClient(this)
         val hostAddress = hostAddress.address.hostAddress
         transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
+        if (Build.VERSION.SDK_INT >= 31) setupDnsRules()
         transaction.iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
         transaction.iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
         transaction.commit()

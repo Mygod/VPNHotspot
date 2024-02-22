@@ -41,6 +41,7 @@ One way to do this is to use [App systemizer for Magisk](https://github.com/Magi
 
 Installing as system app also has the side benefit of launching root daemon less frequently due to having privileged permissions listed below.
 
+* `android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS` (without this permission, a permanent change is made to the global settings instead)
 * `android.permission.LOCAL_MAC_ADDRESS`
 * `android.permission.MANAGE_USB`
 * `android.permission.OVERRIDE_WIFI_CONFIG`
@@ -48,7 +49,7 @@ Installing as system app also has the side benefit of launching root daemon less
 * `android.permission.TETHER_PRIVILEGED`
 * `android.permission.WRITE_SECURE_SETTINGS`
 
-Whenever you install an app update, if there was a new protected permission addition (last updated in v2.10.4), you should update the app installed in system as well to make the system grant the privileged permission.
+Whenever you install an app update, if there was a new protected permission addition (last updated in v2.17.1), you should update the app installed in system as well to make the system grant the privileged permission.
 
 ## Settings and How to Use Them
 
@@ -356,7 +357,7 @@ Nonexported system resources:
 
 Other: Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 
-For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 and 18000 respectively;
+For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 (or higher) and 18000 respectively;
 DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:

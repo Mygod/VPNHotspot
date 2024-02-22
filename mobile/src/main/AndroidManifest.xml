@@ -29,6 +29,7 @@
     <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH"/>
     <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_ADMIN"/>
     <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH_CONNECT"/>
+    <uses-permission-sdk-23 android:name="android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS"/>
     <uses-permission-sdk-23 android:name="android.permission.CHANGE_WIFI_STATE"/>
     <uses-permission-sdk-23 android:name="android.permission.LOCAL_MAC_ADDRESS"/>
     <uses-permission-sdk-23 android:name="android.permission.MANAGE_USB"/>
