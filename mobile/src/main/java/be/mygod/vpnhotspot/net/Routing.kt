@@ -319,7 +319,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             allowed.add(uid)
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
         }
-        val dnsOutboundRule = " iif lo uidrange $uid-$uid lookup $downstream priority $RULE_PRIORITY_DNS_RESPONSE"
+        val dnsOutboundRule = " iif lo uidrange $uid-$uid lookup 97 priority $RULE_PRIORITY_DNS_RESPONSE"
         transaction.exec("$IP rule add$dnsOutboundRule", "$IP rule del$dnsOutboundRule")
     }
 
@@ -329,8 +329,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         val hostAddress = hostAddress.address.hostAddress
         transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
         if (Build.VERSION.SDK_INT >= 31) setupDnsRules()
-        transaction.iptablesAdd("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
-        transaction.iptablesAdd("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
+        transaction.iptablesInsert("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
+        transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
