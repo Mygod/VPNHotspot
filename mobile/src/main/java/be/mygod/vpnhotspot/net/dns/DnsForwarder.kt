@@ -33,6 +33,7 @@ import org.xbill.DNS.Message
 import org.xbill.DNS.Rcode
 import timber.log.Timber
 import java.io.IOException
+import java.nio.channels.ClosedChannelException
 
 /**
  * Downstream user should make sure to also register for at least one UpstreamMonitors, which is also used by this forwarder.
@@ -78,8 +79,26 @@ class DnsForwarder : CoroutineScope {
         tcp = t
         val u = aSocket(selectorManager).udp().bind(localhostAnyPort)
         udp = u
-        launch { while (true) handleAsync(t.accept()) }
-        launch { while (true) handleAsync(u.receive()) }
+        launch {
+            while (true) {
+                val socket = try {
+                    t.accept()
+                } catch (e: ClosedChannelException) {
+                    break
+                }
+                handleAsync(socket)
+            }
+        }
+        launch {
+            while (true) {
+                val packet = try {
+                    u.receive()
+                } catch (e: ClosedChannelException) {
+                    break
+                }
+                handleAsync(packet)
+            }
+        }
     }
     private fun stop() {
         cancel("All clients are gone")
