@@ -57,13 +57,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         val ifaceChanged = StickyEvent1 { iface }
         val configuration get() = reservation?.configuration
 
-        fun stop() {
+        fun stop(shouldDisable: Boolean = true) {
             when (iface) {
                 null -> return  // stopped
                 "" -> WifiApManager.cancelLocalOnlyHotspotRequest()
             }
             reservation?.close()
-            stopService()
+            stopService(shouldDisable)
         }
     }
 
@@ -177,7 +177,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val receiver = broadcastReceiver { _, intent -> updateState(intent) }
     private var receiverRegistered = false
     private fun updateState(intent: Intent) {
-        // based on: https://android.googlesource.com/platform/packages/services/Car/+/72c71d2/service/src/com/android/car/CarProjectionService.java#160
+        // based on: https://android.googlesource.com/platform/packages/services/Car/+/407f65c/service/src/com/android/car/CarProjectionService.java#180
         lastState = Triple(intent.wifiApState, intent.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME),
             intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0))
     }
@@ -245,13 +245,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     }
 
     override fun onDestroy() {
-        binder.stop()
+        binder.stop(false)
         unregisterReceiver(true)
         super.onDestroy()
     }
 
-    private fun stopService() {
-        BootReceiver.delete<LocalOnlyHotspotService>()
+    private fun stopService(shouldDisable: Boolean = true) {
+        if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
         binder.iface = null
         unregisterReceiver()
         ServiceNotification.stopForeground(this)

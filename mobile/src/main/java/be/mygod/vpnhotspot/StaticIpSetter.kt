@@ -60,20 +60,24 @@ class StaticIpSetter : BootReceiver.Startable {
                             false
                         }
                     } catch (e: RoutingCommands.UnexpectedOutputException) {
-                        if (Routing.shouldSuppressIpError(e, enabled)) return@use false
-                        Timber.w(IOException("Failed to add link", e))
+                        if (Routing.shouldSuppressIpError(e, enabled)) return@use null
+                        Timber.w(IOException("Failed to modify link", e))
                         SmartSnackbar.make(e).show()
-                        false
+                        null
                     }
                 }
             } catch (_: CancellationException) {
-                false
+                null
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
-                false
+                null
             }
-            if (success) BootReceiver.add<StaticIpSetter>(StaticIpSetter()) else BootReceiver.delete<StaticIpSetter>()
+            when (success) {
+                true -> BootReceiver.add<StaticIpSetter>(StaticIpSetter())
+                false -> BootReceiver.delete<StaticIpSetter>()
+                null -> { }
+            }
             ifaceEvent()
         }
     }

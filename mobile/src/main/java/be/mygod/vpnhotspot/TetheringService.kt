@@ -154,7 +154,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     override fun onDestroy() {
         launch {
-            BootReceiver.delete<TetheringService>()
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             cancel()

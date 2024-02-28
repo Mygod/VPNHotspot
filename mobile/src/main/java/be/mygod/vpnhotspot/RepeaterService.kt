@@ -565,8 +565,8 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
             }
         })
     }
-    private fun cleanLocked() {
-        BootReceiver.delete<RepeaterService>()
+    private fun cleanLocked(shouldDisable: Boolean = true) {
+        if (shouldDisable) BootReceiver.delete<RepeaterService>()
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
             p2pPoller?.cancel()
@@ -584,7 +584,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     override fun onDestroy() {
         if (status != Status.IDLE) binder.shutdown()
         launch {    // force clean to prevent leakage
-            cleanLocked()
+            cleanLocked(false)
             cancel()
         }
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
