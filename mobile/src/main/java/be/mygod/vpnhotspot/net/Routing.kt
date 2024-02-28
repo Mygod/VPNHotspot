@@ -38,13 +38,6 @@ import java.net.SocketException
 class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
     companion object {
         /**
-         * Since Android 12, RULE_PRIORITY_SECURE_VPN = 13000 changed from 12000.
-         * https://android.googlesource.com/platform//system/netd/+/android-12.0.0_r1/server/RouteController.h#36
-         *
-         * We use 11900 to be safe.
-         */
-        private const val RULE_PRIORITY_DNS_RESPONSE = 11900
-        /**
          * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/framework/src/android/net/ConnectivitySettingsManager.java#378
          */
         @RequiresApi(31)
@@ -81,7 +74,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
             commands.appendLine("$IP6TABLES -F vpnhotspot_filter")
             commands.appendLine("$IP6TABLES -X vpnhotspot_filter")
-            commands.appendLine("while $IP rule del priority $RULE_PRIORITY_DNS_RESPONSE; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
@@ -316,15 +308,25 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             PackageManager.PERMISSION_GRANTED) {
             val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
                 .splitToSequence(';').mapNotNull { it.toIntOrNull() }.toMutableSet()
-            allowed.add(uid)
-            transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
+            if (!allowed.contains(uid)) {
+                allowed.add(uid)
+                transaction.exec(
+                    "settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
+            }
         }
-        val dnsOutboundRule = " iif lo uidrange $uid-$uid lookup 97 priority $RULE_PRIORITY_DNS_RESPONSE"
-        transaction.exec("$IP rule add$dnsOutboundRule", "$IP rule del$dnsOutboundRule")
+    }
+
+    private fun allowProtect() {
+        val command = "ndc network protect allow ${Process.myUid()}"
+        val result = transaction.execQuiet(command)
+        val suffix = "200 0 success\n"
+        result.check(listOf(command), !result.out.endsWith(suffix))
+        if (result.out.length > suffix.length) Timber.i(result.message(listOf(command), true))
     }
 
     fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
+        allowProtect()  // allow protect UDP sockets which will be used by DnsForwarder
         val forwarder = DnsForwarder.registerClient(this)
         val hostAddress = hostAddress.address.hostAddress
         transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")

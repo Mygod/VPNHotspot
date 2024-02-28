@@ -74,7 +74,8 @@ class DnsForwarder : CoroutineScope {
     val udpPort get() = udp!!.localAddress.toJavaAddress().port
 
     private fun start() {
-        val selectorManager = SelectorManager(coroutineContext + newSingleThreadContext("DnsForwarder"))
+        val selectorManager = VpnProtectedSelectorManager(SelectorManager(
+            coroutineContext + newSingleThreadContext("DnsForwarder")))
         val t = aSocket(selectorManager).tcp().tcpNoDelay().bind(localhostAnyPort)
         tcp = t
         val u = aSocket(selectorManager).udp().bind(localhostAnyPort)

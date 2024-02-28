@@ -365,7 +365,7 @@ Undocumented system binaries are all bundled and executable:
 * `iptables-save`, `ip6tables-save`;
 * `echo`;
 * `/system/bin/ip` (`address link monitor neigh rule unreachable`);
-* `ndc` (`ipfwd nat`);
+* `ndc` (`ipfwd nat network`);
 * `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
 * `sh`;
 * `su`.
