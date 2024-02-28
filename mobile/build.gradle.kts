@@ -31,7 +31,7 @@ android {
         minSdk = 28
         targetSdk = 34
         versionCode = 1015
-        versionName = "2.17.0"
+        versionName = "2.17.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
@@ -94,7 +94,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.browser:browser:1.8.0-beta02")
+    implementation("androidx.browser:browser:1.8.0-rc01")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
