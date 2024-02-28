@@ -199,6 +199,9 @@
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
     <string name="permission_missing">Permission missing</string>
+    <string name="warn_vpn_firewall">Warning: VPN tethering will not work with some VPN apps unless you
+        systemize this app or configure manual DNS</string>
+    <string name="error_vpn_firewall_reboot">Please restart your device for VPN tethering to work</string>
 
     <string name="configuration_view">Wi\u2011Fi configuration</string>
     <string name="configuration_invalid">Possibly invalid configuration</string>

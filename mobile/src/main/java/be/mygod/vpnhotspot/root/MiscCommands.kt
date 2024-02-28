@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.onClosed
@@ -34,12 +35,9 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
         FileOutputStream(path, true).use { out ->
             val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use { commands ->
-                val trafficController = when (Build.VERSION.SDK_INT) {
-                    28 -> ""
-                    in 29 until 33 -> "echo dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller\n" +
-                            "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller\necho\n"
-                    else -> "echo dumpsys netd trafficcontroller\ndumpsys netd trafficcontroller\necho\n"
-                }
+                val trafficController = if (Build.VERSION.SDK_INT >= 29) {
+                    "echo ${VpnFirewallManager.dumpCommand}\n${VpnFirewallManager.dumpCommand}\necho\n"
+                } else ""
                 commands.appendLine("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}

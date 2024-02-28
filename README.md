@@ -37,11 +37,14 @@ now that they introduced this
 The following features in the app requires it to be installed under `/system/priv-app` since some restricted permissions are required.
 One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).
 
+* (Android 10+, since app v2.17.1) `android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS`:
+  - On select devices running Android 10 or 11, this permission is required to properly set up tethering if you are using a VPN with strong restrictions on incoming traffic.
+    You can usually remove these restrictions by going to your VPN app and enable options such as "allow access to local network devices".
+  - On Android 12 or higher, a permanent change is made to the global settings (`settings get global uids_allowed_on_restricted_networks`) instead if this permission is missing.
 * (Android 8-10, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
 
 Installing as system app also has the side benefit of launching root daemon less frequently due to having privileged permissions listed below.
 
-* `android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS` (without this permission, a permanent change is made to the global settings instead)
 * `android.permission.LOCAL_MAC_ADDRESS`
 * `android.permission.MANAGE_USB`
 * `android.permission.OVERRIDE_WIFI_CONFIG`
@@ -339,6 +342,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
+* (on API 30) `Landroid/os/SystemProperties;->getBoolean(Ljava/lang/String;Z)Z,sdk,system-api,test-api`
+* (since API 29, prior to API 31) `Landroid/os/SystemProperties;->getLong(Ljava/lang/String;J)J,sdk,system-api,test-api`
 * `Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,sdk,system-api,test-api`
 
 </details>

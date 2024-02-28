@@ -1,11 +1,8 @@
 package be.mygod.vpnhotspot.net
 
-import android.content.pm.PackageManager
 import android.net.LinkProperties
 import android.net.MacAddress
-import android.os.Build
 import android.os.Process
-import android.provider.Settings
 import android.system.Os
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -301,21 +298,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
-    @RequiresApi(31)
-    private fun setupDnsRules() {
-        val uid = Process.myUid()
-        if (app.checkSelfPermission("android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS") !=
-            PackageManager.PERMISSION_GRANTED) {
-            val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
-                .splitToSequence(';').mapNotNull { it.toIntOrNull() }.toMutableSet()
-            if (!allowed.contains(uid)) {
-                allowed.add(uid)
-                transaction.exec(
-                    "settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
-            }
-        }
-    }
-
     private fun allowProtect() {
         val command = "ndc network protect allow ${Process.myUid()}"
         val result = transaction.execQuiet(command)
@@ -330,7 +312,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         val forwarder = DnsForwarder.registerClient(this)
         val hostAddress = hostAddress.address.hostAddress
         transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
-        if (Build.VERSION.SDK_INT >= 31) setupDnsRules()
+        VpnFirewallManager.setup(transaction)
         transaction.iptablesInsert("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
         transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
         transaction.commit()

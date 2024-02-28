@@ -174,6 +174,8 @@
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
     <string name="permission_missing">权限不足</string>
+    <string name="warn_vpn_firewall">警告：共享部分 VPN 可能需要将此应用升级为系统应用或手动配置 DNS</string>
+    <string name="error_vpn_firewall_reboot">VPN 共享需要您重启您的设备</string>
 
     <string name="configuration_view">设置 WLAN</string>
     <string name="configuration_invalid">配置可能无效</string>
