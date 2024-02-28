@@ -9,6 +9,8 @@ import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
@@ -128,10 +130,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         val state = lastState
         unregisterStateReceiver()
-        checkNotNull(state) { "Failed to obtain latest AP state" }
-        val iface = state.second
-        if (state.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
-            if (state.first == WifiApManager.WIFI_AP_STATE_FAILED) {
+        val iface = state?.second ?: registerReceiver(null, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+            ?.localOnlyTetheredIfaces?.single()
+        if (state?.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
+            if (state?.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                 SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
                     WifiApManager.failureReasonLookup(state.third))).show()
                 dismissIfApplicable()
