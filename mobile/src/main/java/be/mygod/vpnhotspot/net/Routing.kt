@@ -35,11 +35,6 @@ import java.net.SocketException
 class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
     companion object {
         /**
-         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/framework/src/android/net/ConnectivitySettingsManager.java#378
-         */
-        @RequiresApi(31)
-        private const val UIDS_ALLOWED_ON_RESTRICTED_NETWORKS = "uids_allowed_on_restricted_networks"
-        /**
          * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
          * This also works for Wi-Fi direct where there's no rule at 18000.
          *
