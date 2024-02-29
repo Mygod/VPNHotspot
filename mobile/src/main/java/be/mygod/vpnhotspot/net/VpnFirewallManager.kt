@@ -74,8 +74,8 @@ object VpnFirewallManager {
             return
         }
         val uid = Process.myUid()
-        val allowed = Settings.Global.getString(app.contentResolver,
-            UIDS_ALLOWED_ON_RESTRICTED_NETWORKS).splitToSequence(';').mapNotNull { it.toIntOrNull() }.toMutableSet()
+        val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
+            ?.splitToSequence(';')?.mapNotNull { it.toIntOrNull() }?.toMutableSet() ?: mutableSetOf()
         if (!allowed.contains(uid)) {
             allowed.add(uid)
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
