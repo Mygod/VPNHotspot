@@ -10,6 +10,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -74,6 +75,7 @@ object VpnFirewallManager {
             return
         }
         val uid = Process.myUid()
+        UnblockCentral.Settings_setInSystemServer
         val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
             ?.splitToSequence(';')?.mapNotNull { it.toIntOrNull() }?.toMutableSet() ?: mutableSetOf()
         if (!allowed.contains(uid)) {
