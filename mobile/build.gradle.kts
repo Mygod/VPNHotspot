@@ -30,8 +30,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1016
-        versionName = "2.17.2"
+        versionCode = 1017
+        versionName = "2.17.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
