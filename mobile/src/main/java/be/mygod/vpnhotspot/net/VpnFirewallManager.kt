@@ -4,13 +4,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
-import android.provider.Settings
 import android.system.Os
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.RootSession
-import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
@@ -75,9 +73,10 @@ object VpnFirewallManager {
             return
         }
         val uid = Process.myUid()
-        UnblockCentral.Settings_setInSystemServer
-        val allowed = Settings.Global.getString(app.contentResolver, UIDS_ALLOWED_ON_RESTRICTED_NETWORKS)
-            ?.splitToSequence(';')?.mapNotNull { it.toIntOrNull() }?.toMutableSet() ?: mutableSetOf()
+        val command = "settings get global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS"
+        val allowed = transaction.execQuiet(command).apply {
+            check(listOf(command), false)
+        }.out.trim().splitToSequence(';').mapNotNull { it.toIntOrNull() }.toMutableSet()
         if (!allowed.contains(uid)) {
             allowed.add(uid)
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")

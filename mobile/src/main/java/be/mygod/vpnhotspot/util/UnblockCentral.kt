@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
-import android.provider.Settings
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
@@ -40,10 +39,5 @@ object UnblockCentral {
     @get:RequiresApi(29)
     val WifiP2pConfig_Builder_mNetworkName get() = init.let {
         WifiP2pConfig.Builder::class.java.getDeclaredField("mNetworkName").apply { isAccessible = true }
-    }
-
-    val Settings_setInSystemServer by lazy {
-        init
-        Settings::class.java.getDeclaredMethod("setInSystemServer")(null)
     }
 }
