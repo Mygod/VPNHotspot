@@ -312,10 +312,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
         val forwarder = DnsForwarder.registerClient(this, useLocalnet)
         val hostAddress = hostAddress.address.hostAddress
-        if (useLocalnet) transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
+        val forwarderIp = if (useLocalnet) {
+            transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
+            "127.0.0.1"
+        } else hostAddress
         VpnFirewallManager.setup(transaction)
-        transaction.iptablesInsert("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
-        transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")
+        transaction.iptablesInsert("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination $forwarderIp:${forwarder.tcpPort}", "nat")
+        transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $forwarderIp:${forwarder.udpPort}", "nat")
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
