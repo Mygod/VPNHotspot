@@ -52,7 +52,7 @@ object VpnFirewallManager {
                 kernel >= 4 * 65536 + 14 * 256 ||
                         properties.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java)
                             .invoke(null, "ro.kernel.ebpf.supported", false) as Boolean ||
-                        firstApiIsHigh(30L) && kernel >= 4 * 65536 + 9 * 256
+                        kernel >= 4 * 65536 + 9 * 256 && firstApiIsHigh(30L)
             }
             else -> true
         }

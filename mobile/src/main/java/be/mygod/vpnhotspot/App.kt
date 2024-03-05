@@ -11,6 +11,7 @@ import android.location.LocationManager
 import android.os.Build
 import android.os.ext.SdkExtensions
 import android.provider.Settings
+import android.system.Os
 import android.util.Log
 import android.widget.Toast
 import androidx.annotation.Size
@@ -58,7 +59,7 @@ class App : Application() {
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
         Firebase.initialize(deviceStorage)
         FirebaseCrashlytics.getInstance().apply {
-            setCustomKey("os.version", System.getProperty("os.version") ?: "")
+            setCustomKey("uname.release", Os.uname().release)
             setCustomKey("build", Build.DISPLAY)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setCustomKey("extension_s",
                 SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S))
