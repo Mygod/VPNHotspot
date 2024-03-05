@@ -89,6 +89,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         routing = Routing(caller, downstream).apply {
             transaction = RootSession.beginTransaction()
             try {
+                allowProtect()
                 configure()
                 commit()
             } catch (e: Exception) {

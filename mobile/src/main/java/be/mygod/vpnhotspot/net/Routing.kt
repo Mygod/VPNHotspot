@@ -292,7 +292,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
-    private fun allowProtect() {
+    /**
+     * Allow protect UDP sockets which will be used by DnsForwarder. Must call this first.
+     */
+    fun allowProtect() {
         val command = "ndc network protect allow ${Process.myUid()}"
         val result = transaction.execQuiet(command)
         val suffix = "200 0 success\n"
@@ -302,7 +305,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
-        allowProtect()  // allow protect UDP sockets which will be used by DnsForwarder
         val useLocalnet = Os.uname().release.split('.', limit = 3).let { version ->
             val major = version[0].toInt()
             // https://github.com/torvalds/linux/commit/d0daebc3d622f95db181601cb0c4a0781f74f758
