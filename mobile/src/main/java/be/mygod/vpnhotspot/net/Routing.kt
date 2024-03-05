@@ -4,7 +4,6 @@ import android.net.LinkProperties
 import android.net.MacAddress
 import android.os.Process
 import android.system.Os
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.dns.DnsForwarder
@@ -304,9 +303,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         allowProtect()  // allow protect UDP sockets which will be used by DnsForwarder
-        val forwarder = DnsForwarder.registerClient(this)
+        val useLocalnet = Os.uname().release.split('.', limit = 3).let { version ->
+            val major = version[0].toInt()
+            // https://github.com/torvalds/linux/commit/d0daebc3d622f95db181601cb0c4a0781f74f758
+            major > 3 || major == 3 && version[1].toInt() >= 6
+        }
+        val forwarder = DnsForwarder.registerClient(this, useLocalnet)
         val hostAddress = hostAddress.address.hostAddress
-        transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
+        if (useLocalnet) transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
         VpnFirewallManager.setup(transaction)
         transaction.iptablesInsert("PREROUTING -i $downstream -p tcp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.tcpPort}", "nat")
         transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination 127.0.0.1:${forwarder.udpPort}", "nat")

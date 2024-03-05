@@ -43,10 +43,10 @@ class DnsForwarder : CoroutineScope {
         private var instance: DnsForwarder? = null
 
         private val clients = mutableSetOf<Any>()
-        fun registerClient(client: Any) = synchronized(clients) {
+        fun registerClient(client: Any, useLocalnet: Boolean) = synchronized(clients) {
             (instance ?: DnsForwarder().apply {
                 try {
-                    start()
+                    start(useLocalnet)
                 } catch (e: Exception) {
                     stop()
                     throw e
@@ -73,12 +73,12 @@ class DnsForwarder : CoroutineScope {
     val tcpPort get() = tcp!!.localAddress.toJavaAddress().port
     val udpPort get() = udp!!.localAddress.toJavaAddress().port
 
-    private fun start() {
+    private fun start(useLocalnet: Boolean) {
         val selectorManager = VpnProtectedSelectorManager(SelectorManager(
             coroutineContext + newSingleThreadContext("DnsForwarder")))
-        val t = aSocket(selectorManager).tcp().tcpNoDelay().bind(localhostAnyPort)
+        val t = aSocket(selectorManager).tcp().tcpNoDelay().bind(if (useLocalnet) localhostAnyPort else null)
         tcp = t
-        val u = aSocket(selectorManager).udp().bind(localhostAnyPort)
+        val u = aSocket(selectorManager).udp().bind(if (useLocalnet) localhostAnyPort else null)
         udp = u
         launch {
             while (true) {
