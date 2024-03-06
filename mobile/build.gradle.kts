@@ -30,8 +30,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1017
-        versionName = "2.17.3"
+        versionCode = 1018
+        versionName = "2.17.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
@@ -94,7 +94,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.browser:browser:1.8.0-rc01")
+    implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
@@ -103,7 +103,7 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.1.1")
-    implementation("com.android.billingclient:billing-ktx:6.1.0")
+    implementation("com.android.billingclient:billing-ktx:6.2.0")
     implementation("com.google.android.gms:play-services-base:18.3.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
     implementation("com.google.android.material:material:1.11.0")
