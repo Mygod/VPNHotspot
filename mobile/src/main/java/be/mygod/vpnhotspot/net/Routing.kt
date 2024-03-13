@@ -11,6 +11,7 @@ import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.VpnMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
@@ -191,6 +192,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
     private val fallbackUpstream = Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK)
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
+    private val emptyCallback = object : UpstreamMonitor.Callback { }
 
     private inner class Client(private val ip: Inet4Address, mac: MacAddress) : AutoCloseable {
         private val transaction = RootSession.beginTransaction().safeguard {
@@ -289,6 +291,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         DnsForwarder.unregisterClient(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
+        VpnMonitor.unregisterCallback(emptyCallback)
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
@@ -324,6 +327,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this, true)
+        if (VpnFirewallManager.mayBeAffected) VpnMonitor.registerCallback(emptyCallback)
     }
     fun revert() {
         transaction.revert()

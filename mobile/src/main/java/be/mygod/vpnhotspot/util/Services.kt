@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.util
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkRequest
@@ -28,6 +29,8 @@ object Services {
         }
     }
     val wifi by lazy { context.getSystemService<WifiManager>()!! }
+
+    val netd by lazy @SuppressLint("WrongConstant") { context.getSystemService("netd")!! }
 
     fun registerNetworkCallback(request: NetworkRequest, networkCallback: ConnectivityManager.NetworkCallback) =
         connectivity.registerNetworkCallback(request, networkCallback, mainHandler)

@@ -199,10 +199,10 @@ fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
 
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")
-val LinkProperties.allInterfaceNames get() = getAllInterfaceNames.invoke(this) as List<String>
+val LinkProperties.allInterfaceNames get() = getAllInterfaceNames(this) as List<String>
 private val getAllRoutes by lazy { LinkProperties::class.java.getDeclaredMethod("getAllRoutes") }
 @Suppress("UNCHECKED_CAST")
-val LinkProperties.allRoutes get() = getAllRoutes.invoke(this) as List<RouteInfo>
+val LinkProperties.allRoutes get() = getAllRoutes(this) as List<RouteInfo>
 
 fun Context.launchUrl(url: String) {
     if (app.hasTouch) try {

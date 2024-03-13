@@ -4,6 +4,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
+import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
@@ -20,24 +21,27 @@ object VpnMonitor : UpstreamMonitor() {
     private val available = HashMap<Network, LinkProperties?>()
     override val currentLinkProperties: LinkProperties? get() = currentNetwork?.let { available[it] }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        private fun fireCallbacks(properties: LinkProperties?, callbacks: Iterable<Callback>) = GlobalScope.launch {
+            if (properties != null) VpnFirewallManager.excludeIfNeeded(this)
+            callbacks.forEach { it.onAvailable(properties) }
+        }
+
         override fun onAvailable(network: Network) {
             val properties = Services.connectivity.getLinkProperties(network)
-            val callbacks = synchronized(this@VpnMonitor) {
+            fireCallbacks(properties, synchronized(this@VpnMonitor) {
                 available[network] = properties
                 currentNetwork = network
                 callbacks.toList()
-            }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
+            })
         }
 
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-            val callbacks = synchronized(this@VpnMonitor) {
+            fireCallbacks(properties, synchronized(this@VpnMonitor) {
                 available[network] = properties
                 if (currentNetwork == null) currentNetwork = network
                 else if (currentNetwork != network) return
                 callbacks.toList()
-            }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
+            })
         }
 
         override fun onLost(network: Network) {
@@ -52,7 +56,7 @@ object VpnMonitor : UpstreamMonitor() {
                 } else currentNetwork = null
                 callbacks.toList()
             }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
+            fireCallbacks(properties, callbacks)
         }
     }
 

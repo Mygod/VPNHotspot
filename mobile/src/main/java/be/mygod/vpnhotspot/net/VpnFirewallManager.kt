@@ -8,8 +8,12 @@ import android.system.Os
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 
 object VpnFirewallManager {
@@ -17,7 +21,7 @@ object VpnFirewallManager {
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/framework/src/android/net/ConnectivitySettingsManager.java#378
      */
     @RequiresApi(31)
-    private const val UIDS_ALLOWED_ON_RESTRICTED_NETWORKS = "uids_allowed_on_restricted_networks"
+    const val UIDS_ALLOWED_ON_RESTRICTED_NETWORKS = "uids_allowed_on_restricted_networks"
 
     @get:RequiresApi(29)
     val dumpCommand get() = if (Build.VERSION.SDK_INT >= 33) {
@@ -33,8 +37,8 @@ object VpnFirewallManager {
     private val bpfSupported by lazy {
         val properties by lazy { Class.forName("android.os.SystemProperties") }
         val firstApiIsHigh = { fallback: Long ->
-            properties.getDeclaredMethod("getLong", String::class.java, Long::class.java)
-                .invoke(null, "ro.product.first_api_level", fallback) as Long >= 28
+            properties.getDeclaredMethod("getLong", String::class.java, Long::class.java)(null,
+                "ro.product.first_api_level", fallback) as Long >= 28
         }
         when (Build.VERSION.SDK_INT) {
             28 -> false
@@ -50,13 +54,15 @@ object VpnFirewallManager {
                     version.group(1)!!.toInt() * 65536 + version.group(2)!!.toInt() * 256 + version.group(3)!!.toInt()
                 }
                 kernel >= 4 * 65536 + 14 * 256 ||
-                        properties.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java)
-                            .invoke(null, "ro.kernel.ebpf.supported", false) as Boolean ||
+                        properties.getDeclaredMethod("getBoolean", String::class.java, Boolean::class.java)(null,
+                            "ro.kernel.ebpf.supported", false) as Boolean ||
                         kernel >= 4 * 65536 + 9 * 256 && firstApiIsHigh(30L)
             }
             else -> true
         }
     }
+    val mayBeAffected get() = bpfSupported && app.checkSelfPermission(
+        "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS") != PackageManager.PERMISSION_GRANTED
 
     /**
      * https://android.googlesource.com/platform/system/netd/+/android-12.1.0_r1/server/TrafficController.cpp#1003
@@ -65,14 +71,30 @@ object VpnFirewallManager {
      */
     private val firewallMatcher by lazy { "^\\s*${Process.myUid()}\\D* IIF_MATCH ".toRegex(RegexOption.MULTILINE) }
 
-    fun setup(transaction: RootSession.Transaction) {
-        if (!bpfSupported || app.checkSelfPermission("android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS") ==
-            PackageManager.PERMISSION_GRANTED) return
-        if (Build.VERSION.SDK_INT < 31) {
-            SmartSnackbar.make(R.string.warn_vpn_firewall).show()
-            return
+    @RequiresApi(29)
+    private fun excludeFromFirewall(uid: Int) {
+        if (!runBlocking { RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(uid)) } }.value) {
+            throw Exception("RemoveUidInterfaceRuleCommand failed to update")
         }
+    }
+    fun excludeIfNeeded(scope: CoroutineScope) {
+        if (mayBeAffected) scope.launch {
+            try {
+                RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(Process.myUid())) }
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
+        }
+    }
+    fun setup(transaction: RootSession.Transaction) {
+        if (!mayBeAffected) return
         val uid = Process.myUid()
+        if (Build.VERSION.SDK_INT < 31) return try {
+            excludeFromFirewall(uid)
+        } catch (e: Exception) {
+            SmartSnackbar.make(R.string.warn_vpn_firewall).show()
+            Timber.w(e)
+        }
         val command = "settings get global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS"
         val allowed = transaction.execQuiet(command).apply {
             check(listOf(command), false)
@@ -86,6 +108,11 @@ object VpnFirewallManager {
             return Timber.w(Exception(msg))
         }
         // firewall was enabled before changing exclusion rules
-        if (firewallMatcher.containsMatchIn(result.out)) SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
+        if (firewallMatcher.containsMatchIn(result.out)) try {
+            excludeFromFirewall(uid)
+        } catch (e: Exception) {
+            SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
+            Timber.w(e)
+        }
     }
 }

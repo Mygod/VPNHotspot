@@ -35,9 +35,6 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
         FileOutputStream(path, true).use { out ->
             val process = ProcessBuilder("sh").fixPath(true).start()
             process.outputStream.bufferedWriter().use { commands ->
-                val trafficController = if (Build.VERSION.SDK_INT >= 29) {
-                    "echo ${VpnFirewallManager.dumpCommand}\n${VpnFirewallManager.dumpCommand}\necho\n"
-                } else ""
                 commands.appendLine("""
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
                     |dumpsys ${Context.WIFI_P2P_SERVICE}
@@ -45,7 +42,15 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |echo
-                    |${trafficController}echo iptables -t filter
+                """.trimMargin())
+                if (Build.VERSION.SDK_INT >= 29) {
+                    commands.appendLine(
+                        "echo ${VpnFirewallManager.dumpCommand}\n${VpnFirewallManager.dumpCommand}\necho")
+                    if (Build.VERSION.SDK_INT >= 31) commands.appendLine(
+                        "settings get global ${VpnFirewallManager.UIDS_ALLOWED_ON_RESTRICTED_NETWORKS}")
+                }
+                commands.appendLine("""
+                    |echo iptables -t filter
                     |iptables-save -t filter
                     |echo
                     |echo iptables -t nat
