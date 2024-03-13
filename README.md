@@ -160,10 +160,15 @@ API restrictions are updated up to [SHA-256 checksum `7e00db074cbe51c51ff4b411f7
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
+* (since API 33) `Landroid/net/BpfNetMapsConstants;->IIF_MATCH:L`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
+* (since API 29, prior to API 33) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
+* (since API 29, prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
+* (since API 33) `Landroid/net/UidOwnerValue;-><init>(IL)V`
+* (since API 33) `Landroid/net/UidOwnerValue;->rule:L`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->getCountryCode()Ljava/lang/String;,blocked`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
@@ -188,8 +193,16 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (on API 29) `Lcom/android/internal/R$bool;->config_wifi_p2p_mac_randomization_supported:I,blacklist`
 * (prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
+* (since API 33) `Lcom/android/net/module/util/BpfMap;-><init>(Ljava/lang/String;ILjava/lang/Class;Ljava/lang/Class;)V`
+* (since API 33) `Lcom/android/net/module/util/BpfMap;->deleteEntry(Lcom/android/net/module/util/Struct;)Z`
+* (since API 33) `Lcom/android/net/module/util/BpfMap;->getValue(Lcom/android/net/module/util/Struct;)Lcom/android/net/module/util/Struct;`
+* (since API 33) `Lcom/android/net/module/util/BpfMap;->updateEntry(Lcom/android/net/module/util/Struct;Lcom/android/net/module/util/Struct;)V`
+* (since API 33) `Lcom/android/net/module/util/Struct$S32;-><init>(I)V`
 * (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
+* (since API 33) `Lcom/android/server/BpfNetMaps;-><init>()V`
+* (since API 33) `Lcom/android/server/BpfNetMaps;-><init>(Landroid/content/Context;)V`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->native_removeUidInterfaceRules([I)I`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
@@ -357,7 +370,12 @@ Nonexported system resources:
 * (since API 31) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond`
 * (since API 30) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownTimeoutMilliseconds`
 
-Other: Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
+Other:
+
+* Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
+* (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar` with its native dependencies located in `/apex/com.android.tethering/lib[64]`.
+* (since API 30) Relevant classes in the tethering APEX have these optional prefixes: `android.net.connectivity` or `com.android.connectivity`.
+* (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map`.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 (or higher) and 18000 respectively;
 DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
