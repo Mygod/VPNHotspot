@@ -30,8 +30,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1018
-        versionName = "2.17.4"
+        versionCode = 1020
+        versionName = "2.17.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
@@ -114,7 +114,7 @@ dependencies {
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("dnsjava:dnsjava:3.5.3")
-    implementation("io.ktor:ktor-network-jvm:2.3.8")
+    implementation("io.ktor:ktor-network-jvm:2.3.9")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0")
