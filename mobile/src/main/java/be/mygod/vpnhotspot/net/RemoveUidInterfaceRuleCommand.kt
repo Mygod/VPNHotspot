@@ -9,6 +9,7 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.PathClassLoader
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 import java.io.File
 
 /**
@@ -98,12 +99,26 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     object NativeBpfMap {
         private val BpfNetMaps by lazy { findConnectivityClass("com.android.server.BpfNetMaps", serviceClassLoader) }
         private val bpfNetMaps by lazy {
-            try {
+            val constructor = try {
                 // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/service/src/com/android/server/BpfNetMaps.java#335
-                BpfNetMaps.getDeclaredConstructor(Context::class.java).newInstance(null)
+                BpfNetMaps.getDeclaredConstructor(Context::class.java)
             } catch (_: NoSuchMethodException) {
                 // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/service/src/com/android/server/BpfNetMaps.java#57
-                BpfNetMaps.getDeclaredConstructor().newInstance()
+                return@lazy BpfNetMaps.getDeclaredConstructor().newInstance()
+            }
+            try {
+                // try to bypass init to avoid side effects
+                BpfNetMaps.getDeclaredField("sInitialized").apply { isAccessible = true }.setBoolean(null, true)
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+            }
+            constructor.newInstance(null).also {
+                try {
+                    BpfNetMaps.getDeclaredMethod("native_init", Boolean::class.java)
+                        .apply { isAccessible = true }(it, false)
+                } catch (_: NoSuchMethodException) {
+                    BpfNetMaps.getDeclaredMethod("native_init").apply { isAccessible = true }(it)
+                }
             }
         }
 
@@ -128,6 +143,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     } catch (e: Exception) {
         try {
             NativeBpfMap(uid)
+            if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
             true
         } catch (e2: Exception) {
             e2.addSuppressed(e)

@@ -202,7 +202,10 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 33) `Lcom/android/server/BpfNetMaps;-><init>()V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;-><init>(Landroid/content/Context;)V`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->native_init()V`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->native_init(Z)V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_removeUidInterfaceRules([I)I`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->sInitialized:Z`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
