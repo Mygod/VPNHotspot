@@ -37,8 +37,12 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
 
         private val serviceClassLoader by lazy {
             PathClassLoader(File("/apex/com.android.tethering/javalib/service-connectivity.jar").toURI().toURL()
-                .toString(), "/apex/com.android.tethering/lib64${File.pathSeparator}/apex/com.android.tethering/lib",
-                javaClass.classLoader)
+                .toString(), arrayOf(
+                "/apex/com.android.tethering/lib64",
+                "/apex/com.android.tethering/lib",
+                "/apex/sharedlibs/lib64",
+                "/apex/sharedlibs/lib",
+            ).joinToString(File.pathSeparator), javaClass.classLoader)
         }
     }
 
