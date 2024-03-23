@@ -283,6 +283,7 @@ private val engine by lazy @RequiresExtension(Build.VERSION_CODES.S, 7) {
             setPathDegradationMigration(ConnectionMigrationOptions.MIGRATION_OPTION_ENABLED)
         }.build())
         setEnableBrotli(true)
+        addQuicHint("macaddress.io", 443, 443)
     }.build()
 }
 suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnection) -> T): T {

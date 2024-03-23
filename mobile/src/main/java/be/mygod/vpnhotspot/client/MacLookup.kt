@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.client
 
 import android.content.Context
 import android.net.MacAddress
+import android.text.Html
 import androidx.annotation.MainThread
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -40,54 +41,30 @@ object MacLookup {
     // http://en.wikipedia.org/wiki/ISO_3166-1
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
     // nanoid matcher with preceding pattern
-    private val buildIdPattern by lazy { Pattern.compile("(?<=_next/static/|\"buildId\":\")[A-Za-z0-9_-]{21}") }
+    private val dataPattern = Pattern.compile("(?<=data=\")[^\"]*(?=\")")
 
     private val HttpURLConnection.findErrorStream get() = errorStream ?: inputStream
 
     @MainThread
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
-    private var buildId = "GE0JVrT_SuaGTRX5y1FL3"
-    private suspend fun readResponse(mac: MacAddress, reportId: String): String {
-        repeat(5) {
-            connectCancellable(
-                "https://mac-address.alldatafeeds.com/_next/data/$buildId/mac-address-lookup/$reportId.json") { conn ->
-                when (val responseCode = conn.responseCode) {
-                    200 -> conn.inputStream.bufferedReader().readText()
-                    404, 500 -> {
-                        buildId = conn.errorStream.use { Scanner(it).findWithinHorizon(buildIdPattern, 0) }
-                            ?: throw UnexpectedError(mac, "failed to locate buildId in 404")
-                        Timber.d("Obtained new buildId: $buildId")
-                        null
-                    }
-                    else -> throw UnexpectedError(mac, "$responseCode-" +
-                            conn.findErrorStream.bufferedReader().readText())
-                }
-            }?.let { return it }
-        }
-        throw UnexpectedError(mac, "Repeated 404")
-    }
     @MainThread
     fun perform(mac: MacAddress, explicit: Boolean = false) {
         abort(mac)
         macLookupBusy[mac] = GlobalScope.launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
             var response: String? = null
             try {
-                response = connectCancellable("https://mac-address.alldatafeeds.com/api/mac-address/lookup") { conn ->
-                    conn.doOutput = true
-                    conn.requestMethod = "POST"
-                    conn.setRequestProperty("Content-Type", "application/json")
-                    conn.outputStream.writer().use { it.write("{\"mac-address\":\"$mac\"}") }
+                response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
                     when (val responseCode = conn.responseCode) {
-                        200 -> conn.inputStream.bufferedReader().readText()
+                        200 -> conn.inputStream.use { Scanner(it).findWithinHorizon(dataPattern, 0) }
+                            ?: throw UnexpectedError(mac, "failed to locate data")
                         400, 401, 402, 404, 422, 429, 500 -> throw UnexpectedError(mac,
                             conn.findErrorStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
                                 conn.findErrorStream.bufferedReader().readText())
                     }
                 }
-                response = readResponse(mac, JSONObject(response).getString("report_id"))
-                val obj = JSONObject(response).getJSONObject("pageProps").getJSONObject("lookupResults")
+                val obj = JSONObject(Html.fromHtml(response, 0).toString())
                 val result = if (obj.getJSONObject("blockDetails").getBoolean("blockFound")) {
                     val vendor = obj.getJSONObject("vendorDetails")
                     val company = vendor.getString("companyName")
