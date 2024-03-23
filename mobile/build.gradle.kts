@@ -30,8 +30,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 34
-        versionCode = 1021
-        versionName = "2.17.6"
+        versionCode = 1022
+        versionName = "2.17.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
@@ -106,9 +106,9 @@ dependencies {
     implementation("com.android.billingclient:billing-ktx:6.2.0")
     implementation("com.google.android.gms:play-services-base:18.3.0")  // fix for GoogleApiActivity crash @ 18.1.0+
     implementation("com.google.android.gms:play-services-oss-licenses:17.0.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("com.google.firebase:firebase-analytics:21.5.1")
-    implementation("com.google.firebase:firebase-crashlytics:18.6.2")
+    implementation("com.google.android.material:material:1.12.0-beta01")
+    implementation("com.google.firebase:firebase-analytics:21.6.1")
+    implementation("com.google.firebase:firebase-crashlytics:18.6.3")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
