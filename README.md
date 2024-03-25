@@ -156,19 +156,24 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [SHA-256 checksum `7e00db074cbe51c51ff4b411f7b48e98692951395c5c17d069c822cc1d0eae0f`](https://github.com/Mygod/hiddenapi/commit/d339264309c2bbfed1379bacbd00387eeeb38896).
+API restrictions are updated up to [SHA-256 checksum `7aa0987aea4b25f5371b7e377c9f37375ada3b7e30465c0e2d910a5b646c10c1`](https://github.com/Mygod/hiddenapi/commit/67b987d88166154f8446505146ab0985a771383f).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
-* (since API 33) `Landroid/net/BpfNetMapsConstants;->IIF_MATCH:L`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * (since API 29, prior to API 33) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 29, prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
-* (since API 33) `Landroid/net/UidOwnerValue;-><init>(IL)V`
-* (since API 33) `Landroid/net/UidOwnerValue;->rule:L`
+* (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
+* (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;-><init>(IJ)V,blocked`
+* (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;->rule:J,blocked`
+* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;-><init>(Ljava/lang/String;ILjava/lang/Class;Ljava/lang/Class;)V,blocked`
+* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->deleteEntry(Landroid/net/connectivity/com/android/net/module/util/Struct;)Z,blocked`
+* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->getValue(Landroid/net/connectivity/com/android/net/module/util/Struct;)Landroid/net/connectivity/com/android/net/module/util/Struct;,blocked`
+* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->updateEntry(Landroid/net/connectivity/com/android/net/module/util/Struct;Landroid/net/connectivity/com/android/net/module/util/Struct;)V,blocked`
+* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/Struct$S32;-><init>(I)V,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->getCountryCode()Ljava/lang/String;,blocked`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
@@ -181,6 +186,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_ANY:I,lo-prio,max-target-o`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apBand:I,unsupported`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
+* (since API 30) `Landroid/net/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;,blocked`
 * (prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`
 * `Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,unsupported`
 * `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blocked`
@@ -193,12 +199,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (on API 29) `Lcom/android/internal/R$bool;->config_wifi_p2p_mac_randomization_supported:I,blacklist`
 * (prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
-* (since API 33) `Lcom/android/net/module/util/BpfMap;-><init>(Ljava/lang/String;ILjava/lang/Class;Ljava/lang/Class;)V`
-* (since API 33) `Lcom/android/net/module/util/BpfMap;->deleteEntry(Lcom/android/net/module/util/Struct;)Z`
-* (since API 33) `Lcom/android/net/module/util/BpfMap;->getValue(Lcom/android/net/module/util/Struct;)Lcom/android/net/module/util/Struct;`
-* (since API 33) `Lcom/android/net/module/util/BpfMap;->updateEntry(Lcom/android/net/module/util/Struct;Lcom/android/net/module/util/Struct;)V`
-* (since API 33) `Lcom/android/net/module/util/Struct$S32;-><init>(I)V`
-* (since API 30) `Lcom/android/server/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 33) `Lcom/android/server/BpfNetMaps;-><init>()V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;-><init>(Landroid/content/Context;)V`
