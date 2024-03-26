@@ -141,9 +141,9 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     } else try {
         JavaBpfMap(uid)
     } catch (e: Exception) {
+        if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
         try {
             NativeBpfMap(uid)
-            if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
             true
         } catch (e2: Exception) {
             e2.addSuppressed(e)
