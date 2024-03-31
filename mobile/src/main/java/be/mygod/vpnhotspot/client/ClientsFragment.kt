@@ -48,6 +48,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 import java.text.NumberFormat
 
 class ClientsFragment : Fragment() {
@@ -202,19 +203,18 @@ class ClientsFragment : Fragment() {
                 val oldRecord = oldRecords[newRecord.previousId ?: continue] ?: continue
                 val elapsed = newRecord.timestamp - oldRecord.timestamp
                 if (elapsed == 0L) {
-                    check(newRecord.sentPackets == oldRecord.sentPackets)
-                    check(newRecord.sentBytes == oldRecord.sentBytes)
-                    check(newRecord.receivedPackets == oldRecord.receivedPackets)
-                    check(newRecord.receivedBytes == oldRecord.receivedBytes)
-                } else {
-                    val rate = rates.computeIfAbsent(newRecord.downstream to newRecord.mac) { TrafficRate() }
-                    if (rate.send < 0 || rate.receive < 0) {
-                        rate.send = 0
-                        rate.receive = 0
-                    }
-                    rate.send += (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
-                    rate.receive += (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
+                    if (newRecord.sentPackets != oldRecord.sentPackets || newRecord.sentBytes != oldRecord.sentBytes ||
+                        newRecord.receivedPackets != oldRecord.receivedPackets ||
+                        newRecord.receivedBytes != oldRecord.receivedBytes) Timber.w(Exception("wtf"))
+                    continue
                 }
+                val rate = rates.computeIfAbsent(newRecord.downstream to newRecord.mac) { TrafficRate() }
+                if (rate.send < 0 || rate.receive < 0) {
+                    rate.send = 0
+                    rate.receive = 0
+                }
+                rate.send += (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed
+                rate.receive += (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed
             }
             for (rate in rates.values) rate.notifyChange()
         }

@@ -23,6 +23,7 @@ import java.util.concurrent.TimeUnit
 
 object TrafficRecorder {
     private const val ANYWHERE = "0.0.0.0/0"
+    private const val FOREGROUND_POLL_MS = 1015L
 
     private var lastUpdate = 0L
     private val records = mutableMapOf<IpDev, TrafficRecord>()
@@ -55,7 +56,7 @@ object TrafficRecorder {
         val now = System.currentTimeMillis()
         val minute = TimeUnit.MINUTES.toMillis(1)
         var timeout = minute - now % minute
-        if (foregroundListeners.isNotEmpty() && timeout > 1000) timeout = 1000
+        if (foregroundListeners.isNotEmpty() && timeout > FOREGROUND_POLL_MS) timeout = FOREGROUND_POLL_MS
         updateJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
             delay(timeout)
             update(true)
