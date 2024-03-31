@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.util
 import android.app.Activity
 import android.net.Uri
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.install.InstallException
 import com.google.android.play.core.install.model.InstallErrorCode
@@ -39,7 +40,14 @@ object UpdateChecker {
         override val downloaded get() = true
         override val stalenessDays get() = 0
         override fun updateForResult(activity: Activity, requestCode: Int) {
-            GlobalScope.launch { update.completeUpdate() }
+            GlobalScope.launch {
+                try {
+                    update.completeUpdate()
+                } catch (e: Exception) {
+                    SmartSnackbar.make(e).show()
+                    Timber.w(e)
+                }
+            }
         }
     }
 
