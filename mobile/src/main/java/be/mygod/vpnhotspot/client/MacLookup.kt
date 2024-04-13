@@ -42,6 +42,7 @@ object MacLookup {
     private val countryCodeRegex = "(?:^|[^A-Z])([A-Z]{2})[\\s\\d]*$".toRegex()
     // nanoid matcher with preceding pattern
     private val dataPattern = Pattern.compile("(?<=data=\")[^\"]*(?=\")")
+    private val garbagePattern = Pattern.compile(".*", Pattern.DOTALL)
 
     private val HttpURLConnection.findErrorStream get() = errorStream ?: inputStream
 
@@ -56,8 +57,12 @@ object MacLookup {
             try {
                 response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
                     when (val responseCode = conn.responseCode) {
-                        200 -> conn.inputStream.use { Scanner(it).findWithinHorizon(dataPattern, 0) }
-                            ?: throw UnexpectedError(mac, "failed to locate data")
+                        200 -> conn.inputStream.use {
+                            Scanner(it).run {
+                                findWithinHorizon(dataPattern, 0)
+                                    ?: throw UnexpectedError(mac, findWithinHorizon(garbagePattern, 0))
+                            }
+                        }
                         400, 401, 402, 404, 422, 429, 500 -> throw UnexpectedError(mac,
                             conn.findErrorStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "Unhandled response code $responseCode: " +
