@@ -21,8 +21,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     @Suppress("JAVA_CLASS_ON_COMPANION")
     companion object {
         private fun findConnectivityClass(baseName: String, loader: ClassLoader? = javaClass.classLoader): Class<*> {
-            // only relevant for Android 12+ where connectivity is moved to com.android.tethering APEX
-            if (Build.VERSION.SDK_INT >= 31) {
+            // only relevant for Android 11+ where com.android.tethering APEX exists
+            if (Build.VERSION.SDK_INT >= 30) {
                 try {
                     // https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-14.0.0_r1/service/Android.bp#333
                     return Class.forName("android.net.connectivity.$baseName", true, loader)
@@ -36,8 +36,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         }
 
         private val servicesClassLoader by lazy {
-            if (Build.VERSION.SDK_INT >= 31) {
-                PathClassLoader("/apex/com.android.tethering/javalib/service-connectivity.jar",
+            if (Build.VERSION.SDK_INT >= 30) {
+                PathClassLoader("/apex/com.android.tethering/javalib/service-connectivity.jar${File.pathSeparator}/system/framework/services.jar",
                     "/apex/com.android.tethering/lib64${File.pathSeparator}/apex/com.android.tethering/lib",
                     javaClass.classLoader)
             } else PathClassLoader("/system/framework/services.jar", javaClass.classLoader)
