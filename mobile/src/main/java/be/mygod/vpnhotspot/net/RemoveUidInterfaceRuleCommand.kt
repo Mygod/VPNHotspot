@@ -21,8 +21,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     @Suppress("JAVA_CLASS_ON_COMPANION")
     companion object {
         private fun findConnectivityClass(baseName: String, loader: ClassLoader? = javaClass.classLoader): Class<*> {
-            // only relevant for Android 11+ where com.android.tethering APEX is introduced
-            if (Build.VERSION.SDK_INT >= 30) {
+            // only relevant for Android 12+ where connectivity is moved to com.android.tethering APEX
+            if (Build.VERSION.SDK_INT >= 31) {
                 try {
                     // https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-14.0.0_r1/service/Android.bp#333
                     return Class.forName("android.net.connectivity.$baseName", true, loader)
@@ -35,10 +35,12 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             return Class.forName(baseName, true, loader)
         }
 
-        private val serviceClassLoader by lazy {
-            PathClassLoader("/apex/com.android.tethering/javalib/service-connectivity.jar",
-                "/apex/com.android.tethering/lib64${File.pathSeparator}/apex/com.android.tethering/lib",
-                javaClass.classLoader)
+        private val servicesClassLoader by lazy {
+            if (Build.VERSION.SDK_INT >= 31) {
+                PathClassLoader("/apex/com.android.tethering/javalib/service-connectivity.jar",
+                    "/apex/com.android.tethering/lib64${File.pathSeparator}/apex/com.android.tethering/lib",
+                    javaClass.classLoader)
+            } else PathClassLoader("/system/framework/services.jar", javaClass.classLoader)
         }
     }
 
@@ -46,8 +48,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
      * Deprecated in Android 13: https://android.googlesource.com/platform/system/netd/+/android-13.0.0_r1/server/NetdNativeService.cpp#1142
      */
     object Impl29 {
-        private val stub by lazy { findConnectivityClass("android.net.INetd\$Stub", serviceClassLoader) }
-        private val netd by lazy {
+        private val stub by lazy { findConnectivityClass("android.net.INetd\$Stub", servicesClassLoader) }
+        val netd by lazy {
             stub.getDeclaredMethod("asInterface", IBinder::class.java)(null, Services.netd)
         }
         private val firewallRemoveUidInterfaceRules by lazy {
@@ -97,7 +99,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
 
     @RequiresApi(33)
     object NativeBpfMap {
-        private val BpfNetMaps by lazy { findConnectivityClass("com.android.server.BpfNetMaps", serviceClassLoader) }
+        private val BpfNetMaps by lazy { findConnectivityClass("com.android.server.BpfNetMaps", servicesClassLoader) }
         private val bpfNetMaps by lazy {
             val constructor = try {
                 // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/service/src/com/android/server/BpfNetMaps.java#335
