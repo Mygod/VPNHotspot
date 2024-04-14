@@ -47,7 +47,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     /**
      * Deprecated in Android 13: https://android.googlesource.com/platform/system/netd/+/android-13.0.0_r1/server/NetdNativeService.cpp#1142
      */
-    object Impl29 {
+    private object Impl29 {
         private val stub by lazy { findConnectivityClass("android.net.INetd\$Stub", servicesClassLoader) }
         val netd by lazy {
             stub.getDeclaredMethod("asInterface", IBinder::class.java)(null, Services.netd)
@@ -62,7 +62,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/service/src/com/android/server/BpfNetMaps.java#416
      */
     @RequiresApi(33)
-    object JavaBpfMap {
+    private object JavaBpfMap {
         private val BpfMap by lazy { findConnectivityClass("com.android.net.module.util.BpfMap") }
         private val Struct by lazy { findConnectivityClass("com.android.net.module.util.Struct") }
         private val S32 by lazy { findConnectivityClass("com.android.net.module.util.Struct\$S32") }
@@ -98,7 +98,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     }
 
     @RequiresApi(33)
-    object NativeBpfMap {
+    private object NativeBpfMap {
         private val BpfNetMaps by lazy { findConnectivityClass("com.android.server.BpfNetMaps", servicesClassLoader) }
         private val bpfNetMaps by lazy {
             val constructor = try {
