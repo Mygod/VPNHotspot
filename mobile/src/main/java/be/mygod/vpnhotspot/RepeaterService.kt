@@ -444,6 +444,7 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
     /**
      * startService Step 2 (if a group isn't already available)
      */
+    @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
     private suspend fun doStart() {
         val listener = object : WifiP2pManager.ActionListener {
             override fun onFailure(reason: Int) {
@@ -464,7 +465,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         if (Build.VERSION.SDK_INT >= 33) setVendorElements()
         val networkName = networkName?.toString()
         val passphrase = passphrase
-        @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
         if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)

@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net.dns
 
+import android.annotation.SuppressLint
 import android.net.VpnService
 import io.ktor.network.selector.SelectInterest
 import io.ktor.network.selector.Selectable
@@ -9,7 +10,11 @@ import java.net.ProtocolFamily
 import java.nio.channels.spi.SelectorProvider
 
 class VpnProtectedSelectorManager(private val manager: SelectorManager) : SelectorProvider(), SelectorManager {
-    private val protector = VpnService()
+    companion object {
+        @SuppressLint("StaticFieldLeak")
+        private val protector = VpnService()
+    }
+
     private fun checkProtect(success: Boolean) {
         if (!success) Timber.w(Exception("protect failed"))
     }
