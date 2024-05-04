@@ -101,6 +101,7 @@
     <string name="connected_state_valid">" (reachable)"</string>
     <string name="connected_state_failed">" (lost)"</string>
 
+    <string name="clients_empty">No clients connected</string>
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Block</string>
     <string name="clients_popup_block_service_inactive">Turn on service for this interface to block the client.</string>

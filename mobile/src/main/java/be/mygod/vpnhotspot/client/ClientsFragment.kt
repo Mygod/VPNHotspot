@@ -16,6 +16,7 @@ import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.PopupMenu
 import androidx.collection.LongSparseArray
+import androidx.core.view.isVisible
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -183,6 +184,7 @@ class ClientsFragment : Fragment() {
         var size = CompletableDeferred(0)
 
         override fun submitList(list: MutableList<Client>?) {
+            binding.empty.isVisible = list.isNullOrEmpty()
             val deferred = CompletableDeferred<Int>()
             size = deferred
             super.submitList(list) { deferred.complete(list?.size ?: 0) }

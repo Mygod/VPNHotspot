@@ -87,6 +87,7 @@
     <string name="connected_state_valid">（已连接）</string>
     <string name="connected_state_failed">（已断开）</string>
 
+    <string name="clients_empty">无设备连接</string>
     <string name="clients_popup_nickname">昵称…</string>
     <string name="clients_popup_block">拉黑</string>
     <string name="clients_popup_block_service_inactive">拉黑需要为该接口打开服务。</string>
