@@ -71,8 +71,16 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         private val newS32 by lazy { S32.getDeclaredConstructor(Int::class.java) }
         private val newUidOwnerValue by lazy { UidOwnerValue.getDeclaredConstructor(Int::class.java, Long::class.java) }
         private val ruleUidOwnerValue by lazy { UidOwnerValue.getDeclaredField("rule") }
-        private val iifMatch by lazy {
-            findConnectivityClass("android.net.BpfNetMapsConstants").getDeclaredField("IIF_MATCH").getLong(null)
+        private val matches by lazy {
+            try {
+                val constants = findConnectivityClass("android.net.BpfNetMapsConstants")
+                constants.getDeclaredField("IIF_MATCH").getLong(null) or
+                        constants.getDeclaredField("LOCKDOWN_VPN_MATCH").getLong(null)
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+                // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/bpf_progs/bpf_shared.h#160
+                3 shl 7
+            }
         }
 
         private val deleteEntry by lazy { BpfMap.getDeclaredMethod("deleteEntry", Struct) }
@@ -88,10 +96,10 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             val uidS32 = newS32.newInstance(uid)
             val oldRule = ruleUidOwnerValue.getLong(value(uidOwnerMap, uidS32) ?: return false)
             return when {
-                oldRule and iifMatch == 0L -> false
-                oldRule == iifMatch -> deleteEntry(uidOwnerMap, uidS32) as Boolean
+                oldRule and matches == 0L -> false
+                oldRule == matches -> deleteEntry(uidOwnerMap, uidS32) as Boolean
                 else -> true.also {
-                    updateEntry(uidOwnerMap, uidS32, newUidOwnerValue.newInstance(0, oldRule and iifMatch.inv()))
+                    updateEntry(uidOwnerMap, uidS32, newUidOwnerValue.newInstance(0, oldRule and matches.inv()))
                 }
             }
         }
@@ -131,9 +139,15 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             BpfNetMaps.getDeclaredMethod("native_removeUidInterfaceRules", IntArray::class.java)
                 .apply { isAccessible = true }
         }
+        private val updateUidLockdownRule by lazy {
+            BpfNetMaps.getDeclaredMethod("native_updateUidLockdownRule", Int::class.java, Boolean::class.java)
+                .apply { isAccessible = true }
+        }
         operator fun invoke(uid: Int) {
-            val ret = removeUidInterfaceRules(bpfNetMaps, intArrayOf(uid)) as Int
+            var ret = removeUidInterfaceRules(bpfNetMaps, intArrayOf(uid)) as Int
             check(ret == 0) { "native_removeUidInterfaceRules returns $ret" }
+            ret = updateUidLockdownRule(bpfNetMaps, uid, false) as Int
+            check(ret == 0) { "native_updateUidLockdownRule returns $ret" }
         }
     }
 

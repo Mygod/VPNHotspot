@@ -167,6 +167,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
+* (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->LOCKDOWN_VPN_MATCH:J,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;-><init>(IJ)V,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;->rule:J,blocked`
 * (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;-><init>(Ljava/lang/String;ILjava/lang/Class;Ljava/lang/Class;)V,blocked`
@@ -205,6 +206,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_init()V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_init(Z)V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_removeUidInterfaceRules([I)I`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->native_updateUidLockdownRule(IZ)I`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->sInitialized:Z`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
