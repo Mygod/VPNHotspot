@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net
 import android.content.Context
 import android.os.Build
 import android.os.IBinder
+import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
@@ -147,16 +148,18 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             BpfNetMaps.getDeclaredMethod("native_updateUidLockdownRule", Int::class.java, Boolean::class.java)
                 .apply { isAccessible = true }
         }
+        private fun checkRet(ret: Any?, method: String) = when (ret as Int) {
+            0, OsConstants.ENOENT -> { }
+            else -> error("$method returns $ret")
+        }
         operator fun invoke(uid: Int) {
-            var ret = removeUidInterfaceRules(bpfNetMaps, intArrayOf(uid)) as Int
-            check(ret == 0) { "native_removeUidInterfaceRules returns $ret" }
+            checkRet(removeUidInterfaceRules(bpfNetMaps, intArrayOf(uid)), "native_removeUidInterfaceRules")
             try {
-                ret = updateUidLockdownRule(bpfNetMaps, uid, false) as Int
-                check(ret == 0) { "native_updateUidLockdownRule returns $ret" }
+                checkRet(updateUidLockdownRule(bpfNetMaps, uid, false), "native_updateUidLockdownRule")
             } catch (e: ReflectiveOperationException) {
                 Timber.d(e)
-                ret = setUidRule(bpfNetMaps, 6, uid, 1) as Int  // FIREWALL_CHAIN_LOCKDOWN_VPN FIREWALL_RULE_ALLOW
-                check(ret == 0) { "native_setUidRule returns $ret" }
+                // FIREWALL_CHAIN_LOCKDOWN_VPN FIREWALL_RULE_ALLOW
+                checkRet(setUidRule(bpfNetMaps, 6, uid, 1), "native_setUidRule")
             }
         }
     }
