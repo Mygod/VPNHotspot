@@ -135,6 +135,10 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         /**
          * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/service/src/com/android/server/BpfNetMaps.java#273
          */
+        private val setUidRule by lazy {
+            BpfNetMaps.getDeclaredMethod("native_setUidRule", Int::class.java, Int::class.java, Int::class.java)
+                .apply { isAccessible = true }
+        }
         private val removeUidInterfaceRules by lazy {
             BpfNetMaps.getDeclaredMethod("native_removeUidInterfaceRules", IntArray::class.java)
                 .apply { isAccessible = true }
@@ -146,8 +150,14 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         operator fun invoke(uid: Int) {
             var ret = removeUidInterfaceRules(bpfNetMaps, intArrayOf(uid)) as Int
             check(ret == 0) { "native_removeUidInterfaceRules returns $ret" }
-            ret = updateUidLockdownRule(bpfNetMaps, uid, false) as Int
-            check(ret == 0) { "native_updateUidLockdownRule returns $ret" }
+            try {
+                ret = updateUidLockdownRule(bpfNetMaps, uid, false) as Int
+                check(ret == 0) { "native_updateUidLockdownRule returns $ret" }
+            } catch (e: ReflectiveOperationException) {
+                Timber.d(e)
+                ret = setUidRule(bpfNetMaps, 6, uid, 1) as Int  // FIREWALL_CHAIN_LOCKDOWN_VPN FIREWALL_RULE_ALLOW
+                check(ret == 0) { "native_setUidRule returns $ret" }
+            }
         }
     }
 

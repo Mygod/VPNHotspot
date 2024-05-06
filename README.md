@@ -161,6 +161,8 @@ API restrictions are updated up to [SHA-256 checksum `7aa0987aea4b25f5371b7e377c
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
 * (prior to API 30) `Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,max-target-r`
+* (since API 33) `Landroid/net/ConnectivityManager;->FIREWALL_CHAIN_LOCKDOWN_VPN:I,blocked`
+* (since API 33) `Landroid/net/ConnectivityManager;->FIREWALL_RULE_ALLOW:I,blocked`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * (since API 29, prior to API 33) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 29, prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
@@ -205,6 +207,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 33) `Lcom/android/server/BpfNetMaps;-><init>(Landroid/content/Context;)V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_init()V`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_init(Z)V`
+* (since API 33) `Lcom/android/server/BpfNetMaps;->native_setUidRule(III)I`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_removeUidInterfaceRules([I)I`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->native_updateUidLockdownRule(IZ)I`
 * (since API 33) `Lcom/android/server/BpfNetMaps;->sInitialized:Z`
