@@ -157,7 +157,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             try {
                 checkRet(updateUidLockdownRule(bpfNetMaps, uid, false), "native_updateUidLockdownRule")
             } catch (e: ReflectiveOperationException) {
-                Timber.d(e)
+                if (Build.VERSION.SDK_INT >= 34) Timber.w(e) else Timber.d(e)
                 // FIREWALL_CHAIN_LOCKDOWN_VPN FIREWALL_RULE_ALLOW
                 checkRet(setUidRule(bpfNetMaps, 6, uid, 1), "native_setUidRule")
             }
