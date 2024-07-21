@@ -86,6 +86,61 @@
             android:excludeFromRecents="true"
             android:taskAffinity=""/>
 
+        <activity
+            android:name=".tasker.ActionConfig$WifiConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tethering_manage_wifi">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.ActionConfig$BluetoothConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tethering_manage_bluetooth">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.ActionConfig$USBConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tethering_manage_usb">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.ActionConfig$EthernetConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tethering_manage_ethernet">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.GetStateConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tasker_get_tethering_state">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.TetheringEventConfig"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tasker_tethering_state_update">
+            <intent-filter>
+                <action android:name="net.dinglisch.android.tasker.ACTION_EDIT_EVENT" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".LocalOnlyHotspotService"
             android:directBootAware="true"

@@ -2,13 +2,17 @@ package be.mygod.vpnhotspot
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.tasker.updateTetheringState
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
+import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,6 +75,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
     override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
     override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
 
+    private val receiver = broadcastReceiver { _, intent ->
+        updateTetheringState(intent.tetheredIfaces?.filterNotNull() ?: listOf())
+    }
+
     override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
         launch {
             val toRemove = downstreams.toMutableMap()   // make a copy
@@ -116,6 +124,12 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         launch(Dispatchers.Main) { binder.routingsChanged() }
     }
 
+    override fun onCreate() {
+        super.onCreate()
+
+        registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+    }
+
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -153,6 +167,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     override fun onDestroy() {
         launch {
+            updateTetheringState(listOf())
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             cancel()
@@ -166,6 +181,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             IpNeighbourMonitor.unregisterCallback(this)
             callbackRegistered = false
         }
+        unregisterReceiver(receiver)
     }
 
     override fun updateNotification() {
