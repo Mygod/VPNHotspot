@@ -170,13 +170,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->LOCKDOWN_VPN_MATCH:J,blocked`
-* (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;-><init>(IJ)V,blocked`
-* (since API 33) `Landroid/net/connectivity/android/net/UidOwnerValue;->rule:J,blocked`
-* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;-><init>(Ljava/lang/String;ILjava/lang/Class;Ljava/lang/Class;)V,blocked`
-* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->deleteEntry(Landroid/net/connectivity/com/android/net/module/util/Struct;)Z,blocked`
-* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->getValue(Landroid/net/connectivity/com/android/net/module/util/Struct;)Landroid/net/connectivity/com/android/net/module/util/Struct;,blocked`
-* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/BpfMap;->updateEntry(Landroid/net/connectivity/com/android/net/module/util/Struct;Landroid/net/connectivity/com/android/net/module/util/Struct;)V,blocked`
-* (since API 33) `Landroid/net/connectivity/com/android/net/module/util/Struct$S32;-><init>(I)V,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->getCountryCode()Ljava/lang/String;,blocked`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
@@ -384,7 +377,7 @@ Other:
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar` with its native dependencies located in `/apex/com.android.tethering/lib[64]`.
 * (since API 30) Relevant classes in the tethering APEX have these optional prefixes: `android.net.connectivity` or `com.android.connectivity`.
-* (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map`.
+* (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 (or higher) and 18000 respectively;
 DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.

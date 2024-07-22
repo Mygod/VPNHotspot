@@ -7,6 +7,8 @@ import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
+import be.mygod.librootkotlinx.systemContext
+import be.mygod.vpnhotspot.BuildConfig
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.PathClassLoader
 import kotlinx.parcelize.Parcelize
@@ -63,15 +65,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/service/src/com/android/server/BpfNetMaps.java#416
      */
     @RequiresApi(33)
-    private object JavaBpfMap {
-        private val BpfMap by lazy { findConnectivityClass("com.android.net.module.util.BpfMap") }
-        private val Struct by lazy { findConnectivityClass("com.android.net.module.util.Struct") }
-        private val S32 by lazy { findConnectivityClass("com.android.net.module.util.Struct\$S32") }
-        private val UidOwnerValue by lazy { findConnectivityClass("android.net.UidOwnerValue") }
-
-        private val newS32 by lazy { S32.getDeclaredConstructor(Int::class.java) }
-        private val newUidOwnerValue by lazy { UidOwnerValue.getDeclaredConstructor(Int::class.java, Long::class.java) }
-        private val ruleUidOwnerValue by lazy { UidOwnerValue.getDeclaredField("rule") }
+    private object JniBpfMap {
         private val matches by lazy {
             try {
                 val constants = findConnectivityClass("android.net.BpfNetMapsConstants")
@@ -84,25 +78,13 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             }
         }
 
-        private val deleteEntry by lazy { BpfMap.getDeclaredMethod("deleteEntry", Struct) }
-        private val updateEntry by lazy { BpfMap.getDeclaredMethod("updateEntry", Struct, Struct) }
-        private val value by lazy { BpfMap.getDeclaredMethod("getValue", Struct) }
-
-        private val uidOwnerMap by lazy {
-            BpfMap.getDeclaredConstructor(String::class.java, Int::class.java, Class::class.java, Class::class.java)
-                // BPF_F_RDWR
-                .newInstance("/sys/fs/bpf/netd_shared/map_netd_uid_owner_map", 0, S32, UidOwnerValue)
-        }
         operator fun invoke(uid: Int): Boolean {
-            val uidS32 = newS32.newInstance(uid)
-            val oldRule = ruleUidOwnerValue.getLong(value(uidOwnerMap, uidS32) ?: return false)
-            return when {
-                oldRule and matches == 0L -> false
-                oldRule == matches -> deleteEntry(uidOwnerMap, uidS32) as Boolean
-                else -> true.also {
-                    updateEntry(uidOwnerMap, uidS32, newUidOwnerValue.newInstance(0, oldRule and matches.inv()))
-                }
-            }
+            val clazz = systemContext.createPackageContext(BuildConfig.APPLICATION_ID,
+                Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
+                .classLoader.loadClass("be.mygod.vpnhotspot.root.Jni")
+            val jni = clazz.getDeclaredConstructor().newInstance()
+            return clazz.getDeclaredMethod("removeUidInterfaceRules", Int::class.java, Long::class.java)(
+                jni, uid, matches) as Boolean
         }
     }
 
@@ -168,7 +150,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         Impl29(uid)
         true
     } else try {
-        JavaBpfMap(uid)
+        JniBpfMap(uid)
     } catch (e: Exception) {
         if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
         try {
