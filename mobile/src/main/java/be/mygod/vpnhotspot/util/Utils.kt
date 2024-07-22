@@ -162,7 +162,7 @@ fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
     }
 }
 fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://maclookup.app/search/result?mac=$mac"), 0, length,
+    setSpan(CustomTabsUrlSpan("https://macaddress.io/macaddress/$mac"), 0, length,
         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
