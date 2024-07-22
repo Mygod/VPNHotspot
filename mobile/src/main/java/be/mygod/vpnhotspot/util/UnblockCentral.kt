@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
+import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
@@ -12,7 +13,7 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
  *
  * Lazy cannot be used directly as it will create inner classes.
  */
-@SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi")
+@SuppressLint("BlockedPrivateApi", "DiscouragedPrivateApi", "SoonBlockedPrivateApi")
 object UnblockCentral {
     var needInit = true
     /**
@@ -39,5 +40,9 @@ object UnblockCentral {
     @get:RequiresApi(29)
     val WifiP2pConfig_Builder_mNetworkName get() = init.let {
         WifiP2pConfig.Builder::class.java.getDeclaredField("mNetworkName").apply { isAccessible = true }
+    }
+
+    val TileService_mToken get() = init.let {
+        TileService::class.java.getDeclaredField("mToken").apply { isAccessible = true }
     }
 }

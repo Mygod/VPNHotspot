@@ -47,7 +47,7 @@ class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
         val binder = binder
         when {
             binder == null -> tapPending = true
-            binder.iface == null -> {
+            binder.iface == null -> doWithStartForegroundServiceAllowed {
                 LocalOnlyHotspotService.dismissHandle = dismissHandle
                 startForegroundService(Intent(this, LocalOnlyHotspotService::class.java))
             }

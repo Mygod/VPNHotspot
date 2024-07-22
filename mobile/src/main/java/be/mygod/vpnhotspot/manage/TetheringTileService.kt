@@ -108,7 +108,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                 } catch (e: Exception) {
                     onException(e)
                     dismiss()
-                } else {
+                } else doWithStartForegroundServiceAllowed {
                     TetheringService.dismissHandle = dismissHandle
                     startForegroundService(Intent(this, TetheringService::class.java)
                         .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))
@@ -215,7 +215,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                         } catch (e: Exception) {
                             onException(e)
                             dismiss()
-                        } else {
+                        } else doWithStartForegroundServiceAllowed {
                             TetheringService.dismissHandle = dismissHandle
                             startForegroundService(Intent(this, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACES, inactive.toTypedArray()))

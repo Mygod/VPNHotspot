@@ -37,7 +37,7 @@ class RepeaterTileService : KillableTileService() {
                 RepeaterService.dismissHandle = dismissHandle
                 binder.shutdown()
             }
-            RepeaterService.Status.IDLE -> {
+            RepeaterService.Status.IDLE -> doWithStartForegroundServiceAllowed {
                 RepeaterService.dismissHandle = dismissHandle
                 startForegroundService(Intent(this, RepeaterService::class.java))
             }

@@ -5,11 +5,15 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.PixelFormat
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import android.view.View
+import android.view.WindowManager
+import androidx.core.view.doOnPreDraw
 import be.mygod.vpnhotspot.BootReceiver
 import java.lang.ref.WeakReference
 
@@ -48,6 +52,33 @@ abstract class KillableTileService : TileService(), ServiceConnection {
     override fun onDestroy() {
         dismissHandle.clear()
         super.onDestroy()
+    }
+
+    // Workaround on U: https://github.com/zhanghai/MaterialFiles/commit/7a2b228dfef8e5080d4cc887208b1ac5458c160e
+    protected fun doWithStartForegroundServiceAllowed(action: () -> Unit) {
+        if (Build.VERSION.SDK_INT != 34) {
+            action()
+            return
+        }
+        val windowManager = getSystemService(WindowManager::class.java)
+        val view = View(this)
+        windowManager.addView(view, WindowManager.LayoutParams().apply {
+            type = WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW + 35
+            format = PixelFormat.TRANSLUCENT
+            token = UnblockCentral.TileService_mToken.get(this@KillableTileService) as IBinder?
+        })
+        view.doOnPreDraw {
+            view.post {
+                view.invalidate()
+                view.doOnPreDraw {
+                    try {
+                        action()
+                    } finally {
+                        windowManager.removeView(view)
+                    }
+                }
+            }
+        }
     }
 }
 typealias TileServiceDismissHandle = WeakReference<KillableTileService>
