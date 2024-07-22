@@ -26,11 +26,12 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.firebase.analytics.ktx.ParametersBuilder
+import com.google.firebase.FirebaseApp
+import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
+import com.google.firebase.analytics.logEvent
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.ktx.Firebase
-import com.google.firebase.ktx.initialize
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import kotlinx.coroutines.GlobalScope
@@ -57,7 +58,7 @@ class App : Application() {
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
-        Firebase.initialize(deviceStorage)
+        FirebaseApp.initializeApp(deviceStorage)
         FirebaseCrashlytics.getInstance().apply {
             setCustomKey("uname.release", Os.uname().release)
             setCustomKey("build", Build.DISPLAY)
@@ -102,10 +103,10 @@ class App : Application() {
      * logException is inappropriate sometimes because it flushes all logs that could be used to investigate other bugs.
      */
     fun logEvent(@Size(min = 1L, max = 40L) event: String, block: ParametersBuilder.() -> Unit = { }) {
-        val builder = ParametersBuilder()
-        builder.block()
-        Timber.i(if (builder.bundle.isEmpty) event else "$event, extras: ${builder.bundle}")
-        Firebase.analytics.logEvent(event, builder.bundle)
+        Firebase.analytics.logEvent(event) {
+            block(this)
+            Timber.i(if (bundle.isEmpty) event else "$event, extras: $bundle")
+        }
     }
 
     /**

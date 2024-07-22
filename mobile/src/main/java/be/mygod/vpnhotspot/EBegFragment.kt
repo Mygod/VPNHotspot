@@ -16,6 +16,7 @@ import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
 import com.android.billingclient.api.BillingResult
 import com.android.billingclient.api.ConsumeParams
+import com.android.billingclient.api.PendingPurchasesParams
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
@@ -36,7 +37,9 @@ class EBegFragment : AppCompatDialogFragment() {
     companion object : BillingClientStateListener, PurchasesUpdatedListener {
         private val billingClient by lazy {
             BillingClient.newBuilder(app).apply {
-                enablePendingPurchases()
+                enablePendingPurchases(PendingPurchasesParams.newBuilder().apply {
+                    enableOneTimeProducts()
+                }.build())
             }.setListener(this).build()
         }
         private var instance: EBegFragment? = null
