@@ -197,14 +197,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
 * (since API 29) `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
-* (since API 33) `Lcom/android/server/BpfNetMaps;-><init>()V`
-* (since API 33) `Lcom/android/server/BpfNetMaps;-><init>(Landroid/content/Context;)V`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->native_init()V`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->native_init(Z)V`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->native_setUidRule(III)I`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->native_removeUidInterfaceRules([I)I`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->native_updateUidLockdownRule(IZ)I`
-* (since API 33) `Lcom/android/server/BpfNetMaps;->sInitialized:Z`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
