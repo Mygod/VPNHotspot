@@ -23,10 +23,7 @@ object VpnFirewallManager {
     @RequiresApi(31)
     const val UIDS_ALLOWED_ON_RESTRICTED_NETWORKS = "uids_allowed_on_restricted_networks"
 
-    @get:RequiresApi(29)
-    val dumpCommand get() = if (Build.VERSION.SDK_INT >= 33) {
-        "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller"
-    } else "dumpsys netd trafficcontroller"
+    const val DUMP_COMMAND = "dumpsys netd trafficcontroller"
 
     /**
      * This feature was introduced in Android 10:
@@ -103,16 +100,23 @@ object VpnFirewallManager {
             allowed.add(uid)
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
         }
-        val result = transaction.execQuiet(dumpCommand)
-        result.message(listOf(dumpCommand), false)?.let { msg ->
-            return Timber.w(Exception(msg))
-        }
-        // firewall was enabled before changing exclusion rules
-        if (firewallMatcher.containsMatchIn(result.out)) try {
-            excludeFromFirewall(uid)
+        if (Build.VERSION.SDK_INT >= 33) try {
+            runBlocking { RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(uid)) } }
         } catch (e: Exception) {
             SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
             Timber.w(e)
+        } else {
+            val result = transaction.execQuiet(DUMP_COMMAND)
+            result.message(listOf(DUMP_COMMAND), false)?.let { msg ->
+                return Timber.w(Exception(msg))
+            }
+            // firewall was enabled before changing exclusion rules
+            if (firewallMatcher.containsMatchIn(result.out)) try {
+                excludeFromFirewall(uid)
+            } catch (e: Exception) {
+                SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
+                Timber.w(e)
+            }
         }
     }
 }

@@ -84,7 +84,8 @@ static long map_fd = -1L;
 
 // based on: https://cs.android.com/android/platform/superproject/+/main:packages/modules/Connectivity/staticlibs/native/bpfmapjni/com_android_net_module_util_BpfMap.cpp;l=34;drc=9eca02a8fa20aa14920f0dd3bf88c06ce04a2575
 extern "C" JNIEXPORT jboolean JNICALL
-Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_unused]] jobject obj, jstring path, jint uid, jlong rules) {
+Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_unused]] jobject obj,
+                                                          jstring path, jint uid, jlong rules) {
     // mapRetrieveLocklessRW to bypass locking
     if (map_fd < 0) {
         const char *pathname = env->GetStringUTFChars(path, nullptr);

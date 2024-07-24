@@ -44,8 +44,10 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |echo
                 """.trimMargin())
                 if (Build.VERSION.SDK_INT >= 29) {
-                    commands.appendLine(
-                        "echo ${VpnFirewallManager.dumpCommand}\n${VpnFirewallManager.dumpCommand}\necho")
+                    val dumpCommand = if (Build.VERSION.SDK_INT >= 33) {
+                        "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller"
+                    } else VpnFirewallManager.DUMP_COMMAND
+                    commands.appendLine("echo $dumpCommand\n$dumpCommand\necho")
                     if (Build.VERSION.SDK_INT >= 31) commands.appendLine(
                         "settings get global ${VpnFirewallManager.UIDS_ALLOWED_ON_RESTRICTED_NETWORKS}")
                 }
