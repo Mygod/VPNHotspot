@@ -12,6 +12,7 @@ object Jni {
         val pathList = BaseDexClassLoader::class.java.getDeclaredField("pathList").apply {
             isAccessible = true
         }.get(javaClass.classLoader)
+        @Suppress("UNCHECKED_CAST")
         pathList.javaClass.getDeclaredField("nativeLibraryDirectories").apply {
             isAccessible = true
         }.get(pathList) as ArrayList<File>
