@@ -1,13 +1,11 @@
 package be.mygod.vpnhotspot.net
 
-import android.content.Context
 import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.systemContext
-import be.mygod.vpnhotspot.BuildConfig
+import be.mygod.vpnhotspot.root.Jni
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.PathClassLoader
 import kotlinx.parcelize.Parcelize
@@ -85,14 +83,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             }
         }
 
-        operator fun invoke(uid: Int): Boolean {
-            val clazz = systemContext.createPackageContext(BuildConfig.APPLICATION_ID,
-                Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
-                .classLoader.loadClass("be.mygod.vpnhotspot.root.Jni")
-            val jni = clazz.getDeclaredConstructor().newInstance()
-            return clazz.getDeclaredMethod("removeUidInterfaceRules", String::class.java, Int::class.java,
-                Long::class.java)(jni, mapPath, uid, matches) as Boolean
-        }
+        operator fun invoke(uid: Int) = Jni.removeUidInterfaceRules(mapPath, uid, matches)
     }
 
     override suspend fun execute() = ParcelableBoolean(if (Build.VERSION.SDK_INT < 33) {

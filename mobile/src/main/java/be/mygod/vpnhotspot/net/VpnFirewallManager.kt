@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.net
 
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
@@ -8,6 +7,7 @@ import android.system.Os
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.root.Jni
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -69,15 +69,21 @@ object VpnFirewallManager {
     private val firewallMatcher by lazy { "^\\s*${Process.myUid()}\\D* IIF_MATCH ".toRegex(RegexOption.MULTILINE) }
 
     @RequiresApi(29)
+    private suspend fun removeUidInterfaceRules(uid: Int) = RootManager.use {
+        if (Build.VERSION.SDK_INT >= 33) it.execute(Jni.Init())
+        it.execute(RemoveUidInterfaceRuleCommand(uid))
+    }.value
+
+    @RequiresApi(29)
     private fun excludeFromFirewall(uid: Int) {
-        if (!runBlocking { RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(uid)) } }.value) {
+        if (!runBlocking { removeUidInterfaceRules(uid) }) {
             throw Exception("RemoveUidInterfaceRuleCommand failed to update")
         }
     }
     fun excludeIfNeeded(scope: CoroutineScope) {
         if (mayBeAffected) scope.launch {
             try {
-                RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(Process.myUid())) }
+                removeUidInterfaceRules(Process.myUid())
             } catch (e: Exception) {
                 Timber.w(e)
             }
@@ -101,7 +107,7 @@ object VpnFirewallManager {
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
         }
         if (Build.VERSION.SDK_INT >= 33) try {
-            runBlocking { RootManager.use { it.execute(RemoveUidInterfaceRuleCommand(uid)) } }
+            runBlocking { removeUidInterfaceRules(uid) }
         } catch (e: Exception) {
             SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
             Timber.w(e)
