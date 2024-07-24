@@ -39,7 +39,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
     }
 
     /**
-     * Deprecated in Android 13: https://android.googlesource.com/platform/system/netd/+/android-13.0.0_r1/server/NetdNativeService.cpp#1142
+     * Netd is used before Android 13: https://android.googlesource.com/platform/system/netd/+/android-13.0.0_r1/server/NetdNativeService.cpp#1142
      */
     private object Impl29 {
         private val stub by lazy {
@@ -64,9 +64,18 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
      */
     @RequiresApi(33)
     private object JniBpfMap {
+        private val constants by lazy { findConnectivityClass("android.net.BpfNetMapsConstants") }
+        private val mapPath by lazy {
+            try {
+                constants.getDeclaredField("UID_OWNER_MAP_PATH").get(null) as String?
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+                // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/bpf_progs/bpf_shared.h#146
+                "/sys/fs/bpf/netd_shared/map_netd_uid_owner_map"
+            }
+        }
         private val matches by lazy {
             try {
-                val constants = findConnectivityClass("android.net.BpfNetMapsConstants")
                 constants.getDeclaredField("IIF_MATCH").getLong(null) or
                         constants.getDeclaredField("LOCKDOWN_VPN_MATCH").getLong(null)
             } catch (e: ReflectiveOperationException) {
@@ -81,8 +90,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
                 Context.CONTEXT_INCLUDE_CODE or Context.CONTEXT_IGNORE_SECURITY)
                 .classLoader.loadClass("be.mygod.vpnhotspot.root.Jni")
             val jni = clazz.getDeclaredConstructor().newInstance()
-            return clazz.getDeclaredMethod("removeUidInterfaceRules", Int::class.java, Long::class.java)(
-                jni, uid, matches) as Boolean
+            return clazz.getDeclaredMethod("removeUidInterfaceRules", String::class.java, Int::class.java,
+                Long::class.java)(jni, mapPath, uid, matches) as Boolean
         }
     }
 

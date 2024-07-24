@@ -10,8 +10,6 @@
     __android_log_print(ANDROID_##priority, tag, fmt, __VA_ARGS__)
 #define ALOGE(...) ((void)ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__))
 
-int map_fd = -1;
-
 static int ThrowException(JNIEnv* env, const char* className, const char* ctorSig, ...) {
     int status = -1;
     jclass exceptionClass;
@@ -78,19 +76,26 @@ struct android_net_UidOwnerValue {
     uint32_t rule;
 };
 
-inline int bpf(enum bpf_cmd cmd, const bpf_attr& attr) {
+inline long bpf(enum bpf_cmd cmd, const bpf_attr& attr) {
     return syscall(__NR_bpf, cmd, &attr, sizeof(attr));
 }
 
+static long map_fd = -1L;
+
 // based on: https://cs.android.com/android/platform/superproject/+/main:packages/modules/Connectivity/staticlibs/native/bpfmapjni/com_android_net_module_util_BpfMap.cpp;l=34;drc=9eca02a8fa20aa14920f0dd3bf88c06ce04a2575
 extern "C" JNIEXPORT jboolean JNICALL
-Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, jobject obj, jint uid, jlong rules) {
+Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_unused]] jobject obj, jstring path, jint uid, jlong rules) {
     // mapRetrieveLocklessRW to bypass locking
-    if (map_fd < 0 && (map_fd = bpf(BPF_OBJ_GET, {
-            .pathname = (uint64_t)"/sys/fs/bpf/netd_shared/map_netd_uid_owner_map",
-    })) < 0) {
-        jniThrowErrnoException(env, "BPF_OBJ_GET", errno);
-        return false;
+    if (map_fd < 0) {
+        const char *pathname = env->GetStringUTFChars(path, nullptr);
+        map_fd = bpf(BPF_OBJ_GET, {
+                .pathname = (uint64_t)pathname,
+        });
+        env->ReleaseStringUTFChars(path, pathname);
+        if (map_fd < 0) {
+            jniThrowErrnoException(env, "BPF_OBJ_GET", errno);
+            return false;
+        }
     }
     android_net_UidOwnerValue value;
     // findMapEntry
