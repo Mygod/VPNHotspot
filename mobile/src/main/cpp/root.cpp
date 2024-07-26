@@ -94,7 +94,8 @@ Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_u
         });
         env->ReleaseStringUTFChars(path, pathname);
         if (map_fd < 0) {
-            jniThrowErrnoException(env, "BPF_OBJ_GET", errno);
+            int err = errno;
+            if (err != ENOSYS) jniThrowErrnoException(env, "BPF_OBJ_GET", err);
             return false;
         }
     }
@@ -117,12 +118,13 @@ Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_u
                 .value = (uint64_t)&value,
                 .flags = BPF_ANY,
         })) jniThrowErrnoException(env, "BPF_MAP_UPDATE_ELEM", errno);
-    } else {
         // deleteMapEntry
-        if (bpf(BPF_MAP_DELETE_ELEM, {
-                .map_fd = (uint32_t)map_fd,
-                .key = (uint64_t)&uid,
-        }) && errno != ENOENT) jniThrowErrnoException(env, "BPF_MAP_DELETE_ELEM", errno);
+    } else if (bpf(BPF_MAP_DELETE_ELEM, {
+            .map_fd = (uint32_t)map_fd,
+            .key = (uint64_t)&uid,
+    })) {
+        int err = errno;
+        if (err != ENOENT) jniThrowErrnoException(env, "BPF_MAP_DELETE_ELEM", err);
     }
     return true;
 }
