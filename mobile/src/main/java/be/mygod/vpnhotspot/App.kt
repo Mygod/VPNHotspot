@@ -4,8 +4,10 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
+import android.content.ContentProvider
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ProviderInfo
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
@@ -25,18 +27,20 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.firebase.FirebaseApp
 import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.analytics.logEvent
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.ktx.Firebase
+import com.google.firebase.provider.FirebaseInitProvider
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.lang.invoke.MethodType
 import java.util.Locale
 
 class App : Application() {
@@ -58,7 +62,10 @@ class App : Application() {
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
-        FirebaseApp.initializeApp(deviceStorage)
+        // call super.attachInfo get around ProviderInfo check
+        FirebaseInitProvider::class.java.privateLookup().findSpecial(ContentProvider::class.java, "attachInfo",
+            MethodType.methodType(Void.TYPE, Context::class.java, ProviderInfo::class.java),
+            FirebaseInitProvider::class.java).bindTo(FirebaseInitProvider()).invokeWithArguments(deviceStorage, null)
         FirebaseCrashlytics.getInstance().apply {
             setCustomKey("uname.release", Os.uname().release)
             setCustomKey("build", Build.DISPLAY)

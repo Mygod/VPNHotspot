@@ -234,6 +234,12 @@ private val newLookup by lazy {
         isAccessible = true
     }
 }
+fun Class<*>.privateLookup() = if (Build.VERSION.SDK_INT < 33) try {
+    newLookup.newInstance(this, 0xf)    // ALL_MODES
+} catch (e: ReflectiveOperationException) {
+    Timber.w(e)
+    MethodHandles.lookup().`in`(this)
+} else MethodHandles.privateLookupIn(this, null)
 
 /**
  * Call interface super method.
@@ -241,12 +247,7 @@ private val newLookup by lazy {
  * See also: https://stackoverflow.com/a/49532463/2245107
  */
 fun InvocationHandler.callSuper(interfaceClass: Class<*>, proxy: Any, method: Method, args: Array<out Any?>?) = when {
-    method.isDefault -> try {
-        newLookup.newInstance(interfaceClass, 0xf)   // ALL_MODES
-    } catch (e: ReflectiveOperationException) {
-        Timber.w(e)
-        MethodHandles.lookup().`in`(interfaceClass)
-    }.unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
+    method.isDefault -> interfaceClass.privateLookup().unreflectSpecial(method, interfaceClass).bindTo(proxy).run {
         if (args == null) invokeWithArguments() else invokeWithArguments(*args)
     }
     // otherwise, we just redispatch it to InvocationHandler
