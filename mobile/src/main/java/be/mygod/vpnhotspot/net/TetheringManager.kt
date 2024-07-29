@@ -30,6 +30,7 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.util.WeakHashMap
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
@@ -507,7 +508,7 @@ object TetheringManager {
         clazz.getDeclaredMethod("unregisterTetheringEventCallback", interfaceTetheringEventCallback)
     }
 
-    private val callbackMap = mutableMapOf<TetheringEventCallback, Any>()
+    private val callbackMap = WeakHashMap<TetheringEventCallback, Any>()
     /**
      * Start listening to tethering change events. Any new added callback will receive the last
      * tethering status right away. If callback is registered,
