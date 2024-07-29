@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
@@ -54,26 +55,27 @@ abstract class KillableTileService : TileService(), ServiceConnection {
     }
 
     // Workaround on U: https://github.com/zhanghai/MaterialFiles/commit/7a2b228dfef8e5080d4cc887208b1ac5458c160e
-    protected fun doWithStartForegroundServiceAllowed(action: () -> Unit) {
-        if (Build.VERSION.SDK_INT != 34) {
-            action()
-            return
-        }
-        val windowManager = getSystemService(WindowManager::class.java)
-        val view = View(this)
-        windowManager.addView(view, WindowManager.LayoutParams().apply {
-            type = WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW + 35
-            format = PixelFormat.TRANSLUCENT
-            token = UnblockCentral.TileService_mToken.get(this@KillableTileService) as IBinder?
-        })
-        view.doOnPreDraw {
-            view.post {
-                view.invalidate()
-                view.doOnPreDraw {
-                    try {
-                        action()
-                    } finally {
-                        windowManager.removeView(view)
+    protected fun startForegroundServiceCompat(service: Intent) {
+        try {
+            startForegroundService(service)
+        } catch (e: ForegroundServiceStartNotAllowedException) {
+            if (Build.VERSION.SDK_INT != 34) throw e
+            val windowManager = getSystemService(WindowManager::class.java)
+            val view = View(this)
+            windowManager.addView(view, WindowManager.LayoutParams().apply {
+                type = WindowManager.LayoutParams.FIRST_SYSTEM_WINDOW + 35
+                format = PixelFormat.TRANSLUCENT
+                token = UnblockCentral.TileService_mToken.get(this@KillableTileService) as IBinder?
+            })
+            view.doOnPreDraw {
+                view.post {
+                    view.invalidate()
+                    view.doOnPreDraw {
+                        try {
+                            startForegroundService(service)
+                        } finally {
+                            windowManager.removeView(view)
+                        }
                     }
                 }
             }
