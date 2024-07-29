@@ -14,7 +14,6 @@ import android.service.quicksettings.TileService
 import android.view.View
 import android.view.WindowManager
 import androidx.core.view.doOnPreDraw
-import be.mygod.vpnhotspot.BootReceiver
 import java.lang.ref.WeakReference
 
 abstract class KillableTileService : TileService(), ServiceConnection {

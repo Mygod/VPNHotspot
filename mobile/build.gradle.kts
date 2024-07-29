@@ -94,7 +94,7 @@ android {
 }
 
 dependencies {
-    val lifecycleVersion = "2.8.3"
+    val lifecycleVersion = "2.8.4"
     val roomVersion = "2.6.1"
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
@@ -102,7 +102,7 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.fragment:fragment-ktx:1.8.1")
+    implementation("androidx.fragment:fragment-ktx:1.8.2")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.1")
@@ -119,7 +119,7 @@ dependencies {
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
-    implementation("dnsjava:dnsjava:3.6.0")
+    implementation("dnsjava:dnsjava:3.6.1")
     implementation("io.ktor:ktor-network-jvm:2.3.9")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.7")
