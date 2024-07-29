@@ -544,7 +544,6 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
                 } else it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
             }
         }.show()
-        showNotification()
         if (group != null) removeGroup() else launch { cleanLocked() }
     }
 

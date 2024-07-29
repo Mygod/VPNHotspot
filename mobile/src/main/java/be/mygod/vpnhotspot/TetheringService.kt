@@ -120,8 +120,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
-        // call this first just in case we are shutting down immediately
-        super.updateNotification()
+        ServiceNotification.startForeground(this)   // call this first just in case we are shutting down immediately
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {

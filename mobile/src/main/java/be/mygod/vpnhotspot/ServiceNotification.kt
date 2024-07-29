@@ -51,14 +51,19 @@ object ServiceNotification {
         }
     }
 
-    fun startForeground(service: Service, deviceCounts: Map<String, Int>, inactive: List<String> = emptyList()) {
+    fun startForeground(service: Service, deviceCounts: Map<String, Int> = emptyMap(),
+                        inactive: List<String> = emptyList(), isStart: Boolean = deviceCounts.isEmpty()) {
         synchronized(this) {
             deviceCountsMap[service] = deviceCounts
             if (inactive.isEmpty()) inactiveMap.remove(service) else inactiveMap[service] = inactive
-            if (Build.VERSION.SDK_INT >= 33) {
-                service.startForeground(NOTIFICATION_ID, buildNotification(service),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
-            } else service.startForeground(NOTIFICATION_ID, buildNotification(service))
+            try {
+                if (Build.VERSION.SDK_INT >= 33) {
+                    service.startForeground(NOTIFICATION_ID, buildNotification(service),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                } else service.startForeground(NOTIFICATION_ID, buildNotification(service))
+            } catch (e: ForegroundServiceStartNotAllowedException) {
+                if (Build.VERSION.SDK_INT < 31 || isStart) throw e
+            }
         }
     }
     fun stopForeground(service: Service) = synchronized(this) {

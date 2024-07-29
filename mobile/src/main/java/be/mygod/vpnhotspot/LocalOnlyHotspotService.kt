@@ -195,7 +195,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         BootReceiver.startIfEnabled()
         if (binder.iface != null) return START_STICKY
         binder.iface = ""
-        updateNotification()    // show invisible foreground notification to avoid being killed
+        ServiceNotification.startForeground(this)   // show invisible foreground notification to avoid being killed
         launch(start = CoroutineStart.UNDISPATCHED) { doStart() }
         return START_STICKY
     }

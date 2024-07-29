@@ -22,6 +22,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
                     .distinctBy { it.lladdr }
                     .size
         }
-        ServiceNotification.startForeground(this, activeIfaces.associateWith { sizeLookup[it] ?: 0 }, inactiveIfaces)
+        ServiceNotification.startForeground(this, activeIfaces.associateWith { sizeLookup[it] ?: 0 }, inactiveIfaces,
+            false)
     }
 }
