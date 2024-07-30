@@ -73,7 +73,7 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     private val data = Data()
 
     init {
-        parent.lifecycle.addObserver(this)
+        parent.viewLifecycleOwner.lifecycle.addObserver(this)
         AlertDialogFragment.setResultListener<ConfigureDialogFragment, ConfigureData>(parent) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) StaticIpSetter.ips = ret!!.ips.trim()
         }

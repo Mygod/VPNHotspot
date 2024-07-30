@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.preference.AutoCompleteNetworkPreferenceDialogFragment
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
 import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
+import be.mygod.vpnhotspot.preference.UpstreamsPreference
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
@@ -46,6 +47,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         IpMonitor.currentMode = IpMonitor.currentMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
+        findPreference<UpstreamsPreference>("service.upstream.monitor")!!.attachListener(lifecycle)
         SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
         SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {

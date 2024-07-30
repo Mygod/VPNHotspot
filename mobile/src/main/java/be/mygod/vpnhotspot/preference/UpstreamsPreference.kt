@@ -7,6 +7,7 @@ import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.util.AttributeSet
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
@@ -54,8 +55,8 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
     private val primary = Monitor()
     private val fallback = Monitor()
 
-    init {
-        (context as LifecycleOwner).lifecycle.addObserver(this)
+    fun attachListener(lifecycle: Lifecycle) {
+        lifecycle.addObserver(this)
         onUpdate()
     }
 
