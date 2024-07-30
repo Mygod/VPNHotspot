@@ -18,7 +18,14 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.StartTethering
 import be.mygod.vpnhotspot.root.StopTethering
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import be.mygod.vpnhotspot.util.getRootCause
+import be.mygod.vpnhotspot.util.matches
+import be.mygod.vpnhotspot.util.matches1
 import com.android.dx.stock.ProxyBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -30,7 +37,6 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
-import java.util.WeakHashMap
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
@@ -508,7 +514,7 @@ object TetheringManager {
         clazz.getDeclaredMethod("unregisterTetheringEventCallback", interfaceTetheringEventCallback)
     }
 
-    private val callbackMap = WeakHashMap<TetheringEventCallback, Any>()
+    private val callbackMap = mutableMapOf<TetheringEventCallback, Any>()
     /**
      * Start listening to tethering change events. Any new added callback will receive the last
      * tethering status right away. If callback is registered,
