@@ -42,14 +42,14 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.*
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
+import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Service for handling Wi-Fi P2P. `supported` must be checked before this service is started otherwise it would crash.
  */
-class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListener,
-        SharedPreferences.OnSharedPreferenceChangeListener {
+class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPreferenceChangeListener {
     companion object {
         const val KEY_SAFE_MODE = "service.repeater.safeMode"
 
@@ -361,11 +361,13 @@ class RepeaterService : Service(), CoroutineScope, WifiP2pManager.ChannelListene
         } else SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
     }
 
-    override fun onChannelDisconnected() {
+    private fun onChannelDisconnected() {
         channel = null
         deinitPending.set(true)
         if (status != Status.DESTROYED) try {
-            channel = p2pManager.initialize(this, Looper.getMainLooper(), this)
+            // WifiP2pManager.Channel uses AsyncChannel which is leaky, prevent holding onto the Context
+            val ref = WeakReference(this)
+            channel = p2pManager.initialize(app, Looper.getMainLooper()) { ref.get()?.onChannelDisconnected() }
         } catch (e: RuntimeException) {
             Timber.w(e)
             launch(Dispatchers.Main) {
