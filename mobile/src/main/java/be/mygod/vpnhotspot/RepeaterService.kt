@@ -292,7 +292,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
 
     override fun onCreate() {
         super.onCreate()
-        onChannelDisconnected()
+        initializeChannel()
         if (Build.VERSION.SDK_INT < 29) {
             registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
         }
@@ -361,18 +361,18 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         } else SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
     }
 
-    private fun onChannelDisconnected() {
+    private fun initializeChannel() {
         channel = null
         deinitPending.set(true)
         if (status != Status.DESTROYED) try {
             // WifiP2pManager.Channel uses AsyncChannel which is leaky, prevent holding onto the Context
             val ref = WeakReference(this)
-            channel = p2pManager.initialize(app, Looper.getMainLooper()) { ref.get()?.onChannelDisconnected() }
+            channel = p2pManager.initialize(app, Looper.getMainLooper()) { ref.get()?.initializeChannel() }
         } catch (e: RuntimeException) {
             Timber.w(e)
             launch(Dispatchers.Main) {
                 delay(1000)
-                onChannelDisconnected()
+                initializeChannel()
             }
         }
     }
