@@ -5,11 +5,9 @@ import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.ContentProvider
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ProviderInfo
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
@@ -27,7 +25,6 @@ import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
-import be.mygod.vpnhotspot.tasker.ActionConfig
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.privateLookup
@@ -62,17 +59,6 @@ class App : Application() {
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         BootReceiver.migrateIfNecessary()
         Services.init { this }
-
-        // Ethernet Tethering was added in Android 11, so disable the Tasker action below that version.
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-            GlobalScope.launch {
-                packageManager.setComponentEnabledSetting(
-                    ComponentName(this@App, ActionConfig.EthernetConfig::class.java),
-                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                    PackageManager.DONT_KILL_APP,
-                )
-            }
-        }
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)

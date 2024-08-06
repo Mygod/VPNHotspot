@@ -115,6 +115,7 @@
         </activity>
         <activity
             android:name=".tasker.ActionConfig$EthernetConfig"
+            android:enabled="@bool/api_ge_30"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/tethering_manage_ethernet">
