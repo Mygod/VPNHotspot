@@ -371,18 +371,20 @@ object TetheringManager {
         if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type)
         else stopTetheringLegacy(Services.connectivity, type)
     }
-    fun stopTethering(type: Int, callback: (Exception) -> Unit) {
+    fun stopTethering(type: Int, errorCallback: (Exception) -> Unit, successCallback: (() -> Unit)? = null) {
         try {
             stopTethering(type)
+            successCallback?.invoke()
         } catch (e: InvocationTargetException) {
             if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
                 try {
                     RootManager.use { it.execute(StopTethering(type)) }
+                    successCallback?.invoke()
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)
-                    callback(eRoot)
+                    errorCallback(eRoot)
                 }
-            } else callback(e)
+            } else errorCallback(e)
         }
     }
 

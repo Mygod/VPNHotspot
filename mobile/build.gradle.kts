@@ -119,6 +119,7 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics:19.0.3")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.jakewharton.timber:timber:5.0.1")
+    implementation("com.joaomgcd:taskerpluginlibrary:0.4.10")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.3")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("dnsjava:dnsjava:3.6.1")

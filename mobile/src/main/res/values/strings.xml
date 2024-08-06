@@ -252,4 +252,7 @@
     <string name="donations__google_android_market_donate_button">Donate!</string>
     <string name="donations__google_android_market_text">How much?</string>
     <string name="donations__thanks_dialog">Thanks for donating!\nI really appreciate this!</string>
+
+    <string name="tasker_get_tethering_state">Get Tethering State</string>
+    <string name="tasker_tethering_state_update">Tethering State Update</string>
 </resources>

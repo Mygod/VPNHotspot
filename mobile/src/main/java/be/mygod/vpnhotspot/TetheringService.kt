@@ -5,11 +5,14 @@ import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.tasker.TetheringEventConfig
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.joaomgcd.taskerpluginlibrary.condition.TaskerPluginRunnerCondition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +34,9 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             get()?.dismiss()
             dismissHandle = null
         }
+
+        var activeTetherTypes: Set<TetherType> = emptySet() // only used for Tasker
+            private set
     }
 
     inner class Binder : android.os.Binder() {
@@ -96,6 +102,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         else -> Timber.w(IllegalStateException("Unknown onOffloadStatusChanged $status"))
     }
 
+    private fun setActiveTetherTypes(value: Set<TetherType>) {
+        activeTetherTypes = value
+        TaskerPluginRunnerCondition.requestQuery(this, TetheringEventConfig::class.java)
+    }
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
             unregisterReceiver()
@@ -113,7 +123,10 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             }
             super.updateNotification()
         }
-        launch(Dispatchers.Main) { binder.routingsChanged() }
+        launch(Dispatchers.Main) {
+            binder.routingsChanged()
+            setActiveTetherTypes(downstreams.keys.mapTo(mutableSetOf()) { TetherType.ofInterface(it) })
+        }
     }
 
     override fun onBind(intent: Intent?) = binder
@@ -155,6 +168,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
         launch {
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
+            setActiveTetherTypes(emptySet())
             cancel()
         }
         super.onDestroy()
