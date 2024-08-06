@@ -1,33 +1,8 @@
 package be.mygod.vpnhotspot.tasker
 
 import be.mygod.vpnhotspot.net.TetherType
-import com.joaomgcd.taskerpluginlibrary.input.TaskerInputField
-import com.joaomgcd.taskerpluginlibrary.input.TaskerInputRoot
 import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputObject
 import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputVariable
-
-@TaskerInputRoot
-class TetheringStateInput(
-    @TaskerInputField("wifi")
-    var wifi: Boolean = false,
-    @TaskerInputField("bluetooth")
-    var bluetooth: Boolean = false,
-    @TaskerInputField("usb")
-    var usb: Boolean = false,
-    @TaskerInputField("ethernet")
-    var ethernet: Boolean = false,
-) {
-    companion object {
-        operator fun invoke(state: TetheringState): TetheringStateInput {
-            return TetheringStateInput(
-                wifi = state.wifi,
-                bluetooth = state.bluetooth,
-                usb = state.usb,
-                ethernet = state.ethernet,
-            )
-        }
-    }
-}
 
 @TaskerOutputObject
 class TetheringState(
@@ -49,9 +24,5 @@ class TetheringState(
                 ethernet = types.contains(TetherType.ETHERNET),
             )
         }
-    }
-
-    fun toTaskerInput(): TetheringStateInput {
-        return TetheringStateInput(this)
     }
 }

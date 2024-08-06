@@ -31,11 +31,11 @@ class TetheringEventHelper(config: TaskerPluginConfig<Unit>) : TaskerPluginConfi
     override val outputClass: Class<TetheringState> = TetheringState::class.java
 }
 
-class TetheringEventRunner : TaskerPluginRunnerConditionEvent<Unit, TetheringState, TetheringStateInput>() {
+class TetheringEventRunner : TaskerPluginRunnerConditionEvent<Unit, TetheringState, Unit>() {
     override fun getSatisfiedCondition(
         context: Context,
         input: TaskerInput<Unit>,
-        update: TetheringStateInput?,
+        update: Unit?,
     ): TaskerPluginResultCondition<TetheringState> {
         return TaskerPluginResultConditionSatisfied(
             context = context,

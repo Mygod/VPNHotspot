@@ -9,7 +9,6 @@ import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.tasker.TetheringEventConfig
-import be.mygod.vpnhotspot.tasker.TetheringState
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -105,8 +104,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     private fun setActiveTetherTypes(value: Set<TetherType>) {
         activeTetherTypes = value
-        TaskerPluginRunnerCondition.requestQuery(this, TetheringEventConfig::class.java,
-            TetheringState(value).toTaskerInput())
+        TaskerPluginRunnerCondition.requestQuery(this, TetheringEventConfig::class.java)
     }
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
