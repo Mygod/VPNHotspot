@@ -25,11 +25,11 @@ android {
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = javaVersion.toString()
     }
-    compileSdk = 34
+    compileSdk = 35
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1025
         versionName = "2.17.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -38,6 +38,7 @@ android {
             arg("room.incremental", "true")
             arg("room.schemaLocation", "$projectDir/schemas")
         }
+        externalNativeBuild.cmake.arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
     }
     buildFeatures {
         buildConfig = true
@@ -85,6 +86,7 @@ android {
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    ndkVersion = "27.0.12077973"
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
