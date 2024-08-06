@@ -1,15 +1,13 @@
 package be.mygod.vpnhotspot.tasker
 
 import android.content.Context
-import android.content.IntentFilter
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.TetheringService
 import com.joaomgcd.taskerpluginlibrary.condition.TaskerPluginRunnerConditionEvent
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelper
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigNoInput
-import com.joaomgcd.taskerpluginlibrary.extensions.requestQuery
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInput
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultCondition
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultConditionSatisfied
@@ -39,15 +37,9 @@ class TetheringEventRunner : TaskerPluginRunnerConditionEvent<Unit, TetheringSta
         input: TaskerInput<Unit>,
         update: TetheringStateInput?,
     ): TaskerPluginResultCondition<TetheringState> {
-        val result = context.registerReceiver(null, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
-
         return TaskerPluginResultConditionSatisfied(
             context = context,
-            regular = result?.let { TetheringState(it) } ?: update?.toTaskerOutput(),
+            regular = TetheringState(TetheringService.activeTetherTypes),
         )
     }
-}
-
-fun Context.updateTetheringState(interfaces: List<String>) {
-    TetheringEventConfig::class.java.requestQuery(this, TetheringState(interfaces).toTaskerInput())
 }

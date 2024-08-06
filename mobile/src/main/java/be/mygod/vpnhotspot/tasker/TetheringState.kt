@@ -1,8 +1,6 @@
 package be.mygod.vpnhotspot.tasker
 
-import android.content.Intent
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInputField
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInputRoot
 import com.joaomgcd.taskerpluginlibrary.output.TaskerOutputObject
@@ -29,15 +27,6 @@ class TetheringStateInput(
             )
         }
     }
-
-    fun toTaskerOutput(): TetheringState {
-        return TetheringState(
-            wifi = wifi,
-            bluetooth = bluetooth,
-            usb = usb,
-            ethernet = ethernet,
-        )
-    }
 }
 
 @TaskerOutputObject
@@ -52,14 +41,6 @@ class TetheringState(
     val ethernet: Boolean = false,
 ) {
     companion object {
-        operator fun invoke(intent: Intent): TetheringState {
-            return TetheringState(intent.tetheredIfaces?.filterNotNull() ?: listOf())
-        }
-
-        operator fun invoke(interfaces: List<String>): TetheringState {
-            return TetheringState(interfaces.map { TetherType.ofInterface(it) }.toSet())
-        }
-
         operator fun invoke(types: Set<TetherType>): TetheringState {
             return TetheringState(
                 wifi = types.contains(TetherType.WIFI),
