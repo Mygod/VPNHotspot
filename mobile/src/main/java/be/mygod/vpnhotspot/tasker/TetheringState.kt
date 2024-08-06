@@ -62,7 +62,7 @@ class TetheringState(
 
         operator fun invoke(types: Set<TetherType>): TetheringState {
             return TetheringState(
-                wifi = types.any { it.isWifi },
+                wifi = types.contains(TetherType.WIFI),
                 bluetooth = types.contains(TetherType.BLUETOOTH),
                 usb = types.contains(TetherType.USB) || types.contains(TetherType.NCM),
                 ethernet = types.contains(TetherType.ETHERNET),
