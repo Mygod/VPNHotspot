@@ -55,12 +55,13 @@ open class Client(val mac: MacAddress, val iface: String) {
             if (record.nickname.isNotEmpty()) appendLine(macIface)
             ip.entries.forEach { (ip, state) ->
                 append(makeIpSpan(ip))
-                appendLine(app.getText(when (state) {
-                    IpNeighbour.State.INCOMPLETE -> R.string.connected_state_incomplete
-                    IpNeighbour.State.VALID -> R.string.connected_state_valid
-                    IpNeighbour.State.FAILED -> R.string.connected_state_failed
+                appendLine(when (state) {
+                    IpNeighbour.State.UNSET -> ""
+                    IpNeighbour.State.INCOMPLETE -> app.getText(R.string.connected_state_incomplete)
+                    IpNeighbour.State.VALID -> app.getText(R.string.connected_state_valid)
+                    IpNeighbour.State.FAILED -> app.getText(R.string.connected_state_failed)
                     else -> error("Invalid IpNeighbour.State: $state")
-                }))
+                })
             }
         }.trimEnd()
     }

@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.broadcastReceiver
+import timber.log.Timber
 
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback, DefaultLifecycleObserver,
     WifiApManager.SoftApCallbackCompat {
@@ -56,6 +57,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
                 val addr = MacAddress.fromString(client.deviceAddress!!)
                 clients[p2pInterface to addr] = object : Client(addr, p2pInterface) {
                     override val icon: Int get() = TetherType.WIFI_P2P.icon
+                }.apply {
+                    // WiFi mainline module might be backported to API 30
+                    if (Build.VERSION.SDK_INT >= 30) try {
+                        client.ipAddress
+                    } catch (e: NoSuchMethodError) {
+                        if (Build.VERSION.SDK_INT >= 35) Timber.w(e)
+                        null
+                    }?.let { ip[it] = IpNeighbour.State.UNSET }
                 }
             }
         }

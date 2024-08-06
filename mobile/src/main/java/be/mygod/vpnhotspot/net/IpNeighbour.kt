@@ -18,7 +18,7 @@ import java.net.InetAddress
 
 data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddress, val state: State) {
     enum class State {
-        INCOMPLETE, VALID, FAILED, DELETING
+        UNSET, INCOMPLETE, VALID, FAILED, DELETING
     }
 
     companion object {
