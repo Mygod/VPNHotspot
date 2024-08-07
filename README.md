@@ -368,7 +368,7 @@ Nonexported system resources:
 Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
-* (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar` with its native dependencies located in `/apex/com.android.tethering/lib[64]`.
+* (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
 * (since API 30) Relevant classes in the tethering APEX have these optional prefixes: `android.net.connectivity` or `com.android.connectivity`.
 * (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
 
