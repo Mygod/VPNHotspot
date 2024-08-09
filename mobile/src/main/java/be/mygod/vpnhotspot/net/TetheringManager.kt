@@ -12,6 +12,7 @@ import android.net.Network
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
+import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import androidx.core.os.ExecutorCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -490,7 +491,7 @@ object TetheringManager {
          * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
          * @param clients The new set of tethered clients; the collection is not ordered.
          */
-        fun onClientsChanged(clients: Collection<*>) {
+        fun onClientsChanged(clients: Collection<Parcelable>) {
             if (clients.isNotEmpty()) Timber.i("onClientsChanged: ${clients.joinToString()}")
         }
 
@@ -530,7 +531,7 @@ object TetheringManager {
      * @param callback the callback to be called when tethering has change events.
      */
     @RequiresApi(30)
-    fun registerTetheringEventCallback(executor: Executor?, callback: TetheringEventCallback) {
+    fun registerTetheringEventCallback(callback: TetheringEventCallback, executor: Executor? = null) {
         val reference = WeakReference(callback)
         val proxy = synchronized(callbackMap) {
             var computed = false
@@ -571,7 +572,8 @@ object TetheringManager {
                                 callback?.onError(args!![0] as String, args[1] as Int)
                             }
                             method.matches1<java.util.Collection<*>>("onClientsChanged") -> {
-                                callback?.onClientsChanged(args!![0] as Collection<*>)
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onClientsChanged(args!![0] as Collection<Parcelable>)
                             }
                             method.matches("onOffloadStatusChanged", Integer.TYPE) -> {
                                 callback?.onOffloadStatusChanged(args!![0] as Int)
@@ -614,7 +616,7 @@ object TetheringManager {
                     callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
                 }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
             }
-        } else registerTetheringEventCallback(InPlaceExecutor, callback)
+        } else registerTetheringEventCallback(callback)
     }
     fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
         if (Build.VERSION.SDK_INT < 30) {

@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         if (Services.p2p != null) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
-                it.ip.any { (ip, state) -> ip is Inet4Address && state == IpNeighbour.State.VALID }
+                it.ip.any { (ip, info) -> ip is Inet4Address && info.state == IpNeighbour.State.VALID }
             }
             badge.isVisible = count > 0
             badge.number = count

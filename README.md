@@ -214,8 +214,15 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/ConnectivityManager$OnStartTetheringCallback;->onTetheringStarted()V,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->stopTethering(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/LinkAddress;->getDeprecationTime()J,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/LinkAddress;->getExpirationTime()J,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllRoutes()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheredClient$AddressInfo;->getAddress()Landroid/net/LinkAddress;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheredClient$AddressInfo;->getHostname()Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheredClient;->getAddresses()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheredClient;->getMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheredClient;->getTetheringType()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringFailed(I)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$StartTetheringCallback;->onTetheringStarted()V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,sdk,system-api,test-api`
@@ -235,8 +242,11 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/net/TetheringManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_BLUETOOTH:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_NCM:I,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_USB:I,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_WIFI:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIFI_P2P:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIGIG:I,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_FAILED:I,sdk,system-api,test-api`

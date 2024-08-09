@@ -224,7 +224,7 @@ class ClientsFragment : Fragment() {
 
     private lateinit var binding: FragmentClientsBinding
     private val adapter = ClientAdapter()
-    private var rates = mutableMapOf<Pair<String, MacAddress>, TrafficRate>()
+    private var rates = mutableMapOf<Pair<String?, MacAddress>, TrafficRate>()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         binding = FragmentClientsBinding.inflate(inflater, container, false)

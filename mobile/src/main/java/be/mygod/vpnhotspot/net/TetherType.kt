@@ -63,7 +63,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             usbRegexs = emptyList()
             wifiRegexs = emptyList()
             bluetoothRegexs = emptyList()
-            TetheringManager.registerTetheringEventCallback(null, this)
+            TetheringManager.registerTetheringEventCallback(this)
             val info = TetheringManager.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
                     app.packageManager.getResourcesForApplication(info.applicationInfo)
@@ -132,6 +132,17 @@ enum class TetherType(@DrawableRes val icon: Int) {
             ncmRegexs.any { it.matcher(iface).matches() } -> NCM
             ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
             else -> NONE
+        }
+
+        fun fromTetheringType(type: Int) = when (type) {
+            TetheringManager.TETHERING_WIFI -> WIFI
+            TetheringManager.TETHERING_USB -> USB
+            TetheringManager.TETHERING_BLUETOOTH -> BLUETOOTH
+            3 -> WIFI_P2P
+            4 -> NCM
+            TetheringManager.TETHERING_ETHERNET -> ETHERNET
+            6 -> WIGIG
+            else -> NONE.also { Timber.w(Exception("Unhandled tethering type $type")) }
         }
     }
 }

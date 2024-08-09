@@ -322,7 +322,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         }
         requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
         if (Build.VERSION.SDK_INT >= 30) {
-            TetheringManager.registerTetheringEventCallback(null, adapter)
+            TetheringManager.registerTetheringEventCallback(adapter)
             TetherType.listener[this] = {
                 lifecycleScope.launch { adapter.notifyTetherTypeChanged() }
             }
