@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
+import android.icu.text.DateFormat
 import android.net.InetAddresses
 import android.net.LinkProperties
 import android.net.MacAddress
@@ -79,6 +80,10 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
         unregisterReceiver(receiver)
     } catch (_: IllegalArgumentException) { }
 }
+
+fun Context.formatTimestamp(timestamp: Long) = DateFormat.getInstanceForSkeleton(
+    if (android.text.format.DateFormat.is24HourFormat(app)) "yMdHmsSSS" else "yMdhmsSSSa",
+    app.resources.configuration.locales[0]).format(timestamp)
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
     if (!manager.isStateSaved) show(manager, tag)

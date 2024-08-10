@@ -5,7 +5,6 @@ import android.net.MacAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
-import android.text.format.DateUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
@@ -40,6 +39,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.util.format
+import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -95,8 +95,7 @@ class ClientsFragment : Fragment() {
             val format = NumberFormat.getIntegerInstance(locale)
             setMessage("%s\n%s\n%s".format(
                     resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),
-                            format.format(arg.stats.count), DateUtils.formatDateTime(context, arg.stats.timestamp,
-                            DateUtils.FORMAT_SHOW_TIME or DateUtils.FORMAT_SHOW_YEAR or DateUtils.FORMAT_SHOW_DATE)),
+                            format.format(arg.stats.count), context.formatTimestamp(arg.stats.timestamp)),
                     resources.getQuantityString(R.plurals.clients_stats_message_2, arg.stats.sentPackets.toPluralInt(),
                             format.format(arg.stats.sentPackets),
                             Formatter.formatFileSize(context, arg.stats.sentBytes)),

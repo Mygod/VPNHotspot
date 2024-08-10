@@ -51,7 +51,7 @@
                 android:layout_height="wrap_content"
                 android:text="@{client.description}"
                 android:textIsSelectable="true"
-                tools:text="192.168.49.123 (reachable)\nfe80::abcd:efff:1234:5678%p2p-p2p0-0 (reachable)"/>
+                tools:text="192.168.49.123 (reachable) →“client-hostname” ⏳2012-3-14 15:16:17.890\nfe80::abcd:efff:1234:5678%p2p-p2p0-0 (reachable)"/>
 
             <be.mygod.vpnhotspot.widget.AutoCollapseTextView
                 android:layout_width="wrap_content"

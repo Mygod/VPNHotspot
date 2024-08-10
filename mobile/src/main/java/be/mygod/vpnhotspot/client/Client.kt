@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.client
 
-import android.icu.text.DateFormat
 import android.net.MacAddress
 import android.os.SystemClock
 import android.text.SpannableStringBuilder
@@ -15,6 +14,7 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
+import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.util.makeMacSpan
 import java.net.InetAddress
@@ -71,9 +71,7 @@ class Client(val mac: MacAddress, val iface: String? = null, val type: TetherTyp
                 if (info.address != null) {
                     info.hostname?.let { append(" →“$it”") }
                     val delta = System.currentTimeMillis() - SystemClock.elapsedRealtime()
-                    append(" ⏳${DateFormat.getInstanceForSkeleton(
-                        if (android.text.format.DateFormat.is24HourFormat(app)) "yMdHmsSSS" else "yMdhmsSSSa",
-                        app.resources.configuration.locales[0]).format(info.deprecationTime + delta)}")
+                    append(" ⏳${app.formatTimestamp(info.deprecationTime + delta)}")
                 }
                 appendLine()
             }
