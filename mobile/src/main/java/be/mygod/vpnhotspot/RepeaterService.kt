@@ -550,7 +550,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     }
 
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
-            if (group == null) emptyMap() else mapOf(Pair(group.`interface`, group.clientList?.size ?: 0)))
+            if (group == null) emptyMap() else mapOf(group.`interface` to (group.clientList?.size ?: 0)))
 
     private fun removeGroup() {
         p2pManager.removeGroup(channel ?: return, object : WifiP2pManager.ActionListener {
