@@ -5,9 +5,9 @@ import android.os.Build
 import android.os.Process
 import android.system.Os
 import androidx.annotation.RequiresApi
+import be.mygod.librootkotlinx.JniInit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.root.Jni
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -70,7 +70,7 @@ object VpnFirewallManager {
 
     @RequiresApi(29)
     private suspend fun removeUidInterfaceRules(uid: Int) = RootManager.use {
-        if (Build.VERSION.SDK_INT >= 33) it.execute(Jni.Init())
+        if (Build.VERSION.SDK_INT >= 33) it.execute(JniInit())
         it.execute(RemoveUidInterfaceRuleCommand(uid))
     }.value
 
