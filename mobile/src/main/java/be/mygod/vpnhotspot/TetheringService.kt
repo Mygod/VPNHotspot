@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.RequiresApi
@@ -8,11 +9,11 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.tasker.TaskerPermissionManager
 import be.mygod.vpnhotspot.tasker.TetheringEventConfig
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.joaomgcd.taskerpluginlibrary.condition.TaskerPluginRunnerCondition
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,7 +105,8 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     private fun setActiveTetherTypes(value: Set<TetherType>) {
         activeTetherTypes = value
-        TaskerPluginRunnerCondition.requestQuery(this, TetheringEventConfig::class.java)
+        TaskerPermissionManager.requestQuery(this, TetheringEventConfig::class.java,
+            Manifest.permission.ACCESS_NETWORK_STATE)
     }
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {

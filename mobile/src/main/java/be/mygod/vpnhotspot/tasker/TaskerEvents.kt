@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.tasker
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import be.mygod.vpnhotspot.TetheringService
@@ -9,8 +11,9 @@ import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelper
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigNoInput
 import com.joaomgcd.taskerpluginlibrary.input.TaskerInput
-import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultCondition
 import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultConditionSatisfied
+import com.joaomgcd.taskerpluginlibrary.runner.TaskerPluginResultConditionUnknown
+import timber.log.Timber
 
 class TetheringEventConfig : AppCompatActivity(), TaskerPluginConfigNoInput {
     override val context: Context
@@ -36,10 +39,14 @@ class TetheringEventRunner : TaskerPluginRunnerConditionEvent<Unit, TetheringSta
         context: Context,
         input: TaskerInput<Unit>,
         update: Unit?,
-    ): TaskerPluginResultCondition<TetheringState> {
-        return TaskerPluginResultConditionSatisfied(
+    ) = if (context.checkCallingPermission(Manifest.permission.ACCESS_NETWORK_STATE) ==
+        PackageManager.PERMISSION_GRANTED) {
+        TaskerPluginResultConditionSatisfied(
             context = context,
             regular = TetheringState(TetheringService.activeTetherTypes),
         )
+    } else {
+        Timber.w("TetheringEventRunner needs ACCESS_NETWORK_STATE permission")
+        TaskerPluginResultConditionUnknown()
     }
 }

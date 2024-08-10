@@ -1,6 +1,8 @@
 package be.mygod.vpnhotspot.tasker
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
@@ -71,6 +73,11 @@ class ActionHelper(
 
 class ActionRunner : TaskerPluginRunnerActionNoOutput<ActionInput>() {
     override fun run(context: Context, input: TaskerInput<ActionInput>): TaskerPluginResult<Unit> {
+        if (context.checkCallingPermission("android.permission.TETHER_PRIVILEGED") !=
+            PackageManager.PERMISSION_GRANTED &&
+            context.checkCallingPermission(Manifest.permission.WRITE_SETTINGS) != PackageManager.PERMISSION_GRANTED) {
+            return TaskerPluginResultError(SecurityException("Need TETHER_PRIVILEGED or WRITE_SETTINGS permission"))
+        }
         return runBlocking {
             suspendCoroutine { continuation ->
                 try {
