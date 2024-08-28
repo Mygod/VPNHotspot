@@ -82,8 +82,8 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
 }
 
 fun Context.formatTimestamp(timestamp: Long) = DateFormat.getInstanceForSkeleton(
-    if (android.text.format.DateFormat.is24HourFormat(app)) "yMdHmsSSS" else "yMdhmsSSSa",
-    app.resources.configuration.locales[0]).format(timestamp)
+    if (android.text.format.DateFormat.is24HourFormat(this)) "yMdHmsSSS" else "yMdhmsSSSa",
+    resources.configuration.locales[0]).format(timestamp)
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
     if (!manager.isStateSaved) show(manager, tag)

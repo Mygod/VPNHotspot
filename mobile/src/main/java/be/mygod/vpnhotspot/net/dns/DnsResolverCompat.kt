@@ -9,7 +9,6 @@ import android.os.CancellationSignal
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import org.xbill.DNS.AAAARecord
@@ -25,7 +24,6 @@ import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.util.concurrent.Executor
-import java.util.concurrent.Executors
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -69,7 +67,7 @@ sealed class DnsResolverCompat {
          */
         private val unboundedIO by lazy {
             if (app.getSystemService<ActivityManager>()!!.isLowRamDevice) Dispatchers.IO
-            else Executors.newCachedThreadPool().asCoroutineDispatcher()
+            else Dispatchers.IO.limitedParallelism(Int.MAX_VALUE)
         }
 
         override suspend fun resolve(network: Network, host: String) =
