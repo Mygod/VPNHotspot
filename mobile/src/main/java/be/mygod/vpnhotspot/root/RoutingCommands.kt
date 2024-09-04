@@ -46,7 +46,6 @@ object RoutingCommands {
 
     @Parcelize
     data class Process(val command: List<String>, private val redirect: Boolean = false) : RootCommand<ProcessResult> {
-        @Suppress("BlockingMethodInNonBlockingContext")
         override suspend fun execute() = withContext(Dispatchers.IO) {
             val process = ProcessBuilder(command).fixPath(redirect).start()
             coroutineScope {

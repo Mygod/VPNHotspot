@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.manage
 
-import android.content.Context
 import android.content.Intent
 import android.view.View
 import androidx.databinding.BaseObservable

@@ -4,7 +4,6 @@ import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootCommandChannel
 import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ClosedSendChannelException
