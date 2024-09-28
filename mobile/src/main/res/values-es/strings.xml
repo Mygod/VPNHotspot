@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Values copied from:
+   https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
+   https://android.googlesource.com/platform/packages/apps/Settings/+/37c9c5b/res/values/strings.xml
+    * @string/usb_tethering_button_text
+    * @string/wifi_hotspot_checkbox_text
+    * @string/bluetooth_tether_checkbox_text
+    * @string/ethernet_tether_checkbox_text
+    * @string/wifi_ap_choose_auto
+    * @string/wifi_ap_choose_2G
+    * @string/wifi_ap_choose_5G
+    * @string/wifi_advanced_mac_address_title
+    * @string/wifi_hidden_network
+   https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
+    * @plurals/quick_settings_hotspot_secondary_label_num_devices
+  -->
+<resources>
+    <string name="app_name">VPN Hotspot</string>
+    <string name="title_repeater">Repetidor</string>
+    <string name="title_tethering">Conexión compartida</string>
+    <string name="title_clients">Clientes</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="title_update">Actualización</string>
+
+    <string name="repeater_channel">Repetidor (%1$d MHz, canal %2$d)</string>
+    <string name="repeater_wps">WPS (inseguro)</string>
+    <string name="repeater_wps_dialog_title">Introducir PIN</string>
+    <string name="repeater_wps_dialog_pbc">Botón de encendido</string>
+    <string name="repeater_wps_success_pbc">Por favor, usa el botón de encendido WPS en los próximos 2 minutos para conectar tu dispositivo.</string>
+    <string name="repeater_wps_success_keypad">PIN registrado.</string>
+    <string name="repeater_wps_failure">No se pudo iniciar WPS (motivo: %s)</string>
+    <string name="repeater_configure_failure">Configuración válida no encontrada. Por favor, primero inicia el repetidor.</string>
+    <string name="repeater_clean_pog_failure">No se pudo eliminar el grupo P2P redundante (motivo: %s)</string>
+
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi directo no disponible, activa el Wi\u2011Fi</string>
+    <string name="repeater_p2p_unavailable_enable">Activar</string>
+    <string name="repeater_create_group_failure">No se pudo crear el grupo P2P (motivo: %s)</string>
+    <string name="repeater_remove_group_failure">No se pudo eliminar el grupo P2P (motivo: %s)</string>
+    <string name="repeater_remove_old_group_failure">No se pudo eliminar el antiguo grupo P2P (motivo: %s)</string>
+    <string name="repeater_set_oc_failure">No se pudo establecer el canal operativo (motivo: %s)</string>
+    <string name="repeater_set_vendor_elements_failure">No se pudieron establecer los elementos del proveedor (motivo: %s)</string>
+
+    <string name="repeater_failure_reason_error">error interno</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi directo no compatible</string>
+    <string name="repeater_failure_reason_no_service_requests">no se han añadido solicitudes de servicio</string>
+    <string name="repeater_failure_reason_unsupported_operation">operación no compatible</string>
+    <string name="repeater_failure_disconnected">Servicio no disponible. Vuelve a intentarlo más tarde</string>
+    <string name="repeater_missing_location_permissions">El repetidor requiere permisos para acceder a la ubicación precisa</string>
+    <string name="repeater_location_off">Debido a restricciones del sistema, desactivar la ubicación puede ocasionar que algunas cosas no funcionen correctamente y un mayor consumo de batería</string>
+    <string name="repeater_location_off_configure">Configurar</string>
+
+    <string name="tethering_temp_hotspot">Punto de acceso Wi\u2011Fi temporal</string>
+    <string name="tethering_location_off">Esta función requiere que la ubicación esté activada.</string>
+    <string name="tethering_temp_hotspot_failure">No se pudo iniciar el punto de acceso (motivo: %s)</string>
+    <string name="tethering_temp_hotspot_failure_no_channel">sin canal</string>
+    <string name="tethering_temp_hotspot_failure_generic">error genérico</string>
+    <string name="tethering_temp_hotspot_failure_incompatible_mode">modo incompatible</string>
+    <string name="tethering_temp_hotspot_failure_tethering_disallowed">conexión compartida no permitida</string>
+
+    <string name="tethering_monitor">Monitor…</string>
+    <string name="tethering_state_monitored">%s (monitorizado)</string>
+
+    <string name="tethering_manage">Administrar conexión compartida del sistema…</string>
+    <string name="tethering_manage_offload_enabled">Por favor, desactiva la aceleración por hardware para la conexión compartida en las opciones de desarrollador si la conexión compartida del VPN no funciona.</string>
+    <string name="tethering_manage_usb">Conexión compartida USB</string>
+    <string name="tethering_manage_wifi">Punto de acceso Wi\u2011Fi</string>
+    <string name="tethering_manage_bluetooth">Conexión compartida Bluetooth</string>
+    <string name="tethering_manage_ethernet">Conexión compartida Ethernet</string>
+    <string name="tethering_manage_ncm">Conexión compartida USB (NCM)</string>
+    <string name="tethering_manage_wifi_info">%1$d MHz, canal %2$d, ancho de banda de %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d, ancho de banda de %3$s, tiempo de espera de inactividad de %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d,
+ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
+    <plurals name="tethering_manage_wifi_capabilities">
+        <item quantity="one">%1$s/%2$d cliente conectado\nCaracterísticas compatibles: %3$s</item>
+        <item quantity="other">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
+    </plurals>
+    <plurals name="tethering_manage_wifi_clients">
+        <item quantity="one">%d cliente conectado</item>
+        <item quantity="other">%1d clientes conectados</item>
+    </plurals>
+    <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: %s</string>
+    <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: %s</string>
+    <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC aleatorio de AP</string>
+    <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Concurrencia puenteada de AP</string>
+    <string name="tethering_manage_wifi_feature_sta_ap_concurrency">Concurrencia de STA + AP</string>
+    <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">Concurrencia puenteada de STA + AP</string>
+    <string name="tethering_manage_wifi_no_features">Ninguna</string>
+    <string name="tethering_manage_wifi_client_blocked">Bloqueado %1$s: %2$s</string>
+    <string name="tethering_manage_wifi_copy_mac">Copiar MAC</string>
+
+    <string name="tethering_static_ip">IP estática</string>
+
+    <string name="connected_state_incomplete">" (conectando)"</string>
+    <string name="connected_state_valid">" (accesible)"</string>
+    <string name="connected_state_failed">" (perdido)"</string>
+
+    <string name="clients_empty">No hay clientes conectados</string>
+    <string name="clients_popup_nickname">Apodo…</string>
+    <string name="clients_popup_block">Bloquear</string>
+    <string name="clients_popup_block_service_inactive">Activa el servicio de esta interfaz para bloquear al cliente.</string>
+    <string name="clients_popup_unblock">Desbloquear</string>
+    <string name="clients_popup_stats">Estadísticas…</string>
+    <string name="clients_mac_lookup_unexpected_error">El servidor devolvió un error para %1$s: %2$s</string>
+    <string name="clients_nickname_title">Apodo para %s</string>
+    <string name="clients_nickname_set_to_vendor">← proveedor 🏳️‍🌈</string>
+    <string name="clients_stats_title">Estadísticas para %s</string>
+    <plurals name="clients_stats_message_1">
+        <item quantity="one">Conectado 1 vez desde %2$s</item>
+        <item quantity="other">Conectado %1$s veces desde %2$s</item>
+    </plurals>
+    <plurals name="clients_stats_message_2">
+        <item quantity="one">Enviado 1 paquete, %2$s</item>
+        <item quantity="other">Enviados %1$s paquetes, %2$s</item>
+    </plurals>
+    <plurals name="clients_stats_message_3">
+        <item quantity="one">Recibido 1 paquete, %2$s</item>
+        <item quantity="other">Recibidos %1$s paquetes, %2$s</item>
+    </plurals>
+
+    <string name="settings_upstream">Transmisión de subida</string>
+    <string name="settings_downstream">Transmisión de bajada</string>
+    <string name="settings_service_masquerade">Modo de enmascaramiento de IP</string>
+    <string name="settings_service_masquerade_none">Ninguno</string>
+    <string name="settings_service_masquerade_simple">Simple</string>
+    <string name="settings_service_masquerade_netd">Servicio Netd de Android</string>
+    <string name="settings_service_disable_ipv6">Desactivar conexión compartida IPv6</string>
+    <string name="settings_service_disable_ipv6_summary">Activar esta opción evitará fugas de VPN a través de IPv6.</string>
+    <string name="settings_service_auto_start">Inicio automático de servicios</string>
+    <string name="settings_service_auto_start_summary">Restaura servicios si estaban en ejecución antes de reiniciar el dispositivo o actualizar la aplicación</string>
+    <string name="settings_service_repeater_safe_mode">Modo seguro del repetidor</string>
+    <string name="settings_service_repeater_safe_mode_summary">No realiza ningún cambio en la configuración de tu sistema, pero podría no funcionar con nombres de red cortos.</string>
+    <string name="settings_service_repeater_safe_mode_warning">Los nombres de red cortos pueden requerir desactivar el modo seguro.</string>
+    <string name="settings_service_temp_hotspot_use_system">Usar config. del sistema para punto de acceso temporal</string>
+    <string name="settings_service_temp_hotspot_use_system_summary">Entrará en conflicto con otras aplicaciones que solo usan punto de acceso local</string>
+    <string name="settings_service_wifi_lock">Mantener vivo el Wi\u2011Fi</string>
+    <string name="settings_service_wifi_lock_none">Sistema por defecto</string>
+    <string name="settings_service_wifi_lock_full">Activado</string>
+    <string name="settings_service_wifi_lock_high_perf">Modo de alto rendimiento</string>
+    <string name="settings_service_wifi_lock_high_perf_v29">Desactivar ahorro de energía</string>
+    <string name="settings_service_wifi_lock_low_latency">Modo de baja latencia</string>
+    <string name="settings_service_ip_monitor">Modo de monitorización del estado de la red</string>
+    <string name="settings_service_ip_monitor_monitor">Monitorización Netlink</string>
+    <string name="settings_service_ip_monitor_monitor_root">Monitorización Netlink con root</string>
+    <string name="settings_service_ip_monitor_poll">Poll</string>
+    <string name="settings_service_ip_monitor_poll_root">Poll con root</string>
+    <string name="settings_service_upstream_monitor">Transmisiones de subida actuales</string>
+    <string name="settings_service_upstream_monitor_summary">%1$s; retorno: %2$s</string>
+    <string name="settings_service_upstream">Interfaz de red de transmisión de subida</string>
+    <string name="settings_service_upstream_auto">Detección automática de VPN del sistema</string>
+    <string name="settings_upstream_fallback">Interfaz de retorno de transmisión de subida</string>
+    <string name="settings_upstream_fallback_auto">Detección automática de red predeterminada del sistema</string>
+    <string name="settings_service_dhcp_workaround">Activar solución alternativa de DHCP</string>
+    <string name="settings_service_dhcp_workaround_summary">Úsalo si los clientes no pueden obtener direcciones IP.</string>
+    <string name="settings_service_clean">Limpiar/volver a aplicar reglas de enrutamiento</string>
+    <string name="settings_service_clean_summary">Actualiza los ajustes modificados a los servicios activos actuales. También puede corregir condiciones de carrera poco frecuentes.</string>
+    <string name="settings_system_tether_offload">Aceleración por hardware para conexión compartida</string>
+    <string name="settings_system_tether_offload_summary">Acceso directo a las opciones de desarrollador del sistema</string>
+    <string name="settings_misc">Otros</string>
+    <string name="settings_help">Ayuda</string>
+    <string name="settings_misc_logcat">Exportar información de depuración</string>
+    <string name="settings_misc_logcat_summary">Tan útil, ¡muy wow!</string>
+    <string name="settings_misc_source">Página principal del proyecto en GitHub</string>
+    <string name="settings_misc_source_summary">Leer el manual, dar estrella, enviar problemas y contribuir</string>
+    <string name="settings_misc_donate">Donar</string>
+    <string name="settings_misc_donate_summary">Me gusta el dinero</string>
+    <string name="settings_misc_donate_more">Donar con GitHub, PayPal, más...</string>
+    <string name="settings_restart_required">Reinicia esta app para aplicar esta configuración.</string>
+    <string name="settings_exit_app">Salir</string>
+
+    <string name="notification_tethering_title">Conexión compartida VPN</string>
+    <string name="notification_channel_tethering">Servicio de conexión compartida VPN</string>
+    <string name="notification_channel_monitor">Monitorizar interfaces inactivas</string>
+    <plurals name="notification_connected_devices">
+        <item quantity="one">%1$d dispositivo conectado a %2$s</item>
+        <item quantity="other">%1$d dispositivos conectados a %2$s</item>
+    </plurals>
+    <plurals name="notification_interfaces">
+        <item quantity="one">%1$d interfaz</item>
+        <item quantity="other">%1$d interfaces</item>
+    </plurals>
+    <string name="notification_interfaces_inactive">Inactiva: %s</string>
+    <plurals name="quick_settings_hotspot_secondary_label_num_devices">
+        <item quantity="one">%d dispositivo</item>
+        <item quantity="other">%d dispositivos</item>
+    </plurals>
+
+    <string name="failure_reason_unknown">desconocido #%d</string>
+    <string name="exception_interface_not_found">Fatal: No se ha encontrado la interfaz de transmisión de bajada</string>
+    <string name="noisy_su_failure">Algo salió mal, por favor verifica la información de depuración.</string>
+    <string name="permission_missing">Permiso faltante</string>
+    <string name="warn_vpn_firewall">Advertencia: La conexión compartida de VPN no funcionará con algunas aplicaciones de VPN a menos que sistematices esta aplicación o configures el DNS manualmente</string>
+    <string name="error_vpn_firewall_reboot">Por favor, reinicia tu dispositivo para que funcione la conexión compartida de VPN</string>
+
+    <string name="configuration_view">Configuración Wi\u2011Fi</string>
+    <string name="configuration_invalid">Configuración posiblemente no válida</string>
+    <string name="configuration_share">Compartir mediante código QR</string>
+    <string name="configuration_rejected">El sistema Android rechaza tal configuración. (ver logcat)</string>
+    <string name="wifi_ssid">Nombre de red</string>
+    <string name="wifi_ssid_toggle_hex">Alternar visualización hexadecimal</string>
+    <string name="wifi_security">Seguridad</string>
+    <string name="wifi_password">Contraseña</string>
+    <string name="wifi_hotspot_auto_off">Apagar punto de acceso automáticamente cuando no haya dispositivos conectados</string>
+    <string name="wifi_hotspot_timeout">Tiempo de espera de inactividad</string>
+    <string name="wifi_hotspot_timeout_default">Tiempo de espera por defecto: %dms</string>
+    <string name="wifi_hotspot_ap_band_title">Banda de AP</string>
+    <string name="wifi_ap_choose_disabled">Desactivada</string>
+    <string name="wifi_ap_choose_G">Banda de %s GHz</string>
+    <string name="wifi_hotspot_acs_channel_2g">Canales ACS de 2,4 GHz permitidos</string>
+    <string name="wifi_hotspot_acs_channel_5g">Canales ACS de 5 GHz permitidos</string>
+    <string name="wifi_hotspot_acs_channel_6g">Canales ACS de 6 GHz permitidos</string>
+    <string name="wifi_hotspot_max_channel_bandwidth">Ancho de banda máximo del canal</string>
+    <string name="wifi_hotspot_access_control_title">Control de acceso</string>
+    <string name="wifi_hotspot_ap_advanced_title">Opciones avanzadas de AP</string>
+    <string name="wifi_advanced_mac_address_title">Dirección MAC</string>
+    <string name="wifi_advanced_mac_address_persistent_randomized">Dirección MAC aleatoria persistente</string>
+    <string name="wifi_hidden_network">Red oculta</string>
+    <string name="wifi_max_clients">Número máximo de clientes</string>
+    <string name="wifi_client_user_control">Controla qué cliente puede usar el punto de acceso</string>
+    <string name="wifi_blocked_list">Lista de clientes bloqueados</string>
+    <string name="wifi_allowed_list">Lista de clientes permitidos</string>
+    <string name="wifi_mac_randomization">Usar MAC aleatorio</string>
+    <string name="wifi_mac_randomization_none">Ninguno</string>
+    <string name="wifi_mac_randomization_persistent">Persistente</string>
+    <string name="wifi_mac_randomization_non_persistent">No persistente</string>
+    <string name="wifi_bridged_mode_opportunistic_shutdown">Activar apagado oportunista de una instancia en AP puenteado</string>
+    <string name="wifi_hotspot_timeout_bridged">Tiempo de espera de inactividad para una instancia puenteada</string>
+    <string name="wifi_ieee_80211ax">Activar Wi\u2011Fi 6</string>
+    <string name="wifi_ieee_80211be">Activar Wi\u2011Fi 7</string>
+    <string name="wifi_user_config">Configuración suministrada por el usuario</string>
+    <string name="wifi_vendor_elements">Elementos del proveedor</string>
+    <string name="wifi_save">Guardar</string>
+
+    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
+    <string name="donations__button_close">Cerrar</string>
+    <string name="donations__description">¿Te resulta útil esta aplicación?\n¡Apoya su desarrollo enviando una donación al desarrollador!</string>
+    <string name="donations__google_android_market">Google Play Store</string>
+    <string name="donations__google_android_market_not_supported">No se admiten donaciones dentro de la aplicación. ¿Google Play Store está instalado correctamente?</string>
+    <string name="donations__google_android_market_description">Google cobra una tarifa del 30%</string>
+    <string name="donations__google_android_market_donate_button">¡Donar!</string>
+    <string name="donations__google_android_market_text">¿Cuánto?</string>
+    <string name="donations__thanks_dialog">¡Gracias por donar!\n¡Te lo agradezco mucho!</string>
+
+    <string name="tasker_get_tethering_state">Obtener estado de conexión compartida</string>
+    <string name="tasker_tethering_state_update">Actualización del estado de conexión compartida</string>
+</resources>
+                                                                                                                                                                                                                  
