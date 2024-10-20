@@ -15,9 +15,9 @@ import timber.log.Timber
 import java.io.IOException
 import java.time.Instant
 import java.util.concurrent.CancellationException
-import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.Duration.Companion.milliseconds
 
 object UpdateChecker {
     private const val KEY_LAST_FETCHED = "update.lastFetched"
@@ -27,7 +27,7 @@ object UpdateChecker {
 
     private data class GitHubUpdate(override val message: String, val published: Long) : AppUpdate {
         override val stalenessDays get() = max(0,
-            TimeUnit.DAYS.convert(System.currentTimeMillis() - published, TimeUnit.MILLISECONDS)).toInt()
+            (System.currentTimeMillis() - published).milliseconds.inWholeDays).toInt()
 
         override fun updateForResult(activity: Activity, requestCode: Int) {
             app.customTabsIntent.launchUrl(activity, Uri.parse("https://github.com/Mygod/VPNHotspot/releases"))
