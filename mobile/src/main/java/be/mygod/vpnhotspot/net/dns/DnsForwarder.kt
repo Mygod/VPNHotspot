@@ -11,12 +11,13 @@ import io.ktor.network.sockets.Socket
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
-import io.ktor.network.sockets.tcpNoDelay
 import io.ktor.network.sockets.toJavaAddress
 import io.ktor.util.network.port
 import io.ktor.utils.io.core.ByteReadPacket
-import io.ktor.utils.io.core.readBytes
+import io.ktor.utils.io.readFully
+import io.ktor.utils.io.readShort
 import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writeShort
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -27,8 +28,10 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.io.readByteArray
 import org.xbill.DNS.Message
 import org.xbill.DNS.Rcode
 import timber.log.Timber
@@ -76,9 +79,10 @@ class DnsForwarder : CoroutineScope {
     private fun start(useLocalnet: Boolean) {
         val selectorManager = VpnProtectedSelectorManager(SelectorManager(
             coroutineContext + newSingleThreadContext("DnsForwarder")))
-        val t = aSocket(selectorManager).tcp().tcpNoDelay().bind(if (useLocalnet) localhostAnyPort else null)
+        // these methods do not actually block
+        val t = runBlocking { aSocket(selectorManager).tcp().bind(if (useLocalnet) localhostAnyPort else null) }
         tcp = t
-        val u = aSocket(selectorManager).udp().bind(if (useLocalnet) localhostAnyPort else null)
+        val u = runBlocking { aSocket(selectorManager).udp().bind(if (useLocalnet) localhostAnyPort else null) }
         udp = u
         launch {
             while (true) {
@@ -148,7 +152,7 @@ class DnsForwarder : CoroutineScope {
     private fun handleAsync(datagram: Datagram) = launch {
 //        Timber.d("Incoming udp:${datagram.address.toJavaAddress()}")
         try {
-            val query = datagram.packet.readBytes()
+            val query = datagram.packet.readByteArray()
             val response = resolve(query) { "Packet from udp:${datagram.address.toJavaAddress()}" } ?: return@launch
             udp!!.send(Datagram(ByteReadPacket(response), datagram.address))
         } catch (e: IOException) {

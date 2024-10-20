@@ -266,7 +266,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
-    private val dispatcher = Dispatchers.Default.limitedParallelism(1)
+    private val dispatcher = Dispatchers.Default.limitedParallelism(1, "RepeaterService")
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
