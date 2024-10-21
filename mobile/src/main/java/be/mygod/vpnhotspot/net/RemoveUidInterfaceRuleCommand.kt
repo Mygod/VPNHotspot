@@ -67,8 +67,8 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
             try {
                 constants.getDeclaredField("UID_OWNER_MAP_PATH").get(null) as String?
             } catch (e: ReflectiveOperationException) {
-                Timber.w(e)
-                // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/bpf_progs/bpf_shared.h#146
+                if (Build.VERSION.SDK_INT >= 35) Timber.w(e)
+                // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/bpf_progs/bpf_shared.h#108
                 "/sys/fs/bpf/netd_shared/map_netd_uid_owner_map"
             }
         }
@@ -77,7 +77,7 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
                 constants.getDeclaredField("IIF_MATCH").getLong(null) or
                         constants.getDeclaredField("LOCKDOWN_VPN_MATCH").getLong(null)
             } catch (e: ReflectiveOperationException) {
-                Timber.w(e)
+                if (Build.VERSION.SDK_INT >= 35) Timber.w(e)
                 // https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/bpf_progs/bpf_shared.h#160
                 3 shl 7
             }
