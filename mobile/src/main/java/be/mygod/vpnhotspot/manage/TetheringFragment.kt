@@ -99,7 +99,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             val deferred = CompletableDeferred<List<Manager>>()
             listDeferred = deferred
             ifaceLookup = try {
-                NetworkInterface.getNetworkInterfaces().asSequence().associateBy { it.name }
+                NetworkInterface.getNetworkInterfaces()?.asSequence()?.associateBy { it.name } ?: emptyMap()
             } catch (e: Exception) {
                 if (e is SocketException) Timber.d(e) else Timber.w(e)
                 emptyMap()
