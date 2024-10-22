@@ -57,13 +57,18 @@ object MacLookup {
             try {
                 response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
                     val responseCode = conn.responseCode
-                    if (responseCode == 200) conn.inputStream.use {
-                        Scanner(it).run {
-                            findWithinHorizon(dataPattern, 0)
-                                ?: throw UnexpectedError(mac, findWithinHorizon(garbagePattern, 0))
+                    when (responseCode) {
+                        200 -> conn.inputStream.use {
+                            Scanner(it).run {
+                                findWithinHorizon(dataPattern, 0)
+                                    ?: throw UnexpectedError(mac, findWithinHorizon(garbagePattern, 0))
+                            }
                         }
-                    } else throw UnexpectedError(mac, "[$responseCode] " +
-                            conn.findErrorStream.bufferedReader().readText())
+                        521 -> throw IOException("[$responseCode] " +
+                                conn.findErrorStream.bufferedReader().readText())
+                        else -> throw UnexpectedError(mac, "[$responseCode] " +
+                                conn.findErrorStream.bufferedReader().readText())
+                    }
                 }
                 val obj = JSONObject(Html.fromHtml(response, 0).toString())
                 val result = if (obj.getJSONObject("blockDetails").getBoolean("blockFound")) {
