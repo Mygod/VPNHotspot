@@ -74,11 +74,11 @@
 ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="one">%1$s/%2$d cliente conectado\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="other">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
+        <item quantity="many">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="one">%d cliente conectado</item>
-        <item quantity="other">%1d clientes conectados</item>
+        <item quantity="many">%1d clientes conectados</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: %s</string>
     <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: %s</string>
@@ -108,15 +108,15 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="clients_stats_title">Estadísticas para %s</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Conectado 1 vez desde %2$s</item>
-        <item quantity="other">Conectado %1$s veces desde %2$s</item>
+        <item quantity="many">Conectado %1$s veces desde %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="one">Enviado 1 paquete, %2$s</item>
-        <item quantity="other">Enviados %1$s paquetes, %2$s</item>
+        <item quantity="many">Enviados %1$s paquetes, %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_3">
         <item quantity="one">Recibido 1 paquete, %2$s</item>
-        <item quantity="other">Recibidos %1$s paquetes, %2$s</item>
+        <item quantity="many">Recibidos %1$s paquetes, %2$s</item>
     </plurals>
 
     <string name="settings_upstream">Transmisión de subida</string>
@@ -165,7 +165,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_misc_source_summary">Leer el manual, dar estrella, enviar problemas y contribuir</string>
     <string name="settings_misc_donate">Donar</string>
     <string name="settings_misc_donate_summary">Me gusta el dinero</string>
-    <string name="settings_misc_donate_more">Donar con GitHub, PayPal, más...</string>
+    <string name="settings_misc_donate_more">Donar con GitHub, PayPal, más…</string>
     <string name="settings_restart_required">Reinicia esta app para aplicar esta configuración.</string>
     <string name="settings_exit_app">Salir</string>
 
@@ -174,16 +174,16 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="notification_channel_monitor">Monitorizar interfaces inactivas</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%1$d dispositivo conectado a %2$s</item>
-        <item quantity="other">%1$d dispositivos conectados a %2$s</item>
+        <item quantity="many">%1$d dispositivos conectados a %2$s</item>
     </plurals>
     <plurals name="notification_interfaces">
         <item quantity="one">%1$d interfaz</item>
-        <item quantity="other">%1$d interfaces</item>
+        <item quantity="many">%1$d interfaces</item>
     </plurals>
     <string name="notification_interfaces_inactive">Inactiva: %s</string>
     <plurals name="quick_settings_hotspot_secondary_label_num_devices">
         <item quantity="one">%d dispositivo</item>
-        <item quantity="other">%d dispositivos</item>
+        <item quantity="many">%d dispositivos</item>
     </plurals>
 
     <string name="failure_reason_unknown">desconocido #%d</string>
@@ -232,15 +232,14 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="wifi_vendor_elements">Elementos del proveedor</string>
     <string name="wifi_save">Guardar</string>
 
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
+    <!-- Based on: https://github.com/SufficientlySecure/donations/blob/eec86fd1db28b291bbb5ff15ad091d27a64a8477/Donations/src/main/res/values-es/donations__strings.xml -->
     <string name="donations__button_close">Cerrar</string>
     <string name="donations__description">¿Te resulta útil esta aplicación?\n¡Apoya su desarrollo enviando una donación al desarrollador!</string>
     <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">No se admiten donaciones dentro de la aplicación. ¿Google Play Store está instalado correctamente?</string>
-    <string name="donations__google_android_market_description">Google cobra una tarifa del 30%</string>
+    <string name="donations__google_android_market_not_supported">No se admiten Donaciones desde la aplicación (In-App). ¿Está instalado Google Play Store correctamente?</string>
     <string name="donations__google_android_market_donate_button">¡Donar!</string>
     <string name="donations__google_android_market_text">¿Cuánto?</string>
-    <string name="donations__thanks_dialog">¡Gracias por donar!\n¡Te lo agradezco mucho!</string>
+    <string name="donations__thanks_dialog">¡Gracias por donar!\n¡Se lo agradezco mucho!</string>
 
     <string name="tasker_get_tethering_state">Obtener estado de conexión compartida</string>
     <string name="tasker_tethering_state_update">Actualización del estado de conexión compartida</string>
