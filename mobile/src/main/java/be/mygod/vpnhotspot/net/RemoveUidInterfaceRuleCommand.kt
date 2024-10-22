@@ -11,6 +11,7 @@ import dalvik.system.PathClassLoader
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.io.File
+import java.lang.reflect.InvocationTargetException
 
 /**
  * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/NetdNativeService.cpp#1138
@@ -54,7 +55,13 @@ data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<Par
         private val firewallRemoveUidInterfaceRules by lazy {
             stub.getMethod("firewallRemoveUidInterfaceRules", IntArray::class.java)
         }
-        operator fun invoke(uid: Int) = firewallRemoveUidInterfaceRules(netd, intArrayOf(uid))
+        operator fun invoke(uid: Int) {
+            try {
+                firewallRemoveUidInterfaceRules(netd, intArrayOf(uid))
+            } catch (e: InvocationTargetException) {
+                if (e.cause?.message != "[Operation not supported on transport endpoint] : eBPF not supported") throw e
+            }
+        }
     }
 
     /**
