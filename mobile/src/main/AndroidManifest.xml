@@ -34,6 +34,9 @@
         android:usesPermissionFlags="neverForLocation"/>
     <uses-permission-sdk-23 android:name="android.permission.OVERRIDE_WIFI_CONFIG"/>
     <uses-permission-sdk-23 android:name="android.permission.READ_WIFI_CREDENTIAL"/>
+    <uses-permission-sdk-23 android:name="android.permission.SYSTEM_ALERT_WINDOW"
+        android:minSdkVersion="31"
+        android:maxSdkVersion="34"/>
     <uses-permission-sdk-23 android:name="android.permission.TETHER_PRIVILEGED"/>
     <uses-permission-sdk-23 android:name="android.permission.WRITE_SECURE_SETTINGS"/>
     <uses-permission-sdk-23 android:name="android.permission.WRITE_SETTINGS"/>
