@@ -38,7 +38,9 @@ class BootReceiver : BroadcastReceiver() {
         private const val FILENAME = "bootconfig"
         private val configFile by lazy { File(app.deviceStorage.noBackupFilesDir, FILENAME) }
         private val config: Config? get() = try {
-            DataInputStream(configFile.inputStream()).use { it.readBytes().toParcelable() }
+            DataInputStream(configFile.inputStream()).use {
+                it.readBytes().toParcelable(Config::class.java.classLoader)
+            }
         } catch (_: FileNotFoundException) {
             null
         } catch (e: Exception) {

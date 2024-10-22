@@ -545,7 +545,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
             android.R.id.paste -> try {
                 app.clipboard.primaryClip?.getItemAt(0)?.text?.apply {
-                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>()?.let { config ->
+                    Base64.decode(toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>(
+                        SoftApConfigurationCompat::class.java.classLoader)?.let { config ->
                         val newUnderlying = config.underlying
                         if (newUnderlying != null) {
                             arg.configuration.underlying?.let { check(it.javaClass == newUnderlying.javaClass) }
