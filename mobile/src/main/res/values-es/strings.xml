@@ -74,11 +74,11 @@
 ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="one">%1$s/%2$d cliente conectado\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="many">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
+        <item quantity="other">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="one">%d cliente conectado</item>
-        <item quantity="many">%1d clientes conectados</item>
+        <item quantity="other">%1d clientes conectados</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: %s</string>
     <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: %s</string>
@@ -108,15 +108,15 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="clients_stats_title">Estadísticas para %s</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Conectado 1 vez desde %2$s</item>
-        <item quantity="many">Conectado %1$s veces desde %2$s</item>
+        <item quantity="other">Conectado %1$s veces desde %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="one">Enviado 1 paquete, %2$s</item>
-        <item quantity="many">Enviados %1$s paquetes, %2$s</item>
+        <item quantity="other">Enviados %1$s paquetes, %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_3">
         <item quantity="one">Recibido 1 paquete, %2$s</item>
-        <item quantity="many">Recibidos %1$s paquetes, %2$s</item>
+        <item quantity="other">Recibidos %1$s paquetes, %2$s</item>
     </plurals>
 
     <string name="settings_upstream">Transmisión de subida</string>
@@ -174,16 +174,16 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="notification_channel_monitor">Monitorizar interfaces inactivas</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%1$d dispositivo conectado a %2$s</item>
-        <item quantity="many">%1$d dispositivos conectados a %2$s</item>
+        <item quantity="other">%1$d dispositivos conectados a %2$s</item>
     </plurals>
     <plurals name="notification_interfaces">
         <item quantity="one">%1$d interfaz</item>
-        <item quantity="many">%1$d interfaces</item>
+        <item quantity="other">%1$d interfaces</item>
     </plurals>
     <string name="notification_interfaces_inactive">Inactiva: %s</string>
     <plurals name="quick_settings_hotspot_secondary_label_num_devices">
         <item quantity="one">%d dispositivo</item>
-        <item quantity="many">%d dispositivos</item>
+        <item quantity="other">%d dispositivos</item>
     </plurals>
 
     <string name="failure_reason_unknown">desconocido #%d</string>
