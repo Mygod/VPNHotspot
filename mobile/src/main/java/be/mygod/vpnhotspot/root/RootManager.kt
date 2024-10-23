@@ -7,6 +7,7 @@ import be.mygod.librootkotlinx.AppProcess
 import be.mygod.librootkotlinx.Logger
 import be.mygod.librootkotlinx.ParcelableThrowable
 import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
 import be.mygod.librootkotlinx.systemContext
@@ -26,14 +27,12 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object RootManager : RootSession(), Logger {
+    private var logThrowable = { priority: Int, t: Throwable ->
+        if (priority >= Log.WARN) t.printStackTrace(System.err)
+    }
     @Parcelize
-    data class LoggedThrowable(val priority: Int, val t: ParcelableThrowable) : Parcelable
-    @Parcelize
-    class RootInit : RootCommandChannel<LoggedThrowable> {
-        override fun create(scope: CoroutineScope): ReceiveChannel<LoggedThrowable> {
-            var logThrowable = { priority: Int, t: Throwable ->
-                if (priority >= Log.WARN) t.printStackTrace(System.err)
-            }
+    class RootInit : RootCommandNoResult {
+        override suspend fun execute() = null.also {
             Timber.plant(object : Timber.DebugTree() {
                 @SuppressLint("LogNotTimber")
                 override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
@@ -53,7 +52,16 @@ object RootManager : RootSession(), Logger {
             Logger.me = RootManager
             Services.init { systemContext }
             UnblockCentral.needInit = false
-            val channel = Channel<Pair<Int, Throwable>>(Channel.CONFLATED) { it.second.printStackTrace(System.err) }
+        }
+    }
+    @Parcelize
+    data class LoggedThrowable(val priority: Int, val t: ParcelableThrowable) : Parcelable
+    @Parcelize
+    class RootInitLogThrowable : RootCommandChannel<LoggedThrowable> {
+        override fun create(scope: CoroutineScope): ReceiveChannel<LoggedThrowable> {
+            val channel = Channel<Pair<Int, Throwable>>(Channel.CONFLATED) { (priority, t) ->
+                if (priority >= Log.WARN) t.printStackTrace(System.err)
+            }
             return scope.produce {
                 channel.consumeEach { (priority, t) -> send(LoggedThrowable(priority, ParcelableThrowable(t))) }
             }.also {
@@ -75,11 +83,15 @@ object RootManager : RootSession(), Logger {
             FirebaseCrashlytics.getInstance().setCustomKey("RootManager.relocateEnabled", it)
             server.init(app, it)
         }
-        val throwables = server.create(RootInit(), GlobalScope)
+        server.execute(RootInit())
+        val throwables = server.create(RootInitLogThrowable(), GlobalScope)
         GlobalScope.launch {
             try {
                 throwables.consumeEach { (priority, p) -> Timber.tag("RootRemote").log(priority, p.unwrap()) }
-            } catch (_: CancellationException) { }
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
         }
     }
 }
