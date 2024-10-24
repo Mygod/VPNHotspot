@@ -288,8 +288,8 @@ object WifiApManager {
                         @Suppress("UNCHECKED_CAST")
                         callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
                     }
-                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(31) {
-                        if (Build.VERSION.SDK_INT < 31) Timber.w(Exception("Unexpected onInfoChanged API 31+"))
+                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(30) {
+                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
                         @Suppress("UNCHECKED_CAST")
                         callback.onInfoChanged(args!![0] as List<Parcelable>)
                     }
