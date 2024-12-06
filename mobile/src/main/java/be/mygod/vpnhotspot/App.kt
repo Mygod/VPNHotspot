@@ -29,6 +29,7 @@ import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.gms.dynamite.DynamiteModule
 import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.analytics.logEvent
@@ -62,6 +63,7 @@ class App : Application() {
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
+        DynamiteModule::class.java.getDeclaredField("zzf").apply { isAccessible = true }.set(null, false)
         // call super.attachInfo get around ProviderInfo check
         FirebaseInitProvider::class.java.privateLookup().findSpecial(ContentProvider::class.java, "attachInfo",
             MethodType.methodType(Void.TYPE, Context::class.java, ProviderInfo::class.java),
