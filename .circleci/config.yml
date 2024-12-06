@@ -7,7 +7,7 @@ jobs:
   test:
     executor:
       name: android/android-docker
-      tag: 2024.08.1-ndk
+      tag: 2024.11.1-ndk
       resource-class: large
     steps:
       - checkout

@@ -85,26 +85,21 @@ android {
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
-    ndkVersion = "27.0.12077973"
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
 }
 kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
 
 dependencies {
-    val lifecycleVersion = "2.8.6"
+    val lifecycleVersion = "2.8.7"
     val roomVersion = "2.6.1"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.2")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.8.0")
-    implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.fragment:fragment-ktx:1.8.4")
+    implementation("androidx.core:core-ktx:1.15.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.1")
@@ -115,13 +110,13 @@ dependencies {
     implementation("com.google.android.gms:play-services-oss-licenses:17.1.0")
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.firebase:firebase-analytics:22.1.2")
-    implementation("com.google.firebase:firebase-crashlytics:19.2.1")
+    implementation("com.google.firebase:firebase-crashlytics:19.3.0")
     implementation("com.google.zxing:core:3.5.3")
     implementation("com.jakewharton.timber:timber:5.0.1")
     implementation("com.linkedin.dexmaker:dexmaker:2.28.4")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("dnsjava:dnsjava:3.6.2")
-    implementation("io.ktor:ktor-network-jvm:3.0.0")
+    implementation("io.ktor:ktor-network-jvm:3.0.2")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
