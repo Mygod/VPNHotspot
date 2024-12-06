@@ -291,7 +291,10 @@ object WifiApManager {
                     method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(30) {
                         if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
                         @Suppress("UNCHECKED_CAST")
-                        callback.onInfoChanged(args!![0] as List<Parcelable>)
+                        val list = args!![0] as List<Parcelable>
+                        if (Build.VERSION.SDK_INT >= 35) for (info in list) (SoftApInfo.getVendorData(info) as List<*>?)
+                            .let { if (!it.isNullOrEmpty()) Timber.w(Exception(it.toString())) }
+                        callback.onInfoChanged(list)
                     }
                     Build.VERSION.SDK_INT >= 30 && method.matches("onInfoChanged", SoftApInfo.clazz) -> {
                         if (Build.VERSION.SDK_INT >= 31) return null    // ignore old version calls

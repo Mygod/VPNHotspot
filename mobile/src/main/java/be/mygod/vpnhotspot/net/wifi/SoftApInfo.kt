@@ -23,6 +23,8 @@ value class SoftApInfo(val inner: Parcelable) {
         private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
         @get:RequiresApi(31)
         private val getAutoShutdownTimeoutMillis by lazy { clazz.getDeclaredMethod("getAutoShutdownTimeoutMillis") }
+        @get:RequiresApi(35)
+        val getVendorData by lazy { clazz.getDeclaredMethod("getVendorData") }
 
         val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { clazz }
     }
