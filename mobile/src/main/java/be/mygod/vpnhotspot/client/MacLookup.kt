@@ -68,7 +68,7 @@ object MacLookup {
                                     ?: throw UnexpectedError(mac, findWithinHorizon(garbagePattern, 0))
                             }
                         }
-                        521 -> throw IOException("[$responseCode] " +
+                        521, 522 -> throw IOException("[$responseCode] " +
                                 conn.findErrorStream.bufferedReader().readText())
                         else -> throw UnexpectedError(mac, "[$responseCode] " +
                                 conn.findErrorStream.bufferedReader().readText())
