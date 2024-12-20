@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.manage
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
@@ -112,7 +113,9 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
                 registerBluetoothStateListener(BluetoothTethering)
                 pendingCallback = callback
                 @Suppress("DEPRECATION")
-                if (!adapter.enable()) context.startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
+                if (!adapter.enable()) context.startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE).apply {
+                    if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                })
             } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
         } catch (e: SecurityException) {
             SmartSnackbar.make(e.readableMessage).shortToast().show()
