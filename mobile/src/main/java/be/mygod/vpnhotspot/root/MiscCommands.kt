@@ -6,20 +6,35 @@ import android.os.Parcelable
 import android.os.RemoteException
 import android.provider.Settings
 import androidx.annotation.RequiresApi
-import be.mygod.librootkotlinx.*
+import be.mygod.librootkotlinx.ParcelableBoolean
+import be.mygod.librootkotlinx.ParcelableInt
+import be.mygod.librootkotlinx.ParcelableString
+import be.mygod.librootkotlinx.RootCommand
+import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.librootkotlinx.isEBADF
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManager
 import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.onClosed
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
+import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InterruptedIOException
 
 fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
@@ -101,7 +116,8 @@ class ProcessListener(private val terminateRegex: Regex,
                       private vararg val command: String) : RootCommandChannel<ProcessData> {
     override fun create(scope: CoroutineScope) = scope.produce(Dispatchers.IO, capacity) {
         val process = ProcessBuilder(*command).start()
-        val parent = Job()  // we need to destroy process before joining, so we cannot use coroutineScope
+        // we need to destroy process before joining, so we cannot use coroutineScope
+        val parent = Job(coroutineContext.job)
         try {
             launch(parent) {
                 try {
@@ -111,7 +127,9 @@ class ProcessListener(private val terminateRegex: Regex,
                             if (terminateRegex.containsMatchIn(line)) process.destroy()
                         }
                     }
-                } catch (_: InterruptedIOException) { }
+                } catch (_: InterruptedIOException) { } catch (e: IOException) {
+                    if (!e.isEBADF) Timber.w(e)
+                }
             }
             launch(parent) {
                 try {
@@ -120,7 +138,9 @@ class ProcessListener(private val terminateRegex: Regex,
                             return@useLines
                         }.onFailure { throw it!! }
                     }
-                } catch (_: InterruptedIOException) { }
+                } catch (_: InterruptedIOException) { } catch (e: IOException) {
+                    if (!e.isEBADF) Timber.w(e)
+                }
             }
             launch(parent) {
                 trySend(ProcessData.Exit(process.waitFor())).onClosed { return@launch }.onFailure { throw it!! }
