@@ -34,6 +34,10 @@ object MacLookup {
                 mac.toByteArray().toHexString(0, 5).substring(0, 9), error)
         override val message get() = formatMessage(app.english)
         override fun getLocalizedMessage() = formatMessage(app)
+
+        init {
+            Timber.w(message)
+        }
     }
 
 //    private val sha1 = MessageDigest.getInstance("SHA-1")
