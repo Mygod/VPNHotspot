@@ -29,8 +29,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1029
-        versionName = "2.18.2"
+        versionCode = 1030
+        versionName = "2.18.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.expandProjection", "true")
@@ -85,7 +85,6 @@ android {
         }
     }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
-    ndkVersion = "27.2.12479018"
     externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
 }
 kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
@@ -117,10 +116,10 @@ dependencies {
     implementation("com.linkedin.dexmaker:dexmaker:2.28.4")
     implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
     implementation("dnsjava:dnsjava:3.6.2")
-    implementation("io.ktor:ktor-network-jvm:3.0.2")
+    implementation("io.ktor:ktor-network-jvm:3.0.3")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.8")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.0")
     add("googleImplementation", "com.google.android.play:app-update-ktx:2.1.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")
