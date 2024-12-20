@@ -132,6 +132,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
             bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
             ncmRegexs.any { it.matcher(iface).matches() } -> NCM
             ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
+            // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/com/android/networkstack/tethering/Tethering.java;l=979;drc=b4d6320e2ae398b36f0aaafb2ecd83609d2d99af
+            iface == "avf_tap_fixed" -> VIRTUAL
             else -> NONE
         }
 
