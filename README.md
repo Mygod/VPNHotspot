@@ -244,6 +244,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_NCM:I,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_USB:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_WIFI:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIFI_P2P:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_WIGIG:I,sdk,system-api,test-api`

@@ -21,6 +21,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
     NCM(R.drawable.ic_action_settings_ethernet),
     ETHERNET(R.drawable.ic_content_inbox),
     WIGIG(R.drawable.ic_image_flash_on),
+    VIRTUAL(R.drawable.ic_deployed_code),
     ;
 
     val isWifi get() = when (this) {
@@ -142,6 +143,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             4 -> NCM
             TetheringManager.TETHERING_ETHERNET -> ETHERNET
             6 -> WIGIG
+            7 -> VIRTUAL
             else -> NONE.also { Timber.w(Exception("Unhandled tethering type $type")) }
         }
     }
