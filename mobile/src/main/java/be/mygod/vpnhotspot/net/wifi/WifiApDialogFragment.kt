@@ -225,7 +225,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 tooltipText = contentDescription
             }
         }
-        if (!arg.readOnly) dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
+        dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
                     SoftApConfigurationCompat.securityTypes).apply {
@@ -255,29 +255,28 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 }
             }
         }
-        if (!arg.readOnly) dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
+        dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
             dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
                     TetherTimeoutMonitor.defaultTimeout)
-            if (!arg.readOnly) dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.timeout.addTextChangedListener(this@WifiApDialogFragment)
         } else dialogView.timeoutWrapper.isGone = true
         fun Spinner.configure(options: List<ChannelOption>) {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0, options).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            if (!arg.readOnly) onItemSelectedListener = this@WifiApDialogFragment
+            onItemSelectedListener = this@WifiApDialogFragment
         }
         dialogView.bandPrimary.configure(currentChannels)
         if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
             dialogView.bandSecondary.configure(listOf(ChannelOption.Disabled) + currentChannels)
         } else dialogView.bandSecondary.isGone = true
-        if (arg.p2pMode || Build.VERSION.SDK_INT < 30) dialogView.accessControlGroup.isGone = true
-        else if (!arg.readOnly) {
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 30) dialogView.accessControlGroup.isGone = true else {
             dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
         }
-        if (!arg.readOnly) dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
+        dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
         if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomizationWrapper.isGone = true
@@ -292,7 +291,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 TetherTimeoutMonitor.defaultTimeoutBridged)
         }
         if (Build.VERSION.SDK_INT < 33) dialogView.vendorElementsWrapper.isGone = true
-        else if (!arg.readOnly) dialogView.vendorElements.addTextChangedListener(this@WifiApDialogFragment)
+        else dialogView.vendorElements.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode || Build.VERSION.SDK_INT < 33) {
             dialogView.ieee80211be.isGone = true
             dialogView.bridgedTimeout.isEnabled = false
@@ -304,14 +303,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 bandWidthOptions).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
-            if (!arg.readOnly) {
-                dialogView.bridgedTimeout.addTextChangedListener(this@WifiApDialogFragment)
-                dialogView.persistentRandomizedMac.addTextChangedListener(this@WifiApDialogFragment)
-                for ((_, text, _) in acsList) text.addTextChangedListener(this@WifiApDialogFragment)
-                dialogView.acs5g.addTextChangedListener(this@WifiApDialogFragment)
-                dialogView.acs6g.addTextChangedListener(this@WifiApDialogFragment)
-                dialogView.maxChannelBandwidth.onItemSelectedListener = this@WifiApDialogFragment
-            }
+            dialogView.bridgedTimeout.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.persistentRandomizedMac.addTextChangedListener(this@WifiApDialogFragment)
+            for ((_, text, _) in acsList) text.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.acs5g.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.acs6g.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.maxChannelBandwidth.onItemSelectedListener = this@WifiApDialogFragment
         }
         base = arg.configuration
         populateFromConfiguration()
