@@ -59,7 +59,7 @@ object ServiceNotification {
             try {
                 if (Build.VERSION.SDK_INT >= 33) {
                     service.startForeground(NOTIFICATION_ID, buildNotification(service),
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
                 } else service.startForeground(NOTIFICATION_ID, buildNotification(service))
             } catch (e: ForegroundServiceStartNotAllowedException) {
                 if (Build.VERSION.SDK_INT < 31 || isStart) throw e

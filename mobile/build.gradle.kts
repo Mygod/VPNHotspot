@@ -29,7 +29,7 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 35
-        versionCode = 1030
+        versionCode = 1032
         versionName = "2.18.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
@@ -93,7 +93,7 @@ dependencies {
     val lifecycleVersion = "2.8.7"
     val roomVersion = "2.6.1"
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.8.0")
@@ -119,7 +119,7 @@ dependencies {
     implementation("io.ktor:ktor-network-jvm:3.0.3")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:4.3")
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.8")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
     add("googleImplementation", "com.google.android.play:app-update-ktx:2.1.0")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.room:room-testing:$roomVersion")

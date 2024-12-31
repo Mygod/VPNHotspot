@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -141,17 +141,29 @@
         <service
             android:name=".LocalOnlyHotspotService"
             android:directBootAware="true"
-            android:foregroundServiceType="location|connectedDevice"
-            tools:ignore="ForegroundServicePermission"/>
+            android:foregroundServiceType="location|specialUse"
+            tools:ignore="ForegroundServicePermission">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep DNS servers alive while temporary Wi-Fi hotspot is active" />
+        </service>
         <service
             android:name=".RepeaterService"
             android:directBootAware="true"
-            android:foregroundServiceType="location|connectedDevice"
-            tools:ignore="ForegroundServicePermission"/>
+            android:foregroundServiceType="location|specialUse"
+            tools:ignore="ForegroundServicePermission">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep DNS servers alive while repeater is active" />
+        </service>
         <service
             android:name=".TetheringService"
             android:directBootAware="true"
-            android:foregroundServiceType="connectedDevice"/>
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep DNS servers alive while tethering services are active" />
+        </service>
 
         <service
             android:name=".manage.RepeaterTileService"
