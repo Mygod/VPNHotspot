@@ -156,7 +156,7 @@ _a.k.a. things that can go wrong if this app doesn't work._
 This is a list of stuff that might impact this app's functionality if unavailable.
 This is only meant to be an index.
 You can read more in the source code.
-API restrictions are updated up to [SHA-256 checksum `7aa0987aea4b25f5371b7e377c9f37375ada3b7e30465c0e2d910a5b646c10c1`](https://github.com/Mygod/hiddenapi/commit/67b987d88166154f8446505146ab0985a771383f).
+API restrictions are updated up to [SHA-256 checksum `36de417ba9dcf2591a5bac64363676d2b41b505dbe535b6ad866a51c38ab87b6`](https://github.com/Mygod/hiddenapi/commit/28fb152c3528e69baaff2c1372bf4ad4a10a8a7b).
 
 Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded or implicitly used)
 
