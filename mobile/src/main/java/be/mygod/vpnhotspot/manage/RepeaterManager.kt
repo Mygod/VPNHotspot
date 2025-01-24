@@ -237,7 +237,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     bssid = config.bssid
                     this to false
                 } catch (e: Exception) {
-                    if (e !is CancellationException) Timber.w(e)
+                    if (e is P2pSupplicantConfiguration.LoggedException) Timber.d(e)
+                    else if (e !is CancellationException) Timber.w(e)
                     passphrase = group.passphrase
                     try {
                         bssid = group.owner?.deviceAddress?.let(MacAddress::fromString)

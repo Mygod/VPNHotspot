@@ -6,6 +6,7 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.root.RepeaterCommands
 import be.mygod.vpnhotspot.root.RootManager
+import com.google.firebase.crashlytics.CustomKeysAndValues
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 
 /**
@@ -15,11 +16,12 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
  */
 class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
     companion object {
-        private const val TAG = "P2pSupplicantConfiguration"
         private const val PERSISTENT_MAC = "p2p_device_persistent_mac_addr="
         private val networkParser =
                 "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
     }
+
+    class LoggedException(cause: Exception) : Exception(cause)
 
     private class NetworkBlock : ArrayList<String>() {
         var ssidLine: Int? = null
@@ -132,12 +134,12 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
             }
             content = Content(result, target!!, persistentMacLine, legacy)
         } catch (e: Exception) {
-            FirebaseCrashlytics.getInstance().apply {
-                setCustomKey(TAG, config)
-                setCustomKey("$TAG.ownerAddress", ownerAddress.toString())
-                setCustomKey("$TAG.p2pGroup", group.toString())
-            }
-            throw e
+            FirebaseCrashlytics.getInstance().recordException(e, CustomKeysAndValues.Builder().apply {
+                putString("config", config)
+                ownerAddress?.let { putString("ownerAddress", it) }
+                putString("p2pGroup", group.toString())
+            }.build())
+            throw LoggedException(e)
         }
     }
     val psk by lazy { group?.passphrase ?: content.target.psk!! }
