@@ -189,7 +189,7 @@
     <string name="wifi_ssid_toggle_hex">16 進数表示に切り替え</string>
     <string name="wifi_security">セキュリティ</string>
     <string name="wifi_password">パスワード</string>
-    <string name="wifi_hotspot_auto_off">デバイスが接続されていない場合はホットスポットを自動的に OFF にします</string>
+    <string name="wifi_hotspot_auto_off">デバイスが接続されていない場合はホットスポットを自動的に OFF にする</string>
     <string name="wifi_hotspot_timeout">非アクティブのタイムアウト</string>
     <string name="wifi_hotspot_timeout_default">デフォルトのタイムアウト: %d ms</string>
     <string name="wifi_hotspot_ap_band_title">AP 帯域</string>
@@ -205,7 +205,7 @@
     <string name="wifi_advanced_mac_address_persistent_randomized">永続的なランダム化された MAC アドレス</string>
     <string name="wifi_hidden_network">非公開ネットワーク</string>
     <string name="wifi_max_clients">クライアントの最大数</string>
-    <string name="wifi_client_user_control">どのクライアントがホットスポットを使用できるか制御します</string>
+    <string name="wifi_client_user_control">どのクライアントがホットスポットを使用できるか制御する</string>
     <string name="wifi_blocked_list">クライアントのブロック一覧</string>
     <string name="wifi_allowed_list">クライアントの許可一覧</string>
     <string name="wifi_mac_randomization">ランダムな MAC を使用する</string>
@@ -214,8 +214,8 @@
     <string name="wifi_mac_randomization_non_persistent">非永続</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">ブリッジされた AP でインスタンスの日和見的なシャットダウンを有効化</string>
     <string name="wifi_hotspot_timeout_bridged">ブリッジされた非アクティブなインスタンスのタイムアウト</string>
-    <string name="wifi_ieee_80211ax">Wi\u2011Fi 6 を有効化</string>
-    <string name="wifi_ieee_80211be">Wi\u2011Fi 7 を有効化</string>
+    <string name="wifi_ieee_80211ax">Wi\u2011Fi 6 を有効化する</string>
+    <string name="wifi_ieee_80211be">Wi\u2011Fi 7 を有効化する</string>
     <string name="wifi_user_config">ユーザー指定の構成</string>
     <string name="wifi_vendor_elements">ベンダーエレメント</string>
     <string name="wifi_save">保存</string>
