@@ -23,9 +23,9 @@
     <string name="title_settings">設定</string>
     <string name="title_update">更新</string>
     <string name="repeater_channel">レピーター (%1$d MHz - チャンネル %2$d)</string>
-    <string name="repeater_wps">WPS (安全でない)</string>
+    <string name="repeater_wps">WPS (安全ではありません)</string>
     <string name="repeater_wps_dialog_title">PIN を入力してください</string>
-    <string name="repeater_wps_dialog_pbc">ボタンを押してください</string>
+    <string name="repeater_wps_dialog_pbc">WPS ボタンを押す</string>
     <string name="repeater_wps_success_pbc">2 分以内に WPS ボタンを押して
         デバイスを接続してください。</string>
     <string name="repeater_wps_success_keypad">PIN が登録されました。</string>
@@ -60,7 +60,7 @@
     <string name="tethering_state_monitored">%s (監視済み)</string>
     <string name="tethering_manage">システムのテザリングを管理…</string>
     <string name="tethering_manage_offload_enabled">VPN テザリングが機能しない場合は、開発者オプションから
-        テザリング時のハードウェア アクセラレーションを無効化してください。</string>
+        テザリング時のハードウェア アクセラレーションを無効化してください</string>
     <string name="tethering_manage_usb">USB テザリング</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi ホットスポット</string>
     <string name="tethering_manage_bluetooth">Bluetooth テザリング</string>
@@ -114,13 +114,13 @@
     <string name="settings_service_masquerade_simple">シンプル</string>
     <string name="settings_service_masquerade_netd">Android Netd サービス</string>
     <string name="settings_service_disable_ipv6">IPv6 テザリングを無効化</string>
-    <string name="settings_service_disable_ipv6_summary">このオプションを有効化すると IPv6 経由の VPN リークを防ぐことができます。</string>
+    <string name="settings_service_disable_ipv6_summary">このオプションを有効化すると IPv6 経由の VPN リークを防ぐことができます</string>
     <string name="settings_service_auto_start">サービスを自動で開始</string>
     <string name="settings_service_auto_start_summary">デバイスの再起動またはアプリの更新前に実行されていた
         サービスを復元します</string>
     <string name="settings_service_repeater_safe_mode">レピーターセーフモード</string>
     <string name="settings_service_repeater_safe_mode_summary">システム構成に変更を加えませんが
-        短いネットワーク名では機能しない可能性があります。</string>
+        短いネットワーク名では機能しない可能性があります</string>
     <string name="settings_service_repeater_safe_mode_warning">短いネットワーク名を使用する場合は
         セーフモードを OFF にする必要があります。</string>
     <string name="settings_service_temp_hotspot_use_system">一時的なホットスポットでシステム設定を使用する</string>
@@ -144,10 +144,10 @@
     <string name="settings_upstream_fallback">フォールバックアップストリームネットワークインターフェース</string>
     <string name="settings_upstream_fallback_auto">システムのデフォルトネットワークを自動検出</string>
     <string name="settings_service_dhcp_workaround">DHCP の回避策を有効化</string>
-    <string name="settings_service_dhcp_workaround_summary">クライアントが IP アドレスを取得できない場合に使用してください。</string>
+    <string name="settings_service_dhcp_workaround_summary">クライアントが IP アドレスを取得できない場合に使用してください</string>
     <string name="settings_service_clean">ルーティングルールを消去または再適用</string>
     <string name="settings_service_clean_summary">変更された設定をアクティブなサービスに更新します。
-        まれに発生する競合状態も修正できます。</string>
+        まれに発生する競合状態も修正できます</string>
     <string name="settings_system_tether_offload">テザリング時のハードウェア アクセラレーション</string>
     <string name="settings_system_tether_offload_summary">システム開発者向けオプションのショートカット</string>
     <string name="settings_misc">その他</string>
