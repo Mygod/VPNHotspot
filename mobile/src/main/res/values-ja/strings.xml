@@ -26,13 +26,13 @@
     <string name="repeater_wps">WPS (安全でない)</string>
     <string name="repeater_wps_dialog_title">PIN を入力してください</string>
     <string name="repeater_wps_dialog_pbc">ボタンを押してください</string>
-    <string name="repeater_wps_success_pbc">Please use WPS push button within the next 2 minutes to connect your
-        device.</string>
-    <string name="repeater_wps_success_keypad">PIN registered.</string>
+    <string name="repeater_wps_success_pbc">2 分以内に WPS ボタンを押して
+        デバイスを接続してください。</string>
+    <string name="repeater_wps_success_keypad">PIN が登録されました。</string>
     <string name="repeater_wps_failure">WPS の開始に失敗しました (理由: %s)</string>
-    <string name="repeater_configure_failure">Valid config not found. Please start repeater first.</string>
-    <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
-    <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>
+    <string name="repeater_configure_failure">有効な構成が見つかりません。始めにレピーターを起動してください。</string>
+    <string name="repeater_clean_pog_failure">冗長な P2P グループの削除に失敗しました (理由: %s)</string>
+    <string name="repeater_p2p_unavailable">Wi\u2011Fi Direct は使用できません。Wi\u2011Fi を有効化してください。</string>
     <string name="repeater_p2p_unavailable_enable">有効</string>
     <string name="repeater_create_group_failure">P2P グループの作成に失敗しました (理由: %s)</string>
     <string name="repeater_remove_group_failure">P2P グループの削除に失敗しました (理由: %s)</string>
@@ -40,17 +40,17 @@
     <string name="repeater_set_oc_failure">チャンネル設定の操作に失敗しました (理由: %s)</string>
     <string name="repeater_set_vendor_elements_failure">ベンダーエレメントの設定に失敗しました (理由: %s)</string>
     <string name="repeater_failure_reason_error">内部エラー</string>
-    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi ダイレクト非対応</string>
+    <string name="repeater_failure_reason_p2p_unsupported">Wi\u2011Fi Direct 非対応</string>
     <string name="repeater_failure_reason_no_service_requests">サービスリクエストは追加されていません</string>
     <string name="repeater_failure_reason_unsupported_operation">非対応の操作</string>
     <string name="repeater_failure_disconnected">サービスは利用できません。後ほどお試しください。</string>
-    <string name="repeater_missing_location_permissions">Repeater requires permissions for accessing fine
-        location</string>
-    <string name="repeater_location_off">Due to system restrictions, turning Location off may lead to things not working
-        properly and increased battery usage</string>
+    <string name="repeater_missing_location_permissions">レピーターは正確な位置情報に
+        アクセスするための権限を必要とします</string>
+    <string name="repeater_location_off">システムの制限により位置情報を OFF にすると正常に動作しなくなり
+        バッテリーの消費量が増加する可能性があります</string>
     <string name="repeater_location_off_configure">設定</string>
-    <string name="tethering_temp_hotspot">一時 Wi\u2011Fi ホットスポット</string>
-    <string name="tethering_location_off">This feature requires location to be turned on.</string>
+    <string name="tethering_temp_hotspot">一時的な Wi\u2011Fi ホットスポット</string>
+    <string name="tethering_location_off">この機能を使用するには、位置情報を ON にする必要があります。</string>
     <string name="tethering_temp_hotspot_failure">ホットスポットの開始に失敗しました (理由: %s)</string>
     <string name="tethering_temp_hotspot_failure_no_channel">チャンネルなし</string>
     <string name="tethering_temp_hotspot_failure_generic">一般的なエラー</string>
@@ -59,18 +59,16 @@
     <string name="tethering_monitor">監視…</string>
     <string name="tethering_state_monitored">%s (監視済み)</string>
     <string name="tethering_manage">システムのテザリングを管理…</string>
-    <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
-        if VPN tethering does not work.</string>
+    <string name="tethering_manage_offload_enabled">VPN テザリングが機能しない場合は、開発者オプションから
+        テザリング時のハードウェア アクセラレーションを無効化してください。</string>
     <string name="tethering_manage_usb">USB テザリング</string>
     <string name="tethering_manage_wifi">Wi\u2011Fi ホットスポット</string>
     <string name="tethering_manage_bluetooth">Bluetooth テザリング</string>
     <string name="tethering_manage_ethernet">イーサネットテザリング</string>
     <string name="tethering_manage_ncm">USB テザリング (NCM)</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
-        width %3$s, idle timeout in %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
-        width %3$s, idle timeout disabled</string>
+    <string name="tethering_manage_wifi_info">%1$d MHz - チャンネル: %2$d - 幅: %3$s</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウトまで %6$s</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウト無効</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="other">%1$s/%2$d 件のクライアントが接続済み\n対応している機能: %3$s</item>
     </plurals>
@@ -93,15 +91,15 @@
     <string name="clients_empty">クライアントが接続されていません</string>
     <string name="clients_popup_nickname">ニックネーム…</string>
     <string name="clients_popup_block">ブロック</string>
-    <string name="clients_popup_block_service_inactive">Turn on service for this interface to block the client.</string>
+    <string name="clients_popup_block_service_inactive">クライアントをブロックするには、このインターフェースのサービスを ON にします。</string>
     <string name="clients_popup_unblock">ブロックを解除</string>
     <string name="clients_popup_stats">状態…</string>
-    <string name="clients_mac_lookup_unexpected_error">Server returned error for %1$s: %2$s</string>
+    <string name="clients_mac_lookup_unexpected_error">サーバーが %1$s のエラーを返しました: %2$s</string>
     <string name="clients_nickname_title">%s のニックネーム</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 ベンダー</string>
     <string name="clients_stats_title">%s の状態</string>
     <plurals name="clients_stats_message_1">
-        <item quantity="other">Connected %1$s times since %2$s</item>
+        <item quantity="other">%1$s 以降に %2$s 回接続しました</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="other">送信: %1$s | パケット: %2$s</item>
@@ -116,18 +114,18 @@
     <string name="settings_service_masquerade_simple">シンプル</string>
     <string name="settings_service_masquerade_netd">Android Netd サービス</string>
     <string name="settings_service_disable_ipv6">IPv6 テザリングを無効化</string>
-    <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
+    <string name="settings_service_disable_ipv6_summary">このオプションを有効化すると IPv6 経由の VPN リークを防ぐことができます。</string>
     <string name="settings_service_auto_start">サービスを自動で開始</string>
-    <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
-        update</string>
+    <string name="settings_service_auto_start_summary">デバイスの再起動またはアプリの更新前に実行されていた
+        サービスを復元します</string>
     <string name="settings_service_repeater_safe_mode">レピーターセーフモード</string>
-    <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
-        not work with short network names.</string>
-    <string name="settings_service_repeater_safe_mode_warning">Short network names might require turning off safe
-        mode.</string>
-    <string name="settings_service_temp_hotspot_use_system">Use system configuration for temporary hotspot</string>
-    <string name="settings_service_temp_hotspot_use_system_summary">Will conflict with other apps using local only
-        hotspot</string>
+    <string name="settings_service_repeater_safe_mode_summary">システム構成に変更を加えませんが
+        短いネットワーク名では機能しない可能性があります。</string>
+    <string name="settings_service_repeater_safe_mode_warning">短いネットワーク名を使用する場合は
+        セーフモードを OFF にする必要があります。</string>
+    <string name="settings_service_temp_hotspot_use_system">一時的なホットスポットでシステム設定を使用する</string>
+    <string name="settings_service_temp_hotspot_use_system_summary">ローカルのみのホットスポットを使用する
+        他のアプリと競合します</string>
     <string name="settings_service_wifi_lock">Wi\u2011Fi 接続を維持</string>
     <string name="settings_service_wifi_lock_none">システムデフォルト</string>
     <string name="settings_service_wifi_lock_full">ON</string>
@@ -140,34 +138,34 @@
     <string name="settings_service_ip_monitor_poll">Poll</string>
     <string name="settings_service_ip_monitor_poll_root">Poll (root を使用)</string>
     <string name="settings_service_upstream_monitor">現在のアップストリーム</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s; fallback: %2$s</string>
+    <string name="settings_service_upstream_monitor_summary">%1$s; フォールバック: %2$s</string>
     <string name="settings_service_upstream">アップストリームネットワークインターフェース</string>
     <string name="settings_service_upstream_auto">システム VPN を自動検出</string>
     <string name="settings_upstream_fallback">フォールバックアップストリームネットワークインターフェース</string>
     <string name="settings_upstream_fallback_auto">システムのデフォルトネットワークを自動検出</string>
     <string name="settings_service_dhcp_workaround">DHCP の回避策を有効化</string>
-    <string name="settings_service_dhcp_workaround_summary">Use this if clients cannot obtain IP addresses.</string>
+    <string name="settings_service_dhcp_workaround_summary">クライアントが IP アドレスを取得できない場合に使用してください。</string>
     <string name="settings_service_clean">ルーティングルールを消去または再適用</string>
-    <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
-        race conditions.</string>
-    <string name="settings_system_tether_offload">テザリングハードウェアアクセラレーション</string>
+    <string name="settings_service_clean_summary">変更された設定をアクティブなサービスに更新します。
+        まれに発生する競合状態も修正できます。</string>
+    <string name="settings_system_tether_offload">テザリング時のハードウェア アクセラレーション</string>
     <string name="settings_system_tether_offload_summary">システム開発者向けオプションのショートカット</string>
     <string name="settings_misc">その他</string>
     <string name="settings_help">ヘルプ</string>
     <string name="settings_misc_logcat">デバッグ情報をエクスポート</string>
     <string name="settings_misc_logcat_summary">とても便利です</string>
     <string name="settings_misc_source">GitHub のプロジェクトホームページ</string>
-    <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
+    <string name="settings_misc_source_summary">マニュアルの確認、Star、問題の報告と貢献</string>
     <string name="settings_misc_donate">寄付</string>
     <string name="settings_misc_donate_summary">お金大好きです</string>
     <string name="settings_misc_donate_more">GitHub sponsors や PayPal など…</string>
-    <string name="settings_restart_required">Restart this app to apply this setting.</string>
+    <string name="settings_restart_required">この設定を適用するには、このアプリを再起動してください。</string>
     <string name="settings_exit_app">終了</string>
     <string name="notification_tethering_title">VPN テザリング</string>
     <string name="notification_channel_tethering">VPN テザリングサービス</string>
     <string name="notification_channel_monitor">非アクティブなインターフェースの監視</string>
     <plurals name="notification_connected_devices">
-        <item quantity="other">%d devices connected to %s</item>
+        <item quantity="other">%d 台のデバイスが「%s」に接続中です</item>
     </plurals>
     <plurals name="notification_interfaces">
         <item quantity="other">%d 件のインターフェース</item>
@@ -177,21 +175,21 @@
         <item quantity="other">%d 個のデバイス</item>
     </plurals>
     <string name="failure_reason_unknown">不明 #%d</string>
-    <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
-    <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
+    <string name="exception_interface_not_found">致命的: ダウンストリームインターフェースが見つかりません</string>
+    <string name="noisy_su_failure">問題が発生しました。デバッグ情報を確認してください。</string>
     <string name="permission_missing">権限がありません</string>
-    <string name="warn_vpn_firewall">Warning: VPN tethering will not work with some VPN apps unless you
-        systemize this app or configure manual DNS</string>
-    <string name="error_vpn_firewall_reboot">Please restart your device for VPN tethering to work</string>
+    <string name="warn_vpn_firewall">警告: このアプリをシステム化するか、手動で DNS を設定しない限り
+        VPN テザリングは一部の VPN アプリでは機能しません</string>
+    <string name="error_vpn_firewall_reboot">VPN テザリングを機能させるにはデバイスを再起動してください</string>
     <string name="configuration_view">Wi\u2011Fi の構成</string>
-    <string name="configuration_invalid">Possibly invalid configuration</string>
+    <string name="configuration_invalid">無効な設定の可能性があります</string>
     <string name="configuration_share">QR コードで共有</string>
-    <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
+    <string name="configuration_rejected">Android システムはこのような構成を拒否します (logcat を参照)。</string>
     <string name="wifi_ssid">ネットワーク名</string>
     <string name="wifi_ssid_toggle_hex">16 進数表示に切り替え</string>
     <string name="wifi_security">セキュリティ</string>
     <string name="wifi_password">パスワード</string>
-    <string name="wifi_hotspot_auto_off">Turn off hotspot automatically when no devices are connected</string>
+    <string name="wifi_hotspot_auto_off">デバイスが接続されていない場合はホットスポットを自動的に OFF にします</string>
     <string name="wifi_hotspot_timeout">非アクティブのタイムアウト</string>
     <string name="wifi_hotspot_timeout_default">デフォルトのタイムアウト: %d ms</string>
     <string name="wifi_hotspot_ap_band_title">AP 帯域</string>
