@@ -7,7 +7,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.tasker.TaskerPermissionManager
 import be.mygod.vpnhotspot.tasker.TetheringEventConfig
@@ -23,7 +23,7 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-class TetheringService : IpNeighbourMonitoringService(), TetheringManager.TetheringEventCallback, CoroutineScope {
+class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.TetheringEventCallback, CoroutineScope {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
@@ -95,8 +95,9 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     @RequiresApi(30)
     override fun onOffloadStatusChanged(status: Int) = when (status) {
-        TetheringManager.TETHER_HARDWARE_OFFLOAD_STOPPED, TetheringManager.TETHER_HARDWARE_OFFLOAD_FAILED -> { }
-        TetheringManager.TETHER_HARDWARE_OFFLOAD_STARTED -> {
+        TetheringManagerCompat.TETHER_HARDWARE_OFFLOAD_STOPPED,
+        TetheringManagerCompat.TETHER_HARDWARE_OFFLOAD_FAILED -> { }
+        TetheringManagerCompat.TETHER_HARDWARE_OFFLOAD_STARTED -> {
             Timber.w("TETHER_HARDWARE_OFFLOAD_STARTED")
             SmartSnackbar.make(R.string.tethering_manage_offload_enabled).show()
         }
@@ -120,7 +121,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
             }
             if (!callbackRegistered) {
                 callbackRegistered = true
-                TetheringManager.registerTetheringEventCallbackCompat(this, this)
+                TetheringManagerCompat.registerTetheringEventCallbackCompat(this, this)
                 IpNeighbourMonitor.registerCallback(this)
             }
             super.updateNotification()
@@ -178,7 +179,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManager.Tether
 
     private fun unregisterReceiver() {
         if (callbackRegistered) {
-            TetheringManager.unregisterTetheringEventCallbackCompat(this, this)
+            TetheringManagerCompat.unregisterTetheringEventCallbackCompat(this, this)
             IpNeighbourMonitor.unregisterCallback(this)
             callbackRegistered = false
         }

@@ -9,6 +9,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.TetheringManager
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
@@ -46,7 +47,7 @@ import java.util.concurrent.Executor
  * https://github.com/aegis1980/WifiHotSpot
  * https://android.googlesource.com/platform/frameworks/base.git/+/android-7.0.0_r1/core/java/android/net/ConnectivityManager.java
  */
-object TetheringManager {
+object TetheringManagerCompat {
     /**
      * Callback for use with [startTethering] to find out whether tethering succeeded.
      */
@@ -81,15 +82,6 @@ object TetheringManager {
             Timber.w(e) // prevent Binder stub swallowing the exception
         }
     }
-
-    /**
-     * Use with {@link #getSystemService(String)} to retrieve a {@link android.net.TetheringManager}
-     * for managing tethering functions.
-     * @hide
-     * @see android.net.TetheringManager
-     */
-    @RequiresApi(30)
-    const val TETHERING_SERVICE = "tethering"
 
     @RequiresApi(30)
     private const val TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector"
@@ -133,11 +125,6 @@ object TetheringManager {
 
     // tethering types supported by enableTetheringInternal: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#549
     /**
-     * Wifi tethering type.
-     * @see [startTethering].
-     */
-    const val TETHERING_WIFI = 0
-    /**
      * USB tethering type.
      *
      * Requires MANAGE_USB permission, unfortunately.
@@ -163,15 +150,6 @@ object TetheringManager {
     const val TETHERING_ETHERNET = 5
 
     @get:RequiresApi(30)
-    private val clazz by lazy { Class.forName("android.net.TetheringManager") }
-    @get:RequiresApi(30)
-    private val instance by lazy @TargetApi(30) {
-        @SuppressLint("WrongConstant")      // hidden services are not included in constants as of R preview 4
-        val service = Services.context.getSystemService(TETHERING_SERVICE)!!
-        service
-    }
-
-    @get:RequiresApi(30)
     val resolvedService get() = sequence {
         for (action in arrayOf(TETHERING_CONNECTOR_CLASS + IN_PROCESS_SUFFIX, TETHERING_CONNECTOR_CLASS)) {
             val result = app.packageManager.queryIntentServices(Intent(action), PackageManager.MATCH_SYSTEM_ONLY)
@@ -183,52 +161,32 @@ object TetheringManager {
     private val classOnStartTetheringCallback by lazy {
         Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
     }
-    private val startTetheringLegacy by lazy {
+    private val startTethering by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("startTethering",
                 Int::class.java, Boolean::class.java, classOnStartTetheringCallback, Handler::class.java)
     }
-    private val stopTetheringLegacy by lazy {
+    private val stopTethering by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("stopTethering", Int::class.java)
     }
     private val getLastTetherError by lazy @SuppressLint("SoonBlockedPrivateApi") {
         ConnectivityManager::class.java.getDeclaredMethod("getLastTetherError", String::class.java)
     }
 
-    @get:RequiresApi(30)
-    private val classTetheringRequestBuilder by lazy {
-        Class.forName("android.net.TetheringManager\$TetheringRequest\$Builder")
-    }
-    @get:RequiresApi(30)
-    private val newTetheringRequestBuilder by lazy @TargetApi(30) {
-        classTetheringRequestBuilder.getConstructor(Int::class.java)
-    }
 //    @get:RequiresApi(30)
 //    private val setStaticIpv4Addresses by lazy {
-//        classTetheringRequestBuilder.getDeclaredMethod("setStaticIpv4Addresses",
+//        TetheringManager.TetheringRequest.Builder::class.java.getDeclaredMethod("setStaticIpv4Addresses",
 //                LinkAddress::class.java, LinkAddress::class.java)
 //    }
     @get:RequiresApi(30)
     private val setExemptFromEntitlementCheck by lazy @TargetApi(30) {
-        classTetheringRequestBuilder.getDeclaredMethod("setExemptFromEntitlementCheck", Boolean::class.java)
+        TetheringManager.TetheringRequest.Builder::class.java.getDeclaredMethod("setExemptFromEntitlementCheck",
+            Boolean::class.java)
     }
     @get:RequiresApi(30)
     private val setShouldShowEntitlementUi by lazy @TargetApi(30) {
-        classTetheringRequestBuilder.getDeclaredMethod("setShouldShowEntitlementUi", Boolean::class.java)
+        TetheringManager.TetheringRequest.Builder::class.java.getDeclaredMethod("setShouldShowEntitlementUi",
+            Boolean::class.java)
     }
-    @get:RequiresApi(30)
-    private val build by lazy @TargetApi(30) { classTetheringRequestBuilder.getDeclaredMethod("build") }
-
-    @get:RequiresApi(30)
-    private val interfaceStartTetheringCallback by lazy {
-        Class.forName("android.net.TetheringManager\$StartTetheringCallback")
-    }
-    @get:RequiresApi(30)
-    private val startTethering by lazy @TargetApi(30) {
-        clazz.getDeclaredMethod("startTethering", Class.forName("android.net.TetheringManager\$TetheringRequest"),
-                Executor::class.java, interfaceStartTetheringCallback)
-    }
-    @get:RequiresApi(30)
-    private val stopTethering by lazy @TargetApi(30) { clazz.getDeclaredMethod("stopTethering", Int::class.java) }
 
     @Deprecated("Legacy API")
     fun startTetheringLegacy(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
@@ -245,34 +203,28 @@ object TetheringManager {
                 ProxyBuilder.callSuper(proxy, method, args)
             }
         }.build()
-        startTetheringLegacy(Services.connectivity, type, showProvisioningUi, proxy, handler)
+        startTethering(Services.connectivity, type, showProvisioningUi, proxy, handler)
     }
     @RequiresApi(30)
     fun startTethering(type: Int, exemptFromEntitlementCheck: Boolean, showProvisioningUi: Boolean, executor: Executor,
-                       proxy: Any) {
-        startTethering(instance, newTetheringRequestBuilder.newInstance(type).let { builder ->
+                       callback: TetheringManager.StartTetheringCallback) {
+        Services.tethering.startTethering(TetheringManager.TetheringRequest.Builder(type).also { builder ->
             // setting exemption requires TETHER_PRIVILEGED permission
             if (exemptFromEntitlementCheck) setExemptFromEntitlementCheck(builder, true)
             setShouldShowEntitlementUi(builder, showProvisioningUi)
-            build(builder)
-        }, executor, proxy)
+        }.build(), executor, callback)
     }
     @RequiresApi(30)
-    fun proxy(callback: StartTetheringCallback): Any {
+    private fun proxy(callback: StartTetheringCallback): TetheringManager.StartTetheringCallback {
         val reference = WeakReference(callback)
-        return Proxy.newProxyInstance(interfaceStartTetheringCallback.classLoader,
-                arrayOf(interfaceStartTetheringCallback), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                @Suppress("NAME_SHADOWING") val callback = reference.get()
-                return when {
-                    method.matches("onTetheringStarted") -> callback?.onTetheringStarted()
-                    method.matches("onTetheringFailed", Integer.TYPE) -> {
-                        callback?.onTetheringFailed(args?.get(0) as Int)
-                    }
-                    else -> callSuper(interfaceStartTetheringCallback, proxy, method, args)
-                }
+        return object : TetheringManager.StartTetheringCallback {
+            override fun onTetheringStarted() {
+                reference.get()?.onTetheringStarted()
             }
-        })
+            override fun onTetheringFailed(error: Int) {
+                reference.get()?.onTetheringFailed(error)
+            }
+        }
     }
     /**
      * Runs tether provisioning for the given type if needed and then starts tethering if
@@ -305,8 +257,9 @@ object TetheringManager {
                     executor, proxy(object : StartTetheringCallback {
                 override fun onTetheringStarted() = callback.onTetheringStarted()
                 override fun onTetheringFailed(error: Int?) {
-                    if (error != TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) callback.onTetheringFailed(error)
-                    else GlobalScope.launch(Dispatchers.Unconfined) {
+                    if (error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
+                        callback.onTetheringFailed(error)
+                    } else GlobalScope.launch(Dispatchers.Unconfined) {
                         val result = try {
                             RootManager.use { it.execute(StartTethering(type, showProvisioningUi)) }
                         } catch (eRoot: Exception) {
@@ -321,7 +274,7 @@ object TetheringManager {
                         }
                         when {
                             result == null -> callback.onTetheringStarted()
-                            result.value == TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION -> try {
+                            result.value == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION -> try {
                                 startTethering(type, false, showProvisioningUi, executor, proxy(callback))
                             } catch (e: Exception) {
                                 callback.onException(e)
@@ -369,8 +322,8 @@ object TetheringManager {
      *         {@link ConnectivityManager.TETHERING_BLUETOOTH}.
      */
     fun stopTethering(type: Int) {
-        if (Build.VERSION.SDK_INT >= 30) stopTethering(instance, type)
-        else stopTetheringLegacy(Services.connectivity, type)
+        // TODO: support API 36 callback
+        stopTethering(Services.connectivity, type)
     }
     fun stopTethering(type: Int, errorCallback: (Exception) -> Unit, successCallback: (() -> Unit)? = null) {
         try {
@@ -504,20 +457,7 @@ object TetheringManager {
         fun onOffloadStatusChanged(status: Int) {}
     }
 
-    @get:RequiresApi(30)
-    private val interfaceTetheringEventCallback by lazy {
-        Class.forName("android.net.TetheringManager\$TetheringEventCallback")
-    }
-    @get:RequiresApi(30)
-    private val registerTetheringEventCallback by lazy @TargetApi(30) {
-        clazz.getDeclaredMethod("registerTetheringEventCallback", Executor::class.java, interfaceTetheringEventCallback)
-    }
-    @get:RequiresApi(30)
-    private val unregisterTetheringEventCallback by lazy @TargetApi(30) {
-        clazz.getDeclaredMethod("unregisterTetheringEventCallback", interfaceTetheringEventCallback)
-    }
-
-    private val callbackMap = mutableMapOf<TetheringEventCallback, Any>()
+    private val callbackMap = mutableMapOf<TetheringEventCallback, TetheringManager.TetheringEventCallback>()
     /**
      * Start listening to tethering change events. Any new added callback will receive the last
      * tethering status right away. If callback is registered,
@@ -537,8 +477,8 @@ object TetheringManager {
             var computed = false
             callbackMap.computeIfAbsent(callback) {
                 computed = true
-                Proxy.newProxyInstance(interfaceTetheringEventCallback.classLoader,
-                        arrayOf(interfaceTetheringEventCallback), object : InvocationHandler {
+                Proxy.newProxyInstance(TetheringManager.TetheringEventCallback::class.java.classLoader,
+                        arrayOf(TetheringManager.TetheringEventCallback::class.java), object : InvocationHandler {
                     private var regexpsSent = false
                     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                         @Suppress("NAME_SHADOWING")
@@ -578,13 +518,13 @@ object TetheringManager {
                             method.matches("onOffloadStatusChanged", Integer.TYPE) -> {
                                 callback?.onOffloadStatusChanged(args!![0] as Int)
                             }
-                            else -> callSuper(interfaceTetheringEventCallback, proxy, method, args)
+                            else -> callSuper(TetheringManager.TetheringEventCallback::class.java, proxy, method, args)
                         }
                     }
-                })
+                }) as TetheringManager.TetheringEventCallback
             }.also { if (!computed) return }
         }
-        registerTetheringEventCallback(instance, executor ?: InPlaceExecutor, proxy)
+        Services.tethering.registerTetheringEventCallback(executor ?: InPlaceExecutor, proxy)
     }
     /**
      * Remove tethering event callback previously registered with
@@ -598,20 +538,21 @@ object TetheringManager {
     fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
         val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
         try {
-            unregisterTetheringEventCallback(instance, proxy)
-        } catch (e: InvocationTargetException) {
-            if (!e.targetException.let { it is IllegalStateException && it.cause is DeadObjectException }) throw e
+            Services.tethering.unregisterTetheringEventCallback(proxy)
+        } catch (e: IllegalStateException) {
+            if (e.cause !is DeadObjectException) throw e
         }
     }
 
+    val callbackLegacyMap = mutableMapOf<TetheringEventCallback, BroadcastReceiver>()
     /**
      * [registerTetheringEventCallback] in a backwards compatible way.
      *
      * Only [TetheringEventCallback.onTetheredInterfacesChanged] is supported on API 29-.
      */
     fun registerTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (Build.VERSION.SDK_INT < 30) synchronized(callbackMap) {
-            callbackMap.computeIfAbsent(callback) {
+        if (Build.VERSION.SDK_INT < 30) synchronized(callbackLegacyMap) {
+            callbackLegacyMap.computeIfAbsent(callback) {
                 broadcastReceiver { _, intent ->
                     callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
                 }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
@@ -620,8 +561,8 @@ object TetheringManager {
     }
     fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
         if (Build.VERSION.SDK_INT < 30) {
-            val receiver = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
-            context.ensureReceiverUnregistered(receiver as BroadcastReceiver)
+            val receiver = synchronized(callbackLegacyMap) { callbackLegacyMap.remove(callback) } ?: return
+            context.ensureReceiverUnregistered(receiver)
         } else unregisterTetheringEventCallback(callback)
     }
 
@@ -641,9 +582,9 @@ object TetheringManager {
             "TETHER_ERROR_UNSUPPORTED", "TETHER_ERROR_UNAVAIL_IFACE", "TETHER_ERROR_MASTER_ERROR",
             "TETHER_ERROR_TETHER_IFACE_ERROR", "TETHER_ERROR_UNTETHER_IFACE_ERROR", "TETHER_ERROR_ENABLE_NAT_ERROR",
             "TETHER_ERROR_DISABLE_NAT_ERROR", "TETHER_ERROR_IFACE_CFG_ERROR", "TETHER_ERROR_PROVISION_FAILED",
-            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") @TargetApi(30) { clazz }
-    @RequiresApi(30)
-    const val TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION = 14
+            "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") @TargetApi(30) {
+        TetheringManager::class.java
+    }
 
     val Intent.tetheredIfaces get() = getStringArrayListExtra(EXTRA_ACTIVE_TETHER)
     val Intent.localOnlyTetheredIfaces get() = getStringArrayListExtra(

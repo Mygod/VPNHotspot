@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.TetheringManager
 import android.os.Build
 import android.os.Parcelable
 import android.provider.Settings
@@ -24,7 +25,7 @@ import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.*
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.*
@@ -37,7 +38,7 @@ import java.lang.reflect.InvocationTargetException
 import java.util.*
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
-        TetheringManager.StartTetheringCallback {
+        TetheringManagerCompat.StartTetheringCallback {
     class ViewHolder(private val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
             View.OnClickListener {
         init {
@@ -103,7 +104,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     override fun onTetheringFailed(error: Int?) {
         Timber.d("onTetheringFailed: $error")
         if (Build.VERSION.SDK_INT < 30 || error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-            error?.let { SmartSnackbar.make("$tetherType: ${TetheringManager.tetherErrorLookup(it)}").show() }
+            error?.let { SmartSnackbar.make("$tetherType: ${TetheringManagerCompat.tetherErrorLookup(it)}").show() }
         } else GlobalScope.launch(Dispatchers.Main.immediate) {
             val context = parent.context ?: app
             Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
@@ -128,8 +129,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         val interested = errored.filter { TetherType.ofInterface(it).isA(tetherType) }
         baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
             "$iface: " + try {
-                TetheringManager.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
-                    TetheringManager.getLastTetherError(iface)
+                TetheringManagerCompat.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                    TetheringManagerCompat.getLastTetherError(iface)
                 } else lastErrors[iface] ?: 0)
             } catch (e: InvocationTargetException) {
                 if (e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
@@ -260,16 +261,17 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             }, formatCapability(locale)).joinToSpanned("\n")
         }
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManager.TETHERING_WIFI, true, this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
     }
     class Usb(parent: TetheringFragment) : TetherManager(parent) {
         override val title get() = parent.getString(R.string.tethering_manage_usb)
         override val tetherType get() = TetherType.USB
         override val type get() = VIEW_TYPE_USB
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_USB, true, this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_USB,
+            this::onException)
     }
     class Bluetooth(parent: TetheringFragment, adapter: BluetoothAdapter) :
         TetherManager(parent), DefaultLifecycleObserver {
@@ -313,7 +315,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.ETHERNET
         override val type get() = VIEW_TYPE_ETHERNET
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_ETHERNET, true,
+            this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_ETHERNET,
+            this::onException)
     }
 }

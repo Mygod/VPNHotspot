@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.drawable.Icon
+import android.net.TetheringManager
 import android.os.Build
 import android.os.IBinder
 import android.service.quicksettings.Tile
@@ -15,8 +16,8 @@ import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
@@ -25,7 +26,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManager.StartTetheringCallback {
+sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManagerCompat.StartTetheringCallback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -48,7 +49,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         super.onStartListening()
         bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
         // we need to initialize tethered ASAP for onClick, which is not achievable using registerTetheringEventCallback
-        tethered = registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        tethered = registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
                 ?.tetheredIfaces
         if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = this::updateTile
         updateTile()
@@ -122,7 +123,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         Timber.d("onTetheringFailed: $error")
         if (error != null) GlobalScope.launch(Dispatchers.Main.immediate) {
             dismiss()
-            Toast.makeText(this@TetheringTileService, TetheringManager.tetherErrorLookup(error),
+            Toast.makeText(this@TetheringTileService, TetheringManagerCompat.tetherErrorLookup(error),
                     Toast.LENGTH_LONG).show()
         }
         updateTile()
@@ -140,15 +141,16 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val tetherType get() = TetherType.WIFI
         override val icon get() = R.drawable.ic_device_wifi_tethering
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_WIFI, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManager.TETHERING_WIFI, true, this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManager.TETHERING_WIFI, this::onException)
     }
     class Usb : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_usb
         override val tetherType get() = TetherType.USB
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_USB, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_USB, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_USB, true, this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_USB,
+            this::onException)
     }
     class Bluetooth : TetheringTileService() {
         private var tethering: BluetoothTethering? = null
@@ -232,7 +234,9 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         override val labelString get() = R.string.tethering_manage_ethernet
         override val tetherType get() = TetherType.ETHERNET
 
-        override fun start() = TetheringManager.startTethering(TetheringManager.TETHERING_ETHERNET, true, this)
-        override fun stop() = TetheringManager.stopTethering(TetheringManager.TETHERING_ETHERNET, this::onException)
+        override fun start() = TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_ETHERNET, true,
+            this)
+        override fun stop() = TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_ETHERNET,
+            this::onException)
     }
 }

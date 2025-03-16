@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.root
 
 import android.content.Context
+import android.net.TetheringManager
 import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
@@ -16,7 +17,7 @@ import be.mygod.librootkotlinx.isEBADF
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.CompletableDeferred
@@ -167,18 +168,17 @@ data class StartTethering(private val type: Int,
                           private val showProvisioningUi: Boolean) : RootCommand<ParcelableInt?> {
     override suspend fun execute(): ParcelableInt? {
         val future = CompletableDeferred<Int?>()
-        val callback = object : TetheringManager.StartTetheringCallback {
+        TetheringManagerCompat.startTethering(type, true, showProvisioningUi, {
+            GlobalScope.launch(Dispatchers.Unconfined) { it.run() }
+        }, object : TetheringManager.StartTetheringCallback {
             override fun onTetheringStarted() {
                 future.complete(null)
             }
 
-            override fun onTetheringFailed(error: Int?) {
-                future.complete(error!!)
+            override fun onTetheringFailed(error: Int) {
+                future.complete(error)
             }
-        }
-        TetheringManager.startTethering(type, true, showProvisioningUi, {
-            GlobalScope.launch(Dispatchers.Unconfined) { it.run() }
-        }, TetheringManager.proxy(callback))
+        })
         return future.await()?.let { ParcelableInt(it) }
     }
 }
@@ -190,7 +190,7 @@ data class StartTetheringLegacy(private val cacheDir: File, private val type: In
                                 private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
     override suspend fun execute(): ParcelableBoolean {
         val future = CompletableDeferred<Boolean>()
-        val callback = object : TetheringManager.StartTetheringCallback {
+        val callback = object : TetheringManagerCompat.StartTetheringCallback {
             override fun onTetheringStarted() {
                 future.complete(true)
             }
@@ -200,7 +200,7 @@ data class StartTetheringLegacy(private val cacheDir: File, private val type: In
                 future.complete(false)
             }
         }
-        TetheringManager.startTetheringLegacy(type, showProvisioningUi, callback, cacheDir = cacheDir)
+        TetheringManagerCompat.startTetheringLegacy(type, showProvisioningUi, callback, cacheDir = cacheDir)
         return ParcelableBoolean(future.await())
     }
 }
@@ -208,7 +208,7 @@ data class StartTetheringLegacy(private val cacheDir: File, private val type: In
 @Parcelize
 data class StopTethering(private val type: Int) : RootCommandNoResult {
     override suspend fun execute(): Parcelable? {
-        TetheringManager.stopTethering(type)
+        TetheringManagerCompat.stopTethering(type)
         return null
     }
 }

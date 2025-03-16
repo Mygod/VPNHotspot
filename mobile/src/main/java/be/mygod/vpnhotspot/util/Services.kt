@@ -4,10 +4,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkRequest
+import android.net.TetheringManager
 import android.net.wifi.WifiManager
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import timber.log.Timber
 
@@ -29,6 +31,8 @@ object Services {
         }
     }
     val wifi by lazy { context.getSystemService<WifiManager>()!! }
+    @get:RequiresApi(30)
+    val tethering by lazy { context.getSystemService<TetheringManager>()!! }
 
     val netd by lazy @SuppressLint("WrongConstant") { context.getSystemService("netd")!! }
 

@@ -3,7 +3,7 @@ package be.mygod.vpnhotspot.root
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootCommandChannel
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.ClosedSendChannelException
@@ -19,7 +19,7 @@ object TetheringCommands {
      */
     @Parcelize
     data class OnClientsChanged(val clients: List<Parcelable>) : Parcelable {
-        fun dispatch(callback: TetheringManager.TetheringEventCallback) = callback.onClientsChanged(clients)
+        fun dispatch(callback: TetheringManagerCompat.TetheringEventCallback) = callback.onClientsChanged(clients)
     }
 
     @Parcelize
@@ -27,7 +27,7 @@ object TetheringCommands {
     class RegisterTetheringEventCallback : RootCommandChannel<OnClientsChanged> {
         override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
             val finish = CompletableDeferred<Unit>()
-            val callback = object : TetheringManager.TetheringEventCallback {
+            val callback = object : TetheringManagerCompat.TetheringEventCallback {
                 private fun push(parcel: OnClientsChanged) {
                     trySend(parcel).onClosed {
                         finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
@@ -38,7 +38,7 @@ object TetheringCommands {
                 override fun onClientsChanged(clients: Collection<Parcelable>) =
                     push(OnClientsChanged(clients.toList()))
             }
-            TetheringManager.registerTetheringEventCallback(callback) {
+            TetheringManagerCompat.registerTetheringEventCallback(callback) {
                 scope.launch {
                     try {
                         it.run()
@@ -50,7 +50,7 @@ object TetheringCommands {
             try {
                 finish.await()
             } finally {
-                TetheringManager.unregisterTetheringEventCallback(callback)
+                TetheringManagerCompat.unregisterTetheringEventCallback(callback)
             }
         }
     }

@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net
 
 import android.content.res.Resources
+import android.net.TetheringManager
 import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
@@ -31,7 +32,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
     fun isA(other: TetherType) = this == other || other == USB && this == NCM
 
-    companion object : TetheringManager.TetheringEventCallback {
+    companion object : TetheringManagerCompat.TetheringEventCallback {
         private lateinit var usbRegexs: List<Pattern>
         private lateinit var wifiRegexs: List<Pattern>
         private var wigigRegexs = emptyList<Pattern>()
@@ -64,8 +65,8 @@ enum class TetherType(@DrawableRes val icon: Int) {
             usbRegexs = emptyList()
             wifiRegexs = emptyList()
             bluetoothRegexs = emptyList()
-            TetheringManager.registerTetheringEventCallback(this)
-            val info = TetheringManager.resolvedService.serviceInfo
+            TetheringManagerCompat.registerTetheringEventCallback(this)
+            val info = TetheringManagerCompat.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
                     app.packageManager.getResourcesForApplication(info.applicationInfo)
             usbRegexs = tethering.getRegexs("config_tether_usb_regexs", info.packageName)
@@ -80,7 +81,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
         override fun onTetherableInterfaceRegexpsChanged(reg: Any?) = synchronized(this) {
             if (requiresUpdate) return@synchronized
             Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
-            TetheringManager.unregisterTetheringEventCallback(this)
+            TetheringManagerCompat.unregisterTetheringEventCallback(this)
             requiresUpdate = true
             listener()
         }
@@ -106,7 +107,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
         /**
          * The result could change for the same interface since API 30+.
-         * It will be triggered by [TetheringManager.TetheringEventCallback.onTetherableInterfaceRegexpsChanged].
+         * It will be triggered by [TetheringManagerCompat.TetheringEventCallback.onTetherableInterfaceRegexpsChanged].
          *
          * Based on: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#479
          */
@@ -139,11 +140,11 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
         fun fromTetheringType(type: Int) = when (type) {
             TetheringManager.TETHERING_WIFI -> WIFI
-            TetheringManager.TETHERING_USB -> USB
-            TetheringManager.TETHERING_BLUETOOTH -> BLUETOOTH
+            TetheringManagerCompat.TETHERING_USB -> USB
+            TetheringManagerCompat.TETHERING_BLUETOOTH -> BLUETOOTH
             3 -> WIFI_P2P
             4 -> NCM
-            TetheringManager.TETHERING_ETHERNET -> ETHERNET
+            TetheringManagerCompat.TETHERING_ETHERNET -> ETHERNET
             6 -> WIGIG
             7 -> VIRTUAL
             else -> NONE.also { Timber.w(Exception("Unhandled tethering type $type")) }

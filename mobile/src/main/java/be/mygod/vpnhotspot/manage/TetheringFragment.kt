@@ -25,9 +25,9 @@ import be.mygod.vpnhotspot.*
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.databinding.FragmentTetheringBinding
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
-import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.net.TetheringManagerCompat.localOnlyTetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
@@ -49,7 +49,7 @@ import java.net.SocketException
 
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
-        TetheringManager.TetheringEventCallback {
+        TetheringManagerCompat.TetheringEventCallback {
         internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
         internal val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
         private val staticIpManager by lazy { StaticIpManager(this@TetheringFragment) }
@@ -152,7 +152,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     private val receiver = broadcastReceiver { _, intent ->
         adapter.activeIfaces = intent.tetheredIfaces ?: return@broadcastReceiver
         adapter.localOnlyIfaces = intent.localOnlyTetheredIfaces ?: return@broadcastReceiver
-        adapter.erroredIfaces = intent.getStringArrayListExtra(TetheringManager.EXTRA_ERRORED_TETHER)
+        adapter.erroredIfaces = intent.getStringArrayListExtra(TetheringManagerCompat.EXTRA_ERRORED_TETHER)
             ?: return@broadcastReceiver
         adapter.updateEnabledTypes()
         adapter.update()
@@ -320,9 +320,9 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 withStarted { adapter.update() }
             }
         }
-        requireContext().registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        requireContext().registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
         if (Build.VERSION.SDK_INT >= 30) {
-            TetheringManager.registerTetheringEventCallback(adapter)
+            TetheringManagerCompat.registerTetheringEventCallback(adapter)
             TetherType.listener[this] = {
                 lifecycleScope.launch { adapter.notifyTetherTypeChanged() }
             }
@@ -334,7 +334,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         binder = null
         if (Build.VERSION.SDK_INT >= 30) {
             TetherType.listener -= this
-            TetheringManager.unregisterTetheringEventCallback(adapter)
+            TetheringManagerCompat.unregisterTetheringEventCallback(adapter)
             adapter.lastErrors.clear()
         }
         requireContext().unregisterReceiver(receiver)

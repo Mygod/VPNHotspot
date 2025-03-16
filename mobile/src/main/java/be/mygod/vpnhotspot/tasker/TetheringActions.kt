@@ -3,11 +3,12 @@ package be.mygod.vpnhotspot.tasker
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.TetheringManager
 import android.os.Build
 import android.os.Bundle
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import com.joaomgcd.taskerpluginlibrary.action.TaskerPluginRunnerActionNoOutput
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfig
 import com.joaomgcd.taskerpluginlibrary.config.TaskerPluginConfigHelperNoOutput
@@ -53,10 +54,10 @@ sealed class ActionConfig(tetherType: Int) : AppCompatActivity(), TaskerPluginCo
     }
 
     class WifiConfig : ActionConfig(TetheringManager.TETHERING_WIFI)
-    class USBConfig : ActionConfig(TetheringManager.TETHERING_USB)
-    class BluetoothConfig : ActionConfig(TetheringManager.TETHERING_BLUETOOTH)
+    class USBConfig : ActionConfig(TetheringManagerCompat.TETHERING_USB)
+    class BluetoothConfig : ActionConfig(TetheringManagerCompat.TETHERING_BLUETOOTH)
     @RequiresApi(Build.VERSION_CODES.R)
-    class EthernetConfig : ActionConfig(TetheringManager.TETHERING_ETHERNET)
+    class EthernetConfig : ActionConfig(TetheringManagerCompat.TETHERING_ETHERNET)
 }
 
 class ActionHelper(
@@ -82,7 +83,7 @@ class ActionRunner : TaskerPluginRunnerActionNoOutput<ActionInput>() {
             suspendCoroutine { continuation ->
                 try {
                     if (input.regular.enable) {
-                        TetheringManager.startTethering(input.regular.tetherType, true, object : TetheringManager.StartTetheringCallback {
+                        TetheringManagerCompat.startTethering(input.regular.tetherType, true, object : TetheringManagerCompat.StartTetheringCallback {
                             override fun onTetheringStarted() {
                                 continuation.resume(TaskerPluginResultSucess())
                             }
@@ -96,7 +97,7 @@ class ActionRunner : TaskerPluginRunnerActionNoOutput<ActionInput>() {
                             }
                         })
                     } else {
-                        TetheringManager.stopTethering(
+                        TetheringManagerCompat.stopTethering(
                             type = input.regular.tetherType,
                             errorCallback = {
                                 continuation.resume(TaskerPluginResultError(it))

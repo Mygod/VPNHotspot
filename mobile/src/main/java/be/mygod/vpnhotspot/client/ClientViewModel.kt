@@ -20,9 +20,9 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManager
-import be.mygod.vpnhotspot.net.TetheringManager.localOnlyTetheredIfaces
-import be.mygod.vpnhotspot.net.TetheringManager.tetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.net.TetheringManagerCompat.localOnlyTetheredIfaces
+import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback, DefaultLifecycleObserver,
-    WifiApManager.SoftApCallbackCompat, TetheringManager.TetheringEventCallback {
+    WifiApManager.SoftApCallbackCompat, TetheringManagerCompat.TetheringEventCallback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
         private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
@@ -164,7 +164,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        app.registerReceiver(receiver, IntentFilter(TetheringManager.ACTION_TETHER_STATE_CHANGED))
+        app.registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
         IpNeighbourMonitor.registerCallback(this, false)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }

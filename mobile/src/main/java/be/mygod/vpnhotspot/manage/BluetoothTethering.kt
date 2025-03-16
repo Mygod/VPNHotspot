@@ -10,7 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.TetheringManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -32,16 +32,15 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
 
-        private var pendingCallback: TetheringManager.StartTetheringCallback? = null
+        private var pendingCallback: TetheringManagerCompat.StartTetheringCallback? = null
 
         /**
          * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#215
          */
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR)) {
-                BluetoothAdapter.STATE_ON -> {
-                    TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, pendingCallback!!)
-                }
+                BluetoothAdapter.STATE_ON -> TetheringManagerCompat.startTethering(
+                    TetheringManagerCompat.TETHERING_BLUETOOTH, true, pendingCallback!!)
                 BluetoothAdapter.STATE_OFF, BluetoothAdapter.ERROR -> { }
                 else -> return  // ignore transition states
             }
@@ -107,7 +106,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
      * https://android.googlesource.com/platform/packages/apps/Settings/+/b1af85d/src/com/android/settings/TetherSettings.java#384
      */
     @SuppressLint("MissingPermission")
-    fun start(callback: TetheringManager.StartTetheringCallback, context: Context) {
+    fun start(callback: TetheringManagerCompat.StartTetheringCallback, context: Context) {
         if (pendingCallback == null) try {
             if (adapter.state == BluetoothAdapter.STATE_OFF) {
                 registerBluetoothStateListener(BluetoothTethering)
@@ -116,14 +115,14 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
                 if (!adapter.enable()) context.startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE).apply {
                     if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 })
-            } else TetheringManager.startTethering(TetheringManager.TETHERING_BLUETOOTH, true, callback)
+            } else TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, true, callback)
         } catch (e: SecurityException) {
             SmartSnackbar.make(e.readableMessage).shortToast().show()
             pendingCallback = null
         }
     }
     fun stop(callback: (Exception) -> Unit) {
-        TetheringManager.stopTethering(TetheringManager.TETHERING_BLUETOOTH, callback)
+        TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, callback)
         stoppedByUser = true
     }
 
