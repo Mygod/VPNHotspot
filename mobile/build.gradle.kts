@@ -65,7 +65,7 @@ android {
     productFlavors {
         create("freedom") {
             dimension = "freedom"
-            androidResources.localeFilters += listOf("es", "it", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
+            androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
         }
         create("google") {
             dimension = "freedom"

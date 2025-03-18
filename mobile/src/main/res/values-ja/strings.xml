@@ -16,7 +16,6 @@
     * @plurals/quick_settings_hotspot_secondary_label_num_devices
   -->
 <resources>
-    <string name="app_name">VPN Hotspot</string>
     <string name="title_repeater">レピーター</string>
     <string name="title_tethering">テザリング</string>
     <string name="title_clients">クライアント</string>
@@ -84,7 +83,7 @@
     <string name="tethering_manage_wifi_no_features">なし</string>
     <string name="tethering_manage_wifi_client_blocked">ブロック済み %1$s: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">MAC をコピー</string>
-    <string name="tethering_static_ip">静的 IP</string>
+    <string name="tethering_static_ip">固定 IP</string>
     <string name="connected_state_incomplete">" (接続中)"</string>
     <string name="connected_state_valid">" (到達可能)"</string>
     <string name="connected_state_failed">" (ロスト)"</string>
