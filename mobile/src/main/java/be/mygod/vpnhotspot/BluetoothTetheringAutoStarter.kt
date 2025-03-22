@@ -96,35 +96,38 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
     
     private fun checkAndStartTethering() {
         val tethering = bluetoothTethering ?: run {
+            Timber.d("Bluetooth tethering not initialized, initializing...")
             initBluetoothTethering()
             bluetoothTethering
-        } ?: return
+        } ?: run {
+            Timber.w("Failed to initialize bluetooth tethering")
+            return
+        }
         
-        when (tethering.active) {
-            true -> {
-                // 已经启动，不需要操作
-                Timber.v("Bluetooth tethering is already active")
-            }
-            false -> {
-                // 未启动，尝试启动
-                Timber.d("Starting bluetooth tethering")
-                startTethering()
-            }
-            null -> {
-                // 状态未知，可能是初始化问题，重新初始化
-                Timber.d("Bluetooth tethering state unknown, reinitializing")
-                tethering.ensureInit(context)
-                if (tethering.active == false) {
-                    startTethering()
-                }
-            }
+        if (tethering.active == true) {
+            // 蓝牙网络共享已经激活，无需操作
+            Timber.v("Bluetooth tethering is already active")
+            return
+        }
+        
+        // 尝试启动蓝牙网络共享
+        Timber.d("Starting bluetooth tethering")
+        try {
+            startTethering()
+            Timber.i("Bluetooth tethering started successfully")
+        } catch (e: Exception) {
+            // 启动失败，记录错误信息
+            val errorMsg = e.message ?: "Unknown error"
+            Timber.w("Failed to start bluetooth tethering: $errorMsg")
+            SmartSnackbar.make(errorMsg).show()
         }
     }
     
     private fun startTethering() {
+        Timber.d("Attempting to start bluetooth tethering via callback")
         bluetoothTethering?.start(object : TetheringManagerCompat.StartTetheringCallback {
             override fun onTetheringStarted() {
-                Timber.i("Bluetooth tethering started successfully")
+                Timber.i("Bluetooth tethering started successfully via callback")
             }
             
             override fun onTetheringFailed(error: Int?) {
@@ -133,8 +136,9 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
                 } else {
                     "Unknown error"
                 }
-                Timber.w("Failed to start bluetooth tethering: $errorMsg")
+                Timber.w("Failed to start bluetooth tethering via callback: $errorMsg")
             }
         }, context)
+        Timber.v("Bluetooth tethering start request sent")
     }
 }
