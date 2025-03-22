@@ -60,6 +60,10 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         SmartSnackbar.Register(binding.fragmentHolder)
         WifiDoubleLock.ActivityListener(this)
         lifecycleScope.launch { BootReceiver.startIfEnabled() }
+        
+        // 启动蓝牙网络共享自动启动器
+        BluetoothTetheringAutoStarter.getInstance(this).start()
+        
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
         updateItem.isCheckable = false
