@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.activity.viewModels
@@ -66,6 +67,11 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         
         // 启动WiFi热点自动启动器
         WifiTetheringAutoStarter.getInstance(this).start()
+        
+        // 启动以太网络共享自动启动器（Android 11及以上版本）
+        if (Build.VERSION.SDK_INT >= 30) {
+            EthernetTetheringAutoStarter.getInstance(this).start()
+        }
         
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)

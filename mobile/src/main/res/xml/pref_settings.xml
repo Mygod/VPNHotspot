@@ -74,6 +74,11 @@
             app:title="自动启动WiFi热点"
             app:summary="应用启动后自动开启WiFi热点并每秒检查确保其运行"/>
         <SwitchPreferenceCompat
+            app:key="service.auto.ethernetTethering"
+            app:icon="@drawable/ic_action_settings_ethernet"
+            app:title="自动启动以太网络共享"
+            app:summary="应用启动后自动开启以太网络共享并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
             app:key="service.repeater.safeMode"
             app:icon="@drawable/ic_alert_warning"
             app:title="@string/settings_service_repeater_safe_mode"
