@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         // 启动蓝牙网络共享自动启动器
         BluetoothTetheringAutoStarter.getInstance(this).start()
         
+        // 启动WiFi热点自动启动器
+        WifiTetheringAutoStarter.getInstance(this).start()
+        
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
         updateItem.isCheckable = false
