@@ -79,6 +79,11 @@
             app:title="自动启动以太网络共享"
             app:summary="应用启动后自动开启以太网络共享并每秒检查确保其运行"/>
         <SwitchPreferenceCompat
+            app:key="service.auto.usbTethering"
+            app:icon="@drawable/ic_device_usb"
+            app:title="自动启动USB网络共享"
+            app:summary="应用启动后自动开启USB网络共享并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
             app:key="service.repeater.safeMode"
             app:icon="@drawable/ic_alert_warning"
             app:title="@string/settings_service_repeater_safe_mode"

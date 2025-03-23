@@ -157,7 +157,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
                             stop()
                         }
                         check(downstreams.put(iface, this) == null)
-                        downstreams[iface] = this
                     } else downstream.monitor = true
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
@@ -184,6 +183,19 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
             callbackRegistered = false
         }
     }
+
+    override fun onCreate() {
+        super.onCreate()
+        ServiceNotification.startForeground(this)
+        if (Build.VERSION.SDK_INT >= 30) {
+            val tm = TetheringManagerCompat.getInstance(this)
+            tm.registerTetheringEventCallback(mainExecutor, this)
+            callbackRegistered = true
+        }
+        BluetoothTetheringAutoStarter.getInstance(this).start()
+        if (Build.VERSION.SDK_INT >= 30) EthernetTetheringAutoStarter.getInstance(this).start()
+        WifiTetheringAutoStarter.getInstance(this).start()
+        UsbTetheringAutoStarter.getInstance(this).start()
 
     override fun updateNotification() {
         launch { super.updateNotification() }
