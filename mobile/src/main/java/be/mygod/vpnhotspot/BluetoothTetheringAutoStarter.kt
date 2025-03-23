@@ -38,7 +38,6 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
     }
     
     private val handler = Handler(Looper.getMainLooper())
-    private var bluetoothTethering: BluetoothTethering? = null
     private var isStarted = false
     
     private val checkRunnable = object : Runnable {
@@ -61,7 +60,6 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
         }
         
         isStarted = true
-        initBluetoothTethering()
         handler.post(checkRunnable)
         Timber.i("BluetoothTetheringAutoStarter started")
     }
@@ -74,50 +72,29 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
         
         isStarted = false
         handler.removeCallbacks(checkRunnable)
-        bluetoothTethering?.close()
-        bluetoothTethering = null
         Timber.i("BluetoothTetheringAutoStarter stopped")
     }
-    
-    private fun initBluetoothTethering() {
-        if (bluetoothTethering != null) return
-        
-        val bluetoothManager = context.getSystemService<BluetoothManager>()
-        val adapter = bluetoothManager?.adapter
-        
-        if (adapter == null) {
-            Timber.w("BluetoothAdapter not available")
-            return
-        }
-        
-        bluetoothTethering = BluetoothTethering(context, adapter) {
-            // 状态变化回调
-            Timber.d("Bluetooth tethering state changed: ${bluetoothTethering?.active}")
-        }
-        bluetoothTethering?.ensureInit(context)
-    }
-    
     private fun checkAndStartTethering() {
-        val tethering = bluetoothTethering ?: run {
-            Timber.d("Bluetooth tethering not initialized, initializing...")
-            initBluetoothTethering()
-            bluetoothTethering
-        } ?: run {
-            Timber.w("Failed to initialize bluetooth tethering")
+        // 检查蓝牙网络共享是否已经激活
+        val intent = context.registerReceiver(null, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
+        val tetherInterfaces = intent?.tetheredIfaces
+
+        // 检查是否有蓝牙网络共享接口
+        val bluetoothInterfaces = tetherInterfaces?.filter { iface ->
+            iface.contains("bt-pan") || iface.startsWith("bnep")
+        } ?: emptyList()
+
+        if (bluetoothInterfaces.isNotEmpty()) {
+            // USB网络共享已经激活，无需操作
+            Timber.v("bluetooth tethering is already active: $bluetoothInterfaces")
             return
         }
-        
-        if (tethering.active == true) {
-            // 蓝牙网络共享已经激活，无需操作
-            Timber.v("Bluetooth tethering is already active")
-            return
-        }
-        
+
         // 尝试启动蓝牙网络共享
         Timber.d("Starting bluetooth tethering")
         try {
             startTethering()
-            Timber.i("Bluetooth tethering started successfully")
+            Timber.i("bluetooth tethering start request sent")
         } catch (e: Exception) {
             // 启动失败，记录错误信息
             val errorMsg = e.message ?: "Unknown error"
@@ -125,27 +102,26 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
             SmartSnackbar.make(errorMsg).show()
         }
     }
-    
     private fun startTethering() {
-        Timber.d("Attempting to start bluetooth tethering via callback")
-        bluetoothTethering?.start(object : TetheringManagerCompat.StartTetheringCallback {
+        Timber.d("Attempting to start Bluetooth tethering via callback")
+        TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, true, object : TetheringManagerCompat.StartTetheringCallback {
             override fun onTetheringStarted() {
                 Timber.i("Bluetooth tethering started successfully via callback")
-                // 通知UI更新 - 查找并更新所有TetheringTileService.Bluetooth实例
+                // 通知UI更新 - 查找并更新所有TetheringTileService.Ethernet实例
                 updateTileServices()
                 // 确保IP转发已启用
                 ensureNetworkConnectivity()
             }
-            
+
             override fun onTetheringFailed(error: Int?) {
                 val errorMsg = if (error != null) {
                     "${TetheringManagerCompat.tetherErrorLookup(error)}"
                 } else {
                     "Unknown error"
                 }
-                Timber.w("Failed to start bluetooth tethering via callback: $errorMsg")
+                Timber.w("Failed to start Bluetooth tethering via callback: $errorMsg")
             }
-        }, context)
+        })
         Timber.v("Bluetooth tethering start request sent")
     }
     
@@ -229,7 +205,6 @@ class BluetoothTetheringAutoStarter private constructor(private val context: Con
             context.startForegroundService(monitorIntent)
             
             Timber.i("Requested TetheringService to configure routing for interfaces: $bluetoothInterfaces")
-            Timber.d("Also requested monitoring for these interfaces to ensure connectivity")
         } catch (e: Exception) {
             Timber.e("Failed to ensure network connectivity: ${e.message}")
             SmartSnackbar.make("Failed to configure network: ${e.message}").show()
