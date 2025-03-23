@@ -171,6 +171,11 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
             setActiveTetherTypes(emptySet())
+            // 停止所有自动启动器
+            BluetoothTetheringAutoStarter.getInstance(this@TetheringService).stop()
+            if (Build.VERSION.SDK_INT >= 30) EthernetTetheringAutoStarter.getInstance(this@TetheringService).stop()
+            WifiTetheringAutoStarter.getInstance(this@TetheringService).stop()
+            UsbTetheringAutoStarter.getInstance(this@TetheringService).stop()
             cancel()
         }
         super.onDestroy()
