@@ -72,6 +72,9 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         if (Build.VERSION.SDK_INT >= 30) {
             EthernetTetheringAutoStarter.getInstance(this).start()
         }
+
+        // 启动Usb网络共享自动启动器
+        UsbTetheringAutoStarter.getInstance(this).start()
         
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
