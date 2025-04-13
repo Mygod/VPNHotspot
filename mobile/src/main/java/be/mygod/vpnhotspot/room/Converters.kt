@@ -19,14 +19,16 @@ object Converters {
 
     @JvmStatic
     @TypeConverter
-    fun unpersistCharSequence(data: ByteArray) = useParcel { p ->
-        p.unmarshall(data, 0, data.size)
-        p.setDataPosition(0)
-        try {
-            TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)!!
-        } catch (e: RuntimeException) {
-            Timber.w(e)
-            ""
+    fun unpersistCharSequence(data: ByteArray?) = data?.let {
+        useParcel { p ->
+            p.unmarshall(data, 0, data.size)
+            p.setDataPosition(0)
+            try {
+                TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(p)
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+                null
+            }
         }
     }
 
