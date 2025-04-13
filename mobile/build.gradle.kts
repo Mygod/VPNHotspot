@@ -97,6 +97,7 @@ dependencies {
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation(kotlin("stdlib-jdk8"))
     implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.core:core-i18n:1.0.0")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.fragment:fragment-ktx:1.8.6")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
