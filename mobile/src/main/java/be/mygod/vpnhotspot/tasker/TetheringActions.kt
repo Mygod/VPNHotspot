@@ -102,8 +102,8 @@ class ActionRunner : TaskerPluginRunnerActionNoOutput<ActionInput>() {
                                 continuation.resume(TaskerPluginResultSucess())
                             }
 
-                            override fun onStopTetheringFailed(error: Int?) {
-                                continuation.resume(TaskerPluginResultError(error ?: -1, "Tethering failed to stop."))
+                            override fun onStopTetheringFailed(error: Int) {
+                                continuation.resume(TaskerPluginResultError(error, "Tethering failed to stop."))
                             }
 
                             override fun onException(e: Exception) {

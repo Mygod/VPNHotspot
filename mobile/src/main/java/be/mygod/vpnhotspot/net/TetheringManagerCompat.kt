@@ -89,7 +89,8 @@ object TetheringManagerCompat {
          *
          * @param error The error that caused the failure.
          */
-        fun onStopTetheringFailed(error: Int? = null) {}
+        @RequiresApi(30)
+        fun onStopTetheringFailed(error: Int) {}
     }
 
 
@@ -381,7 +382,7 @@ object TetheringManagerCompat {
         if (Build.VERSION.SDK_INT >= 30) try {
             stopTethering(type, object : StopTetheringCallback {
                 override fun onStopTetheringSucceeded() = callback.onStopTetheringSucceeded()
-                override fun onStopTetheringFailed(error: Int?) {
+                override fun onStopTetheringFailed(error: Int) {
                     if (error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
                         callback.onStopTetheringFailed(error)
                     } else stopTetheringRoot(type, callback, cacheDir)

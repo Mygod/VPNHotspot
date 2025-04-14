@@ -130,9 +130,9 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
         updateTile()
     }
     override fun onStopTetheringSucceeded() = updateTile()
-    override fun onStopTetheringFailed(error: Int?) {
+    override fun onStopTetheringFailed(error: Int) {
         Timber.d("onStopTetheringFailed: $error")
-        if (error != null) GlobalScope.launch(Dispatchers.Main.immediate) {
+        GlobalScope.launch(Dispatchers.Main.immediate) {
             dismiss()
             Toast.makeText(this@TetheringTileService, TetheringManagerCompat.tetherErrorLookup(error),
                 Toast.LENGTH_LONG).show()

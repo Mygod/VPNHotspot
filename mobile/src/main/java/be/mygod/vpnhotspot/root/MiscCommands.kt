@@ -23,7 +23,6 @@ import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.onClosed
 import kotlinx.coroutines.channels.onFailure
@@ -193,8 +192,8 @@ data class StopTethering(private val cacheDir: File, private val type: Int) : Ro
                 future.complete(null)
             }
 
-            override fun onStopTetheringFailed(error: Int?) {
-                future.complete(error!!)
+            override fun onStopTetheringFailed(error: Int) {
+                future.complete(error)
             }
 
             override fun onException(e: Exception) {
