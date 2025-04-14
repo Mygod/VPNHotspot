@@ -75,8 +75,6 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         val safeModeConfigurable get() = Build.VERSION.SDK_INT >= 29 && hasP2pValidateName
         val safeMode get() = Build.VERSION.SDK_INT >= 29 &&
                 (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
-        @get:RequiresApi(29)
-        private val mNetworkName by lazy @TargetApi(29) { UnblockCentral.WifiP2pConfig_Builder_mNetworkName }
 
         var networkName: WifiSsidCompat?
             get() = app.pref.getString(KEY_NETWORK_NAME, null).let { legacy ->
@@ -472,8 +470,8 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             p2pManager.createGroup(channel, listener)
         } else @TargetApi(29) {
             p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
-                try {
-                    mNetworkName.set(this, networkName) // bypass networkName check
+                try {   // bypass networkName check
+                    UnblockCentral.WifiP2pConfig_Builder_mNetworkName.set(this, networkName)
                 } catch (e: ReflectiveOperationException) {
                     Timber.w(e)
                     try {

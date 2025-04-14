@@ -97,15 +97,19 @@ class ActionRunner : TaskerPluginRunnerActionNoOutput<ActionInput>() {
                             }
                         })
                     } else {
-                        TetheringManagerCompat.stopTethering(
-                            type = input.regular.tetherType,
-                            errorCallback = {
-                                continuation.resume(TaskerPluginResultError(it))
-                            },
-                            successCallback = {
+                        TetheringManagerCompat.stopTethering(input.regular.tetherType, object : TetheringManagerCompat.StopTetheringCallback {
+                            override fun onStopTetheringSucceeded() {
                                 continuation.resume(TaskerPluginResultSucess())
-                            },
-                        )
+                            }
+
+                            override fun onStopTetheringFailed(error: Int?) {
+                                continuation.resume(TaskerPluginResultError(error ?: -1, "Tethering failed to stop."))
+                            }
+
+                            override fun onException(e: Exception) {
+                                continuation.resume(TaskerPluginResultError(e))
+                            }
+                        })
                     }
                 } catch (e: Throwable) {
                     continuation.resume(TaskerPluginResultError(e))
