@@ -36,11 +36,11 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.lang.invoke.MethodHandles
@@ -53,8 +53,6 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
 import java.util.Locale
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -307,18 +305,12 @@ suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnectio
         SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 7) {
         engine.openConnection(URL(url))
     } else @Suppress("BlockingMethodInNonBlockingContext") URL(url).openConnection()) as HttpURLConnection
-    return suspendCancellableCoroutine { cont ->
-        val job = GlobalScope.launch(Dispatchers.IO) {
-            try {
-                cont.resume(block(conn))
-            } catch (e: Throwable) {
-                cont.resumeWithException(e)
-            } finally {
-                conn.disconnect()
-            }
-        }
-        cont.invokeOnCancellation {
-            job.cancel(it as? CancellationException)
+    return coroutineScope {
+        @OptIn(InternalCoroutinesApi::class)    // https://github.com/Kotlin/kotlinx.coroutines/issues/4117
+        coroutineContext.job.invokeOnCompletion(true) { conn.disconnect() }
+        try {
+            withContext(Dispatchers.IO) { block(conn) }
+        } finally {
             conn.disconnect()
         }
     }
