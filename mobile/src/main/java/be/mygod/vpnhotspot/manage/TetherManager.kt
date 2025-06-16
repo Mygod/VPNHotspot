@@ -252,7 +252,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     val frequency = info.frequency
                     val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
                     val bandwidth = SoftApInfo.channelWidthLookup(info.bandwidth, true)
-                    if (Build.VERSION.SDK_INT >= 31) {
+                    (if (Build.VERSION.SDK_INT >= 31) {
                         val bssid = info.bssid.let { if (it == null) null else makeMacSpan(it.toString()) }
                         val bssidAp = info.apInstanceIdentifier?.let {
                             when (bssid) {
@@ -269,7 +269,9 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                             // http://unicode.org/cldr/trac/ticket/3407
                             DateUtils.formatElapsedTime(timeout / 1000))
                     } else parent.getText(R.string.tethering_manage_wifi_info).format(locale,
-                        frequency, channel, bandwidth)
+                        frequency, channel, bandwidth)).also { result ->
+                        info.mldAddress?.let { result.append(", MLD MAC ").append(makeMacSpan(it.toString())) }
+                    }
                 }
             }, formatCapability(locale)).joinToSpanned("\n")
         }

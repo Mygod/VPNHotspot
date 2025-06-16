@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net.wifi
 
 import android.annotation.TargetApi
 import android.net.MacAddress
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.util.ConstantLookup
@@ -25,6 +26,7 @@ value class SoftApInfo(val inner: Parcelable) {
         private val getAutoShutdownTimeoutMillis by lazy { clazz.getDeclaredMethod("getAutoShutdownTimeoutMillis") }
         @get:RequiresApi(35)
         val getVendorData by lazy { clazz.getDeclaredMethod("getVendorData") }
+        val getMldAddress by lazy { clazz.getDeclaredMethod("getMldAddress") }
 
         val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { clazz }
     }
@@ -44,4 +46,10 @@ value class SoftApInfo(val inner: Parcelable) {
     }
     @get:RequiresApi(31)
     val autoShutdownTimeoutMillis get() = getAutoShutdownTimeoutMillis(inner) as Long
+    val mldAddress get() = try {
+        getMldAddress(inner) as MacAddress?
+    } catch (e: NoSuchMethodException) {
+        if (Build.VERSION.SDK_INT < 36) Timber.w(e)
+        null
+    }
 }
