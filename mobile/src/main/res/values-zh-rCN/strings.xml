@@ -78,6 +78,7 @@
     <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA/桥接 AP 并发</string>
     <string name="tethering_manage_wifi_no_features">无</string>
     <string name="tethering_manage_wifi_client_blocked">已屏蔽 %1$s：%2$s</string>
+    <string name="tethering_manage_wifi_client_disconnected">%1$s 已断开连接：%2$s</string>
     <string name="tethering_manage_wifi_copy_mac">复制 MAC</string>
 
     <string name="tethering_static_ip">静态 IP</string>

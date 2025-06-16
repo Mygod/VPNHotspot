@@ -248,6 +248,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_FAILED:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STARTED:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHER_HARDWARE_OFFLOAD_STOPPED:I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/DeauthenticationReasonCode;->REASON_*:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->SOFTAP_FEATURE_BAND_24G_SUPPORTED:J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->SOFTAP_FEATURE_BAND_5G_SUPPORTED:J,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->SOFTAP_FEATURE_BAND_60G_SUPPORTED:J,sdk,system-api,test-api`
@@ -319,10 +320,12 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/wifi/SoftApInfo;->getMldAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (since API 35) `Landroid/net/wifi/SoftApInfo;->getVendorData()Ljava/util/List;,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getWifiStandard()I,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiClient;->getDisconnectReason()I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiClient;->getMacAddress()Landroid/net/MacAddress;,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration$KeyMgmt;->WPA2_PSK:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onBlockedClientConnecting(Landroid/net/wifi/WifiClient;I)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onCapabilityChanged(Landroid/net/wifi/SoftApCapability;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onClientsDisconnected(Landroid/net/wifi/SoftApInfo;Ljava/util/List;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onConnectedClientsChanged(Ljava/util/List;)V,sdk,system-api,test-api`
 * (on API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onInfoChanged(Landroid/net/wifi/SoftApInfo;)V,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/WifiManager$SoftApCallback;->onInfoChanged(Ljava/util/List;)V,sdk,system-api,test-api`

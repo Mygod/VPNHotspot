@@ -203,15 +203,30 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
         }
     }
 
-    @RequiresApi(30)
+    @RequiresApi(31)
     override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) {
         val client = WifiClient(client)
         val macAddress = client.macAddress
         var name = macAddress.toString()
-        if (Build.VERSION.SDK_INT >= 31) client.apInstanceIdentifier?.let { name += "%$it" }
+        client.apInstanceIdentifier?.let { name += "%$it" }
         val reason = WifiApManager.clientBlockLookup(blockedReason, true)
         Timber.i("$name blocked from connecting: $reason ($blockedReason)")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
+            action(R.string.tethering_manage_wifi_copy_mac) {
+                app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+            }
+        }.show()
+    }
+
+    @RequiresApi(36)
+    override fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) = clients.forEach { client ->
+        val client = WifiClient(client)
+        val macAddress = client.macAddress
+        var name = macAddress.toString()
+        client.apInstanceIdentifier?.let { name += "%$it" }
+        val reason = WifiApManager.deauthenticationReasonLookup(client.disconnectReason, true)
+        Timber.i("$client disconnected: $reason")
+        SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_disconnected, name, reason)).apply {
             action(R.string.tethering_manage_wifi_copy_mac) {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
             }

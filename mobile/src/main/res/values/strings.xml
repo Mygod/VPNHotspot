@@ -92,6 +92,7 @@
     <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA + Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
+    <string name="tethering_manage_wifi_client_disconnected">%1$s disconnected: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
 
     <string name="tethering_static_ip">Static IP</string>

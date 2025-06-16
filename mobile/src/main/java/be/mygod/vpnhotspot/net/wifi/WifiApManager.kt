@@ -12,6 +12,13 @@ import android.os.Handler
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.EXTRA_WIFI_AP_STATE
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_CHANGED_ACTION
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLED
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLING
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLED
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLING
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_FAILED
 import be.mygod.vpnhotspot.util.*
 import timber.log.Timber
 import java.lang.reflect.InvocationHandler
@@ -249,10 +256,24 @@ object WifiApManager {
          */
         @RequiresApi(30)
         fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
+
+        /**
+         * Called when clients disconnect from a soft AP instance.
+         *
+         * @param info The [SoftApInfo] of the AP.
+         * @param clients The clients that have disconnected from the AP instance specified by
+         * `info`.
+         */
+        @RequiresApi(30)
+        fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) { }
     }
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
+    @get:RequiresApi(30)
+    val deauthenticationReasonLookup by lazy {
+        ConstantLookup("REASON_") { Class.forName("android.net.wifi.DeauthenticationReasonCode") }
+    }
 
     private val interfaceSoftApCallback by lazy { Class.forName("android.net.wifi.WifiManager\$SoftApCallback") }
     private val registerSoftApCallback by lazy {
@@ -309,6 +330,11 @@ object WifiApManager {
                     Build.VERSION.SDK_INT >= 30 && method.matches("onBlockedClientConnecting", WifiClient.clazz,
                         Int::class.java) -> {
                         callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
+                    }
+                    Build.VERSION.SDK_INT >= 30 && method.matches("onClientsDisconnected", SoftApInfo.clazz,
+                        List::class.java) -> {
+                        @Suppress("UNCHECKED_CAST")
+                        callback.onClientsDisconnected(args!![0] as Parcelable, args[1] as List<Parcelable>)
                     }
                     else -> callSuper(interfaceSoftApCallback, proxy, method, args)
                 }

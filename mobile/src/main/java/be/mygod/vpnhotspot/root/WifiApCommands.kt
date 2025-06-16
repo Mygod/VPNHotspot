@@ -59,7 +59,13 @@ object WifiApCommands {
         @RequiresApi(30)
         data class OnBlockedClientConnecting(val client: Parcelable, val blockedReason: Int) : SoftApCallbackParcel() {
             override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onBlockedClientConnecting(client, blockedReason)
+                callback.onBlockedClientConnecting(client, blockedReason)
+        }
+        @Parcelize
+        @RequiresApi(30)
+        data class OnClientsDisconnected(val info: Parcelable, val clients: List<Parcelable>) : SoftApCallbackParcel() {
+            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
+                callback.onClientsDisconnected(info, clients)
         }
     }
 
@@ -76,20 +82,22 @@ object WifiApCommands {
                 }
 
                 override fun onStateChanged(state: Int, failureReason: Int) =
-                        push(SoftApCallbackParcel.OnStateChanged(state, failureReason))
+                    push(SoftApCallbackParcel.OnStateChanged(state, failureReason))
                 override fun onNumClientsChanged(numClients: Int) =
-                        push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
+                    push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
                 @RequiresApi(30)
                 override fun onConnectedClientsChanged(clients: List<Parcelable>) =
-                        push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
+                    push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
                 @RequiresApi(30)
                 override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
                 @RequiresApi(30)
                 override fun onCapabilityChanged(capability: Parcelable) =
-                        push(SoftApCallbackParcel.OnCapabilityChanged(capability))
+                    push(SoftApCallbackParcel.OnCapabilityChanged(capability))
                 @RequiresApi(30)
                 override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) =
-                        push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
+                    push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
+                override fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) =
+                    push(SoftApCallbackParcel.OnClientsDisconnected(info, clients))
             }) {
                 scope.launch {
                     try {
@@ -129,7 +137,7 @@ object WifiApCommands {
             is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
             // do nothing for one-time events
-            is SoftApCallbackParcel.OnBlockedClientConnecting -> { }
+            is SoftApCallbackParcel.OnBlockedClientConnecting, is SoftApCallbackParcel.OnClientsDisconnected -> { }
         }
         for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
