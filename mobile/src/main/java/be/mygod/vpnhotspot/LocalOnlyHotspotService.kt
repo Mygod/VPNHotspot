@@ -181,7 +181,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val receiver = broadcastReceiver { _, intent -> updateState(intent) }
     private var receiverRegistered = false
     private fun updateState(intent: Intent) {
-        // based on: https://android.googlesource.com/platform/packages/services/Car/+/407f65c/service/src/com/android/car/CarProjectionService.java#180
+        // based on: https://android.googlesource.com/platform/packages/services/Car/+/21fa77d/service/src/com/android/car/CarProjectionService.java#193
         lastState = Triple(intent.wifiApState, intent.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME),
             intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0))
     }
