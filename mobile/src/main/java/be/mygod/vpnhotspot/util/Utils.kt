@@ -53,6 +53,7 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
 import java.util.Locale
+import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -316,5 +317,13 @@ suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnectio
         } finally {
             conn.disconnect()
         }
+    }
+}
+
+object InPlaceExecutor : Executor {
+    override fun execute(command: Runnable) = try {
+        command.run()
+    } catch (e: Exception) {
+        Timber.w(e) // prevent Binder stub swallowing the exception
     }
 }

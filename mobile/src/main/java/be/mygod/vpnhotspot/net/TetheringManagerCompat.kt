@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.root.StartTethering
 import be.mygod.vpnhotspot.root.StopTethering
 import be.mygod.vpnhotspot.root.StopTetheringLegacy
 import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -91,15 +92,6 @@ object TetheringManagerCompat {
          */
         @RequiresApi(30)
         fun onStopTetheringFailed(error: Int) {}
-    }
-
-
-    private object InPlaceExecutor : Executor {
-        override fun execute(command: Runnable) = try {
-            command.run()
-        } catch (e: Exception) {
-            Timber.w(e) // prevent Binder stub swallowing the exception
-        }
     }
 
     @RequiresApi(30)
