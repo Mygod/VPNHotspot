@@ -113,8 +113,9 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             set(value) = app.pref.edit { putString(KEY_PASSPHRASE, value) }
         var operatingBand: Int
             @SuppressLint("InlinedApi")
-            get() = app.pref.getInt(KEY_OPERATING_BAND, SoftApConfigurationCompat.BAND_LEGACY) and
-                    SoftApConfigurationCompat.BAND_LEGACY
+            get() = app.pref.getInt(KEY_OPERATING_BAND, if (Build.VERSION.SDK_INT >= 36) {
+                SoftApConfigurationCompat.BAND_ANY_30
+            } else SoftApConfigurationCompat.BAND_LEGACY) and SoftApConfigurationCompat.BAND_ANY_30
             set(value) = app.pref.edit { putInt(KEY_OPERATING_BAND, value) }
         var operatingChannel: Int
             get() {
@@ -520,8 +521,9 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                 setPassphrase(passphrase)
                 when (val oc = operatingChannel) {
                     0 -> setGroupOperatingBand(when (val band = operatingBand) {
-                        SoftApConfigurationCompat.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                        SoftApConfigurationCompat.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                        SoftApConfiguration.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                        SoftApConfiguration.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                        SoftApConfiguration.BAND_6GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_6GHZ
                         else -> {
                             require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
                             WifiP2pConfig.GROUP_OWNER_BAND_AUTO

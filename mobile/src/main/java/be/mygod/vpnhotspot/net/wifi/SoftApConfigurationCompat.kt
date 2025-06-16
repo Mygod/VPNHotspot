@@ -31,7 +31,7 @@ data class SoftApConfigurationCompat(
      * see also [android.net.wifi.WifiManager.isBridgedApConcurrencySupported].
      * Otherwise, use [requireSingleBand] and [setChannel].
      */
-    var channels: SparseIntArray = SparseIntArray(1).apply { append(BAND_2GHZ, 0) },
+    var channels: SparseIntArray = SparseIntArray(1).apply { append(SoftApConfiguration.BAND_2GHZ, 0) },
     var securityType: Int = SoftApConfiguration.SECURITY_TYPE_OPEN,
     @TargetApi(30)
     var maxNumberOfClients: Int = 0,
@@ -68,24 +68,23 @@ data class SoftApConfigurationCompat(
     var underlying: Parcelable? = null,
 ) : Parcelable {
     companion object {
-        const val BAND_2GHZ = 1
-        const val BAND_5GHZ = 2
+        const val BAND_LEGACY = SoftApConfiguration.BAND_2GHZ or SoftApConfiguration.BAND_5GHZ
         @TargetApi(30)
-        const val BAND_6GHZ = 4
+        const val BAND_ANY_30 = BAND_LEGACY or SoftApConfiguration.BAND_6GHZ
         @TargetApi(31)
-        const val BAND_60GHZ = 8
-        const val BAND_LEGACY = BAND_2GHZ or BAND_5GHZ
-        @TargetApi(30)
-        const val BAND_ANY_30 = BAND_LEGACY or BAND_6GHZ
-        @TargetApi(31)
-        const val BAND_ANY_31 = BAND_ANY_30 or BAND_60GHZ
+        const val BAND_ANY_31 = BAND_ANY_30 or SoftApConfiguration.BAND_60GHZ
         val BAND_TYPES by lazy {
             if (Build.VERSION.SDK_INT >= 31) try {
                 return@lazy UnblockCentral.SoftApConfiguration_BAND_TYPES
             } catch (e: ReflectiveOperationException) {
                 Timber.w(e)
             }
-            intArrayOf(BAND_2GHZ, BAND_5GHZ, BAND_6GHZ, BAND_60GHZ)
+            intArrayOf(
+                SoftApConfiguration.BAND_2GHZ,
+                SoftApConfiguration.BAND_5GHZ,
+                SoftApConfiguration.BAND_6GHZ,
+                SoftApConfiguration.BAND_60GHZ,
+            )
         }
         @RequiresApi(31)
         val bandLookup = ConstantLookup<SoftApConfiguration>("BAND_")
@@ -124,22 +123,22 @@ data class SoftApConfigurationCompat(
          * https://cs.android.com/android/platform/superproject/+/master:packages/modules/Wifi/framework/java/android/net/wifi/ScanResult.java;l=789;drc=71d758698c45984d3f8de981bf98e56902480f16
          */
         fun channelToFrequency(band: Int, chan: Int) = when (band) {
-            BAND_2GHZ -> when (chan) {
+            SoftApConfiguration.BAND_2GHZ -> when (chan) {
                 14 -> 2484
                 in 1 until 14 -> 2407 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 2GHz channel $chan")
             }
-            BAND_5GHZ -> when (chan) {
+            SoftApConfiguration.BAND_5GHZ -> when (chan) {
                 in 182..196 -> 4000 + chan * 5
                 in 1..Int.MAX_VALUE -> 5000 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 5GHz channel $chan")
             }
-            BAND_6GHZ -> when (chan) {
+            SoftApConfiguration.BAND_6GHZ -> when (chan) {
                 2 -> 5935
                 in 1..253 -> 5950 + chan * 5
                 else -> throw IllegalArgumentException("Invalid 6GHz channel $chan")
             }
-            BAND_60GHZ -> {
+            SoftApConfiguration.BAND_60GHZ -> {
                 require(chan in 1 until 7) { "Invalid 60GHz channel $chan" }
                 56160 + chan * 2160
             }
@@ -361,8 +360,8 @@ data class SoftApConfigurationCompat(
                 // https://cs.android.com/android/platform/superproject/+/master:frameworks/base/wifi/java/android/net/wifi/SoftApConfToXmlMigrationUtil.java;l=87;drc=aa6527cf41671d1ed417b8ebdb6b3aa614f62344
                 SparseIntArray(1).also {
                     it.append(when (val band = apBand.getInt(this)) {
-                        0 -> BAND_2GHZ
-                        1 -> BAND_5GHZ
+                        0 -> SoftApConfiguration.BAND_2GHZ
+                        1 -> SoftApConfiguration.BAND_5GHZ
                         -1 -> BAND_LEGACY
                         else -> throw IllegalArgumentException("Unexpected band $band")
                     }, apChannel.getInt(this))
@@ -471,8 +470,8 @@ data class SoftApConfigurationCompat(
         channels = SparseIntArray(1).apply {
             append(when {
                 channel <= 0 || band != BAND_LEGACY -> band
-                channel > 14 -> BAND_5GHZ
-                else -> BAND_2GHZ
+                channel > 14 -> SoftApConfiguration.BAND_5GHZ
+                else -> SoftApConfiguration.BAND_2GHZ
             }, channel)
         }
     }
@@ -495,8 +494,8 @@ data class SoftApConfigurationCompat(
         result.preSharedKey = passphrase
         result.hiddenSSID = isHiddenSsid
         apBand.setInt(result, when (band) {
-            BAND_2GHZ -> 0
-            BAND_5GHZ -> 1
+            SoftApConfiguration.BAND_2GHZ -> 0
+            SoftApConfiguration.BAND_5GHZ -> 1
             else -> {
                 require(isLegacyEitherBand(band)) { "Convert fail, unsupported band setting :$band" }
                 -1

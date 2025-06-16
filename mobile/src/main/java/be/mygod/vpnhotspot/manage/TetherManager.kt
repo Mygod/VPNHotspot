@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.TetheringManager
+import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.os.Parcelable
 import android.provider.Settings
@@ -199,10 +200,10 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
             val maxClients = capability.maxSupportedClients
             var features = capability.supportedFeatures
             if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
-                SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfigurationCompat.BAND_2GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfigurationCompat.BAND_5GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfigurationCompat.BAND_6GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfigurationCompat.BAND_60GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfiguration.BAND_6GHZ,
+                SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfiguration.BAND_60GHZ,
             )) {
                 if (capability.getSupportedChannelList(band).isEmpty()) continue
                 // reduce double reporting

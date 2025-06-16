@@ -55,9 +55,12 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     companion object {
         private const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
         private val nonMacChars = "[^0-9a-fA-F:]+".toRegex()
-        private val channels2G = (1..14).map { ChannelOption(SoftApConfigurationCompat.BAND_2GHZ, it) }
-        private val channels5G by lazy {
-            channels2G + (1..196).map { ChannelOption(SoftApConfigurationCompat.BAND_5GHZ, it) }
+        private val channels2G = (1..14).map { ChannelOption(SoftApConfiguration.BAND_2GHZ, it) }
+        private val channels6G by lazy {
+            val c5g = channels2G + (1..196).map { ChannelOption(SoftApConfiguration.BAND_5GHZ, it) }
+            if (Build.VERSION.SDK_INT >= 30) {
+                c5g + (1..253).map { ChannelOption(SoftApConfiguration.BAND_6GHZ, it) }
+            } else c5g
         }
 
         private fun genAutoOptions(band: Int) = (1..band).filter { it and band == it }.map { ChannelOption(it) }
@@ -66,15 +69,20 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
          */
         private val p2pUnsafeOptions by lazy {
             listOf(ChannelOption(SoftApConfigurationCompat.BAND_LEGACY)) +
-                    channels2G + (15..165).map { ChannelOption(SoftApConfigurationCompat.BAND_5GHZ, it) }
+                    channels2G + (15..165).map { ChannelOption(SoftApConfiguration.BAND_5GHZ, it) }
         }
-        private val p2pSafeOptions by lazy { genAutoOptions(SoftApConfigurationCompat.BAND_LEGACY) + channels5G }
+        private val p2pSafeOptions by lazy {
+            (if (Build.VERSION.SDK_INT >= 36) listOf(
+                ChannelOption(SoftApConfigurationCompat.BAND_ANY_30),
+                ChannelOption(SoftApConfiguration.BAND_2GHZ),
+                ChannelOption(SoftApConfiguration.BAND_5GHZ),
+                ChannelOption(SoftApConfiguration.BAND_6GHZ),
+            ) else genAutoOptions(SoftApConfigurationCompat.BAND_LEGACY)) + channels6G
+        }
         private val softApOptions by lazy {
             if (Build.VERSION.SDK_INT >= 30) {
-                genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) +
-                        channels5G +
-                        (1..253).map { ChannelOption(SoftApConfigurationCompat.BAND_6GHZ, it) } +
-                        (1..6).map { ChannelOption(SoftApConfigurationCompat.BAND_60GHZ, it) }
+                genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) + channels6G +
+                        (1..6).map { ChannelOption(SoftApConfiguration.BAND_60GHZ, it) }
             } else p2pSafeOptions
         }
 
@@ -104,10 +112,10 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         override fun toString() = if (channel == 0) {
             val format = DecimalFormat("#.#", DecimalFormatSymbols.getInstance(app.resources.configuration.locales[0]))
             app.getString(R.string.wifi_ap_choose_G, arrayOf(
-                SoftApConfigurationCompat.BAND_2GHZ to 2.4,
-                SoftApConfigurationCompat.BAND_5GHZ to 5,
-                SoftApConfigurationCompat.BAND_6GHZ to 6,
-                SoftApConfigurationCompat.BAND_60GHZ to 60,
+                SoftApConfiguration.BAND_2GHZ to 2.4,
+                SoftApConfiguration.BAND_5GHZ to 5,
+                SoftApConfiguration.BAND_6GHZ to 6,
+                SoftApConfiguration.BAND_60GHZ to 60,
             ).filter { (mask, _) -> band and mask == mask }.joinToString("/") { (_, name) -> format.format(name) })
         } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
     }
@@ -128,9 +136,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
     }
     private val acsList by lazy {
         listOf(
-            Triple(SoftApConfigurationCompat.BAND_2GHZ, dialogView.acs2g, dialogView.acs2gWrapper),
-            Triple(SoftApConfigurationCompat.BAND_5GHZ, dialogView.acs5g, dialogView.acs5gWrapper),
-            Triple(SoftApConfigurationCompat.BAND_6GHZ, dialogView.acs6g, dialogView.acs6gWrapper),
+            Triple(SoftApConfiguration.BAND_2GHZ, dialogView.acs2g, dialogView.acs2gWrapper),
+            Triple(SoftApConfiguration.BAND_5GHZ, dialogView.acs5g, dialogView.acs5gWrapper),
+            Triple(SoftApConfiguration.BAND_6GHZ, dialogView.acs6g, dialogView.acs6gWrapper),
         )
     }
     override val ret get() = Arg(generateConfig())
