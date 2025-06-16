@@ -2,13 +2,14 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
-    id("com.google.android.gms.oss-licenses-plugin")
     id("com.google.devtools.ksp")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     kotlin("android")
     kotlin("kapt")
     id("kotlin-parcelize")
+    alias(libs.plugins.aboutLibraries)
+    alias(libs.plugins.kotlin.compose)
 }
 
 val javaVersion = 11
@@ -27,7 +28,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1033
         versionName = "2.18.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -38,6 +39,7 @@ android {
         buildConfig = true
         dataBinding = true
         viewBinding = true
+        compose = true
     }
     buildTypes {
         debug {
@@ -67,20 +69,20 @@ ksp {
 kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
 
 dependencies {
-    val lifecycleVersion = "2.9.1"
-    val roomVersion = "2.7.1"
-
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    ksp("androidx.room:room-compiler:$roomVersion")
-    implementation(kotlin("stdlib-jdk8"))
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+    ksp(libs.room.compiler)
+    implementation(libs.aboutlibraries.compose.m3)
+    implementation(libs.lifecycle.livedata.ktx)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.room.ktx)
+    implementation(libs.material3.android)
+    implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.compose.foundation:foundation-layout:1.8.2")
     implementation("androidx.core:core-i18n:1.0.0")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.fragment:fragment-ktx:1.8.8")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
     implementation("androidx.preference:preference:1.2.1")
-    implementation("androidx.room:room-ktx:$roomVersion")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("be.mygod.librootkotlinx:librootkotlinx:1.2.1")
     implementation("com.android.billingclient:billing-ktx:7.1.1")
@@ -99,7 +101,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.room:room-testing:$roomVersion")
+    androidTestImplementation(libs.room.testing)
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.ext:junit-ktx:1.2.1")

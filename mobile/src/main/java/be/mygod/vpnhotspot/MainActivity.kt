@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.os.Bundle
 import android.view.MenuItem
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.Insets
@@ -27,17 +28,18 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
     lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBar) { view, insets ->
             val tappable = insets.getInsets(WindowInsetsCompat.Type.tappableElement())
             view.setPadding(tappable.left, tappable.top, tappable.right, 0)
             WindowInsetsCompat.Builder(insets).apply {
                 setInsets(WindowInsetsCompat.Type.tappableElement(), Insets.of(0, 0, 0, tappable.bottom))
             }.build()
         }
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
         binding.navigation.setOnItemSelectedListener(this)
         val badge = binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
             backgroundColor = resources.getColor(R.color.colorSecondary, theme)

@@ -82,6 +82,7 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
         </activity>
+        <activity android:name=".AboutLibrariesActivity" />
         <activity
             android:name=".util.SelfDismissActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"
@@ -274,10 +275,6 @@
                 android:resource="@xml/log_paths" />
         </provider>
 
-        <activity android:name="com.google.android.gms.oss.licenses.OssLicensesActivity"
-                  android:theme="@style/AppTheme.ActionBar"/>
-        <activity android:name="com.google.android.gms.oss.licenses.OssLicensesMenuActivity"
-                  android:theme="@style/AppTheme.ActionBar"/>
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>
 
