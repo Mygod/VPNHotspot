@@ -22,7 +22,9 @@ import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import be.mygod.vpnhotspot.util.launchUrl
+import com.mikepenz.aboutlibraries.Libs
 import com.mikepenz.aboutlibraries.ui.compose.m3.LibrariesContainer
+import com.mikepenz.aboutlibraries.util.withContext
 
 class AboutLibrariesActivity : ComponentActivity(), UriHandler {
     @OptIn(ExperimentalMaterial3Api::class)
@@ -51,6 +53,7 @@ class AboutLibrariesActivity : ComponentActivity(), UriHandler {
                 ) { contentPadding ->
                     CompositionLocalProvider(LocalUriHandler provides this) {
                         LibrariesContainer(
+                            Libs.Builder().withContext(this).build(),
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = contentPadding
                         )

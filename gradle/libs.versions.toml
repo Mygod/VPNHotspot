@@ -6,15 +6,47 @@ room = "2.7.1"
 
 [libraries]
 aboutlibraries-compose-m3 = { module = "com.mikepenz:aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
+activity-compose = "androidx.activity:activity-compose:1.10.1"
+browser = "androidx.browser:browser:1.8.0"
+core-i18n = "androidx.core:core-i18n:1.0.0"
+core-ktx = "androidx.core:core-ktx:1.16.0"
 desugar-jdk-libs = "com.android.tools:desugar_jdk_libs:2.1.5"
+dexmaker = "com.linkedin.dexmaker:dexmaker:2.28.4"
+dnsjava = "dnsjava:dnsjava:3.6.3"
+espresso-core = "androidx.test.espresso:espresso-core:3.6.1"
+firebase-analytics = "com.google.firebase:firebase-analytics:22.4.0"
+firebase-crashlytics = "com.google.firebase:firebase-crashlytics:19.4.4"
+foundation-layout = "androidx.compose.foundation:foundation-layout:1.8.2"
+fragment-ktx = "androidx.fragment:fragment-ktx:1.8.8"
+hiddenapibypass = "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
+junit = "junit:junit:4.13.2"
+junit-ktx = "androidx.test.ext:junit-ktx:1.2.1"
+kotlinx-collections-immutable = "org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0"
+kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+ktor-network-jvm = "io.ktor:ktor-network-jvm:3.2.0"
+librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:1.2.1"
 lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+material = "com.google.android.material:material:1.12.0"
 material3-android = "androidx.compose.material3:material3-android:1.3.2"
+play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.1.0"
+preference = "androidx.preference:preference:1.2.1"
+preferencex-simplemenu = "com.takisoft.preferencex:preferencex-simplemenu:1.1.0"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+swiperefreshlayout = "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+taskerpluginlibrary = "com.joaomgcd:taskerpluginlibrary:0.4.10"
+test-runner = "androidx.test:runner:1.6.2"
+timber = "com.jakewharton.timber:timber:5.0.1"
+zxing-core = "com.google.zxing:core:3.5.3"
 
 [plugins]
 aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutLibraries" }
+android-application = "com.android.application:8.10.1"
+ben-manes-versions = "com.github.ben-manes.versions:0.52.0"
+crashlytics = "com.google.firebase.crashlytics:3.0.4"
+google-services = "com.google.gms.google-services:4.4.2"
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+ksp = "com.google.devtools.ksp:2.1.21-2.0.2"
