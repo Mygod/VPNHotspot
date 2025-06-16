@@ -201,10 +201,6 @@ data class SoftApConfigurationCompat(
             SoftApConfiguration::class.java.getDeclaredMethod("getChannel")
         }
         @get:RequiresApi(31)
-        private val getChannels by lazy @TargetApi(31) {
-            SoftApConfiguration::class.java.getDeclaredMethod("getChannels")
-        }
-        @get:RequiresApi(31)
         private val getMacRandomizationSetting by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("getMacRandomizationSetting")
         }
@@ -400,7 +396,7 @@ data class SoftApConfigurationCompat(
             bssid,
             passphrase,
             isHiddenSsid,
-            if (Build.VERSION.SDK_INT >= 31) getChannels(this) as SparseIntArray else SparseIntArray(1).also {
+            if (Build.VERSION.SDK_INT >= 31) channels else SparseIntArray(1).also {
                 it.append(getBand(this) as Int, getChannel(this) as Int)
             },
             securityType,
