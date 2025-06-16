@@ -179,10 +179,12 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
-fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
-    try {
+fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
+                                      macOverride: MacAddress? = null) = SpannableStringBuilder().apply {
+    var address = macOverride
+    if (address == null && this@formatAddresses != null) try {
         val hardwareAddress = hardwareAddress
-        val address = try {
+        address = try {
             hardwareAddress?.let(MacAddress::fromBytes)
         } catch (e: IllegalArgumentException) {
             try {
@@ -190,11 +192,12 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
             } catch (e2: IllegalArgumentException) {
                 e.addSuppressed(e2)
                 Timber.w(e)
+                null
             }
         }
-        if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
     } catch (_: SocketException) { }
-    if (!macOnly) for (address in interfaceAddresses) {
+    if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
+    if (!macOnly && this@formatAddresses != null) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))
         address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
         appendLine()

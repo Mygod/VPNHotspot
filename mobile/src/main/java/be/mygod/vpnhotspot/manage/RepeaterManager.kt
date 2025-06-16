@@ -50,6 +50,9 @@ import java.net.NetworkInterface
 import java.net.SocketException
 
 class RepeaterManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
+    companion object {
+        private val interfaceAddress by lazy { WifiP2pGroup::class.java.getDeclaredField("interfaceAddress") }
+    }
     class ViewHolder(val binding: ListitemRepeaterBinding) : RecyclerView.ViewHolder(binding.root) {
         init {
             binding.addresses.movementMethod = LinkMovementMethod.getInstance()
@@ -75,14 +78,20 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             return parent.getString(R.string.title_repeater)
         }
         val addresses: CharSequence @Bindable get() {
+            val group = group ?: return ""
             return try {
-                NetworkInterface.getByName(p2pInterface ?: return "")?.formatAddresses() ?: ""
+                NetworkInterface.getByName(group.`interface`)
             } catch (_: SocketException) {
-                ""
+                null
             } catch (e: Exception) {
                 Timber.w(e)
-                ""
-            }
+                null
+            }.formatAddresses(macOverride = if (Build.VERSION.SDK_INT >= 30) try {
+                (interfaceAddress[group] as ByteArray?)?.let(MacAddress::fromBytes)
+            } catch (e: NoSuchMethodException) {
+                if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
+                null
+            } else null)
         }
 
         fun onStatusChanged() {
@@ -91,7 +100,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             notifyPropertyChanged(BR.addresses)
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
-            p2pInterface = group?.`interface`
+            this@RepeaterManager.group = group
             if (Build.VERSION.SDK_INT >= 29) notifyPropertyChanged(BR.title)
             notifyPropertyChanged(BR.addresses)
         }
@@ -173,7 +182,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
     override val type get() = VIEW_TYPE_REPEATER
     private val data = Data()
     internal var binder: RepeaterService.Binder? = null
-    private var p2pInterface: String? = null
+    private var group: WifiP2pGroup? = null
     private val holder by parent.viewModels<ConfigHolder>()
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
