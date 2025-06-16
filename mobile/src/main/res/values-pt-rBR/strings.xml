@@ -6,7 +6,6 @@
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clientes</string>
     <string name="title_settings">Configurações</string>
-    <string name="title_update">Atualização</string>
 
     <string name="repeater_channel">Repetidor (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (inseguro)</string>
@@ -148,7 +147,6 @@
     <string name="settings_misc_source_summary">Leia o manual, marque com estrela, envie problemas e contribua (Tipo o Konny :D)</string>
     <string name="settings_misc_donate">Doe</string>
     <string name="settings_misc_donate_summary">Eu amo dinheiro!</string>
-    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, e mais…</string>
     <string name="settings_restart_required">Reinicie o aplicativo para aplicar essa função.</string>
     <string name="settings_exit_app">Sair</string>
 
@@ -210,14 +208,4 @@
     <string name="wifi_user_config">Configuração fornecida pelo usuário</string>
     <string name="wifi_vendor_elements">Elementos do fornecedor</string>
     <string name="wifi_save">Salvar</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
-    <string name="donations__button_close">Fechar</string>
-    <string name="donations__description">Você acha esse aplicativo útil?\nDê um apoio para o desenvolvedor, envie um mimo!</string>
-    <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">Acho que algo está errado com os pagamentos pelo aplicativo. Certifique-se que sua Google Play Store está instalada corretamente.</string>
-    <string name="donations__google_android_market_description">O Google cobra uma taxa de 30%</string>
-    <string name="donations__google_android_market_donate_button">Doe!</string>
-    <string name="donations__google_android_market_text">Quanto?</string>
-    <string name="donations__thanks_dialog">Obrigado mesmo por doar!\nEu lhe agradeço muito!</string>
 </resources>

@@ -21,7 +21,6 @@
     <string name="title_tethering">Conexión compartida</string>
     <string name="title_clients">Clientes</string>
     <string name="title_settings">Ajustes</string>
-    <string name="title_update">Actualización</string>
 
     <string name="repeater_channel">Repetidor (%1$d MHz, canal %2$d)</string>
     <string name="repeater_wps">WPS (inseguro)</string>
@@ -165,7 +164,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_misc_source_summary">Leer el manual, dar estrella, enviar problemas y contribuir</string>
     <string name="settings_misc_donate">Donar</string>
     <string name="settings_misc_donate_summary">Me gusta el dinero</string>
-    <string name="settings_misc_donate_more">Donar con GitHub, PayPal, más…</string>
     <string name="settings_restart_required">Reinicia esta app para aplicar esta configuración.</string>
     <string name="settings_exit_app">Salir</string>
 
@@ -231,15 +229,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="wifi_user_config">Configuración suministrada por el usuario</string>
     <string name="wifi_vendor_elements">Elementos del proveedor</string>
     <string name="wifi_save">Guardar</string>
-
-    <!-- Based on: https://github.com/SufficientlySecure/donations/blob/eec86fd1db28b291bbb5ff15ad091d27a64a8477/Donations/src/main/res/values-es/donations__strings.xml -->
-    <string name="donations__button_close">Cerrar</string>
-    <string name="donations__description">¿Te resulta útil esta aplicación?\n¡Apoya su desarrollo enviando una donación al desarrollador!</string>
-    <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">No se admiten Donaciones desde la aplicación (In-App). ¿Está instalado Google Play Store correctamente?</string>
-    <string name="donations__google_android_market_donate_button">¡Donar!</string>
-    <string name="donations__google_android_market_text">¿Cuánto?</string>
-    <string name="donations__thanks_dialog">¡Gracias por donar!\n¡Se lo agradezco mucho!</string>
 
     <string name="tasker_get_tethering_state">Obtener estado de conexión compartida</string>
     <string name="tasker_tethering_state_update">Actualización del estado de conexión compartida</string>

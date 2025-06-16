@@ -136,7 +136,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
-            EBegFragment().showAllowingStateLoss(parentFragmentManager, "EBegFragment")
+            requireContext().launchUrl("https://mygod.be/donate/")
             true
         }
         findPreference<Preference>("misc.licenses")!!.setOnPreferenceClickListener {

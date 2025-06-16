@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot
 
-import android.net.Uri
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.activity.viewModels
@@ -11,7 +10,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
@@ -20,7 +18,6 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.UpdateChecker
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
@@ -60,23 +57,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         SmartSnackbar.Register(binding.fragmentHolder)
         WifiDoubleLock.ActivityListener(this)
         lifecycleScope.launch { BootReceiver.startIfEnabled() }
-        lastUpdate = UpdateChecker.check()
-        val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
-        updateItem.isCheckable = false
-        updateItem.isVisible = lastUpdate != null
-        if (lastUpdate == null) {
-            updateItem.isEnabled = false
-            return
-        }
-        updateItem.setIcon(R.drawable.ic_action_update)
-        updateItem.title = getText(R.string.title_update)
-        binding.navigation.getOrCreateBadge(R.id.navigation_update).apply {
-            backgroundColor = resources.getColor(R.color.colorSecondary, theme)
-            badgeTextColor = resources.getColor(androidx.appcompat.R.color.primary_text_default_material_light, theme)
-            isVisible = true
-        }
     }
-    private var lastUpdate: Uri? = null
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.navigation_clients -> {
@@ -90,10 +71,6 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         R.id.navigation_settings -> {
             displayFragment(SettingsPreferenceFragment())
             true
-        }
-        R.id.navigation_update -> {
-            app.customTabsIntent.launchUrl(this, lastUpdate!!)
-            false
         }
         else -> false
     }

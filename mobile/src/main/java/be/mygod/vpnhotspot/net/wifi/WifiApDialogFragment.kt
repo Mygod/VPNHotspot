@@ -197,7 +197,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView = DialogWifiApBinding.inflate(activity.layoutInflater)
         setView(dialogView.root)
         if (!arg.readOnly) setPositiveButton(R.string.wifi_save, listener)
-        setNegativeButton(R.string.donations__button_close, null)
         dialogView.toolbar.inflateMenu(R.menu.toolbar_configuration)
         dialogView.toolbar.setOnMenuItemClickListener(this@WifiApDialogFragment)
         dialogView.ssidWrapper.setLengthCounter {

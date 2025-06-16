@@ -5,7 +5,6 @@
     <string name="title_tethering">共享管理</string>
     <string name="title_clients">已连设备</string>
     <string name="title_settings">设置选项</string>
-    <string name="title_update">更新应用</string>
 
     <string name="repeater_channel">无线中继 (%1$d MHz, 频道 %2$d)</string>
     <string name="repeater_wps">WPS（不安全）</string>
@@ -153,7 +152,6 @@
     <string name="settings_misc_source_summary">查看使用手册，star, 提交 issues, 合作</string>
     <string name="settings_misc_donate">捐款</string>
     <string name="settings_misc_donate_summary">请给我钱</string>
-    <string name="settings_misc_donate_more">GitHub sponsors, PayPal 等其他方式…</string>
     <string name="settings_restart_required">重启应用以应用新的设置。</string>
     <string name="settings_exit_app">退出</string>
 
@@ -215,15 +213,4 @@
     <string name="wifi_user_config">用户提供配置</string>
     <string name="wifi_vendor_elements">供应商特定元素</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
-    <string name="donations__button_close">关闭</string>
-    <string name="donations__google_android_market">Google Play 商店</string>
-    <string name="donations__google_android_market_not_supported">不支持 In-App 捐赠。你的 Google Play 商店是否安装正确了呢？</string>
-    <string name="donations__google_android_market_donate_button">捐赠！</string>
-    <string name="donations__google_android_market_text">捐赠多少？</string>
-    <string name="donations__thanks_dialog">谢谢捐赠！\n非常感谢您！</string>
-
-    <string name="donations__description">觉得此应用很有用？\n捐赠给该开发者以支持此应用的开发！</string>
-    <string name="donations__google_android_market_description">Google 收取 30% 的费用</string>
 </resources>

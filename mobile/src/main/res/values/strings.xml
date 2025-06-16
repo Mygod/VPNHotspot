@@ -21,7 +21,6 @@
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
-    <string name="title_update">Update</string>
 
     <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (insecure)</string>
@@ -175,7 +174,6 @@
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
-    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, more…</string>
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
@@ -242,16 +240,6 @@
     <string name="wifi_user_config">User supplied configuration</string>
     <string name="wifi_vendor_elements">Vendor elements</string>
     <string name="wifi_save">Save</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
-    <string name="donations__button_close">Close</string>
-    <string name="donations__description">Do you find this application useful?\nSupport its development by sending a donation to the developer!</string>
-    <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">In-App Donations are not supported. Is Google Play Store installed correctly?</string>
-    <string name="donations__google_android_market_description">Google charges a fee of 30%</string>
-    <string name="donations__google_android_market_donate_button">Donate!</string>
-    <string name="donations__google_android_market_text">How much?</string>
-    <string name="donations__thanks_dialog">Thanks for donating!\nI really appreciate this!</string>
 
     <string name="tasker_get_tethering_state">Get Tethering State</string>
     <string name="tasker_tethering_state_update">Tethering State Update</string>

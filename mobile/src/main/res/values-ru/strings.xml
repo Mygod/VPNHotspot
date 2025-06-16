@@ -65,14 +65,4 @@
     <string name="wifi_advanced_mac_address_title" msgid="6571335466330978393">"MAC-адрес"</string>
     <string name="wifi_hidden_network" msgid="973162091800925000">"Скрытая сеть"</string>
     <string name="wifi_save" msgid="3331121567988522826">"Сохранить"</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-ru/donations__strings.xml -->
-    <string name="donations__button_close">Закрыть</string>
-    <string name="donations__description">Считаете это приложение полезным?\nПоддержите его разработку, отправив пожертвование разработчику!</string>
-    <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">Пожертвования через приложение не поддерживаются. Google Play Store установлен правильно?</string>
-    <string name="donations__google_android_market_description">Google взимает 30% комиссии с каждого пожертвования!</string>
-    <string name="donations__google_android_market_donate_button">Пожертвовать!</string>
-    <string name="donations__google_android_market_text">Сколько?</string>
-    <string name="donations__thanks_dialog">Благодарю за пожертвование! Я очень это ценю!</string>
 </resources>

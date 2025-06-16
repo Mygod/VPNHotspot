@@ -20,7 +20,6 @@
     <string name="title_tethering">テザリング</string>
     <string name="title_clients">クライアント</string>
     <string name="title_settings">設定</string>
-    <string name="title_update">更新</string>
     <string name="repeater_channel">レピーター (%1$d MHz - チャンネル %2$d)</string>
     <string name="repeater_wps">WPS (安全ではありません)</string>
     <string name="repeater_wps_dialog_title">PIN を入力してください</string>
@@ -157,7 +156,6 @@
     <string name="settings_misc_source_summary">マニュアルの確認、Star、問題の報告と貢献</string>
     <string name="settings_misc_donate">寄付</string>
     <string name="settings_misc_donate_summary">お金大好きです</string>
-    <string name="settings_misc_donate_more">GitHub sponsors や PayPal など…</string>
     <string name="settings_restart_required">この設定を適用するには、このアプリを再起動してください。</string>
     <string name="settings_exit_app">終了</string>
     <string name="notification_tethering_title">VPN テザリング</string>
@@ -218,15 +216,6 @@
     <string name="wifi_user_config">ユーザー指定の構成</string>
     <string name="wifi_vendor_elements">ベンダーエレメント</string>
     <string name="wifi_save">保存</string>
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
-    <string name="donations__button_close">閉じる</string>
-    <string name="donations__description">このアプリはお役に立ちましたか？\n開発者に寄付をして開発をサポートしてください！</string>
-    <string name="donations__google_android_market">Google Play ストア</string>
-    <string name="donations__google_android_market_not_supported">アプリ内での寄付が対応していません。Google Play ストアが正しくインストールされていますか？</string>
-    <string name="donations__google_android_market_description">Google は 30% の手数料を請求します</string>
-    <string name="donations__google_android_market_donate_button">寄付する！</string>
-    <string name="donations__google_android_market_text">いくらですか？</string>
-    <string name="donations__thanks_dialog">寄付をしてくれてありがとうございます！\n本当に感謝です！</string>
     <string name="tasker_get_tethering_state">テザリングの状態を取得</string>
     <string name="tasker_tethering_state_update">テザリングの状態を更新</string>
 </resources>

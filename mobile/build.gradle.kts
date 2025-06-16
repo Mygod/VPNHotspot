@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -32,11 +31,7 @@ android {
         versionCode = 1033
         versionName = "2.18.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ksp {
-            arg("room.expandProjection", "true")
-            arg("room.incremental", "true")
-            arg("room.schemaLocation", "$projectDir/schemas")
-        }
+        androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
         externalNativeBuild.cmake.arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
     }
     buildFeatures {
@@ -61,31 +56,13 @@ android {
     ))
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
-    flavorDimensions.add("freedom")
-    productFlavors {
-        create("freedom") {
-            dimension = "freedom"
-            androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
-        }
-        create("google") {
-            dimension = "freedom"
-            versionNameSuffix = "-g"
-            val prop = Properties().apply {
-                val f = rootProject.file("local.properties")
-                if (f.exists()) load(f.inputStream())
-            }
-            if (prop.containsKey("codeTransparency.storeFile")) bundle.codeTransparency.signing {
-                storeFile = file(prop["codeTransparency.storeFile"]!!)
-                storePassword = prop["codeTransparency.storePassword"] as? String
-                keyAlias = prop["codeTransparency.keyAlias"] as? String
-                keyPassword = if (prop.containsKey("codeTransparency.keyPassword")) {
-                    prop["codeTransparency.keyPassword"] as? String
-                } else storePassword
-            }
-        }
-    }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
+}
+ksp {
+    arg("room.expandProjection", "true")
+    arg("room.incremental", "true")
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
 
