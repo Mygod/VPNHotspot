@@ -10,8 +10,13 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.MacAddress
 import android.net.wifi.ScanResult
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WpsInfo
-import android.net.wifi.p2p.*
+import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pDevice
+import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pInfo
+import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Looper
 import android.provider.Settings
@@ -37,9 +42,25 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RepeaterCommands
 import be.mygod.vpnhotspot.root.RootManager
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.StickyEvent0
+import be.mygod.vpnhotspot.util.StickyEvent1
+import be.mygod.vpnhotspot.util.TileServiceDismissHandle
+import be.mygod.vpnhotspot.util.UnblockCentral
+import be.mygod.vpnhotspot.util.broadcastReceiver
+import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import be.mygod.vpnhotspot.util.intentFilter
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.ref.WeakReference
@@ -62,6 +83,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         private const val KEY_SHUTDOWN_TIMEOUT = "service.repeater.shutdownTimeout"
         private const val KEY_DEVICE_ADDRESS = "service.repeater.mac"
         private const val KEY_VENDOR_ELEMENTS = "service.repeater.vendorElements"
+        private const val KEY_PCC_MODE_CONNECTION_TYPE = "service.repeater.pccModeConnectionType"
 
         var persistentSupported = false
 
@@ -124,6 +146,20 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         var vendorElements: List<ScanResult.InformationElement>
             get() = VendorElements.deserialize(app.pref.getString(KEY_VENDOR_ELEMENTS, null))
             set(value) = app.pref.edit { putString(KEY_VENDOR_ELEMENTS, VendorElements.serialize(value)) }
+        @get:RequiresApi(36)
+        @set:RequiresApi(36)
+        var pccModeConnectionType: Int
+            get() = app.pref.getInt(KEY_PCC_MODE_CONNECTION_TYPE, WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY)
+            set(value) = app.pref.edit { putInt(KEY_PCC_MODE_CONNECTION_TYPE, value) }
+        var securityType: Int
+            get() = if (Build.VERSION.SDK_INT >= 36) {
+                pccModeConnectionType + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+            } else SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+            set(value) {
+                if (Build.VERSION.SDK_INT >= 36) {
+                    pccModeConnectionType = value - SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+                } else if (value != SoftApConfiguration.SECURITY_TYPE_WPA2_PSK) throw UnsupportedOperationException()
+            }
 
         var dismissHandle: TileServiceDismissHandle? = null
         private fun dismissIfApplicable() = dismissHandle?.run {
@@ -496,6 +532,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                     }
                 }
                 setDeviceAddress(deviceAddress)
+                if (Build.VERSION.SDK_INT >= 36) setPccModeConnectionType(pccModeConnectionType)
             }.build(), listener)
         }
     }

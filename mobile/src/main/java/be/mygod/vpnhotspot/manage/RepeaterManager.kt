@@ -204,7 +204,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 return SoftApConfigurationCompat(
                     ssid = networkName,
                     passphrase = passphrase,
-                    securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                    securityType = RepeaterService.securityType,
                     isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                     shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
                     macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
@@ -220,7 +220,11 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
             if (group != null) return SoftApConfigurationCompat(
                 ssid = WifiSsidCompat.fromUtf8Text(group.networkName),
-                securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,  // is not actually used
+                securityType = if (Build.VERSION.SDK_INT >= 36) when (group.securityType) {
+                    WifiP2pGroup.SECURITY_TYPE_WPA3_COMPATIBILITY -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION
+                    WifiP2pGroup.SECURITY_TYPE_WPA3_SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
+                    else -> SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+                } else SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
                 isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
                 shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
                 macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
@@ -256,6 +260,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             RepeaterService.networkName = config.ssid
             RepeaterService.deviceAddress = config.bssid
             RepeaterService.passphrase = config.passphrase
+            RepeaterService.securityType = config.securityType
         } else holder.config?.let { master ->
             val binder = binder
             val mayBeModified = master.psk != config.passphrase || master.bssid != config.bssid || config.ssid.run {

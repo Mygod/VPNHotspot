@@ -6,6 +6,7 @@ import android.content.ClipDescription
 import android.content.DialogInterface
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.Parcelable
 import android.text.Editable
@@ -83,6 +84,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 Array(lookup.size()) { BandWidth(lookup.keyAt(it), lookup.valueAt(it).substring(14)) }.apply { sort() }
             }
         }
+        @get:RequiresApi(36)
+        private val p2pSecurityTypes = arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal")
     }
 
     @Parcelize
@@ -153,6 +156,8 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (!arg.p2pMode) {
             securityType = dialogView.security.selectedItemPosition
             isHiddenSsid = dialogView.hiddenSsid.isChecked
+        } else if (Build.VERSION.SDK_INT >= 36) {
+            securityType = dialogView.security.selectedItemPosition + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         }
         if (full) {
             isAutoShutdownEnabled = dialogView.autoShutdown.isChecked
@@ -225,35 +230,55 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             }
         }
         dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
-        if (arg.p2pMode) dialogView.securityWrapper.isGone = true else dialogView.security.apply {
+        if (!arg.p2pMode) dialogView.security.apply {
             adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
-                    SoftApConfigurationCompat.securityTypes).apply {
+                SoftApConfigurationCompat.securityTypes).apply {
                 setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
             }
             onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
                 override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
                 override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                     when (position) {
-                         SoftApConfiguration.SECURITY_TYPE_OPEN,
-                         SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
-                         SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> dialogView.passwordWrapper.isGone = true
-                         else -> {
+                        SoftApConfiguration.SECURITY_TYPE_OPEN,
+                        SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+                        SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> dialogView.passwordWrapper.isGone = true
+                        SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> {
                             dialogView.passwordWrapper.isGone = false
-                            if (position == SoftApConfiguration.SECURITY_TYPE_WPA3_SAE) {
-                                dialogView.passwordWrapper.isCounterEnabled = false
-                                dialogView.passwordWrapper.counterMaxLength = 0
-                                dialogView.password.filters = emptyArray()
-                            } else {
-                                dialogView.passwordWrapper.isCounterEnabled = true
-                                dialogView.passwordWrapper.counterMaxLength = 63
-                                dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
-                            }
+                            dialogView.passwordWrapper.isCounterEnabled = false
+                            dialogView.passwordWrapper.counterMaxLength = 0
+                            dialogView.password.filters = emptyArray()
+                        }
+                        else -> {
+                            dialogView.passwordWrapper.isGone = false
+                            dialogView.passwordWrapper.isCounterEnabled = true
+                            dialogView.passwordWrapper.counterMaxLength = 63
+                            dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
                         }
                     }
                     validate()
                 }
             }
-        }
+        } else if (Build.VERSION.SDK_INT >= 36) dialogView.security.apply {
+            adapter = ArrayAdapter(activity, android.R.layout.simple_spinner_item, 0,
+                p2pSecurityTypes).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) = error("Must select something")
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    if (position == WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_R2_ONLY) {
+                        dialogView.passwordWrapper.isCounterEnabled = false
+                        dialogView.passwordWrapper.counterMaxLength = 0
+                        dialogView.password.filters = emptyArray()
+                    } else {
+                        dialogView.passwordWrapper.isCounterEnabled = true
+                        dialogView.passwordWrapper.counterMaxLength = 63
+                        dialogView.password.filters = arrayOf(InputFilter.LengthFilter(63))
+                    }
+                    validate()
+                }
+            }
+        } else dialogView.securityWrapper.isGone = true
         dialogView.password.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode || Build.VERSION.SDK_INT >= 30) {
             dialogView.timeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
@@ -332,7 +357,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 else -> ssid.toString()
             }
         })
-        if (!arg.p2pMode) dialogView.security.setSelection(base.securityType)
+        if (!arg.p2pMode) dialogView.security.setSelection(base.securityType) else if (Build.VERSION.SDK_INT >= 36) {
+            dialogView.security.setSelection(base.securityType - SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
+        }
         dialogView.password.setText(base.passphrase)
         dialogView.autoShutdown.isChecked = base.isAutoShutdownEnabled
         dialogView.timeout.setText(base.shutdownTimeoutMillis.let { if (it <= 0) "" else it.toString() })
@@ -384,11 +411,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             } else null else false to " "
         }
         dialogView.ssidWrapper.error = ssidError
-        val selectedSecurity = if (arg.p2pMode) {
-            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
-        } else dialogView.security.selectedItemPosition
         // see also: https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#688
-        val passwordValid = when (selectedSecurity) {
+        val passwordValid = when (when {
+            !arg.p2pMode -> dialogView.security.selectedItemPosition
+            Build.VERSION.SDK_INT >= 36 -> {
+                dialogView.security.selectedItemPosition + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+            }
+            else -> SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+        }) {
             SoftApConfiguration.SECURITY_TYPE_OPEN,
             SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
             SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> true
