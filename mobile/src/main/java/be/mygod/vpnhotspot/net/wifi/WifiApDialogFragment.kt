@@ -198,9 +198,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 MacAddress.fromString(dialogView.persistentRandomizedMac.text.toString())
             } else null
             allowedAcsChannels = acsList.associate { (band, text, _) -> band to RangeInput.fromString(text.text) }
-            if (!arg.p2pMode && Build.VERSION.SDK_INT >= 33) {
-                maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
-            }
+            if (arg.p2pMode || Build.VERSION.SDK_INT < 33) return@apply
+            maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
+            if (Build.VERSION.SDK_INT >= 36) isClientIsolationEnabled = dialogView.clientIsolation.isChecked
         }
     }
 
@@ -345,6 +345,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.acs6g.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.maxChannelBandwidth.onItemSelectedListener = this@WifiApDialogFragment
         }
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 36) dialogView.clientIsolation.isGone = true
         base = arg.configuration
         populateFromConfiguration()
     }
@@ -395,10 +396,14 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.vendorElements.setText(VendorElements.serialize(base.vendorElements))
         dialogView.persistentRandomizedMac.setText(base.persistentRandomizedMacAddress?.toString())
         for ((band, text, _) in acsList) text.setText(RangeInput.toString(base.allowedAcsChannels[band]))
-        if (Build.VERSION.SDK_INT >= 33) bandWidthOptions.binarySearch(BandWidth(base.maxChannelBandwidth)).let {
+        if (Build.VERSION.SDK_INT < 33) return
+        bandWidthOptions.binarySearch(BandWidth(base.maxChannelBandwidth)).let {
             if (it < 0) {
                 Timber.w(Exception("Cannot locate bandwidth ${base.maxChannelBandwidth}"))
             } else dialogView.maxChannelBandwidth.setSelection(it)
+        }
+        if (Build.VERSION.SDK_INT >= 36 && !arg.p2pMode) {
+            dialogView.clientIsolation.isChecked = base.isClientIsolationEnabled
         }
     }
 

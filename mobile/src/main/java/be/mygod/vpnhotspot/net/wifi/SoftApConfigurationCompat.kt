@@ -65,6 +65,8 @@ data class SoftApConfigurationCompat(
     var allowedAcsChannels: Map<Int, Set<Int>> = emptyMap(),
     @TargetApi(33)
     var maxChannelBandwidth: Int = CHANNEL_WIDTH_AUTO,
+    @RequiresApi(36)
+    var isClientIsolationEnabled: Boolean = false,
     var underlying: Parcelable? = null,
 ) : Parcelable {
     companion object {
@@ -236,6 +238,10 @@ data class SoftApConfigurationCompat(
         private val isClientControlByUserEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isClientControlByUserEnabled")
         }
+        @get:RequiresApi(36)
+        private val isClientIsolationEnabled by lazy @TargetApi(36) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isClientIsolationEnabled")
+        }
         @get:RequiresApi(31)
         private val isIeee80211axEnabled by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("isIeee80211axEnabled")
@@ -296,6 +302,10 @@ data class SoftApConfigurationCompat(
         private val setClientControlByUserEnabled by lazy @TargetApi(30) {
             SoftApConfiguration.Builder::class.java.getDeclaredMethod("setClientControlByUserEnabled",
                 Boolean::class.java)
+        }
+        @get:RequiresApi(36)
+        private val setClientIsolationEnabled by lazy @TargetApi(36) {
+            SoftApConfiguration.Builder::class.java.getDeclaredMethod("setClientIsolationEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
         private val setHiddenSsid by lazy @TargetApi(30) {
@@ -428,6 +438,7 @@ data class SoftApConfigurationCompat(
                 }
             }.filterNotNull().toMap()
             it.maxChannelBandwidth = getMaxChannelBandwidth(this) as Int
+            if (Build.VERSION.SDK_INT >= 36) it.isClientIsolationEnabled = isClientIsolationEnabled(this) as Boolean
         }
 
         /**
@@ -582,6 +593,7 @@ data class SoftApConfigurationCompat(
                     }
                 }
                 setMaxChannelBandwidth(builder, maxChannelBandwidth)
+                if (Build.VERSION.SDK_INT >= 36) setClientIsolationEnabled(builder, isClientIsolationEnabled)
             }
         }
         return builder.build()

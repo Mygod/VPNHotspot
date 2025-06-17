@@ -450,6 +450,14 @@
                         android:inputType="textMultiLine|textNoSuggestions" />
                 </com.google.android.material.textfield.TextInputLayout>
                 <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/client_isolation"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_client_isolation" />
+                <com.google.android.material.materialswitch.MaterialSwitch
                     android:id="@+id/user_config"
                     style="@style/wifi_item_label"
                     android:layout_width="match_parent"
