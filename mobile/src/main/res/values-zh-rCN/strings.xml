@@ -7,6 +7,11 @@
     <string name="title_settings">设置选项</string>
 
     <string name="repeater_channel">无线中继 (%1$d MHz, 频道 %2$d)</string>
+    <string name="repeater_features">支持的功能：</string>
+    <string name="repeater_feature_set_vendor_elements">设置供应商特定元素</string>
+    <string name="repeater_feature_group_client_removal">移除设备</string>
+    <string name="repeater_feature_pcc_mode">WPA3-SAE 兼容模式</string>
+    <string name="repeater_feature_wifi_direct_r2">WPA3-SAE</string>
     <string name="repeater_wps">WPS（不安全）</string>
     <string name="repeater_wps_dialog_title">输入 PIN</string>
     <string name="repeater_wps_dialog_pbc">一键加密</string>

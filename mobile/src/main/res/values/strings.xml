@@ -23,6 +23,11 @@
     <string name="title_settings">Settings</string>
 
     <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
+    <string name="repeater_features">"Supported features: "</string>
+    <string name="repeater_feature_set_vendor_elements">Set vendor elements</string>
+    <string name="repeater_feature_group_client_removal">Remove client</string>
+    <string name="repeater_feature_pcc_mode">WPA3-SAE Compatibility Mode</string>
+    <string name="repeater_feature_wifi_direct_r2">WPA3-SAE</string>
     <string name="repeater_wps">WPS (insecure)</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
