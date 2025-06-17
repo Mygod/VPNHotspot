@@ -299,14 +299,6 @@
                         android:inputType="number"
                         android:maxLength="10" />
                 </com.google.android.material.textfield.TextInputLayout>
-                <com.google.android.material.materialswitch.MaterialSwitch
-                    android:id="@+id/client_user_control"
-                    style="@style/wifi_item_label"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dip"
-                    android:minHeight="@dimen/touch_target_min"
-                    android:text="@string/wifi_client_user_control" />
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/blocked_list_wrapper"
                     android:layout_width="match_parent"
@@ -322,12 +314,21 @@
                         android:imeOptions="flagForceAscii"
                         android:inputType="textMultiLine|textNoSuggestions" />
                 </com.google.android.material.textfield.TextInputLayout>
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/client_user_control"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_client_user_control" />
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/allowed_list_wrapper"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dip"
                     android:hint="@string/wifi_allowed_list"
+                    android:enabled="false"
                     app:errorEnabled="true">
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/allowed_list"

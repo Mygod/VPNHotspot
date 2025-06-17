@@ -306,6 +306,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         if (arg.p2pMode || Build.VERSION.SDK_INT < 30) dialogView.accessControlGroup.isGone = true else {
             dialogView.maxClient.addTextChangedListener(this@WifiApDialogFragment)
             dialogView.blockedList.addTextChangedListener(this@WifiApDialogFragment)
+            dialogView.clientUserControl.setOnCheckedChangeListener { _, checked ->
+                dialogView.allowedListWrapper.isEnabled = checked
+            }
             dialogView.allowedList.addTextChangedListener(this@WifiApDialogFragment)
         }
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
