@@ -179,6 +179,22 @@
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
+
+    
+    <!-- 远程控制 -->
+    <string name="title_remote_control">远程控制</string>
+    <string name="remote_control_connect">连接远程设备</string>
+    <string name="remote_control_ip_hint">远程设备IP地址</string>
+    <string name="remote_control_api_key_hint">API Key</string>
+    <string name="remote_control_connect_success">连接成功</string>
+    <string name="remote_control_connect_failed">连接失败</string>
+    <string name="remote_control_refresh">刷新</string>
+    <string name="remote_control_start_wifi">启动热点</string>
+    <string name="remote_control_stop_wifi">停止热点</string>
+    <string name="remote_control_device_status">远程设备状态</string>
+    <string name="remote_control_usage_guide">使用说明</string>
+
+
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
     <string name="notification_channel_monitor">Monitor Inactive Interfaces</string>

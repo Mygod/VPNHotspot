@@ -3,4 +3,11 @@
     <color name="colorPrimary">@color/dark_colorPrimary</color>
     <color name="colorPrimaryDark">#005005</color>
     <color name="colorSecondary">#AEEA00</color>
+    
+    <!-- 远程控制页面深色模式颜色 -->
+    <color name="background_light">#121212</color>
+    <color name="card_background">#1E1E1E</color>
+    <color name="info_background">#1A237E</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#B3B3B3</color>
 </resources>

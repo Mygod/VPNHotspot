@@ -12,6 +12,11 @@
         android:title="@string/title_clients"/>
 
     <item
+        android:id="@+id/navigation_remote_control"
+        android:icon="@drawable/ic_action_perm_scan_wifi"
+        android:title="@string/title_remote_control"/>
+
+    <item
         android:id="@+id/navigation_settings"
         android:icon="@drawable/ic_action_settings"
         android:title="@string/title_settings"/>

@@ -22,10 +22,18 @@ import be.mygod.vpnhotspot.preference.UpstreamsPreference
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.ApiKeyManager
+import be.mygod.vpnhotspot.util.WebServerManager
+import be.mygod.vpnhotspot.util.QRCodeGenerator
+import be.mygod.vpnhotspot.StaticIpSetter
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
+import android.view.LayoutInflater
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.Toast
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -143,6 +151,246 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             startActivity(Intent(context, OssLicensesMenuActivity::class.java))
             true
         }
+        
+        // Web服务器设置
+        setupWebServerPreferences()
+    }
+
+    private fun setupWebServerPreferences() {
+        // API Key认证开关
+        val apiKeyAuthPreference = findPreference<TwoStatePreference>("web.server.api_key_auth")!!
+        apiKeyAuthPreference.apply {
+            isChecked = ApiKeyManager.isApiKeyAuthEnabled()
+            setOnPreferenceChangeListener { _, newValue ->
+                if (newValue as Boolean) {
+                    ApiKeyManager.enableApiKeyAuth()
+                } else {
+                    ApiKeyManager.disableApiKeyAuth()
+                }
+                true
+            }
+        }
+
+        // API Key管理
+        val apiKeyPreference = findPreference<Preference>("web.server.api_key")!!
+        apiKeyPreference.apply {
+            summary = if (ApiKeyManager.hasApiKey()) "已设置API Key" else "未设置API Key"
+            setOnPreferenceClickListener {
+                showApiKeyManagementDialog()
+                true
+            }
+        }
+
+        // 端口设置
+        val portPreference = findPreference<Preference>("web.server.port")!!
+        portPreference.apply {
+            summary = "当前端口: ${WebServerManager.getPort()}"
+            setOnPreferenceClickListener {
+                showPortInputDialog()
+                true
+            }
+        }
+    }
+
+    private fun showApiKeyManagementDialog() {
+        val currentApiKey = ApiKeyManager.getApiKey()
+        val options = if (currentApiKey != null) {
+            arrayOf("生成新API Key", "显示二维码", "复制API Key", "移除API Key")
+        } else {
+            arrayOf("生成新API Key", "手动输入API Key")
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("API Key管理")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> generateNewApiKey()
+                    1 -> if (currentApiKey != null) {
+                        showApiKeyQRCode(currentApiKey)
+                    } else {
+                        showManualApiKeyInput()
+                    }
+                    2 -> if (currentApiKey != null) {
+                        copyApiKeyToClipboard(currentApiKey)
+                    }
+                    3 -> if (currentApiKey != null) {
+                        removeApiKey()
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun generateNewApiKey() {
+        val newApiKey = ApiKeyManager.generateApiKey()
+        ApiKeyManager.setApiKey(newApiKey)
+        findPreference<Preference>("web.server.api_key")!!.summary = "已设置API Key"
+        Toast.makeText(requireContext(), "新API Key已生成", Toast.LENGTH_SHORT).show()
+        showApiKeyQRCode(newApiKey)
+    }
+
+    private fun showApiKeyQRCode(apiKey: String) {
+        // 获取设备IP地址和端口
+        val ip = getDeviceIpAddress()
+        val port = WebServerManager.getPort()
+        
+        if (ip != null) {
+            // 生成包含完整URL的二维码
+            val qrCodeDialog = QRCodeDialog.newInstance(
+                QRCodeGenerator.generateWebAccessQRCode(ip, port, apiKey),
+                "Web后台访问二维码",
+                "扫描此二维码可直接访问Web后台"
+            )
+            qrCodeDialog.show(parentFragmentManager, "QRCodeDialog")
+        } else {
+            // 如果无法获取IP，只显示API Key
+            val qrCodeDialog = QRCodeDialog.newInstance(apiKey, "API Key二维码")
+            qrCodeDialog.show(parentFragmentManager, "QRCodeDialog")
+        }
+    }
+    
+        private fun getDeviceIpAddress(): String? {
+        return try {
+            // 首先尝试获取用户设置的静态IP地址
+            val staticIps = StaticIpSetter.ips
+            if (staticIps.isNotEmpty()) {
+                // 解析静态IP设置，可能包含多个IP（每行一个）
+                val ipLines = staticIps.lines().filter { it.isNotEmpty() }
+                for (ipLine in ipLines) {
+                    val ip = ipLine.trim()
+                    // 检查是否是有效的IPv4地址
+                    if (isValidIPv4(ip)) {
+                        return ip
+                    }
+                }
+            }
+            
+            // 如果没有设置静态IP或静态IP无效，则获取网络接口的IP
+            val networkInterfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (networkInterfaces.hasMoreElements()) {
+                val networkInterface = networkInterfaces.nextElement()
+                
+                // 跳过回环接口和未启用的接口
+                if (networkInterface.isLoopback || !networkInterface.isUp) {
+                    continue
+                }
+                
+                // 获取接口的IP地址
+                val inetAddresses = networkInterface.inetAddresses
+                while (inetAddresses.hasMoreElements()) {
+                    val inetAddress = inetAddresses.nextElement()
+                    
+                    // 只选择IPv4地址，排除回环地址
+                    if (inetAddress is java.net.Inet4Address && !inetAddress.isLoopbackAddress) {
+                        val ip = inetAddress.hostAddress
+                        
+                        // 优先选择私有IP地址（内网地址）
+                        if (ip?.startsWith("192.168.") == true || ip?.startsWith("10.") == true || ip?.startsWith("172.") == true) {
+                            return ip
+                        }
+                    }
+                }
+            }
+            
+            // 如果没有找到私有IP，返回第一个有效的IPv4地址
+            val networkInterfaces2 = java.net.NetworkInterface.getNetworkInterfaces()
+            while (networkInterfaces2.hasMoreElements()) {
+                val networkInterface = networkInterfaces2.nextElement()
+                if (networkInterface.isLoopback || !networkInterface.isUp) {
+                    continue
+                }
+                
+                val inetAddresses = networkInterface.inetAddresses
+                while (inetAddresses.hasMoreElements()) {
+                    val inetAddress = inetAddresses.nextElement()
+                    if (inetAddress is java.net.Inet4Address && !inetAddress.isLoopbackAddress) {
+                        return inetAddress.hostAddress
+                    }
+                }
+            }
+            
+            null
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to get device IP address")
+            null
+        }
+    }
+    
+    private fun isValidIPv4(ip: String): Boolean {
+        return try {
+            val parts = ip.split(".")
+            if (parts.size != 4) return false
+            
+            for (part in parts) {
+                val num = part.toInt()
+                if (num < 0 || num > 255) return false
+            }
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun showManualApiKeyInput() {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_api_key_input, null)
+        val apiKeyInput = dialogView.findViewById<EditText>(R.id.apiKeyInput)
+
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("输入API Key")
+            .setView(dialogView)
+            .setPositiveButton("确定") { _, _ ->
+                val apiKey = apiKeyInput.text.toString().trim()
+                if (apiKey.isNotEmpty()) {
+                    ApiKeyManager.setApiKey(apiKey)
+                    findPreference<Preference>("web.server.api_key")!!.summary = "已设置API Key"
+                    Toast.makeText(requireContext(), "API Key已设置", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun copyApiKeyToClipboard(apiKey: String) {
+        val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("API Key", apiKey)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(requireContext(), "API Key已复制到剪贴板", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun removeApiKey() {
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("确认移除")
+            .setMessage("确定要移除当前的API Key吗？")
+            .setPositiveButton("移除") { _, _ ->
+                ApiKeyManager.clearApiKey()
+                findPreference<Preference>("web.server.api_key")!!.summary = "未设置API Key"
+                Toast.makeText(requireContext(), "API Key已移除", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showPortInputDialog() {
+        val dialogView = LayoutInflater.from(requireContext()).inflate(R.layout.dialog_port_input, null)
+        val portInput = dialogView.findViewById<EditText>(R.id.portInput)
+        portInput.setText(WebServerManager.getPort().toString())
+
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("设置端口")
+            .setView(dialogView)
+            .setPositiveButton("确定") { _, _ ->
+                val portText = portInput.text.toString().trim()
+                val port = portText.toIntOrNull()
+                if (port != null && port in 1024..65535) {
+                    WebServerManager.setPort(port)
+                    findPreference<Preference>("web.server.port")!!.summary = "当前端口: $port"
+                    Toast.makeText(requireContext(), "端口已设置为 $port，重启后生效", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(requireContext(), "请输入有效的端口号 (1024-65535)", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {

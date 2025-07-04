@@ -22,9 +22,12 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UpdateChecker
+import be.mygod.vpnhotspot.util.ApiKeyManager
+import be.mygod.vpnhotspot.util.WebServerManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.net.Inet4Address
 
 class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListener {
@@ -76,6 +79,14 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         // 启动Usb网络共享自动启动器
         UsbTetheringAutoStarter.getInstance(this).start()
         
+        // 初始化API Key管理器和WebServer管理器
+        ApiKeyManager.init(this)
+        WebServerManager.init(this)
+        
+        // 启动WebServer（默认启动，API Key保护是可选的）
+        WebServerManager.start(this)
+        Timber.i("WebServer started on port ${WebServerManager.getCurrentPort()}")
+        
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
         updateItem.isCheckable = false
@@ -101,6 +112,10 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         }
         R.id.navigation_tethering -> {
             displayFragment(TetheringFragment())
+            true
+        }
+        R.id.navigation_remote_control -> {
+            displayFragment(RemoteControlFragment())
             true
         }
         R.id.navigation_settings -> {

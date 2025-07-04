@@ -51,6 +51,22 @@
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_misc">
+        <SwitchPreferenceCompat
+            app:key="web.server.api_key_auth"
+            app:icon="@drawable/ic_action_settings"
+            app:title="API Key认证"
+            app:summary="启用API Key认证保护Web服务器"
+            app:defaultValue="false"/>
+        <Preference
+            app:key="web.server.api_key"
+            app:icon="@drawable/ic_action_settings"
+            app:title="API Key管理"
+            app:summary="生成、查看和管理API Key"/>
+        <Preference
+            app:key="web.server.port"
+            app:icon="@drawable/ic_action_settings"
+            app:title="Web服务器端口"
+            app:summary="设置Web服务器监听端口"/>
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.wifiLock"
             app:icon="@drawable/ic_device_wifi_lock"
