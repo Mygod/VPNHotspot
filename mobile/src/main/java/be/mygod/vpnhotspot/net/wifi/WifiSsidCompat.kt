@@ -16,7 +16,6 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         private val hexTester = Regex("^(?:[0-9a-f]{2})*$", RegexOption.IGNORE_CASE)
         private val qrSanitizer = Regex("([\\\\\":;,])")
 
-        @OptIn(ExperimentalStdlibApi::class)
         fun fromHex(hex: String?) = hex?.run { WifiSsidCompat(hexToByteArray()) }
 
         @Contract("null -> null; !null -> !null")
@@ -44,7 +43,6 @@ data class WifiSsidCompat(val bytes: ByteArray) : Parcelable {
         }.decode(ByteBuffer.wrap(bytes), this, true)
         if (result.isError) null else flip().toString()
     }
-    @OptIn(ExperimentalStdlibApi::class)
     val hex get() = bytes.toHexString()
 
     fun toMeCard(): String {

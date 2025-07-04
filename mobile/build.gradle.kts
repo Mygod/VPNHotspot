@@ -29,8 +29,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1033
-        versionName = "2.18.4"
+        versionCode = 1034
+        versionName = "2.19.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
         externalNativeBuild.cmake.arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
@@ -82,6 +82,7 @@ dependencies {
     implementation(libs.firebase.crashlytics)
     implementation(libs.foundation.layout)
     implementation(libs.fragment.ktx)
+    implementation(libs.hiddenapibypass)
     implementation(libs.ktor.network.jvm)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.kotlinx.coroutines.android)
@@ -98,7 +99,6 @@ dependencies {
     implementation(libs.taskerpluginlibrary)
     implementation(libs.timber)
     implementation(libs.zxing.core)
-    implementation(libs.hiddenapibypass)
     testImplementation(libs.junit)
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.junit.ktx)

@@ -1,8 +1,8 @@
 [versions]
-aboutLibraries = "12.2.2"
-kotlin = "2.1.21"
+aboutLibraries = "12.2.4"
+kotlin = "2.2.0"
 lifecycle = "2.9.1"
-room = "2.7.1"
+room = "2.7.2"
 
 [libraries]
 aboutlibraries-compose-m3 = { module = "com.mikepenz:aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
@@ -11,19 +11,19 @@ browser = "androidx.browser:browser:1.8.0"
 core-i18n = "androidx.core:core-i18n:1.0.0"
 core-ktx = "androidx.core:core-ktx:1.16.0"
 desugar-jdk-libs = "com.android.tools:desugar_jdk_libs:2.1.5"
-dexmaker = "com.linkedin.dexmaker:dexmaker:2.28.4"
+dexmaker = "com.linkedin.dexmaker:dexmaker:2.28.5"
 dnsjava = "dnsjava:dnsjava:3.6.3"
 espresso-core = "androidx.test.espresso:espresso-core:3.6.1"
-firebase-analytics = "com.google.firebase:firebase-analytics:22.4.0"
+firebase-analytics = "com.google.firebase:firebase-analytics:22.5.0"
 firebase-crashlytics = "com.google.firebase:firebase-crashlytics:19.4.4"
-foundation-layout = "androidx.compose.foundation:foundation-layout:1.8.2"
+foundation-layout = "androidx.compose.foundation:foundation-layout:1.8.3"
 fragment-ktx = "androidx.fragment:fragment-ktx:1.8.8"
 hiddenapibypass = "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
 junit = "junit:junit:4.13.2"
 junit-ktx = "androidx.test.ext:junit-ktx:1.2.1"
 kotlinx-collections-immutable = "org.jetbrains.kotlinx:kotlinx-collections-immutable:0.4.0"
 kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
-ktor-network-jvm = "io.ktor:ktor-network-jvm:3.2.0"
+ktor-network-jvm = "io.ktor:ktor-network-jvm:3.2.1"
 librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:1.2.1"
 lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
@@ -43,10 +43,10 @@ zxing-core = "com.google.zxing:core:3.5.3"
 
 [plugins]
 aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutLibraries" }
-android-application = "com.android.application:8.10.1"
+android-application = "com.android.application:8.11.0"
 ben-manes-versions = "com.github.ben-manes.versions:0.52.0"
 crashlytics = "com.google.firebase.crashlytics:3.0.4"
-google-services = "com.google.gms.google-services:4.4.2"
+google-services = "com.google.gms.google-services:4.4.3"
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-ksp = "com.google.devtools.ksp:2.1.21-2.0.2"
+ksp = "com.google.devtools.ksp:2.2.0-2.0.2"
