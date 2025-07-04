@@ -109,7 +109,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     null
                 }.formatAddresses(macOverride = if (Build.VERSION.SDK_INT >= 30) try {
                     (interfaceAddress[group] as ByteArray?)?.let(MacAddress::fromBytes)
-                } catch (e: NoSuchMethodException) {
+                } catch (e: NoSuchFieldException) {
                     if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
                     null
                 } else null)

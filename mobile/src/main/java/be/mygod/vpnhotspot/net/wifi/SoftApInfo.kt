@@ -49,7 +49,7 @@ value class SoftApInfo(val inner: Parcelable) {
     val mldAddress get() = try {
         getMldAddress(inner) as MacAddress?
     } catch (e: NoSuchMethodException) {
-        if (Build.VERSION.SDK_INT < 36) Timber.w(e)
+        if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
         null
     }
 }
