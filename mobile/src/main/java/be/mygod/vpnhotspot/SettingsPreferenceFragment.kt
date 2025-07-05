@@ -317,30 +317,15 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                     if (inetAddress is java.net.Inet4Address && !inetAddress.isLoopbackAddress) {
                         val ip = inetAddress.hostAddress
                         
-                        // 优先选择私有IP地址（内网地址）
-                        if (ip?.startsWith("192.168.") == true || ip?.startsWith("10.") == true || ip?.startsWith("172.") == true) {
+                        // 返回任何有效的IPv4地址（不限于私有IP）
+                        if (ip != null) {
                             return ip
                         }
                     }
                 }
             }
             
-            // 如果没有找到私有IP，返回第一个有效的IPv4地址
-            val networkInterfaces2 = java.net.NetworkInterface.getNetworkInterfaces()
-            while (networkInterfaces2.hasMoreElements()) {
-                val networkInterface = networkInterfaces2.nextElement()
-                if (networkInterface.isLoopback || !networkInterface.isUp) {
-                    continue
-                }
-                
-                val inetAddresses = networkInterface.inetAddresses
-                while (inetAddresses.hasMoreElements()) {
-                    val inetAddress = inetAddresses.nextElement()
-                    if (inetAddress is java.net.Inet4Address && !inetAddress.isLoopbackAddress) {
-                        return inetAddress.hostAddress
-                    }
-                }
-            }
+
             
             null
         } catch (e: Exception) {
