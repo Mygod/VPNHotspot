@@ -85,7 +85,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         
         // 启动WebServer（默认启动，API Key保护是可选的）
         WebServerManager.start(this)
-        Timber.i("WebServer started on port ${WebServerManager.getCurrentPort()}")
+        Timber.i("WebServer started on port ${WebServerManager.getPort()}")
         
         lastUpdate = UpdateChecker.check()
         val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)

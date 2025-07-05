@@ -169,6 +169,9 @@
     <string name="settings_system_tether_offload_summary">Shortcut to system developer options</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_help">Help</string>
+    <string name="settings_developer_mode">开发者调试模式</string>
+    <string name="settings_developer_mode_summary">启用开发者调试API接口（有安全风险，仅供调试）</string>
+    <string name="settings_developer_mode_warning">警告：启用开发者调试模式将暴露敏感API接口，包括生成API Key和开关认证功能。这些接口可能被恶意利用，请仅在调试环境中使用。</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
     <string name="settings_misc_source">Project homepage at GitHub</string>

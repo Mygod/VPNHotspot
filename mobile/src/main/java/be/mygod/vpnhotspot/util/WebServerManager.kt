@@ -2,7 +2,7 @@ package be.mygod.vpnhotspot.util
 
 import android.content.Context
 import android.content.SharedPreferences
-import be.mygod.vpnhotspot.WebServer
+import be.mygod.vpnhotspot.OkHttpWebServer
 import timber.log.Timber
 import java.io.IOException
 
@@ -16,7 +16,7 @@ object WebServerManager {
     private const val DEFAULT_PORT = 9999
     
     private var prefs: SharedPreferences? = null
-    private var currentServer: WebServer? = null
+    private var currentServer: OkHttpWebServer? = null
     
     fun init(context: Context) {
         if (prefs == null) {
@@ -45,18 +45,18 @@ object WebServerManager {
         val port = getPort()
         
         // 如果当前服务器正在运行且端口不同，先停止
-        if (currentServer != null && currentServer!!.isAlive && currentServer!!.listeningPort != port) {
+        if (currentServer != null && currentServer!!.isRunning && currentServer!!.port != port) {
             stop()
         }
         
         // 如果服务器未运行，启动新服务器
-        if (currentServer == null || !currentServer!!.isAlive) {
+        if (currentServer == null || !currentServer!!.isRunning) {
             try {
-                currentServer = WebServer(context.applicationContext, port)
+                currentServer = OkHttpWebServer(context.applicationContext, port)
                 currentServer!!.start()
-                Timber.i("WebServer started on port $port")
+                Timber.i("OkHttpWebServer started on port $port")
             } catch (e: IOException) {
-                Timber.e(e, "Failed to start WebServer on port $port")
+                Timber.e(e, "Failed to start OkHttpWebServer on port $port")
                 throw e
             }
         }
@@ -67,9 +67,9 @@ object WebServerManager {
      */
     fun stop() {
         currentServer?.let { server ->
-            if (server.isAlive) {
+            if (server.isRunning) {
                 server.stop()
-                Timber.i("WebServer stopped")
+                Timber.i("OkHttpWebServer stopped")
             }
             currentServer = null
         }
@@ -87,13 +87,13 @@ object WebServerManager {
      * 检查WebServer是否正在运行
      */
     fun isRunning(): Boolean {
-        return currentServer?.isAlive == true
+        return currentServer?.isRunning == true
     }
     
     /**
      * 获取当前监听的端口
      */
     fun getCurrentPort(): Int {
-        return currentServer?.listeningPort ?: getPort()
+        return currentServer?.port ?: getPort()
     }
 } 

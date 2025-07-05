@@ -157,6 +157,33 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     }
 
     private fun setupWebServerPreferences() {
+        // 开发者调试模式开关
+        val developerModePreference = findPreference<TwoStatePreference>("web.server.developer_mode")!!
+        developerModePreference.apply {
+            isChecked = ApiKeyManager.isDeveloperModeEnabled()
+            setOnPreferenceChangeListener { _, newValue ->
+                if (newValue as Boolean) {
+                    // 显示警告对话框
+                    androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                        .setTitle("安全警告")
+                        .setMessage(R.string.settings_developer_mode_warning)
+                        .setPositiveButton("我了解风险，继续启用") { _, _ ->
+                            ApiKeyManager.enableDeveloperMode()
+                            isChecked = true
+                        }
+                        .setNegativeButton("取消") { _, _ ->
+                            isChecked = false
+                        }
+                        .setCancelable(false)
+                        .show()
+                    false // 阻止默认行为，由对话框处理
+                } else {
+                    ApiKeyManager.disableDeveloperMode()
+                    true
+                }
+            }
+        }
+
         // API Key认证开关
         val apiKeyAuthPreference = findPreference<TwoStatePreference>("web.server.api_key_auth")!!
         apiKeyAuthPreference.apply {
@@ -195,7 +222,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     private fun showApiKeyManagementDialog() {
         val currentApiKey = ApiKeyManager.getApiKey()
         val options = if (currentApiKey != null) {
-            arrayOf("生成新API Key", "显示二维码", "复制API Key", "移除API Key")
+            arrayOf("生成新API Key", "显示二维码", "复制后台地址", "在浏览器中打开", "重置为默认API Key", "移除API Key")
         } else {
             arrayOf("生成新API Key", "手动输入API Key")
         }
@@ -211,9 +238,15 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         showManualApiKeyInput()
                     }
                     2 -> if (currentApiKey != null) {
-                        copyApiKeyToClipboard(currentApiKey)
+                        copyWebBackendUrlToClipboard(currentApiKey)
                     }
                     3 -> if (currentApiKey != null) {
+                        openWebBackendInBrowser(currentApiKey)
+                    }
+                    4 -> if (currentApiKey != null) {
+                        resetToDefaultApiKey()
+                    }
+                    5 -> if (currentApiKey != null) {
                         removeApiKey()
                     }
                 }
@@ -350,11 +383,56 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             .show()
     }
 
-    private fun copyApiKeyToClipboard(apiKey: String) {
-        val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val clip = android.content.ClipData.newPlainText("API Key", apiKey)
-        clipboard.setPrimaryClip(clip)
-        Toast.makeText(requireContext(), "API Key已复制到剪贴板", Toast.LENGTH_SHORT).show()
+    private fun copyWebBackendUrlToClipboard(apiKey: String) {
+        val ip = getDeviceIpAddress()
+        val port = WebServerManager.getPort()
+        
+        if (ip != null) {
+            val webBackendUrl = "http://$ip:$port/$apiKey"
+            val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("Web后台地址", webBackendUrl)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(requireContext(), "Web后台地址已复制到剪贴板", Toast.LENGTH_SHORT).show()
+        } else {
+            // 如果无法获取IP地址，回退到复制API Key
+            val clipboard = requireContext().getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val clip = android.content.ClipData.newPlainText("API Key", apiKey)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(requireContext(), "无法获取IP地址，已复制API Key", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun openWebBackendInBrowser(apiKey: String) {
+        val ip = getDeviceIpAddress()
+        val port = WebServerManager.getPort()
+        
+        if (ip != null) {
+            val webBackendUrl = "http://$ip:$port/$apiKey"
+            try {
+                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(webBackendUrl))
+                startActivity(intent)
+                Toast.makeText(requireContext(), "正在打开Web后台", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "无法打开浏览器: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(requireContext(), "无法获取设备IP地址", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun resetToDefaultApiKey() {
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("重置为默认API Key")
+            .setMessage("确定要重置为默认API Key吗？\n\n默认API Key: default_api_key_for_debug_2024\n\n认证开关状态保持不变。")
+            .setPositiveButton("重置") { _, _ ->
+                // 设置默认API Key
+                ApiKeyManager.setApiKey("default_api_key_for_debug_2024")
+                // 更新UI
+                findPreference<Preference>("web.server.api_key")!!.summary = "已设置默认API Key"
+                Toast.makeText(requireContext(), "已重置为默认API Key", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun removeApiKey() {

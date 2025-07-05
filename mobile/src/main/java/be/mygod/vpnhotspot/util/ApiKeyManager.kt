@@ -13,6 +13,7 @@ object ApiKeyManager {
     private const val PREFS_NAME = "api_key_prefs"
     private const val KEY_API_KEY = "api_key"
     private const val KEY_API_KEY_ENABLED = "api_key_enabled"
+    private const val KEY_DEVELOPER_MODE_ENABLED = "developer_mode_enabled"
     
     private var prefs: SharedPreferences? = null
     
@@ -43,7 +44,12 @@ object ApiKeyManager {
      * 获取当前API Key
      */
     fun getApiKey(): String? {
-        return prefs?.getString(KEY_API_KEY, null)
+        val savedKey = prefs?.getString(KEY_API_KEY, null)
+        if (savedKey != null) {
+            return savedKey
+        }
+        // 如果没有保存的API Key，返回默认值
+        return "default_api_key_for_debug_2024"
     }
     
     /**
@@ -91,5 +97,26 @@ object ApiKeyManager {
      */
     fun clearApiKey() {
         prefs?.edit()?.remove(KEY_API_KEY)?.apply()
+    }
+    
+    /**
+     * 启用开发者模式
+     */
+    fun enableDeveloperMode() {
+        prefs?.edit()?.putBoolean(KEY_DEVELOPER_MODE_ENABLED, true)?.apply()
+    }
+    
+    /**
+     * 禁用开发者模式
+     */
+    fun disableDeveloperMode() {
+        prefs?.edit()?.putBoolean(KEY_DEVELOPER_MODE_ENABLED, false)?.apply()
+    }
+    
+    /**
+     * 检查是否启用了开发者模式
+     */
+    fun isDeveloperModeEnabled(): Boolean {
+        return prefs?.getBoolean(KEY_DEVELOPER_MODE_ENABLED, false) ?: false
     }
 } 

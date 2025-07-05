@@ -52,6 +52,12 @@
     <PreferenceCategory
         app:title="@string/settings_misc">
         <SwitchPreferenceCompat
+            app:key="web.server.developer_mode"
+            app:icon="@drawable/ic_action_bug_report"
+            app:title="开发者调试模式"
+            app:summary="启用开发者调试API接口（有安全风险，仅供调试）"
+            app:defaultValue="false"/>
+        <SwitchPreferenceCompat
             app:key="web.server.api_key_auth"
             app:icon="@drawable/ic_action_settings"
             app:title="API Key认证"

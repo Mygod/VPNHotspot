@@ -130,7 +130,7 @@ class QRCodeScannerActivity : AppCompatActivity() {
                     val params = parts[1].split("&")
                     
                     val ip = hostPort[0]
-                    val port = hostPort[1].toInt()
+                    val port = if (hostPort.size > 1) hostPort[1].toInt() else 9999
                     var apiKey = ""
                     
                     for (param in params) {
