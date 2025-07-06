@@ -335,8 +335,7 @@ object TetheringManagerCompat {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
                 method.matches("onConnectorAvailable", UnblockCentral.ITetheringConnector) -> {
                     contextRef.get()?.let { context ->
-                        UnblockCentral.ITetheringConnector_stopTethering(args!![0], type, context.opPackageName,
-                            context.attributionTag, ProxyBuilder.forClass(stubIIntResultListener).apply {
+                        val resultListener = ProxyBuilder.forClass(stubIIntResultListener).apply {
                             dexCache(cacheDir)
                             handler { proxy, method, args ->
                                 @Suppress("NAME_SHADOWING") val callback = reference.get()
@@ -347,7 +346,12 @@ object TetheringManagerCompat {
                                 }
                                 ProxyBuilder.callSuper(proxy, method, *args)
                             }
-                        }.build())
+                        }.build()
+                        val (method, isNew) = UnblockCentral.ITetheringConnector_stopTethering
+                        if (isNew) {
+                            method(args!![0], type, context.opPackageName, context.attributionTag,
+                                resultListener)
+                        } else method(args!![0], type, context.opPackageName, resultListener)
                     }
                 }
                 else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer::class.java, proxy, method, args)
