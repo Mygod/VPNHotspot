@@ -354,6 +354,79 @@
 
                 </LinearLayout>
 
+                <!-- APP控制区域 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="20dp"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="APP控制"
+                        android:textSize="16sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/text_primary"
+                        android:layout_marginBottom="12dp" />
+
+                    <!-- 包名输入 -->
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:id="@+id/packageNameInputLayout"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="12dp"
+                        android:hint="APP包名 (如: com.example.app)"
+                        app:startIconDrawable="@drawable/ic_action_settings"
+                        app:startIconTint="@color/colorPrimary"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
+
+                        <AutoCompleteTextView
+                            android:id="@+id/packageNameInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="text"
+                            android:padding="12dp"
+                            android:textSize="14sp" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <!-- APP控制按钮 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/launchAppButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:layout_marginEnd="8dp"
+                            android:text="启动APP"
+                            android:textSize="14sp"
+                            app:icon="@drawable/ic_action_build"
+                            app:iconGravity="textStart"
+                            app:cornerRadius="8dp"
+                            style="@style/Widget.MaterialComponents.Button" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/savePackageButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="保存"
+                            android:textSize="12sp"
+                            app:icon="@drawable/ic_content_file_copy"
+                            app:iconSize="16dp"
+                            app:cornerRadius="8dp"
+                            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
             </LinearLayout>
 
         </com.google.android.material.card.MaterialCardView>

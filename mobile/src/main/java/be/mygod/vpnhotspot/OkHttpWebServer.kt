@@ -581,6 +581,7 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
             uri == "/api/status" -> serveApiStatus()
             uri == "/api/wifi/start" -> handleApiWifiStart()
             uri == "/api/wifi/stop" -> handleApiWifiStop()
+            uri == "/api/app/launch" -> handleApiAppLaunch(request)
             uri == "/api/system/info" -> serveSystemInfo()
             uri == "/api/generate-key" -> handleGenerateApiKey()
             uri == "/api/toggle-auth" -> handleToggleAuth(request)
@@ -654,6 +655,35 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
         } catch (e: Exception) {
             Timber.e(e, "Failed to stop WiFi tethering")
             val json = """{"success": false, "error": "停止失败: ${e.message}"}"""
+            HttpResponse(500, jsonMediaType, json)
+        }
+    }
+    
+    private fun handleApiAppLaunch(request: HttpRequest): HttpResponse {
+        return try {
+            // 解析请求体获取包名
+            val requestBody = request.body
+            if (requestBody.isNullOrEmpty()) {
+                val json = """{"success": false, "error": "缺少请求参数"}"""
+                return HttpResponse(400, jsonMediaType, json)
+            }
+            
+            // 解析JSON获取包名
+            val jsonObject = org.json.JSONObject(requestBody)
+            val packageName = jsonObject.optString("packageName", "")
+            
+            if (packageName.isEmpty()) {
+                val json = """{"success": false, "error": "缺少packageName参数"}"""
+                return HttpResponse(400, jsonMediaType, json)
+            }
+            
+            // 启动APP
+            launchApp(packageName)
+            val json = """{"success": true, "message": "APP启动成功: $packageName"}"""
+            HttpResponse(200, jsonMediaType, json)
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to launch app")
+            val json = """{"success": false, "error": "启动失败: ${e.message}"}"""
             HttpResponse(500, jsonMediaType, json)
         }
     }
@@ -735,6 +765,14 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
                     .status-off { background: #dc3545; }
                     .refresh-btn { background: #6c757d; color: white; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; margin-left: 10px; }
                     .error { color: #dc3545; font-weight: bold; }
+                    .input-group { display: flex; gap: 10px; margin: 10px 0; align-items: center; }
+                    .input-group input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+                    .button.primary { background: #007bff; }
+                    .button.primary:hover { background: #0056b3; }
+                    .result-message { margin-top: 10px; padding: 8px; border-radius: 4px; font-size: 14px; }
+                    .result-message.success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+                    .result-message.error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+                    .result-message.loading { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
                 </style>
             </head>
             <body>
@@ -758,6 +796,15 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
                             <button class="button success" onclick="startWifi()">启动WiFi热点</button>
                             <button class="button danger" onclick="stopWifi()">停止WiFi热点</button>
                             <button class="button info" onclick="testApi()">测试API连接</button>
+                        </div>
+                        
+                        <div class="status-card">
+                            <h3>APP控制</h3>
+                            <div class="input-group">
+                                <input type="text" id="packageNameInput" placeholder="输入APP包名 (如: com.example.app)" />
+                                <button class="button primary" onclick="launchApp()">启动APP</button>
+                            </div>
+                            <div id="appLaunchResult" class="result-message"></div>
                         </div>
                     </div>
                 </div>
@@ -923,6 +970,61 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
                         } catch (error) {
                             console.error('Error in stopWifi:', error);
                             alert('JavaScript错误: ' + error.message);
+                        }
+                    }
+                    
+                    function launchApp() {
+                        try {
+                            const packageName = document.getElementById('packageNameInput').value.trim();
+                            const resultDiv = document.getElementById('appLaunchResult');
+                            
+                            if (!packageName) {
+                                resultDiv.textContent = '请输入APP包名';
+                                resultDiv.className = 'result-message error';
+                                return;
+                            }
+                            
+                            const apiUrl = getApiUrl('/api/app/launch');
+                            console.log('Launching app from:', apiUrl, 'Package:', packageName);
+                            
+                            // 显示加载状态
+                            resultDiv.textContent = '正在启动APP...';
+                            resultDiv.className = 'result-message loading';
+                            
+                            fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({
+                                    packageName: packageName
+                                })
+                            })
+                            .then(response => {
+                                console.log('Launch response status:', response.status);
+                                return response.json();
+                            })
+                            .then(result => {
+                                console.log('Launch response data:', result);
+                                if (result.success) {
+                                    resultDiv.textContent = result.message;
+                                    resultDiv.className = 'result-message success';
+                                } else {
+                                    resultDiv.textContent = '启动失败: ' + (result.error || '未知错误');
+                                    resultDiv.className = 'result-message error';
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Launch error:', error);
+                                resultDiv.textContent = '启动失败: ' + error.message;
+                                resultDiv.className = 'result-message error';
+                            });
+                        } catch (error) {
+                            console.error('Error in launchApp:', error);
+                            const resultDiv = document.getElementById('appLaunchResult');
+                            resultDiv.textContent = 'JavaScript错误: ' + error.message;
+                            resultDiv.className = 'result-message error';
                         }
                     }
                     
@@ -1359,6 +1461,22 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
         } catch (e: Exception) {
             Timber.w(e, "Failed to get CPU usage")
             -1f
+        }
+    }
+    
+    private fun launchApp(packageName: String) {
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(launchIntent)
+                Timber.i("Successfully launched app: $packageName")
+            } else {
+                throw Exception("无法找到APP的启动Intent: $packageName")
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to launch app: $packageName")
+            throw e
         }
     }
     

@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -35,6 +36,11 @@ class RemoteControlFragment : Fragment() {
         private const val KEY_LAST_PORT = "last_port"
         private const val KEY_LAST_API_KEY = "last_api_key"
         private const val KEY_MANUAL_MODIFIED = "manual_modified"
+        
+        // APP包名管理相关常量
+        private const val KEY_SAVED_PACKAGES = "saved_packages"
+        private const val KEY_LAST_USED_PACKAGE = "last_used_package"
+        private const val MAX_SAVED_PACKAGES = 10
     }
 
     override fun onCreateView(
@@ -55,6 +61,7 @@ class RemoteControlFragment : Fragment() {
         setupUI()
         setupListeners()
         loadLastConnectionInfo()
+        setupPackageNameAdapter()
     }
 
     private fun setupUI() {
@@ -215,6 +222,123 @@ class RemoteControlFragment : Fragment() {
             .apply()
     }
     
+    // APP包名管理方法
+    private fun saveAppPackage(packageName: String) {
+        if (packageName.isEmpty()) return
+        
+        val savedPackages = getSavedPackages().toMutableList()
+        
+        // 如果已存在，先移除再添加（确保最新的在前面）
+        if (savedPackages.contains(packageName)) {
+            savedPackages.remove(packageName)
+        }
+        
+        // 添加到列表开头
+        savedPackages.add(0, packageName)
+        
+        // 限制最大数量
+        while (savedPackages.size > MAX_SAVED_PACKAGES) {
+            savedPackages.removeAt(savedPackages.size - 1)
+        }
+        
+        // 保存到SharedPreferences
+        val packagesJson = org.json.JSONArray(savedPackages).toString()
+        prefs.edit()
+            .putString(KEY_SAVED_PACKAGES, packagesJson)
+            .putString(KEY_LAST_USED_PACKAGE, packageName)
+            .apply()
+    }
+    
+    private fun getSavedPackages(): List<String> {
+        val packagesJson = prefs.getString(KEY_SAVED_PACKAGES, null)
+        return if (packagesJson != null) {
+            try {
+                val jsonArray = org.json.JSONArray(packagesJson)
+                val result = mutableListOf<String>()
+                for (i in 0 until jsonArray.length()) {
+                    result.add(jsonArray.getString(i))
+                }
+                result
+            } catch (e: Exception) {
+                emptyList()
+            }
+        } else {
+            emptyList()
+        }
+    }
+    
+    private fun getLastUsedPackage(): String? {
+        return prefs.getString(KEY_LAST_USED_PACKAGE, null)
+    }
+    
+    private fun setupPackageNameAdapter() {
+        val savedPackages = getSavedPackages()
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_dropdown_item_1line, savedPackages)
+        binding.packageNameInput.setAdapter(adapter)
+        
+        // 设置上次使用的包名
+        val lastPackage = getLastUsedPackage()
+        if (lastPackage != null) {
+            binding.packageNameInput.setText(lastPackage)
+        }
+    }
+    
+    private fun saveCurrentPackage() {
+        val packageName = binding.packageNameInput.text.toString().trim()
+        if (packageName.isEmpty()) {
+            Toast.makeText(context, "请输入APP包名", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        saveAppPackage(packageName)
+        setupPackageNameAdapter() // 刷新适配器
+        Toast.makeText(context, "包名已保存", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun launchRemoteApp() {
+        val ip = binding.ipInput.tag as? String
+        val port = binding.portInput.tag as? Int ?: 9999
+        val apiKey = binding.passwordInput.tag as? String
+        val packageName = binding.packageNameInput.text.toString().trim()
+
+        if (ip == null || apiKey == null) {
+            Toast.makeText(context, "请先连接远程设备", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        if (packageName.isEmpty()) {
+            Toast.makeText(context, "请输入APP包名", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.progressBar.visibility = View.VISIBLE
+
+        lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    remoteLaunchApp(ip, port, apiKey, packageName)
+                }
+
+                if (!isAdded || _binding == null) {
+                    return@launch
+                }
+
+                if (result.success) {
+                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                    // 保存使用的包名
+                    saveAppPackage(packageName)
+                    setupPackageNameAdapter()
+                } else {
+                    Toast.makeText(context, "启动失败: ${result.error}", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "启动失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                _binding?.progressBar?.visibility = View.GONE
+            }
+        }
+    }
+    
     private fun setupListeners() {
         binding.connectButton.setOnClickListener {
             connectToRemoteDevice()
@@ -260,6 +384,18 @@ class RemoteControlFragment : Fragment() {
                 markAsManuallyModified()
             }
         }
+        
+        // APP控制按钮监听器
+        binding.launchAppButton.setOnClickListener {
+            launchRemoteApp()
+        }
+        
+        binding.savePackageButton.setOnClickListener {
+            saveCurrentPackage()
+        }
+        
+        // 初始化包名输入框的适配器
+        setupPackageNameAdapter()
     }
 
     private fun connectToRemoteDevice() {
@@ -632,6 +768,53 @@ class RemoteControlFragment : Fragment() {
             }
         } catch (e: Exception) {
             println("RemoteControl: WiFi控制异常 ${e.message}")
+            e.printStackTrace()
+            ApiResult(false, null, "网络错误", e.message)
+        }
+    }
+    
+    private suspend fun remoteLaunchApp(ip: String, port: Int, apiKey: String, packageName: String): ApiResult {
+        return try {
+            // 使用URL格式：http://ip:port/api_key/api/app/launch
+            val url = URL("http://$ip:$port/$apiKey/api/app/launch")
+            println("RemoteControl: APP启动请求 $url")
+            
+            val connection = url.openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.connectTimeout = 10000
+            connection.readTimeout = 10000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+            
+            // 发送包名数据
+            val jsonData = JSONObject().put("packageName", packageName).toString()
+            connection.outputStream.write(jsonData.toByteArray())
+            
+            val responseCode = connection.responseCode
+            println("RemoteControl: APP启动响应代码 $responseCode")
+            
+            val response = if (responseCode == 200) {
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } else {
+                connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            }
+            
+            println("RemoteControl: APP启动响应内容 $response")
+            connection.disconnect()
+
+            if (responseCode == 200) {
+                val json = JSONObject(response)
+                if (json.optBoolean("success", false)) {
+                    ApiResult(true, null, null, json.optString("message"))
+                } else {
+                    ApiResult(false, null, json.optString("error"), json.optString("message"))
+                }
+            } else {
+                ApiResult(false, null, "HTTP $responseCode", response)
+            }
+        } catch (e: Exception) {
+            println("RemoteControl: APP启动异常 ${e.message}")
             e.printStackTrace()
             ApiResult(false, null, "网络错误", e.message)
         }
