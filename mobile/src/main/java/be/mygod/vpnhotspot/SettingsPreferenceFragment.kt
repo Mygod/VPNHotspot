@@ -10,7 +10,9 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.TwoStatePreference
 import be.mygod.vpnhotspot.App.Companion.app
+import android.net.TetheringManager
 import be.mygod.vpnhotspot.net.TetherOffloadManager
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
@@ -167,6 +169,186 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         
         // Web服务器设置
         setupWebServerPreferences()
+        
+        // 自动启动功能设置
+        setupAutoStartPreferences()
+    }
+    
+    private fun setupAutoStartPreferences() {
+        // 蓝牙网络共享自动启动
+        findPreference<TwoStatePreference>("service.auto.bluetoothTethering")!!.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            handleAutoStartChange("蓝牙网络共享", enabled) {
+                if (enabled) {
+                    BluetoothTetheringAutoStarter.getInstance(requireContext()).start()
+                    // 立即启动蓝牙网络共享
+                    startBluetoothTetheringImmediately()
+                } else {
+                    BluetoothTetheringAutoStarter.getInstance(requireContext()).stop()
+                }
+            }
+            true
+        }
+        
+        // WiFi热点自动启动
+        findPreference<TwoStatePreference>("service.auto.wifiTethering")!!.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            handleAutoStartChange("WiFi热点", enabled) {
+                if (enabled) {
+                    WifiTetheringAutoStarter.getInstance(requireContext()).start()
+                    // 立即启动WiFi热点
+                    startWifiTetheringImmediately()
+                } else {
+                    WifiTetheringAutoStarter.getInstance(requireContext()).stop()
+                }
+            }
+            true
+        }
+        
+        // 以太网络共享自动启动
+        findPreference<TwoStatePreference>("service.auto.ethernetTethering")!!.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            handleAutoStartChange("以太网络共享", enabled) {
+                if (enabled) {
+                    EthernetTetheringAutoStarter.getInstance(requireContext()).start()
+                    // 立即启动以太网络共享
+                    startEthernetTetheringImmediately()
+                } else {
+                    EthernetTetheringAutoStarter.getInstance(requireContext()).stop()
+                }
+            }
+            true
+        }
+        
+        // USB网络共享自动启动
+        findPreference<TwoStatePreference>("service.auto.usbTethering")!!.setOnPreferenceChangeListener { _, newValue ->
+            val enabled = newValue as Boolean
+            handleAutoStartChange("USB网络共享", enabled) {
+                if (enabled) {
+                    UsbTetheringAutoStarter.getInstance(requireContext()).start()
+                    // 立即启动USB网络共享
+                    startUsbTetheringImmediately()
+                } else {
+                    UsbTetheringAutoStarter.getInstance(requireContext()).stop()
+                }
+            }
+            true
+        }
+    }
+    
+    private fun handleAutoStartChange(featureName: String, enabled: Boolean, action: () -> Unit) {
+        val message = if (enabled) "已启用${featureName}自动启动" else "已禁用${featureName}自动启动"
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        Timber.d("Settings: ${featureName} 自动启动已设置为 $enabled")
+        
+        // 执行相应的启动或停止操作
+        try {
+            action()
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to handle auto start change for $featureName")
+            SmartSnackbar.make("操作失败: ${e.message}").show()
+        }
+    }
+    
+    private fun startBluetoothTetheringImmediately() {
+        try {
+            TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, true, object : TetheringManagerCompat.StartTetheringCallback {
+                override fun onTetheringStarted() {
+                    Timber.i("Bluetooth tethering started immediately from settings")
+                    SmartSnackbar.make("蓝牙网络共享已启动").show()
+                }
+                
+                override fun onTetheringFailed(error: Int?) {
+                    val errorMsg = if (error != null) {
+                        "启动失败: ${TetheringManagerCompat.tetherErrorLookup(error)}"
+                    } else {
+                        "启动失败: 未知错误"
+                    }
+                    Timber.w("Failed to start bluetooth tethering immediately: $errorMsg")
+                    SmartSnackbar.make(errorMsg).show()
+                }
+            })
+        } catch (e: Exception) {
+            Timber.w(e, "Exception when starting bluetooth tethering immediately")
+            SmartSnackbar.make("启动失败: ${e.message}").show()
+        }
+    }
+    
+    private fun startWifiTetheringImmediately() {
+        try {
+            TetheringManagerCompat.startTethering(TetheringManager.TETHERING_WIFI, true, object : TetheringManagerCompat.StartTetheringCallback {
+                override fun onTetheringStarted() {
+                    Timber.i("WiFi tethering started immediately from settings")
+                    SmartSnackbar.make("WiFi热点已启动").show()
+                }
+                
+                override fun onTetheringFailed(error: Int?) {
+                    val errorMsg = if (error != null) {
+                        "启动失败: ${TetheringManagerCompat.tetherErrorLookup(error)}"
+                    } else {
+                        "启动失败: 未知错误"
+                    }
+                    Timber.w("Failed to start WiFi tethering immediately: $errorMsg")
+                    SmartSnackbar.make(errorMsg).show()
+                }
+            })
+        } catch (e: Exception) {
+            Timber.w(e, "Exception when starting WiFi tethering immediately")
+            SmartSnackbar.make("启动失败: ${e.message}").show()
+        }
+    }
+    
+    private fun startEthernetTetheringImmediately() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            SmartSnackbar.make("以太网络共享需要Android 11或更高版本").show()
+            return
+        }
+        
+        try {
+            TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_ETHERNET, true, object : TetheringManagerCompat.StartTetheringCallback {
+                override fun onTetheringStarted() {
+                    Timber.i("Ethernet tethering started immediately from settings")
+                    SmartSnackbar.make("以太网络共享已启动").show()
+                }
+                
+                override fun onTetheringFailed(error: Int?) {
+                    val errorMsg = if (error != null) {
+                        "启动失败: ${TetheringManagerCompat.tetherErrorLookup(error)}"
+                    } else {
+                        "启动失败: 未知错误"
+                    }
+                    Timber.w("Failed to start ethernet tethering immediately: $errorMsg")
+                    SmartSnackbar.make(errorMsg).show()
+                }
+            })
+        } catch (e: Exception) {
+            Timber.w(e, "Exception when starting ethernet tethering immediately")
+            SmartSnackbar.make("启动失败: ${e.message}").show()
+        }
+    }
+    
+    private fun startUsbTetheringImmediately() {
+        try {
+            TetheringManagerCompat.startTethering(TetheringManagerCompat.TETHERING_USB, true, object : TetheringManagerCompat.StartTetheringCallback {
+                override fun onTetheringStarted() {
+                    Timber.i("USB tethering started immediately from settings")
+                    SmartSnackbar.make("USB网络共享已启动").show()
+                }
+                
+                override fun onTetheringFailed(error: Int?) {
+                    val errorMsg = if (error != null) {
+                        "启动失败: ${TetheringManagerCompat.tetherErrorLookup(error)}"
+                    } else {
+                        "启动失败: 未知错误"
+                    }
+                    Timber.w("Failed to start USB tethering immediately: $errorMsg")
+                    SmartSnackbar.make(errorMsg).show()
+                }
+            })
+        } catch (e: Exception) {
+            Timber.w(e, "Exception when starting USB tethering immediately")
+            SmartSnackbar.make("启动失败: ${e.message}").show()
+        }
     }
 
     private fun setupWebServerPreferences() {

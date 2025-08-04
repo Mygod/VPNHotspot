@@ -1274,8 +1274,17 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
     }
     
     private fun stopWifiTethering() {
-        TetheringManagerCompat.stopTethering(android.net.TetheringManager.TETHERING_WIFI)
-        Timber.i("WiFi tethering stopped")
+        val callback = object : TetheringManagerCompat.StopTetheringCallback {
+            override fun onStopTetheringSucceeded() {
+                Timber.i("WiFi tethering stopped successfully")
+            }
+            
+            override fun onStopTetheringFailed(error: Int) {
+                Timber.w("WiFi tethering stop failed with error: $error")
+            }
+        }
+        TetheringManagerCompat.stopTethering(android.net.TetheringManager.TETHERING_WIFI, callback)
+        Timber.i("WiFi tethering stop requested")
     }
     
     private fun getSystemStatus(): SystemStatus {
