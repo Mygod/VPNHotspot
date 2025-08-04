@@ -20,6 +20,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.root.LocalOnlyHotspotCallbacks
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
@@ -34,6 +35,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
+import java.lang.reflect.InvocationTargetException
 import java.net.Inet4Address
 
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
@@ -179,7 +181,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private val receiver = broadcastReceiver { _, intent -> updateState(intent) }
     private var receiverRegistered = false
     private fun updateState(intent: Intent) {
-        // based on: https://android.googlesource.com/platform/packages/services/Car/+/407f65c/service/src/com/android/car/CarProjectionService.java#180
+        // based on: https://android.googlesource.com/platform/packages/services/Car/+/21fa77d/service/src/com/android/car/CarProjectionService.java#193
         lastState = Triple(intent.wifiApState, intent.getStringExtra(WifiApManager.EXTRA_WIFI_AP_INTERFACE_NAME),
             intent.getIntExtra(WifiApManager.EXTRA_WIFI_AP_FAILURE_REASON, 0))
     }
@@ -206,21 +208,33 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
                 updateState(it)
             }
         }
-        if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) try {
-            RootManager.use {
-                Root(it).apply {
-                    reservation = this
-                    work()
-                }
+        if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) {
+            if (Build.VERSION.SDK_INT >= 33) try {
+                return Services.wifi.startLocalOnlyHotspotWithConfiguration(WifiApManager.configuration,
+                    InPlaceExecutor, lohCallback)
+            } catch (e: NoSuchMethodError) {
+                if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
+            } catch (e: SecurityException) {
+                Timber.d(e)
+            } catch (e: InvocationTargetException) {
+                if (e.targetException !is SecurityException) Timber.w(e)
             }
-            return
-        } catch (_: CancellationException) {
-            return
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-        } finally {
-            reservation = null
+            try {
+                RootManager.use {
+                    Root(it).apply {
+                        reservation = this
+                        work()
+                    }
+                }
+                return
+            } catch (_: CancellationException) {
+                return
+            } catch (e: Exception) {
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+            } finally {
+                reservation = null
+            }
         }
         try {
             Services.wifi.startLocalOnlyHotspot(lohCallback, null)

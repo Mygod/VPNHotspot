@@ -9,7 +9,6 @@ object VendorElements {
     fun serialize(input: List<ScanResult.InformationElement>) = input.joinToString("\n") { element ->
         element.bytes.let { buffer ->
             StringBuilder().apply {
-                @OptIn(ExperimentalStdlibApi::class)
                 while (buffer.hasRemaining()) append(buffer.get().toHexString())
             }.toString()
         }.also {
@@ -19,7 +18,6 @@ object VendorElements {
     }
 
     fun deserialize(input: CharSequence?) = (input ?: "").split("\n").mapNotNull { line ->
-        @OptIn(ExperimentalStdlibApi::class)
         if (line.isBlank()) null else ScanResult.InformationElement(221, 0, line.hexToByteArray())
     }
 }

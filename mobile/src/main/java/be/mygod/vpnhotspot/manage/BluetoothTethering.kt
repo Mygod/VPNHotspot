@@ -121,7 +121,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
             pendingCallback = null
         }
     }
-    fun stop(callback: (Exception) -> Unit) {
+    fun stop(callback: TetheringManagerCompat.StopTetheringCallback) {
         TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, callback)
         stoppedByUser = true
     }

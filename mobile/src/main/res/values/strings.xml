@@ -21,9 +21,13 @@
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
-    <string name="title_update">Update</string>
 
     <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
+    <string name="repeater_features">"Supported features: "</string>
+    <string name="repeater_feature_set_vendor_elements">Set vendor elements</string>
+    <string name="repeater_feature_group_client_removal">Remove client</string>
+    <string name="repeater_feature_pcc_mode">WPA3-SAE Compatibility Mode</string>
+    <string name="repeater_feature_wifi_direct_r2">WPA3-SAE</string>
     <string name="repeater_wps">WPS (insecure)</string>
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
@@ -93,6 +97,7 @@
     <string name="tethering_manage_wifi_feature_sta_bridged_ap_concurrency">STA + Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
+    <string name="tethering_manage_wifi_client_disconnected">%1$s disconnected: %2$s</string>
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
 
     <string name="tethering_static_ip">Static IP</string>
@@ -178,7 +183,6 @@
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
-    <string name="settings_misc_donate_more">GitHub sponsors, PayPal, more…</string>
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
 
@@ -249,8 +253,8 @@
     <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
-    <string name="wifi_client_user_control">Control which client can use hotspot</string>
     <string name="wifi_blocked_list">Blocked list of clients</string>
+    <string name="wifi_client_user_control">Control which client can use hotspot</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
     <string name="wifi_mac_randomization">Use randomized MAC</string>
     <string name="wifi_mac_randomization_none">None</string>
@@ -262,17 +266,8 @@
     <string name="wifi_ieee_80211be">Enable Wi\u2011Fi 7</string>
     <string name="wifi_user_config">User supplied configuration</string>
     <string name="wifi_vendor_elements">Vendor elements</string>
+    <string name="wifi_client_isolation">Client isolation</string>
     <string name="wifi_save">Save</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values/donations__strings.xml -->
-    <string name="donations__button_close">Close</string>
-    <string name="donations__description">Do you find this application useful?\nSupport its development by sending a donation to the developer!</string>
-    <string name="donations__google_android_market">Google Play Store</string>
-    <string name="donations__google_android_market_not_supported">In-App Donations are not supported. Is Google Play Store installed correctly?</string>
-    <string name="donations__google_android_market_description">Google charges a fee of 30%</string>
-    <string name="donations__google_android_market_donate_button">Donate!</string>
-    <string name="donations__google_android_market_text">How much?</string>
-    <string name="donations__thanks_dialog">Thanks for donating!\nI really appreciate this!</string>
 
     <string name="tasker_get_tethering_state">Get Tethering State</string>
     <string name="tasker_tethering_state_update">Tethering State Update</string>

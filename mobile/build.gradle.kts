@@ -1,12 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-import java.util.Properties
 
 plugins {
-    id("com.android.application")
-    id("com.google.android.gms.oss-licenses-plugin")
-    id("com.google.devtools.ksp")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
+    alias(libs.plugins.aboutLibraries)
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.crashlytics)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.google.services)
     kotlin("android")
     kotlin("kapt")
     id("kotlin-parcelize")
@@ -28,21 +28,18 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 28
-        targetSdk = 35
-        versionCode = 1033
-        versionName = "2.18.4"
+        targetSdk = 36
+        versionCode = 1035
+        versionName = "2.19.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        ksp {
-            arg("room.expandProjection", "true")
-            arg("room.incremental", "true")
-            arg("room.schemaLocation", "$projectDir/schemas")
-        }
+        androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
         externalNativeBuild.cmake.arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
     }
     buildFeatures {
         buildConfig = true
         dataBinding = true
         viewBinding = true
+        compose = true
     }
     buildTypes {
         debug {
@@ -61,75 +58,58 @@ android {
     ))
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
-    flavorDimensions.add("freedom")
-    productFlavors {
-        create("freedom") {
-            dimension = "freedom"
-            androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
-        }
-        create("google") {
-            dimension = "freedom"
-            versionNameSuffix = "-g"
-            val prop = Properties().apply {
-                val f = rootProject.file("local.properties")
-                if (f.exists()) load(f.inputStream())
-            }
-            if (prop.containsKey("codeTransparency.storeFile")) bundle.codeTransparency.signing {
-                storeFile = file(prop["codeTransparency.storeFile"]!!)
-                storePassword = prop["codeTransparency.storePassword"] as? String
-                keyAlias = prop["codeTransparency.keyAlias"] as? String
-                keyPassword = if (prop.containsKey("codeTransparency.keyPassword")) {
-                    prop["codeTransparency.keyPassword"] as? String
-                } else storePassword
-            }
-        }
-    }
     sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
     externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
+}
+ksp {
+    arg("room.expandProjection", "true")
+    arg("room.incremental", "true")
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
 
 dependencies {
-    val lifecycleVersion = "2.8.7"
-    val roomVersion = "2.6.1"
-
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    ksp("androidx.room:room-compiler:$roomVersion")
-    implementation(kotlin("stdlib-jdk8"))
-    implementation("androidx.browser:browser:1.8.0")
-    implementation("androidx.core:core-ktx:1.15.0")
-    implementation("androidx.fragment:fragment-ktx:1.8.6")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
-    implementation("androidx.preference:preference:1.2.1")
-    implementation("androidx.room:room-ktx:$roomVersion")
-    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
-    implementation("be.mygod.librootkotlinx:librootkotlinx:1.2.1")
-    implementation("com.android.billingclient:billing-ktx:7.1.1")
-    implementation("com.google.android.gms:play-services-oss-licenses:17.1.0")
-    implementation("com.google.android.material:material:1.12.0")
-    implementation("com.google.firebase:firebase-analytics:22.3.0")
-    implementation("com.google.firebase:firebase-crashlytics:19.4.1")
-    implementation("com.google.zxing:core:3.5.3")
-    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
-    implementation("com.jakewharton.timber:timber:5.0.1")
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
+    ksp(libs.room.compiler)
+    implementation(libs.aboutlibraries.compose.m3)
+    implementation(libs.activity.compose)
+    implementation(libs.browser)
+    implementation(libs.core.i18n)
+    implementation(libs.core.ktx)
+    implementation(libs.dexmaker)
+    implementation(libs.dnsjava)
+    implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
+    implementation(libs.foundation.layout)
+    implementation(libs.fragment.ktx)
+    implementation(libs.hiddenapibypass)
+    implementation(libs.ktor.network.jvm)
+    implementation(libs.kotlinx.collections.immutable)
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.librootkotlinx)
+    implementation(libs.lifecycle.livedata.ktx)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.material)
+    implementation(libs.material3.android)
+    implementation(libs.play.services.oss.licenses)
+    implementation(libs.preference)
+    implementation(libs.preferencex.simplemenu)
+    implementation(libs.room.ktx)
+    implementation(libs.swiperefreshlayout)
+    implementation(libs.taskerpluginlibrary)
+    implementation(libs.timber)
+    implementation(libs.zxing.core)
+    // Additional dependencies for camera and barcode scanning (needed for QR code functionality)
     implementation("androidx.camera:camera-core:1.4.0")
     implementation("androidx.camera:camera-camera2:1.4.0")
     implementation("androidx.camera:camera-lifecycle:1.4.0")
     implementation("androidx.camera:camera-view:1.4.0")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
-    implementation("com.joaomgcd:taskerpluginlibrary:0.4.10")
-    implementation("com.linkedin.dexmaker:dexmaker:2.28.4")
-    implementation("com.takisoft.preferencex:preferencex-simplemenu:1.1.0")
-    implementation("dnsjava:dnsjava:3.6.3")
-    implementation("io.ktor:ktor-network-jvm:3.1.1")
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-collections-immutable:0.3.8")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.1")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.room:room-testing:$roomVersion")
-    androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.test.ext:junit-ktx:1.2.1")
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.espresso.core)
+    androidTestImplementation(libs.junit.ktx)
+    androidTestImplementation(libs.room.testing)
+    androidTestImplementation(libs.test.runner)
 }

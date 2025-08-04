@@ -15,7 +15,6 @@
     <string name="title_tethering">網路共用</string>
     <string name="title_clients">用戶端</string>
     <string name="title_settings">設定</string>
-    <string name="title_update">更新</string>
 
     <string name="repeater_channel">中繼器 (%1$d MHz，頻道 %2$d)</string>
     <string name="repeater_wps">WPS（不安全）</string>
@@ -158,7 +157,6 @@
     <string name="settings_misc_source_summary">閱讀使用說明，對 GitHub repo 加星號，提交問題並合作參與開發</string>
     <string name="settings_misc_donate">抖內</string>
     <string name="settings_misc_donate_summary">我喜歡錢</string>
-    <string name="settings_misc_donate_more">PayPal、Flattr 等其他方式…</string>
     <string name="settings_restart_required">重啟應用程式以套用設定值</string>
     <string name="settings_exit_app">離開</string>
 
@@ -207,14 +205,4 @@
     <string name="wifi_ieee_80211be">啟用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">使用者提供組態</string>
     <string name="wifi_save" msgid="3331121567988522826">儲存</string>
-
-    <!-- Based on: https://github.com/PrivacyApps/donations/blob/747d36a18433c7e9329691054122a8ad337a62d2/Donations/src/main/res/values-zh/donations__strings.xml -->
-    <string name="donations__button_close">關閉</string>
-    <string name="donations__google_android_market">Google Play 商店</string>
-    <string name="donations__google_android_market_not_supported">不支援應用程式內購，Play 商店是否正確安裝？</string>
-    <string name="donations__google_android_market_donate_button">抖內！</string>
-    <string name="donations__google_android_market_text">抖內多少錢</string>
-    <string name="donations__thanks_dialog">感謝抖內！\n十分感謝您！</string>
-    <string name="donations__description">這個應用程式有用嗎？\n小額的抖內給開發人員用來支援此應用程式的開發</string>
-    <string name="donations__google_android_market_description">Google 將收取 30% 的費用</string>
 </resources>

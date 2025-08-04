@@ -15,6 +15,7 @@ value class WifiClient(val inner: Parcelable) {
         private val getMacAddress by lazy { clazz.getDeclaredMethod("getMacAddress") }
         @get:RequiresApi(31)
         private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
+        private val getDisconnectReason by lazy { clazz.getDeclaredMethod("getDisconnectReason") }
     }
 
     val macAddress get() = getMacAddress(inner) as MacAddress
@@ -25,4 +26,5 @@ value class WifiClient(val inner: Parcelable) {
         Timber.w(e)
         null
     }
+    val disconnectReason get() = getDisconnectReason(inner) as Int
 }

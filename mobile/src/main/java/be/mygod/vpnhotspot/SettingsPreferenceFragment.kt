@@ -30,10 +30,8 @@ import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import android.content.Context
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.android.gms.oss.licenses.OssLicensesMenuActivity
 import android.view.LayoutInflater
 import android.widget.EditText
-import android.widget.ImageButton
 import android.widget.Toast
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
@@ -145,11 +143,11 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.donate")!!.setOnPreferenceClickListener {
-            EBegFragment().showAllowingStateLoss(parentFragmentManager, "EBegFragment")
+            requireContext().launchUrl("https://mygod.be/donate/")
             true
         }
         findPreference<Preference>("misc.licenses")!!.setOnPreferenceClickListener {
-            startActivity(Intent(context, OssLicensesMenuActivity::class.java))
+            startActivity(Intent(requireContext(), AboutLibrariesActivity::class.java))
             true
         }
         

@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.client
 
+import android.content.ClipData
 import android.content.ComponentName
 import android.content.IntentFilter
 import android.content.ServiceConnection
@@ -17,6 +18,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherType
@@ -199,5 +201,35 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             val client = WifiClient(it)
             client.apInstanceIdentifier?.run { this to client.macAddress }
         }
+    }
+
+    @RequiresApi(31)
+    override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) {
+        val client = WifiClient(client)
+        val macAddress = client.macAddress
+        var name = macAddress.toString()
+        client.apInstanceIdentifier?.let { name += "%$it" }
+        val reason = WifiApManager.clientBlockLookup(blockedReason, true)
+        Timber.i("$name blocked from connecting: $reason ($blockedReason)")
+        SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
+            action(R.string.tethering_manage_wifi_copy_mac) {
+                app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+            }
+        }.show()
+    }
+
+    @RequiresApi(36)
+    override fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) = clients.forEach { client ->
+        val client = WifiClient(client)
+        val macAddress = client.macAddress
+        var name = macAddress.toString()
+        client.apInstanceIdentifier?.let { name += "%$it" }
+        val reason = WifiApManager.deauthenticationReasonLookup(client.disconnectReason, true)
+        Timber.i("$client disconnected: $reason")
+        SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_disconnected, name, reason)).apply {
+            action(R.string.tethering_manage_wifi_copy_mac) {
+                app.clipboard.setPrimaryClip(ClipData.newPlainText(null, macAddress.toString()))
+            }
+        }.show()
     }
 }

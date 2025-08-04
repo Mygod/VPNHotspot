@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
-import android.icu.text.DateFormat
 import android.net.InetAddresses
 import android.net.LinkProperties
 import android.net.MacAddress
@@ -27,6 +26,8 @@ import android.view.View
 import android.widget.ImageView
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresExtension
+import androidx.core.i18n.DateTimeFormatter
+import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
@@ -35,11 +36,11 @@ import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.job
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.lang.invoke.MethodHandles
@@ -52,8 +53,7 @@ import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
 import java.util.Locale
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
+import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
     if (this is InvocationTargetException || this is RemoteException) return (cause ?: return this).getRootCause()
@@ -81,8 +81,17 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     } catch (_: IllegalArgumentException) { }
 }
 
-fun Context.formatTimestamp(timestamp: Long) = DateFormat.getInstanceForSkeleton(
-    if (android.text.format.DateFormat.is24HourFormat(this)) "yMdHmsSSS" else "yMdhmsSSSa",
+private val dateTimeFormat = DateTimeFormatterSkeletonOptions.Builder(
+    year = DateTimeFormatterSkeletonOptions.Year.NUMERIC,
+    month = DateTimeFormatterSkeletonOptions.Month.NUMERIC,
+    day = DateTimeFormatterSkeletonOptions.Day.NUMERIC,
+    period = DateTimeFormatterSkeletonOptions.Period.ABBREVIATED,
+    hour = DateTimeFormatterSkeletonOptions.Hour.NUMERIC,
+    minute = DateTimeFormatterSkeletonOptions.Minute.NUMERIC,
+    second = DateTimeFormatterSkeletonOptions.Second.NUMERIC,
+    fractionalSecond = DateTimeFormatterSkeletonOptions.FractionalSecond.NUMERIC_3_DIGITS,
+).build()
+fun Context.formatTimestamp(timestamp: Long) = DateTimeFormatter(this, dateTimeFormat,
     resources.configuration.locales[0]).format(timestamp)
 
 fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
@@ -171,10 +180,12 @@ fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 } else mac
 
-fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableStringBuilder().apply {
-    try {
+fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
+                                      macOverride: MacAddress? = null) = SpannableStringBuilder().apply {
+    var address = macOverride
+    if (address == null && this@formatAddresses != null) try {
         val hardwareAddress = hardwareAddress
-        val address = try {
+        address = try {
             hardwareAddress?.let(MacAddress::fromBytes)
         } catch (e: IllegalArgumentException) {
             try {
@@ -182,11 +193,12 @@ fun NetworkInterface.formatAddresses(macOnly: Boolean = false) = SpannableString
             } catch (e2: IllegalArgumentException) {
                 e.addSuppressed(e2)
                 Timber.w(e)
+                null
             }
         }
-        if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
     } catch (_: SocketException) { }
-    if (!macOnly) for (address in interfaceAddresses) {
+    if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
+    if (!macOnly && this@formatAddresses != null) for (address in interfaceAddresses) {
         append(makeIpSpan(address.address))
         address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
         appendLine()
@@ -297,19 +309,21 @@ suspend fun <T> connectCancellable(url: String, block: suspend (HttpURLConnectio
         SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 7) {
         engine.openConnection(URL(url))
     } else @Suppress("BlockingMethodInNonBlockingContext") URL(url).openConnection()) as HttpURLConnection
-    return suspendCancellableCoroutine { cont ->
-        val job = GlobalScope.launch(Dispatchers.IO) {
-            try {
-                cont.resume(block(conn))
-            } catch (e: Throwable) {
-                cont.resumeWithException(e)
-            } finally {
-                conn.disconnect()
-            }
-        }
-        cont.invokeOnCancellation {
-            job.cancel(it as? CancellationException)
+    return coroutineScope {
+        @OptIn(InternalCoroutinesApi::class)    // https://github.com/Kotlin/kotlinx.coroutines/issues/4117
+        coroutineContext.job.invokeOnCompletion(true) { conn.disconnect() }
+        try {
+            withContext(Dispatchers.IO) { block(conn) }
+        } finally {
             conn.disconnect()
         }
+    }
+}
+
+object InPlaceExecutor : Executor {
+    override fun execute(command: Runnable) = try {
+        command.run()
+    } catch (e: Exception) {
+        Timber.w(e) // prevent Binder stub swallowing the exception
     }
 }

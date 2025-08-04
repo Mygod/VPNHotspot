@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot
 
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.Insets
@@ -12,7 +12,6 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
@@ -21,7 +20,6 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.UpdateChecker
 import be.mygod.vpnhotspot.util.ApiKeyManager
 import be.mygod.vpnhotspot.util.WebServerManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -34,17 +32,18 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
     lateinit var binding: ActivityMainBinding
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = false
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        ViewCompat.setOnApplyWindowInsetsListener(binding.appBar) { view, insets ->
             val tappable = insets.getInsets(WindowInsetsCompat.Type.tappableElement())
             view.setPadding(tappable.left, tappable.top, tappable.right, 0)
             WindowInsetsCompat.Builder(insets).apply {
                 setInsets(WindowInsetsCompat.Type.tappableElement(), Insets.of(0, 0, 0, tappable.bottom))
             }.build()
         }
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
         binding.navigation.setOnItemSelectedListener(this)
         val badge = binding.navigation.getOrCreateBadge(R.id.navigation_clients).apply {
             backgroundColor = resources.getColor(R.color.colorSecondary, theme)
@@ -94,22 +93,7 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
                 .show()
         }
         
-        lastUpdate = UpdateChecker.check()
-        val updateItem = binding.navigation.menu.findItem(R.id.navigation_update)
-        updateItem.isCheckable = false
-        updateItem.isVisible = lastUpdate != null
-        if (lastUpdate == null) {
-            updateItem.isEnabled = false
-            return
-        }
-        updateItem.setIcon(R.drawable.ic_action_update)
-        updateItem.title = getText(R.string.title_update)
-        binding.navigation.getOrCreateBadge(R.id.navigation_update).apply {
-            backgroundColor = resources.getColor(R.color.colorSecondary, theme)
-            badgeTextColor = resources.getColor(androidx.appcompat.R.color.primary_text_default_material_light, theme)
-            isVisible = true
-        }
-    }
+      }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -128,8 +112,6 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         }
     }
 
-    private var lastUpdate: Uri? = null
-
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.navigation_clients -> {
             displayFragment(ClientsFragment())
@@ -146,10 +128,6 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         R.id.navigation_settings -> {
             displayFragment(SettingsPreferenceFragment())
             true
-        }
-        R.id.navigation_update -> {
-            app.customTabsIntent.launchUrl(this, lastUpdate!!)
-            false
         }
         else -> false
     }
