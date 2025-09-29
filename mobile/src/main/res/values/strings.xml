@@ -174,6 +174,9 @@
     <string name="settings_system_tether_offload_summary">Shortcut to system developer options</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_help">Help</string>
+    <string name="settings_developer_mode">开发者调试模式</string>
+    <string name="settings_developer_mode_summary">启用开发者调试API接口（有安全风险，仅供调试）</string>
+    <string name="settings_developer_mode_warning">警告：启用开发者调试模式将暴露敏感API接口，包括生成API Key和开关认证功能。这些接口可能被恶意利用，请仅在调试环境中使用。</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
     <string name="settings_misc_source">Project homepage at GitHub</string>
@@ -182,6 +185,24 @@
     <string name="settings_misc_donate_summary">I love money</string>
     <string name="settings_restart_required">Restart this app to apply this setting.</string>
     <string name="settings_exit_app">Exit</string>
+
+    <!-- WebServer -->
+    <string name="webserver_start_failed">Failed to start WebServer on port %d</string>
+
+    
+    <!-- 远程控制 -->
+    <string name="title_remote_control">远程控制</string>
+    <string name="remote_control_connect">连接远程设备</string>
+    <string name="remote_control_ip_hint">远程设备IP地址</string>
+    <string name="remote_control_api_key_hint">API Key</string>
+    <string name="remote_control_connect_success">连接成功</string>
+    <string name="remote_control_connect_failed">连接失败</string>
+    <string name="remote_control_refresh">刷新</string>
+    <string name="remote_control_start_wifi">启动热点</string>
+    <string name="remote_control_stop_wifi">停止热点</string>
+    <string name="remote_control_device_status">远程设备状态</string>
+    <string name="remote_control_usage_guide">使用说明</string>
+
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>

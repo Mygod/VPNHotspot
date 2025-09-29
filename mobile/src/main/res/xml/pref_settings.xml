@@ -51,6 +51,28 @@
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_misc">
+        <SwitchPreferenceCompat
+            app:key="web.server.developer_mode"
+            app:icon="@drawable/ic_action_bug_report"
+            app:title="开发者调试模式"
+            app:summary="启用开发者调试API接口（有安全风险，仅供调试）"
+            app:defaultValue="false"/>
+        <SwitchPreferenceCompat
+            app:key="web.server.api_key_auth"
+            app:icon="@drawable/ic_action_settings"
+            app:title="API Key认证"
+            app:summary="启用API Key认证保护Web服务器"
+            app:defaultValue="false"/>
+        <Preference
+            app:key="web.server.api_key"
+            app:icon="@drawable/ic_action_settings"
+            app:title="API Key管理"
+            app:summary="生成、查看和管理API Key"/>
+        <Preference
+            app:key="web.server.port"
+            app:icon="@drawable/ic_action_settings"
+            app:title="Web服务器端口"
+            app:summary="设置Web服务器监听端口"/>
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.wifiLock"
             app:icon="@drawable/ic_device_wifi_lock"
@@ -63,6 +85,32 @@
             app:icon="@drawable/ic_action_autorenew"
             app:title="@string/settings_service_auto_start"
             app:summary="@string/settings_service_auto_start_summary"/>
+        <SwitchPreferenceCompat
+            app:key="service.auto.bluetoothTethering"
+            app:icon="@drawable/ic_action_bluetooth_connected"
+            app:title="自动启动蓝牙网络共享"
+            app:summary="应用启动后自动开启蓝牙网络共享并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
+            app:key="service.auto.wifiTethering"
+            app:icon="@drawable/ic_device_wifi"
+            app:title="自动启动WiFi热点"
+            app:summary="应用启动后自动开启WiFi热点并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
+            app:key="service.auto.ethernetTethering"
+            app:icon="@drawable/ic_action_settings_ethernet"
+            app:title="自动启动以太网络共享"
+            app:summary="应用启动后自动开启以太网络共享并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
+            app:key="service.auto.usbTethering"
+            app:icon="@drawable/ic_device_usb"
+            app:title="自动启动USB网络共享"
+            app:summary="应用启动后自动开启USB网络共享并每秒检查确保其运行"/>
+        <SwitchPreferenceCompat
+            app:key="remote.control.auto.connect"
+            app:icon="@drawable/ic_action_settings_backup_restore"
+            app:title="远程控制自动连接"
+            app:summary="进入远程控制页面时自动尝试连接上次保存的远程设备"
+            app:defaultValue="false"/>
         <SwitchPreferenceCompat
             app:key="service.repeater.safeMode"
             app:icon="@drawable/ic_alert_warning"

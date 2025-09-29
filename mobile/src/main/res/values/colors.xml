@@ -7,4 +7,11 @@
     <color name="colorPrimaryDark">#087f23</color>
     <color name="colorSecondary">#AEEA00</color>
     <color name="navigationBarColor">#6000</color>
+    
+    <!-- 远程控制页面颜色 -->
+    <color name="background_light">#F5F5F5</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="info_background">#E3F2FD</color>
+    <color name="text_primary">#212121</color>
+    <color name="text_secondary">#757575</color>
 </resources>

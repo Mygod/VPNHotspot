@@ -161,6 +161,9 @@
     <string name="settings_restart_required">重启应用以应用新的设置。</string>
     <string name="settings_exit_app">退出</string>
 
+    <!-- WebServer -->
+    <string name="webserver_start_failed">WebServer 在端口 %d 启动失败</string>
+
     <string name="notification_tethering_title">VPN 共享已启用</string>
     <string name="notification_channel_tethering">VPN 共享服务</string>
     <string name="notification_channel_monitor">监视不活跃接口</string>

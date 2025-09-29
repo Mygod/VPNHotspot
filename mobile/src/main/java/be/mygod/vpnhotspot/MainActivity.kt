@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot
 
+import android.os.Build
 import android.os.Bundle
 import android.view.MenuItem
 import androidx.activity.enableEdgeToEdge
@@ -19,9 +20,12 @@ import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.ApiKeyManager
+import be.mygod.vpnhotspot.util.WebServerManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.navigation.NavigationBarView
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.net.Inet4Address
 
 class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListener {
@@ -59,6 +63,53 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         SmartSnackbar.Register(binding.fragmentHolder)
         WifiDoubleLock.ActivityListener(this)
         lifecycleScope.launch { BootReceiver.startIfEnabled() }
+        
+        // 启动蓝牙网络共享自动启动器
+        BluetoothTetheringAutoStarter.getInstance(this).start()
+        
+        // 启动WiFi热点自动启动器
+        WifiTetheringAutoStarter.getInstance(this).start()
+        
+        // 启动以太网络共享自动启动器（Android 11及以上版本）
+        if (Build.VERSION.SDK_INT >= 30) {
+            EthernetTetheringAutoStarter.getInstance(this).start()
+        }
+
+        // 启动Usb网络共享自动启动器
+        UsbTetheringAutoStarter.getInstance(this).start()
+        
+        // 初始化API Key管理器和WebServer管理器
+        ApiKeyManager.init(this)
+        WebServerManager.init(this)
+        
+        // 启动WebServer（默认启动，API Key保护是可选的）
+        try {
+            WebServerManager.start(this)
+            Timber.i("WebServer successfully started on port ${WebServerManager.getPort()}")
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to start WebServer on port ${WebServerManager.getPort()}")
+            // 显示错误提示给用户
+            SmartSnackbar.make(getString(R.string.webserver_start_failed, WebServerManager.getPort()))
+                .show()
+        }
+        
+      }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        
+        // 停止WebServer以释放资源
+        try {
+            if (WebServerManager.isRunning()) {
+                Timber.i("Stopping WebServer in MainActivity.onDestroy()")
+                WebServerManager.stop()
+                Timber.i("WebServer successfully stopped")
+            } else {
+                Timber.d("WebServer was not running during MainActivity.onDestroy()")
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Error occurred while stopping WebServer in MainActivity.onDestroy()")
+        }
     }
 
     override fun onNavigationItemSelected(item: MenuItem) = when (item.itemId) {
@@ -68,6 +119,10 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         }
         R.id.navigation_tethering -> {
             displayFragment(TetheringFragment())
+            true
+        }
+        R.id.navigation_remote_control -> {
+            displayFragment(RemoteControlFragment())
             true
         }
         R.id.navigation_settings -> {
