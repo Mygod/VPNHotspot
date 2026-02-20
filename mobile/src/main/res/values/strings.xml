@@ -248,6 +248,10 @@
     <string name="wifi_client_isolation">Client isolation</string>
     <string name="wifi_save">Save</string>
 
+    <string name="tasker_downstream_manage_usb">Bind USB Downstream</string>
+    <string name="tasker_downstream_manage_wifi">Bind Wi\u2011Fi Downstream</string>
+    <string name="tasker_downstream_manage_bluetooth">Bind Bluetooth Downstream</string>
+    <string name="tasker_downstream_manage_ethernet">Bind Ethernet Downstream</string>
     <string name="tasker_get_tethering_state">Get Tethering State</string>
     <string name="tasker_tethering_state_update">Tethering State Update</string>
 </resources>

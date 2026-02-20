@@ -123,6 +123,38 @@
             </intent-filter>
         </activity>
         <activity
+            android:name=".tasker.DownstreamActionConfig$WifiConfig"
+            android:exported="true"
+            android:label="@string/tasker_downstream_manage_wifi">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.DownstreamActionConfig$BluetoothConfig"
+            android:exported="true"
+            android:label="@string/tasker_downstream_manage_bluetooth">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.DownstreamActionConfig$USBConfig"
+            android:exported="true"
+            android:label="@string/tasker_downstream_manage_usb">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".tasker.DownstreamActionConfig$EthernetConfig"
+            android:exported="true"
+            android:label="@string/tasker_downstream_manage_ethernet">
+            <intent-filter>
+                <action android:name="com.twofortyfouram.locale.intent.action.EDIT_SETTING" />
+            </intent-filter>
+        </activity>
+        <activity
             android:name=".tasker.GetStateConfig"
             android:exported="true"
             android:label="@string/tasker_get_tethering_state">
