@@ -26,6 +26,7 @@ import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.material.snackbar.Snackbar
+import com.takisoft.preferencex.SimpleMenuPreference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -46,6 +47,13 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         IpMonitor.currentMode = IpMonitor.currentMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
+        findPreference<SimpleMenuPreference>(AppLocaleManager.KEY)!!.apply {
+            value = AppLocaleManager.currentLanguageTag()
+            setOnPreferenceChangeListener { _, newValue ->
+                AppLocaleManager.updateLanguage(newValue as String)
+                false
+            }
+        }
         findPreference<UpstreamsPreference>("service.upstream.monitor")!!.attachListener(lifecycle)
         SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
         SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)

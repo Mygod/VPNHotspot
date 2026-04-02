@@ -52,6 +52,14 @@
     <PreferenceCategory
         app:title="@string/settings_misc">
         <com.takisoft.preferencex.SimpleMenuPreference
+            app:key="ui.language"
+            app:defaultValue=""
+            app:icon="@drawable/ic_av_closed_caption"
+            app:entries="@array/settings_app_language"
+            app:entryValues="@array/settings_app_language_values"
+            app:title="@string/settings_app_language"
+            app:useSimpleSummaryProvider="true"/>
+        <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.wifiLock"
             app:icon="@drawable/ic_device_wifi_lock"
             app:entries="@array/settings_service_wifi_lock"

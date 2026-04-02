@@ -57,6 +57,7 @@ class App : Application() {
         // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
         deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
+        AppLocaleManager.applyPersistedLanguage()
         BootReceiver.migrateIfNecessary()
         Services.init { this }
 

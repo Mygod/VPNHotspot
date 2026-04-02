@@ -114,6 +114,10 @@
 
     <string name="settings_upstream">上游</string>
     <string name="settings_downstream">下游</string>
+    <string name="settings_app_language">应用语言</string>
+    <string name="settings_app_language_system">跟随系统</string>
+    <string name="settings_app_language_english">English</string>
+    <string name="settings_app_language_simplified_chinese">简体中文</string>
     <string name="settings_service_masquerade">IP 掩蔽模式</string>
     <string name="settings_service_masquerade_none">无</string>
     <string name="settings_service_masquerade_simple">简易</string>
@@ -214,10 +218,14 @@
     <string name="wifi_mac_randomization_persistent">持久化</string>
     <string name="wifi_mac_randomization_non_persistent">不持久化</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">启用桥接模式伺机关闭</string>
+    <string name="wifi_hotspot_timeout_bridged">桥接实例的不活动超时</string>
     <string name="wifi_ieee_80211ax">启用 Wi\u2011Fi 6</string>
     <string name="wifi_ieee_80211be">启用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">用户提供配置</string>
     <string name="wifi_vendor_elements">供应商特定元素</string>
     <string name="wifi_client_isolation">AP 隔离</string>
     <string name="wifi_save" msgid="3331121567988522826">"保存"</string>
+
+    <string name="tasker_get_tethering_state">获取网络共享状态</string>
+    <string name="tasker_tethering_state_update">网络共享状态更新</string>
 </resources>

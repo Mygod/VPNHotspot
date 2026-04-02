@@ -115,6 +115,10 @@
 
     <string name="settings_upstream">上游</string>
     <string name="settings_downstream">下游</string>
+    <string name="settings_app_language">應用程式語言</string>
+    <string name="settings_app_language_system">跟隨系統</string>
+    <string name="settings_app_language_english">English</string>
+    <string name="settings_app_language_simplified_chinese">简体中文</string>
     <string name="settings_service_masquerade">IP 偽裝模式</string>
     <string name="settings_service_masquerade_none">無</string>
     <string name="settings_service_masquerade_simple">簡易</string>
@@ -200,9 +204,13 @@
     <string name="wifi_blocked_list">裝置黑名單</string>
     <string name="wifi_allowed_list">裝置白名單</string>
     <string name="wifi_mac_randomization">隨機化 MAC 位址</string>
+    <string name="wifi_hotspot_timeout_bridged">橋接執行個體的不活動逾時</string>
     <string name="wifi_bridged_mode_opportunistic_shutdown">啟用橋接模式隨機關閉</string>
     <string name="wifi_ieee_80211ax">啟用 Wi\u2011Fi 6</string>
     <string name="wifi_ieee_80211be">啟用 Wi\u2011Fi 7</string>
     <string name="wifi_user_config">使用者提供組態</string>
     <string name="wifi_save" msgid="3331121567988522826">儲存</string>
+
+    <string name="tasker_get_tethering_state">取得網路共用狀態</string>
+    <string name="tasker_tethering_state_update">網路共用狀態更新</string>
 </resources>
