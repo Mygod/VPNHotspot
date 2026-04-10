@@ -109,7 +109,7 @@
     <string name="clients_empty">No clients connected</string>
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Block</string>
-    <string name="clients_popup_block_service_inactive">Turn on service for this interface to block the client.</string>
+    <string name="clients_popup_block_service_inactive">This client will be blocked when service for this interface is turned on.</string>
     <string name="clients_popup_unblock">Unblock</string>
     <string name="clients_popup_stats">Stats…</string>
     <string name="clients_mac_lookup_unexpected_error">Server returned error for %1$s: %2$s</string>

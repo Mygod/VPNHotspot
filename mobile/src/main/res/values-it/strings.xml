@@ -64,7 +64,7 @@
 
     <string name="clients_popup_nickname">Nickname…</string>
     <string name="clients_popup_block">Blocca</string>
-    <string name="clients_popup_block_service_inactive">Abilita il servizio per questa interfaccia per bloccare il client.</string>
+    <string name="clients_popup_block_service_inactive">Questo client verrà bloccato quando il servizio per questa interfaccia sarà attivato.</string>
     <string name="clients_popup_unblock">Sblocca</string>
     <string name="clients_popup_stats">Statistiche…</string>
     <string name="clients_mac_lookup_unexpected_error">Il server ha restituito questo errore per %1$s: %2$s</string>

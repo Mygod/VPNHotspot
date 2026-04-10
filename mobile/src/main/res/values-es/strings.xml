@@ -98,7 +98,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="clients_empty">No hay clientes conectados</string>
     <string name="clients_popup_nickname">Apodo…</string>
     <string name="clients_popup_block">Bloquear</string>
-    <string name="clients_popup_block_service_inactive">Activa el servicio de esta interfaz para bloquear al cliente.</string>
+    <string name="clients_popup_block_service_inactive">Este cliente se bloqueará cuando se active el servicio de esta interfaz.</string>
     <string name="clients_popup_unblock">Desbloquear</string>
     <string name="clients_popup_stats">Estadísticas…</string>
     <string name="clients_mac_lookup_unexpected_error">El servidor devolvió un error para %1$s: %2$s</string>

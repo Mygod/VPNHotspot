@@ -95,7 +95,7 @@
     <string name="clients_empty">无设备连接</string>
     <string name="clients_popup_nickname">昵称…</string>
     <string name="clients_popup_block">拉黑</string>
-    <string name="clients_popup_block_service_inactive">拉黑需要为该接口打开服务。</string>
+    <string name="clients_popup_block_service_inactive">打开该接口的服务后，此设备将被拉黑。</string>
     <string name="clients_popup_unblock">洗白</string>
     <string name="clients_popup_stats">流量…</string>
     <string name="clients_mac_lookup_unexpected_error">服务器为 %1$s 返回错误：%2$s</string>
