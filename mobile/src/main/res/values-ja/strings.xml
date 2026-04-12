@@ -216,6 +216,4 @@
     <string name="wifi_user_config">ユーザー指定の構成</string>
     <string name="wifi_vendor_elements">ベンダーエレメント</string>
     <string name="wifi_save">保存</string>
-    <string name="tasker_get_tethering_state">テザリングの状態を取得</string>
-    <string name="tasker_tethering_state_update">テザリングの状態を更新</string>
 </resources>

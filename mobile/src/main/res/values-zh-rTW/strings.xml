@@ -232,6 +232,4 @@
     <string name="wifi_client_isolation">裝置隔離</string>
     <string name="wifi_save" msgid="3331121567988522826">儲存</string>
 
-    <string name="tasker_get_tethering_state">取得網路共用狀態</string>
-    <string name="tasker_tethering_state_update">網路共用狀態更新</string>
 </resources>

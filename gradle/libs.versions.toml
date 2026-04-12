@@ -31,7 +31,6 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 swiperefreshlayout = "androidx.swiperefreshlayout:swiperefreshlayout:1.2.0"
-taskerpluginlibrary = "com.joaomgcd:taskerpluginlibrary:0.4.10"
 test-runner = "androidx.test:runner:1.7.0"
 timber = "com.jakewharton.timber:timber:5.0.1"
 zxing-core = "com.google.zxing:core:3.5.4"

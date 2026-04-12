@@ -248,6 +248,4 @@
     <string name="wifi_client_isolation">Client isolation</string>
     <string name="wifi_save">Save</string>
 
-    <string name="tasker_get_tethering_state">Get Tethering State</string>
-    <string name="tasker_tethering_state_update">Tethering State Update</string>
 </resources>

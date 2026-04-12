@@ -230,7 +230,5 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="wifi_vendor_elements">Elementos del proveedor</string>
     <string name="wifi_save">Guardar</string>
 
-    <string name="tasker_get_tethering_state">Obtener estado de conexión compartida</string>
-    <string name="tasker_tethering_state_update">Actualización del estado de conexión compartida</string>
 </resources>
                                                                                                                                                                                                                   

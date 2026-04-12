@@ -1,16 +1,12 @@
 package be.mygod.vpnhotspot
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
-import be.mygod.vpnhotspot.tasker.TaskerPermissionManager
-import be.mygod.vpnhotspot.tasker.TetheringEventConfig
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -35,9 +31,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
             get()?.dismiss()
             dismissHandle = null
         }
-
-        var activeTetherTypes: Set<TetherType> = emptySet() // only used for Tasker
-            private set
     }
 
     inner class Binder : android.os.Binder() {
@@ -104,11 +97,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
         else -> Timber.w(IllegalStateException("Unknown onOffloadStatusChanged $status"))
     }
 
-    private fun setActiveTetherTypes(value: Set<TetherType>) {
-        activeTetherTypes = value
-        TaskerPermissionManager.requestQuery(this, TetheringEventConfig::class.java,
-            Manifest.permission.ACCESS_NETWORK_STATE)
-    }
     private fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
             unregisterReceiver()
@@ -128,7 +116,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
         }
         launch(Dispatchers.Main) {
             binder.routingsChanged()
-            setActiveTetherTypes(downstreams.keys.mapTo(mutableSetOf()) { TetherType.ofInterface(it) })
         }
     }
 
@@ -171,7 +158,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
         launch {
             unregisterReceiver()
             downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
-            setActiveTetherTypes(emptySet())
             cancel()
         }
         super.onDestroy()
