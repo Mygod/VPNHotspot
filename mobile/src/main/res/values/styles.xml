@@ -1,4 +1,4 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:navigationBarColor">@color/navigationBarColor</item>
@@ -12,10 +12,6 @@
         <!-- Remove ActionBar but keep styles and themes -->
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-    </style>
-    <style name="AppTheme.ActionBar">
-        <item name="windowActionBar">true</item>
-        <item name="windowNoTitle">false</item>
     </style>
     <style name="AppTheme.Preference.MaterialSwitchPreference" parent="Preference.SwitchPreferenceCompat.Material">
         <item name="android:widgetLayout">@layout/preference_widget_material_switch</item>

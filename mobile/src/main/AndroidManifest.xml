@@ -82,7 +82,6 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
         </activity>
-        <activity android:name=".AboutLibrariesActivity" />
         <activity
             android:name=".util.SelfDismissActivity"
             android:theme="@android:style/Theme.Translucent.NoTitleBar"

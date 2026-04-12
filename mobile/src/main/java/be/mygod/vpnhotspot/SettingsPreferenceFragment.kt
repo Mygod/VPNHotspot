@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -139,7 +140,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             true
         }
         findPreference<Preference>("misc.licenses")!!.setOnPreferenceClickListener {
-            startActivity(Intent(requireContext(), AboutLibrariesActivity::class.java))
+            startActivity(Intent(requireContext(), OssLicensesMenuActivity::class.java))
             true
         }
     }

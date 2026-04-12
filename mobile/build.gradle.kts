@@ -1,12 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    alias(libs.plugins.aboutLibraries)
     alias(libs.plugins.android.application)
     alias(libs.plugins.crashlytics)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    id("com.google.android.gms.oss-licenses-plugin")
     kotlin("android")
     kotlin("kapt")
     id("kotlin-parcelize")
@@ -40,7 +39,6 @@ android {
         buildConfig = true
         dataBinding = true
         viewBinding = true
-        compose = true
     }
     buildTypes {
         debug {
@@ -72,8 +70,6 @@ kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()
 dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     ksp(libs.room.compiler)
-    implementation(libs.aboutlibraries.compose.m3)
-    implementation(libs.activity.compose)
     implementation(libs.browser)
     implementation(libs.core.i18n)
     implementation(libs.core.ktx)
@@ -81,7 +77,6 @@ dependencies {
     implementation(libs.dnsjava)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
-    implementation(libs.foundation.layout)
     implementation(libs.fragment.ktx)
     implementation(libs.hiddenapibypass)
     implementation(libs.ktor.network.jvm)
@@ -91,7 +86,6 @@ dependencies {
     implementation(libs.lifecycle.livedata.ktx)
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.material)
-    implementation(libs.material3.android)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.preference)
     implementation(libs.preferencex.simplemenu)
