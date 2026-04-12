@@ -5,8 +5,8 @@ plugins {
     alias(libs.plugins.crashlytics)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.kotlin.android)
     id("com.google.android.gms.oss-licenses-plugin")
-    kotlin("android")
     kotlin("kapt")
     id("kotlin-parcelize")
 }
@@ -48,16 +48,16 @@ android {
             isShrinkResources = true
             isMinifyEnabled = true
             vcsInfo.include = true
-            proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
-    packagingOptions.resources.excludes.addAll(listOf(
+    packaging.resources.excludes += listOf(
         "**/*.kotlin_*",
         "META-INF/versions/**",
-    ))
+    )
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
-    sourceSets.getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
     externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
 }
 ksp {

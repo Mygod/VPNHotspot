@@ -1,5 +1,5 @@
 [versions]
-kotlin = "2.2.20"
+kotlin = "2.3.20"
 lifecycle = "2.10.0"
 room = "2.8.4"
 
@@ -37,9 +37,9 @@ timber = "com.jakewharton.timber:timber:5.0.1"
 zxing-core = "com.google.zxing:core:3.5.4"
 
 [plugins]
-android-application = "com.android.application:8.13.0"
-ben-manes-versions = "com.github.ben-manes.versions:0.52.0"
+android-application = "com.android.application:9.1.0"
+ben-manes-versions = "com.github.ben-manes.versions:0.53.0"
 crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-ksp = "com.google.devtools.ksp:2.2.20-2.0.3"
+ksp = "com.google.devtools.ksp:2.3.6"
