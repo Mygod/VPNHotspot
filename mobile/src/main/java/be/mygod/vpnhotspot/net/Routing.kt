@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.net
 
 import android.net.LinkProperties
 import android.net.MacAddress
+import android.os.Build
 import android.os.Process
 import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
@@ -19,6 +20,7 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.BufferedWriter
 import java.io.IOException
@@ -166,6 +168,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                      * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
                      */
                     MasqueradeMode.Netd -> ndc("Nat", "ndc nat enable $downstream $upstream 0")
+                }
+            }
+            init {
+                if (Build.VERSION.SDK_INT >= 31) try {
+                    runBlocking { RootManager.use { it.execute(IpSecForwardPolicyCommand(upstream)) } }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    SmartSnackbar.make(e).show()
+                    Timber.w(e)
                 }
             }
         }

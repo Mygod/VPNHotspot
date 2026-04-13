@@ -64,6 +64,9 @@ Default settings are picked to suit general use cases and maximize compatibility
   Leave blank for auto detect.
   Put `none` (or `a^` or other similarly invalid entries) to forbid falling back.
   Put other interface name if you feel like it.
+* (Android 12+) Platform-managed IPsec tunnel VPNs such as Pixel VPN and some `VpnManager`/`Ikev2VpnProfile`
+  profiles may need a compatibility workaround. VPN Hotspot updates the live IPv4 tunnel forwarding policy in
+  place while sharing and relies on Android to recreate the stock policy when that tunnel is rebuilt.
 * IP Masquerade Mode:
   - None:
     Nothing will be done to remap address/port from downstream.
@@ -162,6 +165,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * (since API 29, prior to API 33) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 29, prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
+* (since API 31) `Landroid/net/INetd;->ipSecUpdateSecurityPolicy(IIILjava/lang/String;Ljava/lang/String;IIII)V`
 * (since API 30) `Landroid/net/IIntResultListener$Stub;-><init>()V,blocked`
 * (since API 30) `Landroid/net/IIntResultListener;->onResult(I)V,blocked`
 * (since API 30) `Landroid/net/ITetheringConnector;->stopTethering(ILjava/lang/String;Landroid/net/IIntResultListener;)V,blocked`
@@ -171,6 +175,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,blocked`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,blocked`
+* (since API 31) `Landroid/net/IpSecManager;->DIRECTION_FWD:I,blocked`
+* (since API 31) `Landroid/net/IpSecManager;->INVALID_SECURITY_PARAMETER_INDEX:I,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->LOCKDOWN_VPN_MATCH:J,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->UID_OWNER_MAP_PATH:Ljava/lang/String;,blocked`
@@ -377,6 +383,10 @@ Other:
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
 * (since API 30) Relevant classes in the tethering APEX have these optional prefixes: `android.net.connectivity` or `com.android.connectivity`.
+* (since API 31) AOSP `IpSecService` uses the full mark mask `0xffffffff` for IPsec policy add/update/delete.
+* (since API 31) The platform IPsec forwarding compatibility workaround intentionally updates the live IPv4
+  `DIRECTION_FWD` policy in place and does not try to restore it later; Android is expected to recreate tunnel
+  policy on tunnel teardown or rekey.
 * (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
 
 For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 (or higher) and 18000 respectively;

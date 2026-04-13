@@ -1,0 +1,51 @@
+# Repository Guidelines
+
+## Project Structure & Module Organization
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+
+## Build, Test, and Development Commands
+Use Gradle from the repo root.
+
+- `./gradlew :mobile:compileDebugKotlin`: fast Kotlin compile check.
+- `./gradlew :mobile:testDebugUnitTest`: run JVM/unit tests.
+- `./gradlew :mobile:installDebug`: install the debug build on a connected device.
+- `./gradlew :mobile:connectedDebugAndroidTest`: run instrumented tests on device/emulator.
+
+## Coding Style & Naming Conventions
+Follow existing Kotlin style: 4-space indentation, concise expression bodies only when clear, and existing naming patterns. Match nearby code before introducing new structure.
+
+- Do not add single-use helpers, wrappers, compat objects, or throwaway one-off classes/data classes unless there is real reuse or a correctness reason.
+- Do not use `runCatching` for new code; follow the repo’s normal explicit `try`/`catch` style.
+- Do not suppress unexpected exceptions. Best-effort cleanup should catch only the expected failure mode and rethrow the rest.
+- Preserve existing comments; do not casually shorten or rewrite them.
+
+## Testing Guidelines
+Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Use AndroidX instrumentation tests only when behavior depends on framework/runtime integration. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
+
+## Commit & Pull Request Guidelines
+Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.
+
+## Platform API Reflection, Hidden API & Root Changes
+Do not hand-wave platform API reflection, hidden API, or root behavior.
+
+- Every reflected Android platform API must be documented, including `sdk/system-api/test-api`.
+- Ground documentation in actual code usage in this repo. Check call sites, API guards, and whether the old path is still used.
+- README API qualifiers reflect when this app uses the API, not when Android introduced it. If usage spans all supported API levels, omit the qualifier.
+- Follow existing conventions first. Check similar entries in `README.md`, `../hiddenapi/hiddenapi-flags.csv`, and nearby source comments before adding new ones.
+- Do not search for hiddenapi data elsewhere. Use the provided `../hiddenapi/hiddenapi-flags.csv`, and do not edit it unless explicitly asked.
+- Update the correct `README.md` bucket: blocked/private/internal APIs go in `Private APIs used / Assumptions for Android customizations`, reflected `sdk/system-api/test-api` goes in `Hidden whitelisted APIs`, and non-descriptor platform assumptions or AOSP behavior notes go under `Other`.
+- Hardcoded AOSP-derived constants/values must be documented inline and represented in `README.md`. If they map to a concrete platform symbol, document that API entry; if they are only an implementation assumption, document them under `Other`.
+- Document the access point inline in the existing repo style.
+- Source-backed platform notes attached to a field, class, or method must use a declaration doc comment `/** ... */`, not plain `//`.
+- Always verify behavior and introduction points against actual AOSP source in `~/Android/aosp`, using the earliest verified `android-*_r1` with exact line numbers.
+- If the local checkout is missing history or a project, fetch or sync it into `~/Android/aosp` itself. Never use temporary AOSP checkouts elsewhere.
+- Document cleanup/revert behavior for root-side changes, especially for `Clean`/reapply and process-death leakage.
+- Do not reflect from `object.javaClass` or other runtime instance classes unless there is a specific reason. Cache the owning platform class/member with `lazy`.
+- Follow existing reflected-name conventions: use `clazz` only when the surrounding type already names the unambiguous platform class; otherwise use `classFoo`. Use `getFoo`/`setFoo`/field names for reflected members.
+- Never guess about usage, API levels, descriptors, relocation, or platform behavior. Resolve uncertainty from repo code, `../hiddenapi`, and AOSP before updating code or docs.
+
+Keep `README.md` in sync with these changes.
+
+- Update `Private APIs used / Assumptions for Android customizations`, `Hidden whitelisted APIs`, and `Other` whenever descriptors, API ranges, hidden constants, or platform assumptions change.
+- Cross-check README entries against `../hiddenapi/hiddenapi-flags.csv` when applicable.
+- If a change affects compatibility, cleanup behavior, or required privileges, also update the relevant README usage or troubleshooting text.
