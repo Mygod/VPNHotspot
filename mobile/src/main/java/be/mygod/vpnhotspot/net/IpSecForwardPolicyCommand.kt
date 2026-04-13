@@ -19,15 +19,17 @@ import java.net.UnknownHostException
 @Parcelize
 @RequiresApi(31)
 internal data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand<ParcelableBoolean> {
-    override suspend fun execute() = withContext(Dispatchers.IO) {
-        // Existing tunnel/transform state is only exposed via IIpSecService.dump():
-        // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/core/java/android/net/IIpSecService.aidl#33
-        // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/services/core/java/com/android/server/IpSecService.java#1731
-        val process = ProcessBuilder("dumpsys", "ipsec").fixPath(true).start()
-        val dump = process.inputStream.bufferedReader().use { it.readText() }.also {
-            check(process.waitFor() == 0) { "dumpsys ipsec failed" }
+    override suspend fun execute(): ParcelableBoolean {
+        val dump = withContext(Dispatchers.IO) {
+            // Existing tunnel/transform state is only exposed via IIpSecService.dump():
+            // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/core/java/android/net/IIpSecService.aidl#33
+            // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/services/core/java/com/android/server/IpSecService.java#1731
+            val process = ProcessBuilder("dumpsys", "ipsec").fixPath(true).start()
+            process.inputStream.bufferedReader().use { it.readText() }.also {
+                check(process.waitFor() == 0) { "dumpsys ipsec failed" }
+            }
         }
-        val (tunnel, inbound) = findTarget(upstream, dump) ?: return@withContext ParcelableBoolean(false)
+        val (tunnel, inbound) = findTarget(upstream, dump) ?: return ParcelableBoolean(false)
         updateSecurityPolicy(
             Netd.service,
             tunnel.groupValues[2].toInt(),
@@ -40,7 +42,7 @@ internal data class IpSecForwardPolicyCommand(private val upstream: String) : Ro
             FULL_MASK,
             tunnel.groupValues[1].toInt(),
         )
-        ParcelableBoolean(true)
+        return ParcelableBoolean(true)
     }
 
     companion object {
