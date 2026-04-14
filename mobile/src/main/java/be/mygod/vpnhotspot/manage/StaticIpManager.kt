@@ -29,13 +29,11 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     }
 
     inner class Data : BaseObservable() {
-        private var iface = StaticIpSetter.iface
-        val active: Boolean @Bindable get() = iface != null
-        val addresses: CharSequence @Bindable get() = iface?.formatAddresses() ?: ""
+        val active: Boolean @Bindable get() = StaticIpSetter.active
+        val addresses: CharSequence @Bindable get() = StaticIpSetter.addresses
 
         fun onChanged() {
-            iface = StaticIpSetter.iface
-            notifyPropertyChanged(BR.serviceStarted)
+            notifyPropertyChanged(BR.active)
             notifyPropertyChanged(BR.addresses)
         }
 
