@@ -1,3 +1,10 @@
+import groovy.json.JsonOutput
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.provider.Property
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,6 +16,42 @@ plugins {
     id("com.google.android.gms.oss-licenses-plugin")
     kotlin("kapt")
     id("kotlin-parcelize")
+}
+
+abstract class GenerateGitJavaTask : DefaultTask() {
+    @get:Input
+    abstract val includeStatus: Property<Boolean>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val gitSha = try {
+            ProcessBuilder("git", "rev-parse", "HEAD").directory(project.rootDir).redirectErrorStream(true).start().run {
+                inputStream.bufferedReader().readText().trimEnd().takeIf { waitFor() == 0 }
+            }
+        } catch (_: Exception) {
+            null
+        }
+        val gitStatus = if (includeStatus.get()) try {
+            ProcessBuilder("git", "status", "--porcelain=v1").directory(project.rootDir).redirectErrorStream(true)
+                .start().run { inputStream.bufferedReader().readText().trimEnd().takeIf { waitFor() == 0 } }
+        } catch (_: Exception) {
+            null
+        } else null
+        outputDir.file("be/mygod/vpnhotspot/BuildGit.java").get().asFile.apply {
+            parentFile.mkdirs()
+            writeText("""
+                package be.mygod.vpnhotspot;
+                public final class BuildGit {
+                    public static final String VALUE = ${JsonOutput.toJson(
+                if (gitSha.isNullOrEmpty()) "" else if (gitStatus.isNullOrEmpty()) gitSha else "$gitSha\n$gitStatus")};
+                    private BuildGit() {}
+                }
+            """.trimIndent() + "\n")
+        }
+    }
 }
 
 val javaVersion = 11
@@ -59,6 +102,14 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
     externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
+}
+androidComponents.onVariants { variant ->
+    val task = tasks.register<GenerateGitJavaTask>("generate${variant.name.replaceFirstChar(Char::titlecase)}GitJava") {
+        includeStatus.set(variant.buildType == "debug")
+        outputDir.set(layout.buildDirectory.dir("generated/source/git/${variant.name}"))
+        outputs.upToDateWhen { false }
+    }
+    variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
 }
 ksp {
     arg("room.expandProjection", "true")
