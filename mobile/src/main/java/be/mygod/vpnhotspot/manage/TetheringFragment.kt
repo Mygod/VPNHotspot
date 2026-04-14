@@ -211,7 +211,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                             return@launch
                         } catch (eRoot: Exception) {
                             eRoot.addSuppressed(e)
-                            if (Build.VERSION.SDK_INT >= 29 || eRoot.getRootCause() !is SecurityException) {
+                            if (Build.VERSION.SDK_INT >= 30 || eRoot.getRootCause() !is SecurityException) {
                                 Timber.w(eRoot)
                             }
                             SmartSnackbar.make(eRoot).show()

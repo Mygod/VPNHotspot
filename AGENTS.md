@@ -37,8 +37,7 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Hardcoded AOSP-derived constants/values must be documented inline and represented in `README.md`. If they map to a concrete platform symbol, document that API entry; if they are only an implementation assumption, document them under `Other`.
 - Document the access point inline in the existing repo style.
 - Source-backed platform notes attached to a field, class, or method must use a declaration doc comment `/** ... */`, not plain `//`.
-- Always verify behavior and introduction points against actual AOSP source in `~/Android/aosp`, using the earliest verified `android-*_r1` with exact line numbers.
-- If the local checkout is missing history or a project, fetch or sync it into `~/Android/aosp` itself. Never use temporary AOSP checkouts elsewhere.
+- Always verify behavior and introduction points against actual AOSP source, using the earliest verified `android-*_r1` with exact line numbers.
 - Document cleanup/revert behavior for root-side changes, especially for `Clean`/reapply and process-death leakage.
 - Do not reflect from `object.javaClass` or other runtime instance classes unless there is a specific reason. Cache the owning platform class/member with `lazy`.
 - Follow existing reflected-name conventions: use `clazz` only when the surrounding type already names the unambiguous platform class; otherwise use `classFoo`. Use `getFoo`/`setFoo`/field names for reflected members.

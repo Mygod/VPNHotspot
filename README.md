@@ -163,7 +163,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 
 * (prior to API 30) `Landroid/net/ConnectivityManager;->getLastTetherError(Ljava/lang/String;)I,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
-* (since API 29, prior to API 33) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
+* (since API 29) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 29, prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
 * (since API 31) `Landroid/net/INetd;->ipSecUpdateSecurityPolicy(IIILjava/lang/String;Ljava/lang/String;IIII)V`
 * (since API 30) `Landroid/net/IIntResultListener$Stub;-><init>()V,blocked`
@@ -194,7 +194,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
 * (since API 30) `Landroid/net/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;,blocked`
 * (prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`
-* `Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,unsupported`
+* (since API 30) `Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,unsupported`
 * `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blocked`
 * (since API 29) `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->mNetworkName:Ljava/lang/String;,blocked`
 * (since API 30) `Landroid/net/wifi/p2p/WifiP2pGroup;->interfaceAddress:[B,unsupported`
@@ -350,7 +350,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/wifi/WifiManager;->getSoftApConfiguration()Landroid/net/wifi/SoftApConfiguration;,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->isApMacRandomizationSupported()Z,sdk,system-api,test-api`
-* `Landroid/net/wifi/WifiManager;->registerSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/wifi/WifiManager;->registerSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->setSoftApConfiguration(Landroid/net/wifi/SoftApConfiguration;)Z,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->startLocalOnlyHotspot(Landroid/net/wifi/SoftApConfiguration;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$LocalOnlyHotspotCallback;)V,sdk,system-api,test-api`
@@ -382,7 +382,9 @@ Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
-* (since API 30) Relevant classes in the tethering APEX have these optional prefixes: `android.net.connectivity` or `com.android.connectivity`.
+* (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*` and
+  `android.net.BpfNetMapsConstants`, may be jarjar-relocated under the optional prefixes
+  `android.net.connectivity` or `com.android.connectivity`.
 * (since API 31) AOSP `IpSecService` uses the full mark mask `0xffffffff` for IPsec policy add/update/delete.
 * (since API 31) The platform IPsec forwarding compatibility workaround intentionally updates the live IPv4
   `DIRECTION_FWD` policy in place and does not try to restore it later; Android is expected to recreate tunnel
