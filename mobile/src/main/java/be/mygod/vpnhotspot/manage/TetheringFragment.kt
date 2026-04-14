@@ -149,14 +149,16 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     private lateinit var binding: FragmentTetheringBinding
     var binder: TetheringService.Binder? = null
     private val adapter = ManagerAdapter()
-    private val receiver = broadcastReceiver { _, intent ->
-        adapter.activeIfaces = intent.tetheredIfaces ?: return@broadcastReceiver
-        adapter.localOnlyIfaces = intent.localOnlyTetheredIfaces ?: return@broadcastReceiver
+    private fun updateTetherState(intent: Intent) {
+        adapter.activeIfaces = intent.tetheredIfaces ?: return
+        adapter.localOnlyIfaces = intent.localOnlyTetheredIfaces ?: return
         adapter.erroredIfaces = intent.getStringArrayListExtra(TetheringManagerCompat.EXTRA_ERRORED_TETHER)
-            ?: return@broadcastReceiver
+            ?: return
+        adapter.lastErrors.keys.retainAll(adapter.erroredIfaces)
         adapter.updateEnabledTypes()
         adapter.update()
     }
+    private val receiver = broadcastReceiver { _, intent -> updateTetherState(intent) }
 
     private fun updateMonitorList(canMonitor: List<String> = emptyList()) {
         val activity = activity as? MainActivity
@@ -320,13 +322,15 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 withStarted { adapter.update() }
             }
         }
-        requireContext().registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
+        val sticky = requireContext().registerReceiver(receiver, IntentFilter(
+            TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
         if (Build.VERSION.SDK_INT >= 30) {
             TetheringManagerCompat.registerTetheringEventCallback(adapter)
             TetherType.listener[this] = {
                 lifecycleScope.launch { adapter.notifyTetherTypeChanged() }
             }
         }
+        if (sticky != null) updateTetherState(sticky) else adapter.update()
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
@@ -335,7 +339,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         if (Build.VERSION.SDK_INT >= 30) {
             TetherType.listener -= this
             TetheringManagerCompat.unregisterTetheringEventCallback(adapter)
-            adapter.lastErrors.clear()
         }
         requireContext().unregisterReceiver(receiver)
     }
