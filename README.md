@@ -173,8 +173,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager$ConnectorConsumer;->onConnectorAvailable(Landroid/net/ITetheringConnector;)V,blocked`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
-* (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,blocked`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,blocked`
+* (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,blocked`
 * (since API 31) `Landroid/net/IpSecManager;->DIRECTION_FWD:I,blocked`
 * (since API 31) `Landroid/net/IpSecManager;->INVALID_SECURITY_PARAMETER_INDEX:I,blocked`
 * (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
@@ -245,6 +245,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/net/TetheringManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->EXTRA_ACTIVE_LOCAL_ONLY:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->EXTRA_ACTIVE_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
+* `Landroid/net/TetheringManager;->EXTRA_AVAILABLE_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/TetheringManager;->TETHERING_BLUETOOTH:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_ETHERNET:I,sdk,system-api,test-api`
@@ -385,6 +386,10 @@ Other:
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*` and
   `android.net.BpfNetMapsConstants`, may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
+* (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
+  startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
+  and later tether-state updates from one `executor.execute { ... }` block in
+  `onTetherStatesChanged`.
 * (since API 31) AOSP `IpSecService` uses the full mark mask `0xffffffff` for IPsec policy add/update/delete.
 * (since API 31) The platform IPsec forwarding compatibility workaround intentionally updates the live IPv4
   `DIRECTION_FWD` policy in place and does not try to restore it later; Android is expected to recreate tunnel

@@ -15,6 +15,11 @@ Use Gradle from the repo root.
 Follow existing Kotlin style: 4-space indentation, concise expression bodies only when clear, and existing naming patterns. Match nearby code before introducing new structure.
 
 - Do not add single-use helpers, wrappers, compat objects, or throwaway one-off classes/data classes unless there is real reuse or a correctness reason.
+- Do not break logic into multiple one-off private functions just to "organize" code. If a private function is only called once and does not create real reuse, keep that logic inline in the real entry point.
+- Be especially strict about this everywhere. Do not hide one linear control flow behind a pile of `start*`/`stop*`/`update*`/`refresh*` helpers unless each helper has clear reuse or isolates genuinely tricky logic.
+- Do not introduce single-use temporary variables that only rename a value for the next line or two. Inline them unless they prevent duplicated work or make a genuinely complex expression clearer.
+- Do not keep parallel shadow state in multiple vars when an existing data class or state object can be the single source of truth.
+- Do not add defensive `toList()`/`toSet()`/similar copies without a concrete ownership or mutation reason. Keep the copy only when it changes representation, breaks a live view, or protects iteration from mutation.
 - Do not use `runCatching` for new code; follow the repo’s normal explicit `try`/`catch` style.
 - Do not suppress unexpected exceptions. Best-effort cleanup should catch only the expected failure mode and rethrow the rest.
 - Preserve existing comments; do not casually shorten or rewrite them.
@@ -31,13 +36,16 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Every reflected Android platform API must be documented, including `sdk/system-api/test-api`.
 - Ground documentation in actual code usage in this repo. Check call sites, API guards, and whether the old path is still used.
 - README API qualifiers reflect when this app uses the API, not when Android introduced it. If usage spans all supported API levels, omit the qualifier.
+- Do not add normal `sdk/public-api` entries to `README.md` just because code now touches them. Document only reflected hidden APIs, blocked APIs, or non-obvious platform assumptions.
+- If a hidden API is only used on a narrower runtime path than its Android introduction, the `README.md` qualifier must follow actual app usage, not just platform availability.
 - Follow existing conventions first. Check similar entries in `README.md`, `../hiddenapi/hiddenapi-flags.csv`, and nearby source comments before adding new ones.
 - Do not search for hiddenapi data elsewhere. Use the provided `../hiddenapi/hiddenapi-flags.csv`, and do not edit it unless explicitly asked.
 - Update the correct `README.md` bucket: blocked/private/internal APIs go in `Private APIs used / Assumptions for Android customizations`, reflected `sdk/system-api/test-api` goes in `Hidden whitelisted APIs`, and non-descriptor platform assumptions or AOSP behavior notes go under `Other`.
 - Hardcoded AOSP-derived constants/values must be documented inline and represented in `README.md`. If they map to a concrete platform symbol, document that API entry; if they are only an implementation assumption, document them under `Other`.
 - Document the access point inline in the existing repo style.
 - Source-backed platform notes attached to a field, class, or method must use a declaration doc comment `/** ... */`, not plain `//`.
-- Always verify behavior and introduction points against actual AOSP source, using the earliest verified `android-*_r1` with exact line numbers.
+- Always verify behavior and introduction points against actual AOSP source, using both the earliest verified `android-*_r1` with exact line numbers and the current local `main`-style checkout when the task depends on latest behavior too.
+- Before introducing a blocked API, explicitly identify the less-restricted alternative considered and why it is insufficient for this caller.
 - Document cleanup/revert behavior for root-side changes, especially for `Clean`/reapply and process-death leakage.
 - Do not reflect from `object.javaClass` or other runtime instance classes unless there is a specific reason. Cache the owning platform class/member with `lazy`.
 - Follow existing reflected-name conventions: use `clazz` only when the surrounding type already names the unambiguous platform class; otherwise use `classFoo`. Use `getFoo`/`setFoo`/field names for reflected members.

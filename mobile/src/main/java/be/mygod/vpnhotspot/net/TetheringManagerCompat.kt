@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.TetheringManager
+import android.net.TetheringInterface
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
@@ -105,6 +106,13 @@ object TetheringManagerCompat {
      * https://android.googlesource.com/platform/frameworks/base.git/+/2a091d7aa0c174986387e5d56bf97a87fe075bdb%5E%21/services/java/com/android/server/connectivity/Tethering.java
      */
     const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
+    /**
+     * `ACTION_TETHER_STATE_CHANGED` uses `availableArray` for tetherable interfaces.
+     *
+     * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#375
+     * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#97
+     */
+    private const val EXTRA_AVAILABLE_TETHER = "availableArray"
     private const val EXTRA_ACTIVE_LOCAL_ONLY_LEGACY = "localOnlyArray"
     /**
      * gives a String[] listing all the interfaces currently in local-only
@@ -488,6 +496,17 @@ object TetheringManagerCompat {
         fun onTetheredInterfacesChanged(interfaces: List<String?>) {}
 
         /**
+         * Called when there was a change in the list of local-only interfaces.
+         *
+         * This is only available from the public callback on newer Mainline releases. API 30
+         * runtime variants that still lack this callback should keep using the sticky tether-state
+         * broadcast for local-only membership.
+         *
+         * @param interfaces The list of 0 or more String of active local-only interface names.
+         */
+        fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {}
+
+        /**
          * Called when an error occurred configuring tethering.
          *
          * This will be called immediately after the callback is registered if the latest status
@@ -570,9 +589,28 @@ object TetheringManagerCompat {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetherableInterfacesChanged(args!![0] as List<String?>)
                             }
+                            method.matches1<java.util.Set<*>>("onTetherableInterfacesChanged") -> {
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onTetherableInterfacesChanged(
+                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
+                            }
                             method.matches1<java.util.List<*>>("onTetheredInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetheredInterfacesChanged(args!![0] as List<String?>)
+                            }
+                            method.matches1<java.util.Set<*>>("onTetheredInterfacesChanged") -> {
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onTetheredInterfacesChanged(
+                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
+                            }
+                            method.matches1<java.util.List<*>>("onLocalOnlyInterfacesChanged") -> {
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onLocalOnlyInterfacesChanged(args!![0] as List<String?>)
+                            }
+                            method.matches1<java.util.Set<*>>("onLocalOnlyInterfacesChanged") -> {
+                                @Suppress("UNCHECKED_CAST")
+                                callback?.onLocalOnlyInterfacesChanged(
+                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
                             }
                             method.matches("onError", String::class.java, Integer.TYPE) -> {
                                 callback?.onError(args!![0] as String, args[1] as Int)
@@ -652,6 +690,7 @@ object TetheringManagerCompat {
         TetheringManager::class.java
     }
 
+    val Intent.availableIfaces get() = getStringArrayListExtra(EXTRA_AVAILABLE_TETHER)
     val Intent.tetheredIfaces get() = getStringArrayListExtra(EXTRA_ACTIVE_TETHER)
     val Intent.localOnlyTetheredIfaces get() = getStringArrayListExtra(
         if (Build.VERSION.SDK_INT >= 30) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)

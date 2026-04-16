@@ -25,6 +25,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.MainActivity
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.*
@@ -138,13 +139,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         (viewHolder as ViewHolder).manager = this
     }
 
-    fun updateErrorMessage(errored: List<String>, lastErrors: Map<String, Int>) {
-        val interested = errored.filter { TetherType.ofInterface(it).isA(tetherType) }
+    fun updateErrorMessage(states: TetherStates) {
+        val interested = states.errored.keys.filter { TetherType.ofInterface(it).isA(tetherType) }
         baseError = if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
             "$iface: " + try {
                 TetheringManagerCompat.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                     TetheringManagerCompat.getLastTetherError(iface)
-                } else lastErrors[iface] ?: 0)
+                } else states.errored[iface] ?: 0)
             } catch (e: InvocationTargetException) {
                 if (e.cause !is SecurityException) Timber.w(e) else Timber.d(e)
                 e.readableMessage
