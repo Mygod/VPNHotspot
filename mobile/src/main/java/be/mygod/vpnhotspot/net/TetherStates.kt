@@ -11,15 +11,11 @@ import android.os.Parcelable
 import androidx.annotation.MainThread
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.availableIfaces
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.localOnlyTetheredIfaces
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
-import timber.log.Timber
 
 /**
- * Convenience class that reassembles TetherStatesParcel from TetheringEventCallback.
+ * Convenience class that reassembles TetherStatesParcel from TetheringEventCallback + backfilling compat for API 30-.
  */
 data class TetherStates(
     val available: Set<String> = emptySet(),
@@ -59,16 +55,42 @@ data class TetherStates(
             Services.mainHandler.post(this)
         }
 
+        /**
+         * Broadcast-backed registrations parse `ACTION_TETHER_STATE_CHANGED` extras directly.
+         * android-10.0.0_r1 `ConnectivityManager` uses `"availableArray"`, `"tetherArray"`, and
+         * `"localOnlyArray"`/`"erroredArray"`, while android-11.0.0_r1 `TetheringManager` keeps
+         * `"availableArray"`/`"tetherArray"`/`"erroredArray"` and changes local-only to
+         * `"android.net.extra.ACTIVE_LOCAL_ONLY"`. The action string remains
+         * `"android.net.conn.TETHER_STATE_CHANGED"`.
+         *
+         * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#365
+         * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#370
+         * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#385
+         * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#393
+         * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#401
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#94
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#97
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#107
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#115
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#123
+         */
         @MainThread
         override fun onReceive(context: Context?, intent: Intent) {
-            states = TetherStates(
-                intent.availableIfaces?.toSet() ?: return,
-                intent.tetheredIfaces?.toSet() ?: return,
-                intent.localOnlyTetheredIfaces?.toSet() ?: return,
-                intent.getStringArrayListExtra(TetheringManagerCompat.EXTRA_ERRORED_TETHER)
-                    ?.associateWith { states.errored[it] ?: 0 } ?: return,
-            )
-            run()
+            val available = intent.getStringArrayListExtra("availableArray") ?: return
+            val tethered = intent.getStringArrayListExtra("tetherArray") ?: return
+            val localOnly = intent.getStringArrayListExtra(
+                if (Build.VERSION.SDK_INT >= 30) "android.net.extra.ACTIVE_LOCAL_ONLY" else
+                    "localOnlyArray") ?: return
+            val errored = intent.getStringArrayListExtra("erroredArray")
+                ?.associateWith { states.errored[it] ?: 0 } ?: return
+            states = TetherStates(available.toSet(), tethered.toSet(), localOnly.toSet(), errored)
+            if (fallbackToBroadcast) {
+                errored.forEach { (iface, error) -> callback.onError(iface, error) }
+                callback.onTetherableInterfacesChanged(available)
+                callback.onTetheredInterfacesChanged(tethered)
+            }
+            callback.onLocalOnlyInterfacesChanged(localOnly)
+            scheduleDispatch()
         }
 
         override fun onTetheringSupported(supported: Boolean) = callback.onTetheringSupported(supported)
@@ -131,19 +153,12 @@ data class TetherStates(
         fun register() {
             if (Build.VERSION.SDK_INT < 30) {
                 fallbackToBroadcast = true
-                app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
+                app.registerReceiver(this, IntentFilter(ACTION_TETHER_STATE_CHANGED))
                 return
             }
-            try {
-                TetheringManagerCompat.registerTetheringEventCallback(this, app.mainExecutor)
-            } catch (e: Exception) {
-                Timber.w(e)
-                fallbackToBroadcast = true
-                app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-                return
-            }
+            TetheringManagerCompat.registerTetheringEventCallback(this, app.mainExecutor)
             if (Build.VERSION.SDK_INT >= 31 || publicLocalOnlyInterfacesChangedSupported) return
-            app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
+            app.registerReceiver(this, IntentFilter(ACTION_TETHER_STATE_CHANGED))
         }
 
         @MainThread
@@ -159,6 +174,7 @@ data class TetherStates(
     }
 
     companion object {
+        private const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
         private val registrations = mutableMapOf<Callback, Registration>()
 
         /**
@@ -176,9 +192,7 @@ data class TetherStates(
 
         @MainThread
         fun registerCallback(callback: Callback) {
-            registrations.computeIfAbsent(callback) {
-                Registration(it).apply { register() }
-            }
+            registrations.computeIfAbsent(callback) { Registration(it).apply { register() } }
         }
 
         @MainThread

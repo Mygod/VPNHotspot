@@ -21,17 +21,15 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.localOnlyTetheredIfaces
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -41,7 +39,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback, DefaultLifecycleObserver,
-    WifiApManager.SoftApCallbackCompat, TetheringManagerCompat.TetheringEventCallback {
+    WifiApManager.SoftApCallbackCompat, TetherStates.Callback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
         private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
@@ -56,9 +54,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
 
     private var tetheredInterfaces = emptySet<String>()
-    private val receiver = broadcastReceiver { _, intent ->
-        tetheredInterfaces = (intent.tetheredIfaces ?: return@broadcastReceiver).toSet() +
-                (intent.localOnlyTetheredIfaces ?: return@broadcastReceiver)
+    override fun onTetherStatesChanged(states: TetherStates) {
+        tetheredInterfaces = states.tethered + states.localOnly
         populateClients()
     }
 
@@ -166,14 +163,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        app.registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
+        TetherStates.registerCallback(this)
         IpNeighbourMonitor.registerCallback(this, false)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
         IpNeighbourMonitor.unregisterCallback(this)
-        app.unregisterReceiver(receiver)
+        TetherStates.unregisterCallback(this)
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {

@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
@@ -19,7 +20,7 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.TetheringEventCallback, CoroutineScope {
+class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, CoroutineScope {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
@@ -109,7 +110,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
             }
             if (!callbackRegistered) {
                 callbackRegistered = true
-                TetheringManagerCompat.registerTetheringEventCallbackCompat(this, this)
+                TetherStates.registerCallback(this)
                 IpNeighbourMonitor.registerCallback(this)
             }
             super.updateNotification()
@@ -165,7 +166,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetheringManagerCompat.
 
     private fun unregisterReceiver() {
         if (callbackRegistered) {
-            TetheringManagerCompat.unregisterTetheringEventCallbackCompat(this, this)
+            TetherStates.unregisterCallback(this)
             IpNeighbourMonitor.unregisterCallback(this)
             callbackRegistered = false
         }

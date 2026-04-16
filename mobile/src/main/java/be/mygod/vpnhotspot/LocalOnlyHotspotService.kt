@@ -9,8 +9,8 @@ import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.localOnlyTetheredIfaces
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
@@ -38,7 +38,7 @@ import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.Inet4Address
 
-class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
+class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, TetherStates.Callback {
     companion object {
         const val KEY_USE_SYSTEM = "service.tempHotspot.useSystem"
 
@@ -132,9 +132,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
         registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         val state = lastState
         unregisterStateReceiver()
-        val iface = state?.second ?: registerReceiver(null, IntentFilter(
-            TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))?.localOnlyTetheredIfaces?.single()
-        if (state?.first != WifiApManager.WIFI_AP_STATE_ENABLED || iface.isNullOrEmpty()) {
+        if (state?.first != WifiApManager.WIFI_AP_STATE_ENABLED) {
             if (state?.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                 SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
                     WifiApManager.failureReasonLookup(state.third))).show()
@@ -142,6 +140,20 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
             }
             return stopService()
         }
+        waitingForIface = true
+        TetherStates.registerCallback(this)
+    }
+
+    override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
+        if (!waitingForIface || binder.iface != "") return
+        interfaces.singleOrNull()?.let {
+            waitingForIface = false
+            onIfaceAvailable(it)
+        }
+    }
+
+    private fun onIfaceAvailable(iface: String) {
+        TetherStates.unregisterCallback(this)
         binder.iface = iface
         BootReceiver.add<LocalOnlyHotspotService>(Starter())
         check(routingManager == null)
@@ -175,6 +187,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     override val coroutineContext = dispatcher + Job()
     private var routingManager: RoutingManager? = null
     private var timeoutMonitor: TetherTimeoutMonitor? = null
+    private var waitingForIface = false
     override val activeIfaces get() = binder.iface.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
     private var lastState: Triple<Int, String?, Int>? = null
@@ -269,12 +282,14 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope {
     private fun stopService(shouldDisable: Boolean = true) {
         if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
         binder.iface = null
+        waitingForIface = false
         unregisterReceiver()
         ServiceNotification.stopForeground(this)
         stopSelf()
     }
 
     private fun unregisterReceiver(exit: Boolean = false) {
+        TetherStates.unregisterCallback(this)
         IpNeighbourMonitor.unregisterCallback(this)
         timeoutMonitor?.close()
         timeoutMonitor = null

@@ -2,15 +2,12 @@ package be.mygod.vpnhotspot.net
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.TetheringManager
-import android.net.TetheringInterface
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
@@ -26,9 +23,7 @@ import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
-import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.matches
 import be.mygod.vpnhotspot.util.matches1
@@ -99,38 +94,6 @@ object TetheringManagerCompat {
     private const val TETHERING_CONNECTOR_CLASS = "android.net.ITetheringConnector"
     @RequiresApi(30)
     private const val IN_PROCESS_SUFFIX = ".InProcess"
-
-    /**
-     * This is a sticky broadcast since almost forever.
-     *
-     * https://android.googlesource.com/platform/frameworks/base.git/+/2a091d7aa0c174986387e5d56bf97a87fe075bdb%5E%21/services/java/com/android/server/connectivity/Tethering.java
-     */
-    const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
-    /**
-     * `ACTION_TETHER_STATE_CHANGED` uses `availableArray` for tetherable interfaces.
-     *
-     * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/ConnectivityManager.java#375
-     * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#97
-     */
-    private const val EXTRA_AVAILABLE_TETHER = "availableArray"
-    private const val EXTRA_ACTIVE_LOCAL_ONLY_LEGACY = "localOnlyArray"
-    /**
-     * gives a String[] listing all the interfaces currently in local-only
-     * mode (ie, has DHCPv4+IPv6-ULA support and no packet forwarding)
-     */
-    @RequiresApi(30)
-    private const val EXTRA_ACTIVE_LOCAL_ONLY = "android.net.extra.ACTIVE_LOCAL_ONLY"
-    /**
-     * gives a String[] listing all the interfaces currently tethered
-     * (ie, has DHCPv4 support and packets potentially forwarded/NATed)
-     */
-    private const val EXTRA_ACTIVE_TETHER = "tetherArray"
-    /**
-     * gives a String[] listing all the interfaces we tried to tether and
-     * failed.  Use [getLastTetherError] to find the error code
-     * for any interfaces listed here.
-     */
-    const val EXTRA_ERRORED_TETHER = "erroredArray"
 
     /** Tethering offload status is stopped.  */
     @RequiresApi(30)
@@ -542,6 +505,11 @@ object TetheringManagerCompat {
         fun onOffloadStatusChanged(status: Int) {}
     }
 
+    @RequiresApi(31)
+    private fun toInterfacesCompat(args: Array<out Any?>?) = (args!![0] as Set<*>).map {
+        (it as android.net.TetheringInterface).`interface`
+    }
+
     private val callbackMap = mutableMapOf<TetheringEventCallback, TetheringManager.TetheringEventCallback>()
     /**
      * Start listening to tethering change events. Any new added callback will receive the last
@@ -588,27 +556,21 @@ object TetheringManagerCompat {
                                 callback?.onTetherableInterfacesChanged(args!![0] as List<String?>)
                             }
                             method.matches1<java.util.Set<*>>("onTetherableInterfacesChanged") -> {
-                                @Suppress("UNCHECKED_CAST")
-                                callback?.onTetherableInterfacesChanged(
-                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
+                                callback?.onTetherableInterfacesChanged(toInterfacesCompat(args))
                             }
                             method.matches1<java.util.List<*>>("onTetheredInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetheredInterfacesChanged(args!![0] as List<String?>)
                             }
                             method.matches1<java.util.Set<*>>("onTetheredInterfacesChanged") -> {
-                                @Suppress("UNCHECKED_CAST")
-                                callback?.onTetheredInterfacesChanged(
-                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
+                                callback?.onTetheredInterfacesChanged(toInterfacesCompat(args))
                             }
                             method.matches1<java.util.List<*>>("onLocalOnlyInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onLocalOnlyInterfacesChanged(args!![0] as List<String?>)
                             }
                             method.matches1<java.util.Set<*>>("onLocalOnlyInterfacesChanged") -> {
-                                @Suppress("UNCHECKED_CAST")
-                                callback?.onLocalOnlyInterfacesChanged(
-                                    (args!![0] as Set<TetheringInterface>).map(TetheringInterface::getInterface))
+                                callback?.onLocalOnlyInterfacesChanged(toInterfacesCompat(args))
                             }
                             method.matches("onError", String::class.java, Integer.TYPE) -> {
                                 callback?.onError(args!![0] as String, args[1] as Int)
@@ -646,28 +608,6 @@ object TetheringManagerCompat {
         }
     }
 
-    val callbackLegacyMap = mutableMapOf<TetheringEventCallback, BroadcastReceiver>()
-    /**
-     * [registerTetheringEventCallback] in a backwards compatible way.
-     *
-     * Only [TetheringEventCallback.onTetheredInterfacesChanged] is supported on API 29-.
-     */
-    fun registerTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (Build.VERSION.SDK_INT < 30) synchronized(callbackLegacyMap) {
-            callbackLegacyMap.computeIfAbsent(callback) {
-                broadcastReceiver { _, intent ->
-                    callback.onTetheredInterfacesChanged(intent.tetheredIfaces ?: return@broadcastReceiver)
-                }.also { context.registerReceiver(it, IntentFilter(ACTION_TETHER_STATE_CHANGED)) }
-            }
-        } else registerTetheringEventCallback(callback)
-    }
-    fun unregisterTetheringEventCallbackCompat(context: Context, callback: TetheringEventCallback) {
-        if (Build.VERSION.SDK_INT < 30) {
-            val receiver = synchronized(callbackLegacyMap) { callbackLegacyMap.remove(callback) } ?: return
-            context.ensureReceiverUnregistered(receiver)
-        } else unregisterTetheringEventCallback(callback)
-    }
-
     /**
      * Get a more detailed error code after a Tethering or Untethering
      * request asynchronously failed.
@@ -687,9 +627,4 @@ object TetheringManagerCompat {
             "TETHER_ERROR_DHCPSERVER_ERROR", "TETHER_ERROR_ENTITLEMENT_UNKNOWN") @TargetApi(30) {
         TetheringManager::class.java
     }
-
-    val Intent.availableIfaces get() = getStringArrayListExtra(EXTRA_AVAILABLE_TETHER)
-    val Intent.tetheredIfaces get() = getStringArrayListExtra(EXTRA_ACTIVE_TETHER)
-    val Intent.localOnlyTetheredIfaces get() = getStringArrayListExtra(
-        if (Build.VERSION.SDK_INT >= 30) EXTRA_ACTIVE_LOCAL_ONLY else EXTRA_ACTIVE_LOCAL_ONLY_LEGACY)
 }

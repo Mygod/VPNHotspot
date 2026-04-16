@@ -4,7 +4,6 @@ import android.bluetooth.BluetoothManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.graphics.drawable.Icon
 import android.net.TetheringManager
 import android.os.Build
@@ -15,10 +14,9 @@ import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.TetheringService
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
-import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +25,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManagerCompat.StartTetheringCallback,
-    TetheringManagerCompat.StopTetheringCallback {
+    TetheringManagerCompat.StopTetheringCallback, TetherStates.Callback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -37,10 +35,13 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     private var tethered: List<String>? = null
     protected val interested get() = tethered?.filter { TetherType.ofInterface(it).isA(tetherType) }
     protected var binder: TetheringService.Binder? = null
-
-    private val receiver = broadcastReceiver { _, intent ->
-        tethered = intent.tetheredIfaces ?: return@broadcastReceiver
+    override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
+        tethered = interfaces.filterNotNull()
         updateTile()
+        if (tapPending && binder != null) {
+            tapPending = false
+            onClick()
+        }
     }
 
     protected abstract fun start()
@@ -49,16 +50,13 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     override fun onStartListening() {
         super.onStartListening()
         bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
-        // we need to initialize tethered ASAP for onClick, which is not achievable using registerTetheringEventCallback
-        tethered = registerReceiver(receiver, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-                ?.tetheredIfaces
+        TetherStates.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = this::updateTile
-        updateTile()
     }
 
     override fun onStopListening() {
         if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
-        unregisterReceiver(receiver)
+        TetherStates.unregisterCallback(this)
         stopAndUnbind(this)
         super.onStopListening()
     }
@@ -80,8 +78,9 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
             val interested = interested
             when {
                 interested == null -> {
-                    state = Tile.STATE_UNAVAILABLE
-                    icon = tileOff
+                    label = getText(labelString)
+                    updateTile()
+                    return
                 }
                 interested.isEmpty() -> {
                     state = Tile.STATE_INACTIVE
@@ -100,7 +99,10 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
     }
 
     override fun onClick() {
-        val interested = interested ?: return
+        val interested = interested ?: run {
+            tapPending = true
+            return
+        }
         if (interested.isEmpty()) start() else {
             val binder = binder
             if (binder == null) tapPending = true else {
