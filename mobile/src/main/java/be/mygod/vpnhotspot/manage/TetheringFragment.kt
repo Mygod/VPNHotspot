@@ -69,19 +69,19 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
 
         private var tetherStates = TetherStates()
         private var listDeferred = CompletableDeferred<List<Manager>>(emptyList())
-        fun updateEnabledTypes() {
-            this@TetheringFragment.enabledTypes =
-                (tetherStates.tethered + tetherStates.localOnly).map { TetherType.ofInterface(it) }.toSet()
+        fun updateTetheredTypes() {
+            this@TetheringFragment.tetheredTypes =
+                tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
         }
 
         override fun onTetherStatesChanged(states: TetherStates) {
             tetherStates = states
-            updateEnabledTypes()
+            updateTetheredTypes()
             update()
         }
 
         suspend fun notifyTetherTypeChanged() {
-            updateEnabledTypes()
+            updateTetheredTypes()
             val lastList = listDeferred.await()
             var first = lastList.indexOfFirst { it is InterfaceManager }
             withStarted {
@@ -143,7 +143,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()
-    var enabledTypes = emptySet<TetherType>()
+    var tetheredTypes = emptySet<TetherType>()
     private lateinit var binding: FragmentTetheringBinding
     var binder: TetheringService.Binder? = null
     private val adapter = ManagerAdapter()

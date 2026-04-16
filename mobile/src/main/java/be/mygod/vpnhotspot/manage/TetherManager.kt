@@ -91,8 +91,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
     val data = Data()
     abstract val title: CharSequence
     abstract val tetherType: TetherType
-    open val isStarted: Boolean? get() = parent.enabledTypes.contains(tetherType) ||
-            tetherType == TetherType.USB && parent.enabledTypes.contains(TetherType.NCM)
+    open val isStarted: Boolean? get() = parent.tetheredTypes.contains(tetherType) ||
+            tetherType == TetherType.USB && parent.tetheredTypes.contains(TetherType.NCM)
     protected open val text: CharSequence get() = baseError ?: ""
 
     protected var baseError: String? = null
