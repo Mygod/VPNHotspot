@@ -41,6 +41,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private var ncmRegexs = emptyList<Pattern>()
         private val ethernetRegex: Pattern?
         private var requiresUpdate = false
+        private var ignoreRegexpsOnce = false
 
         @RequiresApi(30)    // unused on lower APIs
         val listener = Event0()
@@ -65,6 +66,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             usbRegexs = emptyList()
             wifiRegexs = emptyList()
             bluetoothRegexs = emptyList()
+            ignoreRegexpsOnce = true
             TetheringManagerCompat.registerTetheringEventCallback(this)
             val info = TetheringManagerCompat.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
@@ -79,6 +81,10 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
         @RequiresApi(30)
         override fun onTetherableInterfaceRegexpsChanged(reg: Any?) = synchronized(this) {
+            if (ignoreRegexpsOnce) {
+                ignoreRegexpsOnce = false
+                return@synchronized
+            }
             if (requiresUpdate) return@synchronized
             Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
             TetheringManagerCompat.unregisterTetheringEventCallback(this)

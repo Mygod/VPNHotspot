@@ -564,7 +564,6 @@ object TetheringManagerCompat {
                 computed = true
                 Proxy.newProxyInstance(TetheringManager.TetheringEventCallback::class.java.classLoader,
                         arrayOf(TetheringManager.TetheringEventCallback::class.java), object : InvocationHandler {
-                    private var regexpsSent = false
                     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
                         @Suppress("NAME_SHADOWING")
                         val callback = reference.get()
@@ -582,8 +581,7 @@ object TetheringManagerCompat {
                             method.name == "onTetherableInterfaceRegexpsChanged" &&
                                     method.parameters.singleOrNull()?.type?.name ==
                                     "android.net.TetheringManager\$TetheringInterfaceRegexps" -> {
-                                if (regexpsSent) callback?.onTetherableInterfaceRegexpsChanged(args!!.single())
-                                regexpsSent = true
+                                callback?.onTetherableInterfaceRegexpsChanged(args!!.single())
                             }
                             method.matches1<java.util.List<*>>("onTetherableInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")

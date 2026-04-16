@@ -31,12 +31,11 @@ data class TetherStates(
         fun onTetherStatesChanged(states: TetherStates) {}
     }
 
-    companion object : BroadcastReceiver(), Runnable, TetheringManagerCompat.TetheringEventCallback {
-        private val callbacks = linkedSetOf<Callback>()
+    private class Registration(private val callback: Callback) : BroadcastReceiver(), Runnable,
+        TetheringManagerCompat.TetheringEventCallback {
         private var states = TetherStates()
         private var dispatchPending = false
-        private var publicCallbackRegistered = false
-        private var broadcastReceiverRegistered = false
+        private var fallbackToBroadcast = false
 
         /**
          * On runtimes that expose public `onLocalOnlyInterfacesChanged`, AOSP dispatches startup
@@ -50,7 +49,7 @@ data class TetherStates(
          */
         override fun run() {
             dispatchPending = false
-            callbacks.toList().forEach { it.onTetherStatesChanged(states) }
+            callback.onTetherStatesChanged(states)
         }
 
         @MainThread
@@ -72,34 +71,16 @@ data class TetherStates(
             run()
         }
 
-        /**
-         * android-11.0.0_r1 public `TetheringEventCallback` does not expose local-only interfaces,
-         * while android-12.0.0_r1 adds `onLocalOnlyInterfacesChanged`.
-         *
-         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#916
-         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#1141
-         */
-        @get:RequiresApi(30)
-        private val publicLocalOnlyInterfacesChangedSupported by lazy {
-            TetheringManager.TetheringEventCallback::class.java.methods
-                .any { it.name == "onLocalOnlyInterfacesChanged" }
-        }
-
-        override fun onTetheringSupported(supported: Boolean) =
-            callbacks.toList().forEach { it.onTetheringSupported(supported) }
-
+        override fun onTetheringSupported(supported: Boolean) = callback.onTetheringSupported(supported)
         override fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) =
-            callbacks.toList().forEach { it.onSupportedTetheringTypes(supportedTypes) }
-
-        override fun onUpstreamChanged(network: Network?) =
-            callbacks.toList().forEach { it.onUpstreamChanged(network) }
-
+            callback.onSupportedTetheringTypes(supportedTypes)
+        override fun onUpstreamChanged(network: Network?) = callback.onUpstreamChanged(network)
         override fun onTetherableInterfaceRegexpsChanged(reg: Any?) =
-            callbacks.toList().forEach { it.onTetherableInterfaceRegexpsChanged(reg) }
+            callback.onTetherableInterfaceRegexpsChanged(reg)
 
         @MainThread
         override fun onError(ifName: String, error: Int) {
-            callbacks.toList().forEach { it.onError(ifName, error) }
+            callback.onError(ifName, error)
             states = states.copy(
                 errored = if (error == 0) {
                     states.errored - ifName
@@ -113,7 +94,7 @@ data class TetherStates(
         @MainThread
         override fun onTetherableInterfacesChanged(interfaces: List<String?>) {
             val available = interfaces.filterNotNull().toSet()
-            callbacks.toList().forEach { it.onTetherableInterfacesChanged(interfaces) }
+            callback.onTetherableInterfacesChanged(interfaces)
             states = states.copy(
                 available = available,
                 errored = states.errored.filterKeys { it !in available },
@@ -124,7 +105,7 @@ data class TetherStates(
         @MainThread
         override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
             val tethered = interfaces.filterNotNull().toSet()
-            callbacks.toList().forEach { it.onTetheredInterfacesChanged(interfaces) }
+            callback.onTetheredInterfacesChanged(interfaces)
             states = states.copy(
                 tethered = tethered,
                 errored = states.errored.filterKeys { it !in tethered },
@@ -135,7 +116,7 @@ data class TetherStates(
         @MainThread
         override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
             val localOnly = interfaces.filterNotNull().toSet()
-            callbacks.toList().forEach { it.onLocalOnlyInterfacesChanged(interfaces) }
+            callback.onLocalOnlyInterfacesChanged(interfaces)
             states = states.copy(
                 localOnly = localOnly,
                 errored = states.errored.filterKeys { it !in localOnly },
@@ -143,50 +124,64 @@ data class TetherStates(
             scheduleDispatch()
         }
 
-        override fun onClientsChanged(clients: Collection<Parcelable>) =
-            callbacks.toList().forEach { it.onClientsChanged(clients) }
-
-        override fun onOffloadStatusChanged(status: Int) =
-            callbacks.toList().forEach { it.onOffloadStatusChanged(status) }
+        override fun onClientsChanged(clients: Collection<Parcelable>) = callback.onClientsChanged(clients)
+        override fun onOffloadStatusChanged(status: Int) = callback.onOffloadStatusChanged(status)
 
         @MainThread
-        fun registerCallback(callback: Callback) {
-            if (!callbacks.add(callback) || callbacks.size > 1) return
+        fun register() {
             if (Build.VERSION.SDK_INT < 30) {
+                fallbackToBroadcast = true
                 app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-                broadcastReceiverRegistered = true
                 return
             }
             try {
                 TetheringManagerCompat.registerTetheringEventCallback(this, app.mainExecutor)
-                publicCallbackRegistered = true
             } catch (e: Exception) {
                 Timber.w(e)
-                app.registerReceiver(this,
-                    IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-                broadcastReceiverRegistered = true
+                fallbackToBroadcast = true
+                app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
                 return
             }
-            if (broadcastReceiverRegistered || Build.VERSION.SDK_INT >= 31 ||
-                publicLocalOnlyInterfacesChangedSupported) return
+            if (Build.VERSION.SDK_INT >= 31 || publicLocalOnlyInterfacesChangedSupported) return
             app.registerReceiver(this, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-            broadcastReceiverRegistered = true
         }
 
         @MainThread
-        fun unregisterCallback(callback: Callback) {
-            if (!callbacks.remove(callback) || callbacks.isNotEmpty()) return
-            if (publicCallbackRegistered) {
+        fun unregister() {
+            if (Build.VERSION.SDK_INT >= 30 && !fallbackToBroadcast) {
                 TetheringManagerCompat.unregisterTetheringEventCallback(this)
-                publicCallbackRegistered = false
             }
-            if (broadcastReceiverRegistered) {
+            if (fallbackToBroadcast || Build.VERSION.SDK_INT == 30 && !publicLocalOnlyInterfacesChangedSupported) {
                 app.ensureReceiverUnregistered(this)
-                broadcastReceiverRegistered = false
             }
             Services.mainHandler.removeCallbacks(this)
-            dispatchPending = false
-            states = TetherStates()
         }
+    }
+
+    companion object {
+        private val registrations = mutableMapOf<Callback, Registration>()
+
+        /**
+         * android-11.0.0_r1 public `TetheringEventCallback` does not expose local-only interfaces,
+         * while android-12.0.0_r1 adds `onLocalOnlyInterfacesChanged`.
+         *
+         * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#916
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-12.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#1141
+         */
+        @get:RequiresApi(30)
+        private val publicLocalOnlyInterfacesChangedSupported by lazy {
+            TetheringManager.TetheringEventCallback::class.java.methods
+                .any { it.name == "onLocalOnlyInterfacesChanged" }
+        }
+
+        @MainThread
+        fun registerCallback(callback: Callback) {
+            registrations.computeIfAbsent(callback) {
+                Registration(it).apply { register() }
+            }
+        }
+
+        @MainThread
+        fun unregisterCallback(callback: Callback) = registrations.remove(callback)?.unregister()
     }
 }
