@@ -100,7 +100,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                     configuration = callback.config.toCompat()
                     onFrameworkStarted(this)
                 }
-                is LocalOnlyHotspotCallbacks.OnStopped -> reservation = null
+                is LocalOnlyHotspotCallbacks.OnStopped -> onFrameworkStopped()
                 is LocalOnlyHotspotCallbacks.OnFailed -> onFrameworkFailed(callback.reason)
             }
         }
@@ -116,9 +116,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                 launch { onFrameworkStarted(r) }
             }
         }
-        override fun onStopped() {
-            reservation = null
-        }
+        override fun onStopped() = onFrameworkStopped()
         override fun onFailed(reason: Int) = onFrameworkFailed(reason)
     }
     private fun onFrameworkStarted(reservation: Reservation) {
@@ -159,6 +157,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         check(routingManager == null)
         routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
         IpNeighbourMonitor.registerCallback(this)
+    }
+    private fun onFrameworkStopped() {
+        reservation = null
+        if (binder.iface != null) stopService()
     }
     private fun onFrameworkFailed(reason: Int) {
         SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure, when (reason) {
