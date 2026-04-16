@@ -79,8 +79,20 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |echo ip rule
                     |$IP rule
                     |echo
+                    |echo ip route show table all
+                    |$IP route show table all
+                    |echo
                     |echo ip neigh
                     |$IP neigh
+                    |echo
+                    |echo ip -s link
+                    |$IP -s link
+                    |echo
+                    |echo iptables -t nat -nvx -L POSTROUTING
+                    |$IPTABLES -t nat -nvx -L POSTROUTING
+                    |echo
+                    |echo iptables -t nat -nvx -L vpnhotspot_masquerade
+                    |$IPTABLES -t nat -nvx -L vpnhotspot_masquerade
                     |echo
                     |echo iptables -nvx -L vpnhotspot_fwd
                     |$IPTABLES -nvx -L vpnhotspot_fwd
