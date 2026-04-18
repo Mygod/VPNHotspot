@@ -410,7 +410,6 @@ object TetheringManagerCompat {
          *
          * @param supportedTypes a set of @TetheringType which is supported.
          */
-        @TargetApi(31)
         fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) {
             val filtered = supportedTypes.filter { it !in 0..5 }
             if (filtered.isNotEmpty()) Timber.w(Exception(

@@ -51,7 +51,6 @@
     <string name="tethering_manage_wifi">Ponto de acesso Wi\u2011Fi</string>
     <string name="tethering_manage_bluetooth">Tethering Bluetooth</string>
     <string name="tethering_manage_ethernet">Tethering Ethernet</string>
-    <string name="tethering_manage_ncm">Tethering USB (NCM)</string>
     <string name="tethering_manage_wifi_info">%1$d MHz, canal %2$d, largura %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d,
         largura %3$s, tempo ocioso em %6$s</string>
@@ -59,10 +58,12 @@
         largura %3$s, tempo ocioso desabilitado</string>
     <plurals name="tethering_manage_wifi_capabilities">
         <item quantity="one">%1$s/%2$d cliente conectado\nFunções suportadas: %3$s</item>
+        <item quantity="many">%1$s/%2$d clientes conectados\nFunções suportadas: %3$s</item>
         <item quantity="other">%1$s/%2$d clientes conectados\nFunções suportadas: %3$s</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="one">%d cliente conectado</item>
+        <item quantity="many">%1$d de clientes conectados</item>
         <item quantity="other">%1d clientes conectados</item>
     </plurals>
     <string name="tethering_manage_wifi_supported_channels">\nCanais suportados: %s</string>
@@ -92,14 +93,17 @@
     <string name="clients_stats_title">Status para %s</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Conectado 1 vez desde %2$s</item>
+        <item quantity="many">Conectado %1$s de vezes desde %2$s</item>
         <item quantity="other">Conectado %1$s vezes desde %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="one">Enviado 1 pacote, %2$s</item>
+        <item quantity="many">Enviados %1$s de pacotes, %2$s</item>
         <item quantity="other">Enviados %1$s pacotes, %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_3">
         <item quantity="one">Recebido 1 pacote, %2$s</item>
+        <item quantity="many">Recebidos %1$s de pacotes, %2$s</item>
         <item quantity="other">Recebidos %1$s pacotes, %2$s</item>
     </plurals>
 
@@ -155,15 +159,18 @@
     <string name="notification_channel_monitor">Monitorar interfaces inativas</string>
     <plurals name="notification_connected_devices">
         <item quantity="one">%d dispotivivo conectado ao %s</item>
+        <item quantity="many">%d de dispositivos conectados ao %s</item>
         <item quantity="other">%d dispositivos conectados ao %s</item>
     </plurals>
     <plurals name="notification_interfaces">
         <item quantity="one">%d interface</item>
+        <item quantity="many">%d de interfaces</item>
         <item quantity="other">%d interfaces</item>
     </plurals>
     <string name="notification_interfaces_inactive">Inativo: %s</string>
     <plurals name="quick_settings_hotspot_secondary_label_num_devices">
         <item quantity="one">%d dispositivo</item>
+        <item quantity="many">%d de dispositivos</item>
         <item quantity="other">%d dispositivos</item>
     </plurals>
 

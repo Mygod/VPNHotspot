@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.net.wifi.p2p.WifiP2pGroup
@@ -21,7 +20,7 @@ class RepeaterTileService : KillableTileService() {
     override fun onStartListening() {
         super.onStartListening()
         if (Services.p2p != null) {
-            bindService(Intent(this, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
+            bindService(Intent(this, RepeaterService::class.java), this, BIND_AUTO_CREATE)
         } else updateTile()
     }
 

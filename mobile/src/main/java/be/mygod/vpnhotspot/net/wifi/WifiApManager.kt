@@ -121,7 +121,7 @@ object WifiApManager {
     val EXTRA_WIFI_AP_INTERFACE_NAME get() =
         if (Build.VERSION.SDK_INT >= 30) "android.net.wifi.extra.WIFI_AP_INTERFACE_NAME" else "wifi_ap_interface_name"
 
-    fun checkWifiApState(state: Int) = if (state < WIFI_AP_STATE_DISABLING || state > WIFI_AP_STATE_FAILED) {
+    fun checkWifiApState(state: Int) = if (state !in WIFI_AP_STATE_DISABLING..WIFI_AP_STATE_FAILED) {
         Timber.w(Exception("Unknown state $state"))
         false
     } else true

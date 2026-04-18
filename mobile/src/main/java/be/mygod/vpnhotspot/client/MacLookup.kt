@@ -59,8 +59,7 @@ object MacLookup {
             var response: String? = null
             try {
                 response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
-                    val responseCode = conn.responseCode
-                    when (responseCode) {
+                    when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.use {
                             Scanner(it).run {
                                 findWithinHorizon(dataPattern, 0)

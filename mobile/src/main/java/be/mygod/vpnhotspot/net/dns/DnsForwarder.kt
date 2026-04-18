@@ -174,7 +174,7 @@ class DnsForwarder : CoroutineScope {
                 header.rcode = if (e is UnsupportedOperationException) Rcode.NOTIMP else Rcode.SERVFAIL
             }.toWire()
         } catch (e: IOException) {
-            Timber.d("Malformed ${source()}", e)
+            Timber.d(e, "Malformed ${source()}")
             null    // return empty if cannot parse packet
         }
     }

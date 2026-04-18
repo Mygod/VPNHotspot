@@ -17,7 +17,6 @@ import be.mygod.vpnhotspot.BR
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.StaticIpSetter
 import be.mygod.vpnhotspot.databinding.ListitemStaticIpBinding
-import be.mygod.vpnhotspot.util.formatAddresses
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import kotlinx.parcelize.Parcelize
 

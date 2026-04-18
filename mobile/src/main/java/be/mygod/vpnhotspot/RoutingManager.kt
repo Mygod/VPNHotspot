@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import timber.log.Timber
+import androidx.core.content.edit
 
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val forceWifi: Boolean = false) {
     companion object {
@@ -21,7 +22,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     Routing.MasqueradeMode.Simple
                 } else Routing.MasqueradeMode.None
             }
-            set(value) = app.pref.edit().putString(KEY_MASQUERADE_MODE, value.name).apply()
+            set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
 
         /**
          * Thread safety: needs protection by companion object!

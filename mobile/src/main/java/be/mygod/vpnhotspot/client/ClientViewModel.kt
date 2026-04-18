@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.client
 
 import android.content.ClipData
 import android.content.ComponentName
-import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.net.LinkAddress
 import android.net.MacAddress
@@ -23,7 +22,6 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.IpNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
@@ -98,8 +96,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
                         // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/android/net/ip/IpServer.java;l=516;drc=efb735f4d5a2f04550e33e8aa9485f906018fe4e
                         if (address.flags != 0 || address.scope != OsConstants.RT_SCOPE_UNIVERSE ||
                             info.deprecationTime != info.expirationTime) {
-                            Timber.w("$address, ${address.flags}, ${address.scope}, ${info.deprecationTime}, " +
-                                    info.expirationTime)
+                            Timber.w("$address, ${address.flags}, ${address.scope}, ${info.deprecationTime}, ${
+                                info.expirationTime}")
                         }
                     }
                 })

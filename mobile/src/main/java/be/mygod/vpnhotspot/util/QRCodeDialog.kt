@@ -16,6 +16,7 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.WriterException
 import timber.log.Timber
 import java.nio.charset.StandardCharsets
+import androidx.core.graphics.set
 
 class QRCodeDialog : DialogFragment() {
     companion object {
@@ -38,9 +39,9 @@ class QRCodeDialog : DialogFragment() {
         val qrBits = MultiFormatWriter().encode(arg, BarcodeFormat.QR_CODE, size, size, hints)
         ImageView(context).apply {
             layoutParams = ViewGroup.LayoutParams(size, size)
-            setImageBitmap(Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).apply {
+            setImageBitmap(Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).also {
                 for (x in 0 until size) for (y in 0 until size) {
-                    setPixel(x, y, if (qrBits.get(x, y)) Color.BLACK else Color.WHITE)
+                    it[x, y] = if (qrBits.get(x, y)) Color.BLACK else Color.WHITE
                 }
             })
         }

@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.manage
 
 import android.bluetooth.BluetoothManager
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.net.TetheringManager
@@ -49,7 +48,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
     override fun onStartListening() {
         super.onStartListening()
-        bindService(Intent(this, TetheringService::class.java), this, Context.BIND_AUTO_CREATE)
+        bindService(Intent(this, TetheringService::class.java), this, BIND_AUTO_CREATE)
         TetherStates.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = this::updateTile
     }

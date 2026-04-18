@@ -18,7 +18,7 @@ class P2pSupplicantConfiguration(private val group: WifiP2pGroup? = null) {
     companion object {
         private const val PERSISTENT_MAC = "p2p_device_persistent_mac_addr="
         private val networkParser =
-                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}\$)?)".toRegex()
+                "^(bssid=(([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})|psk=(ext:|\"(.*)\"|[0-9a-fA-F]{64}$)?)".toRegex()
     }
 
     class LoggedException(cause: Exception) : Exception(cause)

@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.widget
 import android.content.Context
 import android.graphics.Rect
 import android.util.AttributeSet
-import android.view.View
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 
 /**
@@ -18,7 +17,7 @@ class AlwaysAutoCompleteEditText @JvmOverloads constructor(
 
     override fun onFocusChanged(focused: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
         super.onFocusChanged(focused, direction, previouslyFocusedRect)
-        if (focused && windowVisibility != View.GONE && filter != null) {
+        if (focused && windowVisibility != GONE && filter != null) {
             performFiltering(text, 0)
             showDropDown()
         }

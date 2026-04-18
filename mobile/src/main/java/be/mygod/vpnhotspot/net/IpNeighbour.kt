@@ -29,13 +29,13 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
          * Assumptions: IP addr (key) always present and RTM_GETNEIGH is never used
          */
         private val parser = ("^(Deleted )?(?:([^ ]+) )?dev ([^ ]+) (?:lladdr ([^ ]*))?.*?" +
-                "(?: ([INCOMPLET,RAHBSDYF]+))?\$").toRegex()
+                "(?: ([INCOMPLET,RAHBSDYF]+))?$").toRegex()
         /**
          * Fallback format will be used if if_indextoname returns null, which some stupid devices do.
          *
          * Source: https://android.googlesource.com/platform/external/iproute2/+/4b9e917/lib/ll_map.c#152
          */
-        private val devFallback = "^if(\\d+)\$".toRegex()
+        private val devFallback = "^if(\\d+)$".toRegex()
 
         private fun substituteDev(dev: String): Set<String> {
             val devParser = devFallback.matchEntire(dev)

@@ -128,7 +128,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         Netd,
     }
 
-    class InterfaceNotFoundException(override val cause: Throwable) : SocketException() {
+    class InterfaceNotFoundException(cause: Throwable) : SocketException() {
+        init {
+            initCause(cause)
+        }
         override val message: String get() = app.getString(R.string.exception_interface_not_found)
     }
 

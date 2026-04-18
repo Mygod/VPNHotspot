@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.os.IBinder
@@ -17,7 +16,7 @@ class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        bindService(Intent(this, LocalOnlyHotspotService::class.java), this, Context.BIND_AUTO_CREATE)
+        bindService(Intent(this, LocalOnlyHotspotService::class.java), this, BIND_AUTO_CREATE)
     }
 
     override fun onStopListening() {

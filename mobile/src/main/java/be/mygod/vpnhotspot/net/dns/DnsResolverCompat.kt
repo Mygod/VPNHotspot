@@ -1,11 +1,11 @@
 package be.mygod.vpnhotspot.net.dns
 
-import android.annotation.TargetApi
 import android.app.ActivityManager
 import android.net.DnsResolver
 import android.net.Network
 import android.os.Build
 import android.os.CancellationSignal
+import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import be.mygod.vpnhotspot.App.Companion.app
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +98,7 @@ sealed class DnsResolverCompat {
         }
     }
 
-    @TargetApi(29)
+    @RequiresApi(29)
     private data object DnsResolverCompat29 : DnsResolverCompat(), Executor {
         /**
          * This executor will run on its caller directly. On Q beta 3 thru 4, this results in calling in main thread.

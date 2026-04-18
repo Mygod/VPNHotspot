@@ -44,7 +44,7 @@ class BootReceiver : BroadcastReceiver() {
         } catch (_: FileNotFoundException) {
             null
         } catch (e: Exception) {
-            Timber.w("Boot config corrupted", e)
+            Timber.w(e, "Boot config corrupted")
             null
         }
         private fun updateConfig(work: Config.() -> Boolean) = synchronized(BootReceiver) {

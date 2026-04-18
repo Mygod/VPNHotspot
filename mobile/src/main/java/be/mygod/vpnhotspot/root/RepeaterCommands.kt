@@ -19,6 +19,7 @@ import be.mygod.vpnhotspot.util.Services
 import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.IOException
+import androidx.core.text.isDigitsOnly
 
 object RepeaterCommands {
     @Parcelize
@@ -68,7 +69,7 @@ object RepeaterCommands {
     data class WriteP2pConfig(val data: String, val legacy: Boolean) : RootCommandNoResult {
         override suspend fun execute(): Parcelable? {
             File(if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE).writeText(data)
-            for (process in File("/proc").listFiles { _, name -> TextUtils.isDigitsOnly(name) }!!) {
+            for (process in File("/proc").listFiles { _, name -> name.isDigitsOnly() }!!) {
                 val cmdline = try {
                     File(process, "cmdline").inputStream().bufferedReader().use { it.readText() }
                 } catch (_: IOException) {

@@ -63,7 +63,6 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi ホットスポット</string>
     <string name="tethering_manage_bluetooth">Bluetooth テザリング</string>
     <string name="tethering_manage_ethernet">イーサネットテザリング</string>
-    <string name="tethering_manage_ncm">USB テザリング (NCM)</string>
     <string name="tethering_manage_wifi_info">%1$d MHz - チャンネル: %2$d - 幅: %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウトまで %6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウト無効</string>

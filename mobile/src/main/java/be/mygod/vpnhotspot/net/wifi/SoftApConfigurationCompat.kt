@@ -5,7 +5,6 @@ import android.annotation.TargetApi
 import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
-import android.net.wifi.WifiSsid
 import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
@@ -168,7 +167,9 @@ data class SoftApConfigurationCompat(
          * -1:Any 0:2G 1:5G
          * By default, 2G is chosen
          */
-        private val apBand by lazy { android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apBand") }
+        private val apBand by lazy @SuppressLint("DiscouragedPrivateApi") {
+            android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apBand")
+        }
         @Suppress("DEPRECATION")
         /**
          * The channel which AP resides on
@@ -176,7 +177,7 @@ data class SoftApConfigurationCompat(
          * 5G  36,40,44,48,149,153,157,161,165
          * 0 - find a random available channel according to the apBand
          */
-        private val apChannel by lazy {
+        private val apChannel by lazy @SuppressLint("DiscouragedPrivateApi") {
             android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apChannel")
         }
 

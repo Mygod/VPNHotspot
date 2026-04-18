@@ -36,7 +36,7 @@ timber = "com.jakewharton.timber:timber:5.0.1"
 zxing-core = "com.google.zxing:core:3.5.4"
 
 [plugins]
-android-application = "com.android.application:9.1.0"
+android-application = "com.android.application:9.1.1"
 ben-manes-versions = "com.github.ben-manes.versions:0.53.0"
 crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
