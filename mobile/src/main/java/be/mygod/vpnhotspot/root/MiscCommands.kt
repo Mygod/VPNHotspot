@@ -23,12 +23,14 @@ import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.onClosed
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -128,40 +130,45 @@ class ProcessListener(private val terminateRegex: Regex,
                       private vararg val command: String) : RootCommandChannel<ProcessData> {
     override fun create(scope: CoroutineScope) = scope.produce(Dispatchers.IO, capacity) {
         val process = ProcessBuilder(*command).start()
-        // we need to destroy process before joining, so we cannot use coroutineScope
-        val parent = Job(coroutineContext.job)
+        // we need to destroy process before waiting for the readers during cleanup, so we cannot use coroutineScope
+        val stdout = launch {
+            try {
+                process.inputStream.bufferedReader().useLines { lines ->
+                    for (line in lines) {
+                        trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
+                        if (terminateRegex.containsMatchIn(line)) process.destroy()
+                    }
+                }
+            } catch (_: InterruptedIOException) { } catch (e: IOException) {
+                if (!e.isEBADF) Timber.w(e)
+            }
+        }
+        val stderr = launch {
+            try {
+                process.errorStream.bufferedReader().useLines { lines ->
+                    for (line in lines) trySend(ProcessData.StderrLine(line)).onClosed {
+                        return@useLines
+                    }.onFailure { throw it!! }
+                }
+            } catch (_: InterruptedIOException) { } catch (e: IOException) {
+                if (!e.isEBADF) Timber.w(e)
+            }
+        }
+        val exit = launch {
+            trySend(ProcessData.Exit(runInterruptible {
+                process.waitFor()
+            })).onClosed { return@launch }.onFailure { throw it!! }
+        }
         try {
-            launch(parent) {
-                try {
-                    process.inputStream.bufferedReader().useLines { lines ->
-                        for (line in lines) {
-                            trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
-                            if (terminateRegex.containsMatchIn(line)) process.destroy()
-                        }
-                    }
-                } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                    if (!e.isEBADF) Timber.w(e)
-                }
-            }
-            launch(parent) {
-                try {
-                    process.errorStream.bufferedReader().useLines { lines ->
-                        for (line in lines) trySend(ProcessData.StdoutLine(line)).onClosed {
-                            return@useLines
-                        }.onFailure { throw it!! }
-                    }
-                } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                    if (!e.isEBADF) Timber.w(e)
-                }
-            }
-            launch(parent) {
-                trySend(ProcessData.Exit(process.waitFor())).onClosed { return@launch }.onFailure { throw it!! }
-            }
-            parent.join()
+            joinAll(stdout, stderr, exit)
         } finally {
-            parent.cancel()
-            if (process.isAlive) process.destroyForcibly()
-            parent.join()
+            withContext(NonCancellable) {
+                if (process.isAlive) process.destroyForcibly()
+                stdout.cancel()
+                stderr.cancel()
+                exit.cancel()
+                joinAll(stdout, stderr, exit)
+            }
         }
     }
 }
