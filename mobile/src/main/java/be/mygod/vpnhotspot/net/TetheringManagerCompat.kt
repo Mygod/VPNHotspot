@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.TetheringInterface
 import android.net.TetheringManager
 import android.os.Build
 import android.os.DeadObjectException
@@ -38,6 +39,7 @@ import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
 
@@ -177,7 +179,7 @@ object TetheringManagerCompat {
         val proxy = ProxyBuilder.forClass(classOnStartTetheringCallback).apply {
             dexCache(cacheDir)
             handler { proxy, method, args ->
-                @Suppress("NAME_SHADOWING") val callback = reference.get()
+                val callback = reference.get()
                 if (args.isEmpty()) when (method.name) {
                     "onTetheringStarted" -> return@handler callback?.onTetheringStarted()
                     "onTetheringFailed" -> return@handler callback?.onTetheringFailed()
@@ -309,7 +311,7 @@ object TetheringManagerCompat {
                         val resultListener = ProxyBuilder.forClass(stubIIntResultListener).apply {
                             dexCache(cacheDir)
                             handler { proxy, method, args ->
-                                @Suppress("NAME_SHADOWING") val callback = reference.get()
+                                val callback = reference.get()
                                 if (method.name == "onResult") (args[0] as Int).let { resultCode ->
                                     return@handler if (resultCode == TetheringManager.TETHER_ERROR_NO_ERROR) {
                                         callback?.onStopTetheringSucceeded()
@@ -505,10 +507,14 @@ object TetheringManagerCompat {
         fun onOffloadStatusChanged(status: Int) {}
     }
 
-    @RequiresApi(31)
-    private fun toInterfacesCompat(args: Array<out Any?>?) = (args!![0] as Set<*>).map {
-        (it as android.net.TetheringInterface).`interface`
+    private val tetheringInterfaces = ConcurrentHashMap<String, Int>()
+    fun getInterfaceType(iface: String) = tetheringInterfaces[iface]
+    @RequiresApi(30)
+    private fun toInterfaceCompat(arg: Any?): String = (arg as TetheringInterface).let {
+        it.`interface`.also { iface -> tetheringInterfaces[iface] = it.type }
     }
+    @RequiresApi(30)
+    private fun toInterfacesCompat(args: Array<out Any?>?) = (args!![0] as Set<*>).map(this::toInterfaceCompat)
 
     private val callbackMap = mutableMapOf<TetheringEventCallback, TetheringManager.TetheringEventCallback>()
     /**
@@ -533,7 +539,6 @@ object TetheringManagerCompat {
                 Proxy.newProxyInstance(TetheringManager.TetheringEventCallback::class.java.classLoader,
                         arrayOf(TetheringManager.TetheringEventCallback::class.java), object : InvocationHandler {
                     override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                        @Suppress("NAME_SHADOWING")
                         val callback = reference.get()
                         return when {
                             method.matches("onTetheringSupported", Boolean::class.java) -> {
@@ -571,6 +576,12 @@ object TetheringManagerCompat {
                             }
                             method.matches1<java.util.Set<*>>("onLocalOnlyInterfacesChanged") -> {
                                 callback?.onLocalOnlyInterfacesChanged(toInterfacesCompat(args))
+                            }
+                            // workaround for API 30 which might be missing this class
+                            method.name == "onError" && method.parameterTypes.size == 2 &&
+                                    method.parameterTypes[0].name == "android.net.TetheringInterface" &&
+                                    method.parameterTypes[1] == Integer.TYPE -> {
+                                callback?.onError(toInterfaceCompat(args!![0] ?: return null), args[1] as Int)
                             }
                             method.matches("onError", String::class.java, Integer.TYPE) -> {
                                 callback?.onError(args!![0] as String, args[1] as Int)

@@ -40,7 +40,10 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - If a hidden API is only used on a narrower runtime path than its Android introduction, the `README.md` qualifier must follow actual app usage, not just platform availability.
 - Follow existing conventions first. Check similar entries in `README.md`, `../hiddenapi/hiddenapi-flags.csv`, and nearby source comments before adding new ones.
 - Do not search for hiddenapi data elsewhere. Use the provided `../hiddenapi/hiddenapi-flags.csv`, and do not edit it unless explicitly asked.
+- Before adding, removing, or reclassifying any Android API entry in `README.md`, verify the exact descriptor and exact overload in `../hiddenapi/hiddenapi-flags.csv`. Do not infer access category from class-level knowledge, AOSP source, or a sibling overload.
+- Treat `public-api` as a stop sign for `Hidden whitelisted APIs` and `Private APIs used / Assumptions for Android customizations` unless this app also uses a different non-public member with its own descriptor.
 - Update the correct `README.md` bucket: blocked/private/internal APIs go in `Private APIs used / Assumptions for Android customizations`, reflected `sdk/system-api/test-api` goes in `Hidden whitelisted APIs`, and non-descriptor platform assumptions or AOSP behavior notes go under `Other`.
+- Only put platform behavior under `Other` when this app would misbehave, leak state, or lose required functionality if that behavior differs. Do not document optional fast paths, runtime capability probes, or implementation details when an existing fallback preserves correctness.
 - Hardcoded AOSP-derived constants/values must be documented inline and represented in `README.md`. If they map to a concrete platform symbol, document that API entry; if they are only an implementation assumption, document them under `Other`.
 - Document the access point inline in the existing repo style.
 - Source-backed platform notes attached to a field, class, or method must use a declaration doc comment `/** ... */`, not plain `//`.
@@ -48,11 +51,13 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Before introducing a blocked API, explicitly identify the less-restricted alternative considered and why it is insufficient for this caller.
 - Document cleanup/revert behavior for root-side changes, especially for `Clean`/reapply and process-death leakage.
 - Do not reflect from `object.javaClass` or other runtime instance classes unless there is a specific reason. Cache the owning platform class/member with `lazy`.
+- When a platform API is public but runtime availability may vary due to Mainline/APEX, prefer direct typed use behind runtime capability detection. Use reflection only for presence/signature detection when `SDK_INT` is insufficient; do not reflect public accessors purely to avoid imports.
 - Follow existing reflected-name conventions: use `clazz` only when the surrounding type already names the unambiguous platform class; otherwise use `classFoo`. Use `getFoo`/`setFoo`/field names for reflected members.
 - Never guess about usage, API levels, descriptors, relocation, or platform behavior. Resolve uncertainty from repo code, `../hiddenapi`, and AOSP before updating code or docs.
 
 Keep `README.md` in sync with these changes.
 
 - Update `Private APIs used / Assumptions for Android customizations`, `Hidden whitelisted APIs`, and `Other` whenever descriptors, API ranges, hidden constants, or platform assumptions change.
-- Cross-check README entries against `../hiddenapi/hiddenapi-flags.csv` when applicable.
+- Cross-check README entries against `../hiddenapi/hiddenapi-flags.csv` by exact descriptor when applicable.
+- If `README.md` API documentation changes, state in the final response that `../hiddenapi/hiddenapi-flags.csv` was checked and which descriptors were verified.
 - If a change affects compatibility, cleanup behavior, or required privileges, also update the relevant README usage or troubleshooting text.

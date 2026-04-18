@@ -40,6 +40,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private lateinit var bluetoothRegexs: List<Pattern>
         private var ncmRegexs = emptyList<Pattern>()
         private val ethernetRegex: Pattern?
+        @RequiresApi(30)
         private var requiresUpdate = false
         private var ignoreRegexpsOnce = false
 
@@ -120,28 +121,26 @@ enum class TetherType(@DrawableRes val icon: Int) {
         fun ofInterface(iface: String?, p2pDev: String? = null) = when (iface) {
             null -> NONE
             p2pDev -> WIFI_P2P
-            else -> try {
-                synchronized(this) { ofInterfaceImpl(iface) }
+            else -> TetheringManagerCompat.getInterfaceType(iface)?.let { fromTetheringType(it) } ?: try {
+                synchronized(this) {
+                    if (requiresUpdate) updateRegexs()
+                    when {
+                        wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
+                        wigigRegexs.any { it.matcher(iface).matches() } -> WIGIG
+                        wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
+                        usbRegexs.any { it.matcher(iface).matches() } -> USB
+                        bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
+                        ncmRegexs.any { it.matcher(iface).matches() } -> NCM
+                        ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
+                        // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/com/android/networkstack/tethering/Tethering.java;l=979;drc=b4d6320e2ae398b36f0aaafb2ecd83609d2d99af
+                        iface == "avf_tap_fixed" -> VIRTUAL
+                        else -> NONE
+                    }
+                }
             } catch (e: RuntimeException) {
                 Timber.w(e)
                 NONE
             }
-        }
-        private tailrec fun ofInterfaceImpl(iface: String): TetherType = when {
-            requiresUpdate -> {
-                if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
-                ofInterfaceImpl(iface)
-            }
-            wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
-            wigigRegexs.any { it.matcher(iface).matches() } -> WIGIG
-            wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
-            usbRegexs.any { it.matcher(iface).matches() } -> USB
-            bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
-            ncmRegexs.any { it.matcher(iface).matches() } -> NCM
-            ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
-            // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/com/android/networkstack/tethering/Tethering.java;l=979;drc=b4d6320e2ae398b36f0aaafb2ecd83609d2d99af
-            iface == "avf_tap_fixed" -> VIRTUAL
-            else -> NONE
         }
 
         fun fromTetheringType(type: Int) = when (type) {
