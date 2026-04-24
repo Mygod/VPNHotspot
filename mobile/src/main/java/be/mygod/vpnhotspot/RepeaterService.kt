@@ -170,7 +170,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     }
 
     enum class Status {
-        IDLE, STARTING, ACTIVE, DESTROYED
+        IDLE, STARTING, ACTIVE, STOPPING, DESTROYED
     }
 
     inner class Binder : android.os.Binder() {
@@ -543,6 +543,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo?, group: WifiP2pGroup?) = launch {
         Timber.d("P2P connection changed: $info\n$group")
+        if (status != Status.STARTING && status != Status.ACTIVE) return@launch
         when {
             info?.groupFormed != true || !info.isGroupOwner || group?.isGroupOwner != true -> {
                 if (routingManager != null) cleanLocked()
@@ -607,6 +608,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         })
     }
     private suspend fun cleanLocked(shouldDisable: Boolean = true) {
+        if (status != Status.DESTROYED) status = Status.STOPPING
         if (shouldDisable) BootReceiver.delete<RepeaterService>()
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)
@@ -618,7 +620,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         val manager = routingManager
         routingManager = null
         manager?.stop()
-        status = Status.IDLE
+        if (status != Status.DESTROYED) status = Status.IDLE
         ServiceNotification.stopForeground(this)
         stopSelf()
     }
