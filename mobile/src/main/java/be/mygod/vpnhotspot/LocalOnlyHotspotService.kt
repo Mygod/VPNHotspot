@@ -82,15 +82,17 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
 
     interface Reservation : AutoCloseable {
         val configuration: SoftApConfigurationCompat?
+        val generation: Int
     }
-    class Framework(private val reservation: WifiManager.LocalOnlyHotspotReservation) : Reservation {
+    class Framework(private val reservation: WifiManager.LocalOnlyHotspotReservation,
+                    override val generation: Int) : Reservation {
         override val configuration get() = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             reservation.wifiConfiguration?.toCompat()
         } else reservation.softApConfiguration.toCompat()
         override fun close() = reservation.close()
     }
     @RequiresApi(30)
-    inner class Root(rootServer: RootServer) : Reservation {
+    inner class Root(rootServer: RootServer, override val generation: Int) : Reservation {
         private val channel = rootServer.create(WifiApCommands.StartLocalOnlyHotspot(), this@LocalOnlyHotspotService)
         override var configuration: SoftApConfigurationCompat? = null
             private set
@@ -102,27 +104,34 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                     configuration = callback.config.toCompat()
                     onFrameworkStarted(this)
                 }
-                is LocalOnlyHotspotCallbacks.OnStopped -> onFrameworkStopped()
-                is LocalOnlyHotspotCallbacks.OnFailed -> onFrameworkFailed(callback.reason)
+                is LocalOnlyHotspotCallbacks.OnStopped -> onFrameworkStopped(generation)
+                is LocalOnlyHotspotCallbacks.OnFailed -> onFrameworkFailed(callback.reason, generation)
             }
         }
     }
 
     private val binder = Binder()
     private var reservation: Reservation? = null
-    private val lohCallback = object : WifiManager.LocalOnlyHotspotCallback() {
+    private fun lohCallback(generation: Int) = object : WifiManager.LocalOnlyHotspotCallback() {
         override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
             if (reservation == null) onFailed(-2) else {
-                val r = Framework(reservation)
+                val r = Framework(reservation, generation)
                 this@LocalOnlyHotspotService.reservation = r
                 launch { onFrameworkStarted(r) }
             }
         }
-        override fun onStopped() = onFrameworkStopped()
-        override fun onFailed(reason: Int) = onFrameworkFailed(reason)
+        override fun onStopped() = onFrameworkStopped(generation)
+        override fun onFailed(reason: Int) = onFrameworkFailed(reason, generation)
     }
     private suspend fun onFrameworkStarted(reservation: Reservation) {
         val configuration = reservation.configuration
+        if (reservation.generation != lifecycleGeneration.get()) {
+            if (this@LocalOnlyHotspotService.reservation === reservation) {
+                this@LocalOnlyHotspotService.reservation = null
+            }
+            reservation.close()
+            return
+        }
         // attempt to update again
         registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         val state = lastState
@@ -132,18 +141,20 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                     WifiApManager.failureReasonLookup(state.third))).show()
                 dismissIfApplicable()
             }
-            return stopService()
+            return stopService(generation = reservation.generation)
         }
-        var stopped = false
+        var closeReservation = false
         routingMutex.withLock {
-            unregisterStateReceiver()
-            if (binder.iface != "") {
+            if (reservation.generation != lifecycleGeneration.get() ||
+                    binder.iface == null) {
                 if (this@LocalOnlyHotspotService.reservation === reservation) {
                     this@LocalOnlyHotspotService.reservation = null
                 }
-                stopped = true
+                closeReservation = true
                 return@withLock
             }
+            if (binder.iface != "") return@withLock
+            unregisterStateReceiver()
             if (Build.VERSION.SDK_INT < 30 && configuration!!.isAutoShutdownEnabled) {
                 timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis, coroutineContext) {
                     reservation.close()
@@ -152,7 +163,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
             waitingForIface = true
             TetherStates.registerCallback(this@LocalOnlyHotspotService)
         }
-        if (stopped) reservation.close()
+        if (closeReservation) reservation.close()
     }
 
     override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
@@ -178,11 +189,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
             IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
         }
     }
-    private fun onFrameworkStopped() {
+    private fun onFrameworkStopped(generation: Int) {
+        if (generation != lifecycleGeneration.get()) return
         reservation = null
-        if (binder.iface != null) stopService()
+        if (binder.iface != null) stopService(generation = generation)
     }
-    private fun onFrameworkFailed(reason: Int) {
+    private fun onFrameworkFailed(reason: Int, generation: Int) {
+        if (generation != lifecycleGeneration.get()) return
         SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure, when (reason) {
             WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL -> {
                 getString(R.string.tethering_temp_hotspot_failure_no_channel)
@@ -199,7 +212,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
             else -> getString(R.string.failure_reason_unknown, reason)
         })).show()
         dismissIfApplicable()
-        stopService()
+        stopService(generation = generation)
     }
 
     /**
@@ -233,13 +246,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
         if (binder.iface != null) return START_STICKY
-        lifecycleGeneration.incrementAndGet()
+        val generation = lifecycleGeneration.incrementAndGet()
         binder.iface = ""
         ServiceNotification.startForeground(this)   // show invisible foreground notification to avoid being killed
-        launch(start = CoroutineStart.UNDISPATCHED) { doStart() }
+        launch(start = CoroutineStart.UNDISPATCHED) { doStart(generation) }
         return START_STICKY
     }
-    private suspend fun doStart() {
+    private suspend fun doStart(generation: Int) {
         if (!receiverRegistered) {
             registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let {
                 receiverRegistered = true
@@ -249,7 +262,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) {
             if (Build.VERSION.SDK_INT >= 33) try {
                 return Services.wifi.startLocalOnlyHotspotWithConfiguration(WifiApManager.configuration,
-                    InPlaceExecutor, lohCallback)
+                    InPlaceExecutor, lohCallback(generation))
             } catch (e: NoSuchMethodError) {
                 if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
             } catch (e: SecurityException) {
@@ -259,35 +272,38 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
             }
             try {
                 RootManager.use {
-                    Root(it).apply {
-                        reservation = this
-                        work()
+                    Root(it, generation).also { root ->
+                        reservation = root
+                        root.work()
                     }
                 }
                 return
             } catch (_: CancellationException) {
                 return
             } catch (e: Exception) {
+                if (generation != lifecycleGeneration.get()) return
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
             } finally {
-                reservation = null
+                if (reservation?.generation == generation) reservation = null
             }
         }
         try {
-            Services.wifi.startLocalOnlyHotspot(lohCallback, null)
+            Services.wifi.startLocalOnlyHotspot(lohCallback(generation), null)
         } catch (e: IllegalStateException) {
+            if (generation != lifecycleGeneration.get()) return
             // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
             // have an outstanding request.
             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
             WifiApManager.cancelLocalOnlyHotspotRequest()
             SmartSnackbar.make(e).show()
             dismissIfApplicable()
-            stopService()
+            stopService(generation = generation)
         } catch (e: SecurityException) {
+            if (generation != lifecycleGeneration.get()) return
             SmartSnackbar.make(e).show()
             dismissIfApplicable()
-            stopService()
+            stopService(generation = generation)
         }
     }
 
@@ -303,8 +319,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         super.onDestroy()
     }
 
-    private fun stopService(shouldDisable: Boolean = true, exit: Boolean = false) {
-        val generation = lifecycleGeneration.get()
+    private fun stopService(shouldDisable: Boolean = true, exit: Boolean = false,
+            generation: Int = lifecycleGeneration.get()) {
         launch(start = CoroutineStart.UNDISPATCHED) {
             routingMutex.withLock {
                 if (!exit && generation != lifecycleGeneration.get()) return@withLock
