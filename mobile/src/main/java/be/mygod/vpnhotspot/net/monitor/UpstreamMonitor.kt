@@ -47,7 +47,7 @@ abstract class UpstreamMonitor {
         /**
          * Called if some possibly stacked interface is available
          */
-        suspend fun onAvailable(properties: LinkProperties? = null) { }
+        fun onAvailable(properties: LinkProperties? = null) { }
     }
 
     val callbacks = mutableSetOf<Callback>()

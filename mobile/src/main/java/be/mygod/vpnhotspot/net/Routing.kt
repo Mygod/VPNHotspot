@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.net
 
 import android.net.LinkProperties
-import android.net.MacAddress
 import android.os.Build
 import android.os.Process
 import android.system.Os
@@ -20,9 +19,14 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.BufferedWriter
@@ -148,19 +152,84 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
     private val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     lateinit var transaction: RootSession.Transaction
-    private val monitor = Mutex()
+    private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> Timber.w(t) })
 
     @Volatile
     private var stopped = false
     private var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
+
+    private sealed class RoutingUpdate {
+        class UpstreamSnapshot(val upstream: Upstream, val properties: LinkProperties?) : RoutingUpdate()
+        class NeighboursSnapshot(val neighbours: Collection<IpNeighbour>) : RoutingUpdate()
+        class Barrier(val done: CompletableDeferred<Unit>) : RoutingUpdate()
+    }
+    private val neighbourUpdateKey = Any()
+    private val updateChannel = Channel<RoutingUpdate>(Channel.UNLIMITED)
+    private val updateWorker = scope.launch {
+        for (update in updateChannel) {
+            for (next in coalesceUpdates(update)) try {
+                when (next) {
+                    is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
+                    is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
+                    is RoutingUpdate.Barrier -> next.done.complete(Unit)
+                }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Timber.w(e)
+            }
+        }
+    }
+    private fun enqueue(update: RoutingUpdate) {
+        if (stopped) return
+        val result = updateChannel.trySend(update)
+        if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+    }
+    private suspend fun awaitUpdates() {
+        if (!updateWorker.isActive) return
+        val done = CompletableDeferred<Unit>()
+        val result = updateChannel.trySend(RoutingUpdate.Barrier(done))
+        if (result.isFailure) {
+            result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+            return
+        }
+        done.await()
+    }
+    private fun coalesceUpdates(first: RoutingUpdate): List<RoutingUpdate> {
+        val result = ArrayList<RoutingUpdate>()
+        val pending = LinkedHashMap<Any, RoutingUpdate>()
+        fun flushPending() {
+            result.addAll(pending.values)
+            pending.clear()
+        }
+        fun add(update: RoutingUpdate) = when (update) {
+            is RoutingUpdate.UpstreamSnapshot -> {
+                pending.remove(update.upstream)
+                pending[update.upstream] = update
+            }
+            is RoutingUpdate.NeighboursSnapshot -> {
+                pending.remove(neighbourUpdateKey)
+                pending[neighbourUpdateKey] = update
+            }
+            is RoutingUpdate.Barrier -> {
+                flushPending()
+                result.add(update)
+            }
+        }
+        add(first)
+        while (true) add(updateChannel.tryReceive().getOrNull() ?: break)
+        flushPending()
+        return result
+    }
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
         val subrouting = mutableMapOf<String, RootSession.Transaction>()
 
-        override suspend fun onAvailable(properties: LinkProperties?) = monitor.withLock {
-            if (stopped) return@withLock
+        override fun onAvailable(properties: LinkProperties?) {
+            enqueue(RoutingUpdate.UpstreamSnapshot(this, properties))
+        }
+        suspend fun update(properties: LinkProperties?) {
             val toRemove = subrouting.keys.toMutableSet()
             for (ifname in properties?.allInterfaceNames ?: emptyList()) {
                 if (toRemove.remove(ifname) || !upstreams.add(ifname)) continue
@@ -221,8 +290,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val clients = mutableMapOf<InetAddress, Client>()
-    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) = monitor.withLock {
-        if (stopped) return@withLock
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+        enqueue(RoutingUpdate.NeighboursSnapshot(neighbours))
+    }
+    private suspend fun updateNeighbours(neighbours: Collection<IpNeighbour>) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
@@ -304,12 +375,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     suspend fun stop() {
-        monitor.withLock { stopped = true }
+        stopped = true
         IpNeighbourMonitor.unregisterCallback(this)
         DnsForwarder.unregisterClient(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         VpnMonitor.unregisterCallback(emptyCallback)
+        awaitUpdates()
+        updateChannel.close()
+        scope.cancel("Routing stopped")
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
@@ -351,13 +425,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.revert()
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        monitor.withLock {
-            clients.values.forEach { it.close() }
-            clients.clear()
-            fallbackUpstream.subrouting.values.forEach { it.revert() }
-            fallbackUpstream.subrouting.clear()
-            upstream.subrouting.values.forEach { it.revert() }
-            upstream.subrouting.clear()
-        }
+        clients.values.forEach { it.close() }
+        clients.clear()
+        fallbackUpstream.subrouting.values.forEach { it.revert() }
+        fallbackUpstream.subrouting.clear()
+        upstream.subrouting.values.forEach { it.revert() }
+        upstream.subrouting.clear()
     }
 }

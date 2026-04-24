@@ -307,7 +307,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         }
     }
 
-    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
         timeoutMonitor?.onClientsChanged(neighbours.none {
             it.ip is Inet4Address && it.state == IpNeighbour.State.VALID

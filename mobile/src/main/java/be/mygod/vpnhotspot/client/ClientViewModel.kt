@@ -185,7 +185,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
         binder.groupChanged -= this
     }
 
-    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         this.neighbours = neighbours
         populateClients()
     }
