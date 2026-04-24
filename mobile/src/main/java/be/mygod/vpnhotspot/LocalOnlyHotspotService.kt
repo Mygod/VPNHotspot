@@ -38,6 +38,7 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.net.Inet4Address
+import java.util.concurrent.atomic.AtomicInteger
 
 class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, TetherStates.Callback {
     companion object {
@@ -209,6 +210,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     private val routingMutex = Mutex()
     private var routingManager: RoutingManager? = null
     private var timeoutMonitor: TetherTimeoutMonitor? = null
+    private val lifecycleGeneration = AtomicInteger()
     private var waitingForIface = false
     override val activeIfaces get() = binder.iface.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
@@ -231,6 +233,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
         if (binder.iface != null) return START_STICKY
+        lifecycleGeneration.incrementAndGet()
         binder.iface = ""
         ServiceNotification.startForeground(this)   // show invisible foreground notification to avoid being killed
         launch(start = CoroutineStart.UNDISPATCHED) { doStart() }
@@ -301,8 +304,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     }
 
     private fun stopService(shouldDisable: Boolean = true, exit: Boolean = false) {
+        val generation = lifecycleGeneration.get()
         launch(start = CoroutineStart.UNDISPATCHED) {
             routingMutex.withLock {
+                if (!exit && generation != lifecycleGeneration.get()) return@withLock
                 if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
                 binder.iface = null
                 waitingForIface = false
@@ -313,6 +318,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                 val manager = routingManager
                 manager?.stop()
                 if (routingManager === manager) routingManager = null
+                if (!exit && generation != lifecycleGeneration.get()) return@withLock
                 unregisterStateReceiver()
                 ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
                 stopSelf()
