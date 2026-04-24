@@ -3,11 +3,13 @@ package be.mygod.vpnhotspot.net.ipv6
 import android.net.LocalServerSocket
 import android.net.LocalSocket
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.MessageQueue
 import android.os.Process
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
-import android.system.StructPollfd
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
@@ -16,6 +18,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -23,6 +26,9 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 
 object Ipv6NatController : CoroutineScope {
@@ -40,6 +46,7 @@ object Ipv6NatController : CoroutineScope {
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
     private val daemonPath by lazy { File(rootDir, BINARY_NAME) }
     private val logPath by lazy { File(rootDir, "$BINARY_NAME.log") }
+    private val acceptHandler by lazy { Handler(Looper.getMainLooper()) }
 
     internal suspend fun startSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
@@ -113,21 +120,61 @@ object Ipv6NatController : CoroutineScope {
 
     private fun newSocketName() = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
 
-    private fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
-        val pollFd = StructPollfd().apply {
-            fd = serverSocket.fileDescriptor
-            events = OsConstants.POLLIN.toShort()
-        }
-        val ready = try {
-            Os.poll(arrayOf(pollFd), DaemonIpc.STARTUP_TIMEOUT_MILLIS.toInt())
+    private suspend fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
+        try {
+            val flags = Os.fcntlInt(serverSocket.fileDescriptor, OsConstants.F_GETFL, 0)
+            Os.fcntlInt(serverSocket.fileDescriptor, OsConstants.F_SETFL, flags or OsConstants.O_NONBLOCK)
         } catch (e: ErrnoException) {
             throw e.rethrowAsIOException()
         }
-        if (ready == 0) throw IOException("Timed out waiting for $BINARY_NAME to connect")
-        if ((pollFd.revents.toInt() and OsConstants.POLLIN) == 0) {
-            throw IOException("Unexpected $BINARY_NAME listener event ${pollFd.revents}")
+        return suspendCancellableCoroutine { continuation ->
+            val completed = AtomicBoolean(false)
+            val queue = acceptHandler.looper.queue
+            val descriptor = serverSocket.fileDescriptor
+            lateinit var timeout: Runnable
+            lateinit var listener: MessageQueue.OnFileDescriptorEventListener
+            fun finish(block: () -> Unit): Int {
+                if (completed.compareAndSet(false, true)) {
+                    acceptHandler.removeCallbacks(timeout)
+                    queue.removeOnFileDescriptorEventListener(descriptor)
+                    block()
+                }
+                return 0
+            }
+            timeout = Runnable {
+                finish { continuation.resumeWithException(IOException("Timed out waiting for $BINARY_NAME to connect")) }
+            }
+            listener = MessageQueue.OnFileDescriptorEventListener { _, events ->
+                if (completed.get()) {
+                    0
+                } else if ((events and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
+                    finish {
+                        continuation.resumeWithException(IOException("Unexpected $BINARY_NAME listener event $events"))
+                    }
+                } else try {
+                    val accepted = serverSocket.accept()
+                    finish { continuation.resume(accepted) }
+                } catch (e: IOException) {
+                    if ((e.cause as? ErrnoException)?.errno == OsConstants.EAGAIN) {
+                        MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
+                                MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
+                    } else finish { continuation.resumeWithException(e) }
+                }
+            }
+            continuation.invokeOnCancellation {
+                if (completed.compareAndSet(false, true)) acceptHandler.post {
+                    acceptHandler.removeCallbacks(timeout)
+                    queue.removeOnFileDescriptorEventListener(descriptor)
+                }
+            }
+            acceptHandler.post {
+                if (completed.get()) return@post
+                queue.addOnFileDescriptorEventListener(descriptor,
+                    MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
+                            MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR, listener)
+                acceptHandler.postDelayed(timeout, DaemonIpc.STARTUP_TIMEOUT_MILLIS)
+            }
         }
-        return serverSocket.accept()
     }
 
     private fun extractBinaryLocked() {
