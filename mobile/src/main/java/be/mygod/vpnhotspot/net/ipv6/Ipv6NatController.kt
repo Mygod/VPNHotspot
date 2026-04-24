@@ -14,10 +14,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -31,11 +27,9 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 
-object Ipv6NatController : CoroutineScope {
+object Ipv6NatController {
     private const val BINARY_NAME = "vpnhotspotd"
 
-    override val coroutineContext = Dispatchers.IO + SupervisorJob() +
-            CoroutineExceptionHandler { _, t -> Timber.w(t) }
     private val lock = Mutex()
     private val activeSessions = mutableSetOf<String>()
     private var socket: LocalSocket? = null

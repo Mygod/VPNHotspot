@@ -136,7 +136,7 @@
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
     <string name="settings_service_ipv6_mode">IPv6 mode</string>
     <string name="settings_service_ipv6_mode_block">Block</string>
-    <string name="settings_service_ipv6_mode_native">System</string>
+    <string name="settings_service_ipv6_mode_system">System</string>
     <string name="settings_service_ipv6_mode_nat">NAT</string>
     <string name="warn_ipv6_nat_fallback">IPv6 NAT setup failed. Falling back to blocking IPv6.</string>
     <string name="settings_service_auto_start">Auto start services</string>

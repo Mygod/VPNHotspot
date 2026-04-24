@@ -83,7 +83,7 @@ Default settings are picked to suit general use cases and maximize compatibility
 * IPv6 mode:
   - Block IPv6:
     Prevent IPv6 leaks on downstream interfaces.
-  - Native IPv6:
+  - System IPv6:
     Disable this app's IPv6 kill switch and leave IPv6 handling to the platform/current routing setup.
   - IPv6 NAT:
     Assigns a ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.

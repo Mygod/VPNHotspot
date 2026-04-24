@@ -51,7 +51,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
             masquerade(masqueradeMode)
             when (ipv6Mode) {
                 Ipv6Mode.Block -> disableIpv6()
-                Ipv6Mode.Native -> { }
+                Ipv6Mode.System -> { }
                 Ipv6Mode.Nat -> ipv6Nat()
             }
         }

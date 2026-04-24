@@ -29,7 +29,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         var ipv6Mode: Ipv6Mode
             get() = app.pref.run {
                 getString(KEY_IPV6_MODE, null)?.let { return@run Ipv6Mode.valueOf(it) }
-                if (getBoolean("service.disableIpv6", true)) Ipv6Mode.Block else Ipv6Mode.Native
+                if (getBoolean("service.disableIpv6", true)) Ipv6Mode.Block else Ipv6Mode.System
             }
             set(value) = app.pref.edit {
                 putString(KEY_IPV6_MODE, value.name)
@@ -66,7 +66,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             masquerade(masqueradeMode)
             when (ipv6Mode) {
                 Ipv6Mode.Block -> disableIpv6()
-                Ipv6Mode.Native -> { }
+                Ipv6Mode.System -> { }
                 Ipv6Mode.Nat -> ipv6Nat()
             }
         }
