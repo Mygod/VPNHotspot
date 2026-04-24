@@ -80,8 +80,14 @@ Default settings are picked to suit general use cases and maximize compatibility
 
 ### Downstream
 
-* Disable IPv6 tethering: Turning this option on will disable IPv6 for system tethering. Useful for stopping IPv6 leaks
-  as this app currently doesn't handle IPv6 VPN tethering (see [#6](https://github.com/Mygod/VPNHotspot/issues/6)).
+* IPv6 mode:
+  - Block IPv6:
+    Prevent IPv6 leaks on downstream interfaces.
+  - Native IPv6:
+    Disable this app's IPv6 kill switch and leave IPv6 handling to the platform/current routing setup.
+  - IPv6 NAT:
+    Assigns a ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
+    This mode is outbound-only, keeps IPv4 tethering unchanged, retransmits stale downstream prefix withdrawal for a short window when prefixes roll without dropping the live router advertisement, cleans stale mirrored `/64` routes and IPv6 NAT hooks before reapplying them, and falls back to `Block IPv6` if setup fails.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
@@ -391,6 +397,8 @@ Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * (since API 29) Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
+* (since API 29) `IPv6 NAT` mode depends on the NDK multinetwork DNS entry points exported from `libandroid`;
+  on API 28 it falls back to `Block IPv6`.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*` and
   `android.net.BpfNetMapsConstants`, may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.

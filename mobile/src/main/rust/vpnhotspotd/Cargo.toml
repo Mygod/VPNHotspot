@@ -1,0 +1,12 @@
+[package]
+name = "vpnhotspotd"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+panic = "abort"
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

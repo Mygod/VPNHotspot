@@ -113,8 +113,7 @@
     <string name="settings_service_masquerade_none">Nenhum</string>
     <string name="settings_service_masquerade_simple">Simples</string>
     <string name="settings_service_masquerade_netd">Serviço Android Netd</string>
-    <string name="settings_service_disable_ipv6">Desative Tethering IPv6</string>
-    <string name="settings_service_disable_ipv6_summary">Ativar esta opção evitará vazamentos de VPN via IPv6.</string>
+    <string name="settings_service_ipv6_mode">Modo IPv6</string>
     <string name="settings_service_auto_start">Auto inicialização de serviços</string>
     <string name="settings_service_auto_start_summary">Restaurar serviços que estavam em execução antes do aplicativo / dispositivo reiniciar ou atualizar</string>
     <string name="settings_service_repeater_safe_mode">Modo de repetidor seguro</string>

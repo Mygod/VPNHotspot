@@ -127,8 +127,7 @@
     <string name="settings_service_masquerade_none">無</string>
     <string name="settings_service_masquerade_simple">簡易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服務</string>
-    <string name="settings_service_disable_ipv6">停用 IPv6 共用</string>
-    <string name="settings_service_disable_ipv6_summary">啟用後可避免 VPN 透過 IPv6 洩漏。</string>
+    <string name="settings_service_ipv6_mode">IPv6 模式</string>
     <string name="settings_service_auto_start">自動啟動服務</string>
     <string name="settings_service_auto_start_summary">裝置重新啟動或應用程式更新時，會恢復先前啟動的服務。</string>
     <string name="settings_service_repeater_safe_mode">中繼器安全模式</string>

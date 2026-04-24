@@ -110,8 +110,7 @@
     <string name="settings_service_masquerade_none">なし</string>
     <string name="settings_service_masquerade_simple">シンプル</string>
     <string name="settings_service_masquerade_netd">Android Netd サービス</string>
-    <string name="settings_service_disable_ipv6">IPv6 テザリングを無効化</string>
-    <string name="settings_service_disable_ipv6_summary">このオプションを有効化すると IPv6 経由の VPN リークを防ぐことができます</string>
+    <string name="settings_service_ipv6_mode">IPv6 モード</string>
     <string name="settings_service_auto_start">サービスを自動で開始</string>
     <string name="settings_service_auto_start_summary">デバイスの再起動またはアプリの更新前に実行されていた
         サービスを復元します</string>

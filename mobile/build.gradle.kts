@@ -3,9 +3,13 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -52,6 +56,82 @@ abstract class GenerateGitJavaTask : DefaultTask() {
             """.trimIndent() + "\n")
         }
     }
+}
+
+abstract class BuildDaemonAssetsTask : DefaultTask() {
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val sourceDir: DirectoryProperty
+
+    @get:Input
+    abstract val cargoProfile: Property<String>
+
+    @get:Input
+    abstract val hostTag: Property<String>
+
+    @get:Input
+    abstract val ndkDir: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun build() {
+        val cargoDir = sourceDir.get().asFile
+        val targetDir = project.layout.buildDirectory.dir("rust/vpnhotspotd").get().asFile
+        val toolchainDir = project.file("${ndkDir.get()}/toolchains/llvm/prebuilt/${hostTag.get()}/bin")
+        check(toolchainDir.isDirectory) { "Missing NDK toolchain: ${toolchainDir.absolutePath}" }
+        outputDir.get().asFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val profile = cargoProfile.get()
+        val targets = listOf(
+            Triple("arm64-v8a", "aarch64-linux-android", "aarch64-linux-android29-clang"),
+            Triple("armeabi-v7a", "armv7-linux-androideabi", "armv7a-linux-androideabi29-clang"),
+            Triple("x86", "i686-linux-android", "i686-linux-android29-clang"),
+            Triple("x86_64", "x86_64-linux-android", "x86_64-linux-android29-clang"),
+        )
+        for ((abi, target, linker) in targets) {
+            val command = mutableListOf("cargo", "build", "--offline", "--target", target).apply {
+                if (profile == "release") add("--release")
+            }
+            val process = ProcessBuilder(command).directory(cargoDir).redirectErrorStream(true).apply {
+                environment()["CARGO_BUILD_TARGET_DIR"] = targetDir.absolutePath
+                environment()["CARGO_TARGET_${target.uppercase().replace('-', '_')}_LINKER"] =
+                    toolchainDir.resolve(linker).absolutePath
+            }.start()
+            val output = process.inputStream.bufferedReader().readText()
+            check(process.waitFor() == 0) {
+                "cargo build failed for $target\n$output"
+            }
+            val binary = targetDir.resolve("$target/$profile/vpnhotspotd")
+            check(binary.isFile) { "Missing daemon binary: ${binary.absolutePath}" }
+            outputDir.file("daemon/$abi/vpnhotspotd").get().asFile.apply {
+                parentFile.mkdirs()
+                binary.copyTo(this, overwrite = true)
+            }
+        }
+    }
+}
+
+fun resolveAndroidNdkDir(project: org.gradle.api.Project): String {
+    val properties = Properties()
+    project.rootProject.file("local.properties").inputStream().use(properties::load)
+    val sdkDir = properties.getProperty("sdk.dir")?.let(project::file)
+        ?: error("sdk.dir is missing from local.properties")
+    return sdkDir.resolve("ndk").listFiles()?.filter {
+        it.isDirectory && it.name.firstOrNull()?.isDigit() == true
+    }?.maxByOrNull { it.name }?.absolutePath
+        ?: sdkDir.resolve("ndk-bundle").takeIf { it.isDirectory }?.absolutePath
+        ?: error("Android NDK not found under ${sdkDir.absolutePath}")
+}
+
+fun resolveNdkHostTag() = when {
+    System.getProperty("os.name").startsWith("Linux") -> "linux-x86_64"
+    System.getProperty("os.name").startsWith("Mac") && System.getProperty("os.arch") == "aarch64" -> "darwin-arm64"
+    System.getProperty("os.name").startsWith("Mac") -> "darwin-x86_64"
+    else -> error("Unsupported host OS: ${System.getProperty("os.name")}")
 }
 
 val javaVersion = 11
@@ -110,6 +190,15 @@ androidComponents.onVariants { variant ->
         outputs.upToDateWhen { false }
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
+    val daemonTask = tasks.register<BuildDaemonAssetsTask>(
+        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonAssets") {
+        sourceDir.set(layout.projectDirectory.dir("src/main/rust/vpnhotspotd"))
+        cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
+        hostTag.set(resolveNdkHostTag())
+        ndkDir.set(resolveAndroidNdkDir(project))
+        outputDir.set(layout.buildDirectory.dir("generated/assets/daemon/${variant.name}"))
+    }
+    variant.sources.assets?.addGeneratedSourceDirectory(daemonTask, BuildDaemonAssetsTask::outputDir)
 }
 ksp {
     arg("room.expandProjection", "true")

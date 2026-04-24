@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.Ipv6Mode
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
@@ -15,6 +16,7 @@ import androidx.core.content.edit
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val forceWifi: Boolean = false) {
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
+        private const val KEY_IPV6_MODE = "service.ipv6Mode"
         var masqueradeMode: Routing.MasqueradeMode
             get() = app.pref.run {
                 getString(KEY_MASQUERADE_MODE, null)?.let { return@run Routing.MasqueradeMode.valueOf(it) }
@@ -23,13 +25,22 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 } else Routing.MasqueradeMode.None
             }
             set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
+        var ipv6Mode: Ipv6Mode
+            get() = app.pref.run {
+                getString(KEY_IPV6_MODE, null)?.let { return@run Ipv6Mode.valueOf(it) }
+                if (getBoolean("service.disableIpv6", true)) Ipv6Mode.Block else Ipv6Mode.Native
+            }
+            set(value) = app.pref.edit {
+                putString(KEY_IPV6_MODE, value.name)
+                remove("service.disableIpv6")
+            }
 
         /**
          * Thread safety: needs protection by companion object!
          */
         private val active = mutableMapOf<String, RoutingManager>()
 
-        fun clean(reinit: Boolean = true) = synchronized(this) {
+        fun clean(reinit: Boolean = true): Unit = synchronized(this) {
             if (!reinit && active.isEmpty()) return@synchronized
             for (manager in active.values) manager.routing?.stop()
             try {
@@ -51,6 +62,11 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             ipForward() // local only interfaces need to enable ip_forward
             forward()
             masquerade(masqueradeMode)
+            when (ipv6Mode) {
+                Ipv6Mode.Block -> disableIpv6()
+                Ipv6Mode.Native -> { }
+                Ipv6Mode.Nat -> ipv6Nat()
+            }
         }
     }
 

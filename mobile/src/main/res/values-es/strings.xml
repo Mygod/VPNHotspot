@@ -128,8 +128,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_masquerade_none">Ninguno</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Servicio Netd de Android</string>
-    <string name="settings_service_disable_ipv6">Desactivar conexión compartida IPv6</string>
-    <string name="settings_service_disable_ipv6_summary">Activar esta opción evitará fugas de VPN a través de IPv6.</string>
+    <string name="settings_service_ipv6_mode">Modo IPv6</string>
     <string name="settings_service_auto_start">Inicio automático de servicios</string>
     <string name="settings_service_auto_start_summary">Restaura servicios si estaban en ejecución antes de reiniciar el dispositivo o actualizar la aplicación</string>
     <string name="settings_service_repeater_safe_mode">Modo seguro del repetidor</string>
