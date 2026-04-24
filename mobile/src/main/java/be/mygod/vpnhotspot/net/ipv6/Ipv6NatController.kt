@@ -1,29 +1,32 @@
 package be.mygod.vpnhotspot.net.ipv6
 
+import android.net.LocalServerSocket
 import android.net.LocalSocket
-import android.net.LocalSocketAddress
 import android.os.Build
+import android.os.Process
+import android.system.ErrnoException
+import android.system.Os
+import android.system.OsConstants
+import android.system.StructPollfd
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.root.KillDaemon
+import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
-import java.io.EOFException
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.random.Random
 
 object Ipv6NatController : CoroutineScope {
     private const val BINARY_NAME = "vpnhotspotd"
-    private const val MAX_PACKET_SIZE = 65535
 
     override val coroutineContext = Dispatchers.IO + SupervisorJob() +
             CoroutineExceptionHandler { _, t -> Timber.w(t) }
@@ -32,13 +35,13 @@ object Ipv6NatController : CoroutineScope {
     private var socket: LocalSocket? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
+    private var connectionFile: File? = null
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
     private val daemonPath by lazy { File(rootDir, BINARY_NAME) }
-    private val socketPath by lazy { File(rootDir, "$BINARY_NAME.sock") }
+    private val logPath by lazy { File(rootDir, "$BINARY_NAME.log") }
 
-    internal suspend fun startSession(config: Ipv6NatProtocol.SessionConfig): Ipv6NatProtocol.SessionPorts =
-        lock.withLock {
+    internal suspend fun startSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
         try {
             writePacketLocked(Ipv6NatProtocol.startSession(config))
@@ -52,7 +55,7 @@ object Ipv6NatController : CoroutineScope {
         }
     }
 
-    internal suspend fun replaceSession(config: Ipv6NatProtocol.SessionConfig): Unit = lock.withLock {
+    internal suspend fun replaceSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
         try {
             writePacketLocked(Ipv6NatProtocol.replaceSession(config))
@@ -64,11 +67,10 @@ object Ipv6NatController : CoroutineScope {
         }
     }
 
-    internal suspend fun removeSession(sessionId: String): Unit = lock.withLock {
-        val output = output ?: return
+    internal suspend fun removeSession(sessionId: String) = lock.withLock {
+        if (output == null) return@withLock
         try {
-            output.write(Ipv6NatProtocol.removeSession(sessionId))
-            output.flush()
+            writePacketLocked(Ipv6NatProtocol.removeSession(sessionId))
             Ipv6NatProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
             closeConnectionLocked()
@@ -81,43 +83,51 @@ object Ipv6NatController : CoroutineScope {
 
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
-        if (socketPath.exists()) try {
-            LocalSocket(LocalSocket.SOCKET_SEQPACKET).use { socket ->
-                socket.connect(LocalSocketAddress(socketPath.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
-                socket.outputStream.write(Ipv6NatProtocol.shutdown())
-                socket.outputStream.flush()
-            }
-        } catch (_: IOException) { }
-            daemonPath.delete()
-            socketPath.delete()
-            extractBinaryLocked()
+        daemonPath.delete()
+        extractBinaryLocked()
+        val socketName = newSocketName()
+        val connectionFile = File(rootDir, "$socketName.connection")
+        check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
+        this.connectionFile = connectionFile
         try {
-            RootManager.use { server ->
-                server.execute(KillDaemon(daemonPath.absolutePath))
-                server.execute(RunDaemon(daemonPath.absolutePath, socketPath.absolutePath))
+            LocalServerSocket(socketName).use { serverSocket ->
+                RootManager.use { server ->
+                    server.execute(RunDaemon(
+                        daemonPath.absolutePath,
+                        socketName,
+                        connectionFile.absolutePath,
+                        logPath.absolutePath,
+                    ))
+                }
+                acceptLocked(serverSocket).also {
+                    socket = it
+                    input = it.inputStream
+                    output = it.outputStream
+                }
             }
-            connectLocked()
         } catch (e: Exception) {
-            RootManager.use { it.execute(KillDaemon(daemonPath.absolutePath)) }
             closeConnectionLocked()
             throw e
         }
     }
 
-    private suspend fun connectLocked() {
-        repeat(100) {
-            try {
-                val socket = LocalSocket(LocalSocket.SOCKET_SEQPACKET)
-                socket.connect(LocalSocketAddress(socketPath.absolutePath, LocalSocketAddress.Namespace.FILESYSTEM))
-                this.socket = socket
-                input = socket.inputStream
-                output = socket.outputStream
-                return
-            } catch (e: IOException) {
-                delay(50)
-            }
+    private fun newSocketName() = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
+
+    private fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
+        val pollFd = StructPollfd().apply {
+            fd = serverSocket.fileDescriptor
+            events = OsConstants.POLLIN.toShort()
         }
-        throw IOException("Failed to connect to $socketPath")
+        val ready = try {
+            Os.poll(arrayOf(pollFd), DaemonIpc.STARTUP_TIMEOUT_MILLIS.toInt())
+        } catch (e: ErrnoException) {
+            throw e.rethrowAsIOException()
+        }
+        if (ready == 0) throw IOException("Timed out waiting for $BINARY_NAME to connect")
+        if ((pollFd.revents.toInt() and OsConstants.POLLIN) == 0) {
+            throw IOException("Unexpected $BINARY_NAME listener event ${pollFd.revents}")
+        }
+        return serverSocket.accept()
     }
 
     private fun extractBinaryLocked() {
@@ -135,12 +145,9 @@ object Ipv6NatController : CoroutineScope {
         check(daemonPath.setExecutable(true, true)) { "Failed to chmod ${daemonPath.absolutePath}" }
     }
 
-    private suspend fun shutdownLocked() {
+    private fun shutdownLocked() {
         try {
-            output?.let {
-                it.write(Ipv6NatProtocol.shutdown())
-                it.flush()
-            }
+            if (output != null) writePacketLocked(Ipv6NatProtocol.shutdown())
         } catch (e: Exception) {
             Timber.w(e)
         }
@@ -149,16 +156,11 @@ object Ipv6NatController : CoroutineScope {
     }
 
     private fun writePacketLocked(packet: ByteArray) {
-        output!!.write(packet)
+        DaemonIpc.writeFrame(output!!, packet)
         output!!.flush()
     }
 
-    private fun readPacketLocked(): ByteArray {
-        val buffer = ByteArray(MAX_PACKET_SIZE)
-        val length = input!!.read(buffer)
-        if (length < 0) throw EOFException("IPv6 NAT daemon disconnected")
-        return buffer.copyOf(length)
-    }
+    private fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
     private fun closeConnectionLocked() {
         try {
@@ -173,5 +175,7 @@ object Ipv6NatController : CoroutineScope {
         input = null
         output = null
         socket = null
+        connectionFile?.delete()
+        connectionFile = null
     }
 }

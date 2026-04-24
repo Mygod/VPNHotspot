@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::env;
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
-use std::fs;
 use std::io::{self, Read, Write};
 use std::mem::{size_of, zeroed};
 use std::net::{
@@ -9,11 +8,10 @@ use std::net::{
     UdpSocket,
 };
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
 use std::ptr::null;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, sync_channel};
+use std::sync::mpsc::{sync_channel, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -23,7 +21,6 @@ const AF_INET6: c_int = 10;
 
 const SOCK_STREAM: c_int = 1;
 const SOCK_DGRAM: c_int = 2;
-const SOCK_SEQPACKET: c_int = 5;
 const SOCK_RAW: c_int = 3;
 
 const SOL_SOCKET: c_int = 1;
@@ -41,6 +38,7 @@ const O_NONBLOCK: c_int = 0x800;
 const EINPROGRESS: i32 = 115;
 
 const MSG_DONTWAIT: c_int = 0x40;
+const MSG_NOSIGNAL: c_int = 0x4000;
 const POLLIN: i16 = 0x1;
 const POLLOUT: i16 = 0x4;
 
@@ -63,11 +61,13 @@ const RA_PERIOD: Duration = Duration::from_secs(30);
 const DEPRECATED_RA_PERIOD: Duration = Duration::from_secs(3);
 const DEPRECATED_RA_WINDOW: Duration = Duration::from_secs(15);
 const LOOP_SLEEP: Duration = Duration::from_millis(50);
+const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const TCP_WORKER_COUNT: usize = 8;
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
 const UDP_ASSOC_MAX: usize = 1024;
 const ANDROID_RESOLV_NO_RETRY: u32 = 1;
+const MAX_CONTROL_PACKET_SIZE: usize = 65535;
 
 #[repr(C)]
 struct SockAddr {
@@ -136,7 +136,6 @@ unsafe extern "C" {
 }
 
 unsafe extern "C" {
-    fn accept(fd: c_int, addr: *mut SockAddr, addrlen: *mut u32) -> c_int;
     fn bind(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
     fn close(fd: c_int) -> c_int;
     fn connect(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
@@ -178,7 +177,6 @@ unsafe extern "C" {
         optlen: u32,
     ) -> c_int;
     fn socket(domain: c_int, ty: c_int, protocol: c_int) -> c_int;
-    fn unlink(path: *const c_char) -> c_int;
 }
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -234,11 +232,15 @@ struct UdpAssociation {
     last_active: Instant,
 }
 
+struct Args {
+    socket_name: String,
+    connection_file: PathBuf,
+}
+
 fn main() -> io::Result<()> {
-    let socket_path = parse_socket_path()?;
-    let listener = bind_control_socket(&socket_path)?;
-    eprintln!("listening on {}", socket_path.display());
-    let controller = accept_control_socket(listener)?;
+    let args = parse_args()?;
+    let controller = connect_control_socket(&args.socket_name, &args.connection_file)?;
+    eprintln!("connected to {}", args.socket_name);
     let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
     loop {
         let packet = match recv_packet(controller) {
@@ -252,13 +254,18 @@ fn main() -> io::Result<()> {
         let response = match handle_packet(&packet, &sessions) {
             Ok(HandleResult::Reply(reply)) => Some(reply),
             Ok(HandleResult::Shutdown(reply)) => {
-                send_packet(controller, &reply)?;
+                if let Err(e) = send_packet(controller, &reply) {
+                    eprintln!("controller send failed: {e}");
+                }
                 break;
             }
             Err(e) => Some(error_packet(e)),
         };
         if let Some(response) = response {
-            send_packet(controller, &response)?;
+            if let Err(e) = send_packet(controller, &response) {
+                eprintln!("controller send failed: {e}");
+                break;
+            }
         }
     }
     for session in sessions.lock().unwrap().values() {
@@ -266,9 +273,7 @@ fn main() -> io::Result<()> {
     }
     unsafe {
         close(controller);
-        close(listener);
     }
-    let _ = fs::remove_file(&socket_path);
     Ok(())
 }
 
@@ -277,14 +282,20 @@ enum HandleResult {
     Shutdown(Vec<u8>),
 }
 
-fn handle_packet(packet: &[u8], sessions: &Arc<Mutex<HashMap<String, Session>>>) -> io::Result<HandleResult> {
+fn handle_packet(
+    packet: &[u8],
+    sessions: &Arc<Mutex<HashMap<String, Session>>>,
+) -> io::Result<HandleResult> {
     let mut parser = Parser::new(packet);
     match parser.read_u32()? {
         CMD_START_SESSION => {
             let config = parser.read_session_config()?;
             let mut sessions = sessions.lock().unwrap();
             if sessions.contains_key(&config.session_id) {
-                return Err(io::Error::new(io::ErrorKind::AlreadyExists, "session already exists"));
+                return Err(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    "session already exists",
+                ));
             }
             let session = start_session(config)?;
             let reply = ports_packet(session.ports);
@@ -295,9 +306,9 @@ fn handle_packet(packet: &[u8], sessions: &Arc<Mutex<HashMap<String, Session>>>)
         CMD_REPLACE_SESSION => {
             let config = parser.read_session_config()?;
             let sessions = sessions.lock().unwrap();
-            let session = sessions.get(&config.session_id).ok_or_else(|| {
-                io::Error::new(io::ErrorKind::NotFound, "session not found")
-            })?;
+            let session = sessions
+                .get(&config.session_id)
+                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
             *session.config.lock().unwrap() = config;
             Ok(HandleResult::Reply(ok_packet()))
         }
@@ -400,10 +411,20 @@ fn handle_tcp_connection(inbound: TcpStream, config: Arc<Mutex<SessionConfig>>) 
     inbound.set_nonblocking(false)?;
     let destination = match inbound.local_addr()? {
         SocketAddr::V6(destination) => destination,
-        _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "expected ipv6 destination")),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "expected ipv6 destination",
+            ))
+        }
     };
     let snapshot = config.lock().unwrap().clone();
-    set_sockopt(inbound.as_raw_fd(), SOL_SOCKET, SO_MARK, &snapshot.reply_mark)?;
+    set_sockopt(
+        inbound.as_raw_fd(),
+        SOL_SOCKET,
+        SO_MARK,
+        &snapshot.reply_mark,
+    )?;
     if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
         return handle_dns_tcp_connection(inbound, &snapshot);
     }
@@ -423,7 +444,9 @@ fn relay_tcp(mut inbound: TcpStream, mut outbound: TcpStream) -> io::Result<()> 
     });
     let forward = io::copy(&mut inbound, &mut outbound);
     let _ = outbound.shutdown(Shutdown::Write);
-    let reverse_result = reverse.join().unwrap_or_else(|_| Err(io::Error::other("tcp relay panicked")));
+    let reverse_result = reverse
+        .join()
+        .unwrap_or_else(|_| Err(io::Error::other("tcp relay panicked")));
     forward?;
     reverse_result
 }
@@ -435,7 +458,9 @@ fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: 
         let mut buffer = [0u8; 65535];
         while !stop.load(Ordering::Relaxed) {
             let now = Instant::now();
-            associations.retain(|_, association| now.duration_since(association.last_active) < UDP_ASSOC_IDLE);
+            associations.retain(|_, association| {
+                now.duration_since(association.last_active) < UDP_ASSOC_IDLE
+            });
 
             let mut keys = Vec::with_capacity(associations.len());
             let mut poll_fds = Vec::with_capacity(associations.len() + 1);
@@ -468,26 +493,42 @@ fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: 
                     match recv_udp_packet(listener_fd, &mut buffer) {
                         Ok((size, client, destination)) => {
                             let snapshot = config.lock().unwrap().clone();
-                            if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
-                                if let Ok(response) = resolve_dns_query(&snapshot, &buffer[..size]) {
-                                    if let Err(e) = send_udp_response(destination, client, snapshot.reply_mark, &response) {
+                            if destination.ip() == &snapshot.gateway
+                                && destination.port() == DNS_PORT
+                            {
+                                if let Ok(response) = resolve_dns_query(&snapshot, &buffer[..size])
+                                {
+                                    if let Err(e) = send_udp_response(
+                                        destination,
+                                        client,
+                                        snapshot.reply_mark,
+                                        &response,
+                                    ) {
                                         eprintln!("dns udp response failed: {e}");
                                     }
                                 }
                                 continue;
                             }
-                            if destination.ip().is_multicast() || destination.ip().is_unicast_link_local() ||
-                                    destination.ip().is_loopback() || destination.ip().is_unspecified() {
+                            if destination.ip().is_multicast()
+                                || destination.ip().is_unicast_link_local()
+                                || destination.ip().is_loopback()
+                                || destination.ip().is_unspecified()
+                            {
                                 continue;
                             }
                             let upstream = match select_upstream(&snapshot, *destination.ip()) {
                                 Some(network) => network,
                                 None => continue,
                             };
-                            let key = AssociationKey { client, destination };
+                            let key = AssociationKey {
+                                client,
+                                destination,
+                            };
                             if !associations.contains_key(&key) {
                                 while associations.len() >= UDP_ASSOC_MAX {
-                                    let stale = associations.iter().min_by_key(|(_, association)| association.last_active)
+                                    let stale = associations
+                                        .iter()
+                                        .min_by_key(|(_, association)| association.last_active)
                                         .map(|(key, _)| *key);
                                     if let Some(stale) = stale {
                                         associations.remove(&stale);
@@ -502,10 +543,13 @@ fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: 
                                         continue;
                                     }
                                 };
-                                associations.insert(key, UdpAssociation {
-                                    socket: upstream,
-                                    last_active: now,
-                                });
+                                associations.insert(
+                                    key,
+                                    UdpAssociation {
+                                        socket: upstream,
+                                        last_active: now,
+                                    },
+                                );
                             }
                             let association = associations.get_mut(&key).unwrap();
                             association.last_active = now;
@@ -534,7 +578,12 @@ fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: 
                             Ok(size) => {
                                 association.last_active = Instant::now();
                                 let mark = config.lock().unwrap().reply_mark;
-                                if let Err(e) = send_udp_response(key.destination, key.client, mark, &buffer[..size]) {
+                                if let Err(e) = send_udp_response(
+                                    key.destination,
+                                    key.client,
+                                    mark,
+                                    &buffer[..size],
+                                ) {
                                     eprintln!("udp response failed: {e}");
                                     remove = true;
                                     break;
@@ -558,13 +607,22 @@ fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: 
     });
 }
 
-fn send_udp_response(source: SocketAddrV6, target: SocketAddrV6, mark: u32, payload: &[u8]) -> io::Result<()> {
+fn send_udp_response(
+    source: SocketAddrV6,
+    target: SocketAddrV6,
+    mark: u32,
+    payload: &[u8],
+) -> io::Result<()> {
     let socket = create_udp_reply_socket(source, mark)?;
     socket.send_to(payload, SocketAddr::V6(target))?;
     Ok(())
 }
 
-fn spawn_dns_tcp_loop(listener: TcpListener, config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
+fn spawn_dns_tcp_loop(
+    listener: TcpListener,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: Arc<AtomicBool>,
+) {
     thread::spawn(move || {
         while !stop.load(Ordering::Relaxed) {
             match listener.accept() {
@@ -592,7 +650,7 @@ fn handle_dns_tcp_connection(mut socket: TcpStream, config: &SessionConfig) -> i
     loop {
         let mut header = [0u8; 2];
         match socket.read_exact(&mut header) {
-            Ok(()) => { }
+            Ok(()) => {}
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(e) => return Err(e),
         }
@@ -656,9 +714,14 @@ fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
                 (current.clone(), send_current)
             };
             deprecated_prefixes.retain(|_, deadline| *deadline > now);
-            if !deprecated_prefixes.is_empty() &&
-                    last_deprecated_sent.map_or(true, |last| last.elapsed() >= DEPRECATED_RA_PERIOD) {
-                withdraw_prefixes_once(&current, &deprecated_prefixes.keys().copied().collect::<Vec<_>>(), true);
+            if !deprecated_prefixes.is_empty()
+                && last_deprecated_sent.map_or(true, |last| last.elapsed() >= DEPRECATED_RA_PERIOD)
+            {
+                withdraw_prefixes_once(
+                    &current,
+                    &deprecated_prefixes.keys().copied().collect::<Vec<_>>(),
+                    true,
+                );
                 last_deprecated_sent = Some(now);
             }
             if send_current || last_sent.map_or(true, |last| last.elapsed() >= RA_PERIOD) {
@@ -746,21 +809,27 @@ fn recv_ra_request(fd: RawFd, buffer: &mut [u8]) -> io::Result<Option<SocketAddr
 fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<()> {
     let fd = create_ra_send_socket(&config.downstream, config.reply_mark, config.router)?;
     let ifindex = interface_index(&config.downstream)?;
-    let destination = target.unwrap_or_else(|| SocketAddrV6::new(
-        "ff02::1".parse().unwrap(),
-        0,
-        0,
-        ifindex,
-    ));
+    let destination =
+        target.unwrap_or_else(|| SocketAddrV6::new("ff02::1".parse().unwrap(), 0, 0, ifindex));
     let packet = make_ra_packet(config.gateway, config.prefix_len, config.mtu);
-    let result = sendto_all(fd, &packet, raw_addr_v6(destination), size_of::<SockAddrIn6>() as u32);
+    let result = sendto_all(
+        fd,
+        &packet,
+        raw_addr_v6(destination),
+        size_of::<SockAddrIn6>() as u32,
+    );
     unsafe {
         close(fd);
     }
     result
 }
 
-fn send_deprecated_ra(fd: RawFd, config: &SessionConfig, prefix: Route, keep_router: bool) -> io::Result<()> {
+fn send_deprecated_ra(
+    fd: RawFd,
+    config: &SessionConfig,
+    prefix: Route,
+    keep_router: bool,
+) -> io::Result<()> {
     let ifindex = interface_index(&config.downstream)?;
     let destination = SocketAddrV6::new("ff02::1".parse().unwrap(), 0, 0, ifindex);
     let deprecated_gateway = Ipv6Addr::from(prefix.prefix);
@@ -774,7 +843,12 @@ fn send_deprecated_ra(fd: RawFd, config: &SessionConfig, prefix: Route, keep_rou
         0,
         0,
     );
-    sendto_all(fd, &packet, raw_addr_v6(destination), size_of::<SockAddrIn6>() as u32)
+    sendto_all(
+        fd,
+        &packet,
+        raw_addr_v6(destination),
+        size_of::<SockAddrIn6>() as u32,
+    )
 }
 
 fn withdraw_prefixes_once(config: &SessionConfig, prefixes: &[Route], keep_router: bool) {
@@ -859,17 +933,28 @@ fn resolve_dns_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>
     if let Some(fallback) = config.fallback.as_ref() {
         return query_network(fallback.network_handle, query);
     }
-    Err(io::Error::new(io::ErrorKind::NotConnected, "no DNS upstream"))
+    Err(io::Error::new(
+        io::ErrorKind::NotConnected,
+        "no DNS upstream",
+    ))
 }
 
 fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
-    let fd = unsafe { android_res_nsend(network_handle, query.as_ptr(), query.len(), ANDROID_RESOLV_NO_RETRY) };
+    let fd = unsafe {
+        android_res_nsend(
+            network_handle,
+            query.as_ptr(),
+            query.len(),
+            ANDROID_RESOLV_NO_RETRY,
+        )
+    };
     if fd < 0 {
         return Err(io::Error::from_raw_os_error(-fd));
     }
     let mut response = vec![0u8; 4096];
     let mut rcode = 0;
-    let size = unsafe { android_res_nresult(fd, &mut rcode, response.as_mut_ptr(), response.len()) };
+    let size =
+        unsafe { android_res_nresult(fd, &mut rcode, response.as_mut_ptr(), response.len()) };
     if size < 0 {
         return Err(io::Error::from_raw_os_error(-size));
     }
@@ -922,7 +1007,11 @@ fn connect_upstream_tcp(upstream: &Upstream, destination: SocketAddrV6) -> io::R
     }
     set_nonblocking(fd)?;
     let connect_result = unsafe {
-        connect(fd, &raw_addr_v6(destination) as *const _ as *const SockAddr, size_of::<SockAddrIn6>() as u32)
+        connect(
+            fd,
+            &raw_addr_v6(destination) as *const _ as *const SockAddr,
+            size_of::<SockAddrIn6>() as u32,
+        )
     };
     if connect_result < 0 {
         let error = io::Error::last_os_error();
@@ -964,7 +1053,13 @@ fn connect_upstream_udp(upstream: &Upstream, destination: SocketAddrV6) -> io::R
         }
         return Err(error);
     }
-    syscall(unsafe { connect(fd, &raw_addr_v6(destination) as *const _ as *const SockAddr, size_of::<SockAddrIn6>() as u32) })?;
+    syscall(unsafe {
+        connect(
+            fd,
+            &raw_addr_v6(destination) as *const _ as *const SockAddr,
+            size_of::<SockAddrIn6>() as u32,
+        )
+    })?;
     set_nonblocking(fd)?;
     Ok(unsafe { UdpSocket::from_raw_fd(fd) })
 }
@@ -992,7 +1087,10 @@ fn create_udp_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<UdpSoc
     Ok(unsafe { UdpSocket::from_raw_fd(fd) })
 }
 
-fn recv_udp_packet(fd: RawFd, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, SocketAddrV6)> {
+fn recv_udp_packet(
+    fd: RawFd,
+    buffer: &mut [u8],
+) -> io::Result<(usize, SocketAddrV6, SocketAddrV6)> {
     let mut source: SockAddrIn6 = unsafe { zeroed() };
     let source_len = size_of::<SockAddrIn6>() as u32;
     let mut control = [0u8; 128];
@@ -1018,7 +1116,8 @@ fn recv_udp_packet(fd: RawFd, buffer: &mut [u8]) -> io::Result<(usize, SocketAdd
     let mut current = first_cmsg(&message);
     while !current.is_null() {
         unsafe {
-            if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_RECVORIGDSTADDR {
+            if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_RECVORIGDSTADDR
+            {
                 let raw = cmsg_data(current) as *const SockAddrIn6;
                 destination = Some(socket_addr_v6_from_raw(*raw));
                 break;
@@ -1026,61 +1125,111 @@ fn recv_udp_packet(fd: RawFd, buffer: &mut [u8]) -> io::Result<(usize, SocketAdd
             current = next_cmsg(&message, current);
         }
     }
-    let destination =
-        destination.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing original destination"))?;
+    let destination = destination.ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "missing original destination")
+    })?;
     Ok((size as usize, source, destination))
 }
 
-fn bind_control_socket(path: &PathBuf) -> io::Result<RawFd> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+fn connect_control_socket(socket_name: &str, connection_file: &PathBuf) -> io::Result<RawFd> {
+    let address = abstract_unix_addr(socket_name)?;
+    let length = abstract_unix_addr_len(socket_name);
+    let start = Instant::now();
+    loop {
+        if !connection_file.exists() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "connection file missing",
+            ));
+        }
+        let fd = create_socket(AF_UNIX, SOCK_STREAM, 0)?;
+        if unsafe { connect(fd, &address as *const _ as *const SockAddr, length) } == 0 {
+            return Ok(fd);
+        }
+        let error = io::Error::last_os_error();
+        unsafe {
+            close(fd);
+        }
+        if start.elapsed() >= DAEMON_STARTUP_TIMEOUT {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("control socket connect timed out: {error}"),
+            ));
+        }
+        thread::sleep(LOOP_SLEEP);
     }
-    let fd = create_socket(AF_UNIX, SOCK_SEQPACKET, 0)?;
-    let c_path = CString::new(path.as_os_str().as_encoded_bytes()).unwrap();
-    unsafe {
-        unlink(c_path.as_ptr());
-    }
-    let address = unix_addr(path)?;
-    let length = unix_addr_len(path);
-    syscall(unsafe { bind(fd, &address as *const _ as *const SockAddr, length) })?;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o666))?;
-    syscall(unsafe { listen(fd, 1) })?;
-    Ok(fd)
-}
-
-fn accept_control_socket(listener: RawFd) -> io::Result<RawFd> {
-    let mut address: SockAddrUn = unsafe { zeroed() };
-    let mut length = size_of::<SockAddrUn>() as u32;
-    let fd = unsafe { accept(listener, &mut address as *mut _ as *mut SockAddr, &mut length) };
-    if fd < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(fd)
 }
 
 fn recv_packet(fd: RawFd) -> io::Result<Vec<u8>> {
-    let mut buffer = vec![0u8; 65535];
-    let size = unsafe { recv(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len(), 0) };
-    if size == 0 {
-        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "controller disconnected"));
+    let mut header = [0u8; 4];
+    recv_exact(fd, &mut header)?;
+    let length = u32::from_be_bytes(header) as usize;
+    if length == 0 || length > MAX_CONTROL_PACKET_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("invalid control frame length {length}"),
+        ));
     }
-    if size < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    buffer.truncate(size as usize);
+    let mut buffer = vec![0u8; length];
+    recv_exact(fd, &mut buffer)?;
     Ok(buffer)
 }
 
 fn send_packet(fd: RawFd, packet: &[u8]) -> io::Result<()> {
+    if packet.is_empty() || packet.len() > MAX_CONTROL_PACKET_SIZE {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("invalid control frame length {}", packet.len()),
+        ));
+    }
+    send_all(fd, &(packet.len() as u32).to_be_bytes())?;
     send_all(fd, packet)
 }
 
-fn parse_socket_path() -> io::Result<PathBuf> {
-    let mut args = env::args().skip(1);
-    match (args.next().as_deref(), args.next()) {
-        (Some("--socket-path"), Some(path)) => Ok(PathBuf::from(path)),
-        _ => Err(io::Error::new(io::ErrorKind::InvalidInput, "missing --socket-path")),
+fn recv_exact(fd: RawFd, mut buffer: &mut [u8]) -> io::Result<()> {
+    while !buffer.is_empty() {
+        let size = unsafe { recv(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len(), 0) };
+        if size == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "controller disconnected",
+            ));
+        }
+        if size < 0 {
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        buffer = &mut buffer[size as usize..];
     }
+    Ok(())
+}
+
+fn parse_args() -> io::Result<Args> {
+    let mut args = env::args().skip(1);
+    let mut socket_name = None;
+    let mut connection_file = None;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--socket-name" => socket_name = args.next(),
+            "--connection-file" => connection_file = args.next().map(PathBuf::from),
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("unknown argument {arg}"),
+                ))
+            }
+        }
+    }
+    Ok(Args {
+        socket_name: socket_name
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing --socket-name"))?,
+        connection_file: connection_file.ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "missing --connection-file")
+        })?,
+    })
 }
 
 fn select_upstream(config: &SessionConfig, destination: Ipv6Addr) -> Option<Upstream> {
@@ -1093,7 +1242,10 @@ fn select_upstream(config: &SessionConfig, destination: Ipv6Addr) -> Option<Upst
     }
     if let Some(fallback) = config.fallback.as_ref() {
         if let Some(prefix_len) = longest_prefix_match(&fallback.routes, destination) {
-            if best.as_ref().map_or(true, |(current, _)| prefix_len > *current) {
+            if best
+                .as_ref()
+                .map_or(true, |(current, _)| prefix_len > *current)
+            {
                 best = Some((prefix_len, fallback.clone()));
             }
         }
@@ -1125,16 +1277,7 @@ mod tests {
     #[test]
     fn deprecated_ra_uses_deprecated_dns_server() {
         let dns_server: Ipv6Addr = "fd47:6b7c:2186:b452::1".parse().unwrap();
-        let packet = make_ra_packet_with_lifetimes(
-            dns_server,
-            dns_server,
-            64,
-            1500,
-            0,
-            0,
-            0,
-            0,
-        );
+        let packet = make_ra_packet_with_lifetimes(dns_server, dns_server, 64, 1500, 0, 0, 0, 0);
         assert_eq!(&packet[40..44], &0u32.to_be_bytes());
         assert_eq!(&packet[packet.len() - 16..], &dns_server.octets());
     }
@@ -1166,21 +1309,24 @@ fn bind_v6_any(fd: RawFd) -> io::Result<()> {
     })
 }
 
-fn unix_addr(path: &PathBuf) -> io::Result<SockAddrUn> {
-    let bytes = path.as_os_str().as_encoded_bytes();
-    if bytes.len() >= 108 {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "socket path too long"));
+fn abstract_unix_addr(name: &str) -> io::Result<SockAddrUn> {
+    let bytes = name.as_bytes();
+    if bytes.len() + 1 > 108 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "socket name too long",
+        ));
     }
     let mut address: SockAddrUn = unsafe { zeroed() };
     address.sun_family = AF_UNIX as u16;
     for (index, byte) in bytes.iter().enumerate() {
-        address.sun_path[index] = *byte as c_char;
+        address.sun_path[index + 1] = *byte as c_char;
     }
     Ok(address)
 }
 
-fn unix_addr_len(path: &PathBuf) -> u32 {
-    (size_of::<u16>() + path.as_os_str().as_encoded_bytes().len() + 1) as u32
+fn abstract_unix_addr_len(name: &str) -> u32 {
+    (size_of::<u16>() + 1 + name.len()) as u32
 }
 
 fn raw_addr_v6(address: SocketAddrV6) -> SockAddrIn6 {
@@ -1275,7 +1421,10 @@ fn wait_for_tcp_connect(fd: RawFd, timeout: Duration) -> io::Result<()> {
         return Err(io::Error::last_os_error());
     }
     if result == 0 {
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "tcp connect timed out"));
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "tcp connect timed out",
+        ));
     }
     let mut socket_error = 0;
     let mut socket_error_len = size_of::<c_int>() as u32;
@@ -1305,9 +1454,26 @@ fn syscall(result: c_int) -> io::Result<()> {
 
 fn send_all(fd: RawFd, mut packet: &[u8]) -> io::Result<()> {
     while !packet.is_empty() {
-        let written = unsafe { send(fd, packet.as_ptr() as *const c_void, packet.len(), 0) };
+        let written = unsafe {
+            send(
+                fd,
+                packet.as_ptr() as *const c_void,
+                packet.len(),
+                MSG_NOSIGNAL,
+            )
+        };
         if written < 0 {
-            return Err(io::Error::last_os_error());
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(error);
+        }
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "control socket write failed",
+            ));
         }
         packet = &packet[written as usize..];
     }
@@ -1431,17 +1597,20 @@ impl<'a> Parser<'a> {
         let session_id = self.read_utf()?;
         let _generation_id = self.read_i32()?;
         let downstream = self.read_utf()?;
-        let router = self.read_utf()?.parse().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "invalid router address")
-        })?;
-        let gateway = self.read_utf()?.parse().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address")
-        })?;
+        let router = self
+            .read_utf()?
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid router address"))?;
+        let gateway = self
+            .read_utf()?
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address"))?;
         let prefix_len = self.read_i32()? as u8;
         let reply_mark = self.read_u32()?;
-        let dns_bind_address = self.read_utf()?.parse().map_err(|_| {
-            io::Error::new(io::ErrorKind::InvalidData, "invalid dns bind address")
-        })?;
+        let dns_bind_address = self
+            .read_utf()?
+            .parse()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid dns bind address"))?;
         let mtu = self.read_i32()? as u32;
         let deprecated_prefixes = self.read_routes()?;
         let primary = self.read_upstream()?;
@@ -1482,9 +1651,10 @@ impl<'a> Parser<'a> {
         let routes = self.read_i32()? as usize;
         let mut parsed = Vec::with_capacity(routes);
         for _ in 0..routes {
-            let address: Ipv6Addr = self.read_utf()?.parse().map_err(|_| {
-                io::Error::new(io::ErrorKind::InvalidData, "invalid route address")
-            })?;
+            let address: Ipv6Addr = self
+                .read_utf()?
+                .parse()
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid route address"))?;
             let prefix_len = self.read_i32()? as u8;
             parsed.push(Route {
                 prefix: ipv6_to_u128(address),

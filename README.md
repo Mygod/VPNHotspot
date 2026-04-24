@@ -87,7 +87,7 @@ Default settings are picked to suit general use cases and maximize compatibility
     Disable this app's IPv6 kill switch and leave IPv6 handling to the platform/current routing setup.
   - IPv6 NAT:
     Assigns a ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
-    This mode is outbound-only, keeps IPv4 tethering unchanged, retransmits stale downstream prefix withdrawal for a short window when prefixes roll without dropping the live router advertisement, cleans stale mirrored `/64` routes and IPv6 NAT hooks before reapplying them, and falls back to `Block IPv6` if setup fails.
+    This mode is outbound-only, keeps IPv4 tethering unchanged, retransmits stale downstream prefix withdrawal for a short window when prefixes roll without dropping the live router advertisement, cleans stale mirrored `/64` routes and IPv6 NAT hooks before reapplying them, ties daemon lifetime to the app control connection, and falls back to `Block IPv6` if setup fails.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
