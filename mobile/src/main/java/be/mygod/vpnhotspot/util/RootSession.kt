@@ -24,10 +24,12 @@ class RootSession private constructor(private var server: RootServer?) {
             try {
                 return operation(session)
             } finally {
-                try {
-                    session.close()
-                } finally {
-                    monitor.unlock()
+                withContext(NonCancellable) {
+                    try {
+                        session.close()
+                    } finally {
+                        monitor.unlock()
+                    }
                 }
             }
         }
@@ -72,10 +74,12 @@ class RootSession private constructor(private var server: RootServer?) {
         suspend fun commit() {
             check(locked)
             locked = false
-            try {
-                this@RootSession.close()
-            } finally {
-                monitor.unlock()
+            withContext(NonCancellable) {
+                try {
+                    this@RootSession.close()
+                } finally {
+                    monitor.unlock()
+                }
             }
         }
 
