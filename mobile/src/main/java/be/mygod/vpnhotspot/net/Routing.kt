@@ -27,6 +27,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.BufferedWriter
@@ -163,50 +164,47 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private sealed class RoutingUpdate {
         class UpstreamSnapshot(val upstream: Upstream, val properties: LinkProperties?) : RoutingUpdate()
         class NeighboursSnapshot(val neighbours: Collection<IpNeighbour>) : RoutingUpdate()
-        class Barrier(val done: CompletableDeferred<Unit>) : RoutingUpdate()
     }
+    private val updateLock = Any()
     private val neighbourUpdateKey = Any()
-    private val updateChannel = Channel<RoutingUpdate>(Channel.UNLIMITED)
+    private val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
+    private var pendingBarrier: CompletableDeferred<Unit>? = null
+    private val updateSignal = Channel<Unit>(Channel.CONFLATED)
     private val updateWorker = scope.launch {
-        for (update in updateChannel) {
+        updateSignal.consumeEach {
             val batch = ArrayList<RoutingUpdate>()
-            val pending = LinkedHashMap<Any, RoutingUpdate>()
-            fun flushPending() {
-                batch.addAll(pending.values)
-                pending.clear()
+            val done = synchronized(updateLock) {
+                batch.addAll(pendingUpdates.values)
+                pendingUpdates.clear()
+                pendingBarrier.also { pendingBarrier = null }
             }
-            fun add(update: RoutingUpdate) = when (update) {
-                is RoutingUpdate.UpstreamSnapshot -> {
-                    pending.remove(update.upstream)
-                    pending[update.upstream] = update
-                }
-                is RoutingUpdate.NeighboursSnapshot -> {
-                    pending.remove(neighbourUpdateKey)
-                    pending[neighbourUpdateKey] = update
-                }
-                is RoutingUpdate.Barrier -> {
-                    flushPending()
-                    batch.add(update)
-                }
-            }
-            add(update)
-            while (true) add(updateChannel.tryReceive().getOrNull() ?: break)
-            flushPending()
             for (next in batch) try {
                 when (next) {
                     is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
                     is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
-                    is RoutingUpdate.Barrier -> next.done.complete(Unit)
                 }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Timber.w(e)
             }
+            done?.complete(Unit)
         }
     }
     private fun enqueue(update: RoutingUpdate) {
-        if (stopped) return
-        val result = updateChannel.trySend(update)
+        synchronized(updateLock) {
+            if (stopped) return
+            when (update) {
+                is RoutingUpdate.UpstreamSnapshot -> {
+                    pendingUpdates.remove(update.upstream)
+                    pendingUpdates[update.upstream] = update
+                }
+                is RoutingUpdate.NeighboursSnapshot -> {
+                    pendingUpdates.remove(neighbourUpdateKey)
+                    pendingUpdates[neighbourUpdateKey] = update
+                }
+            }
+        }
+        val result = updateSignal.trySend(Unit)
         if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
     }
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
@@ -362,22 +360,26 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     suspend fun stop() {
-        stopped = true
+        val done = synchronized(updateLock) {
+            stopped = true
+            if (updateWorker.isActive) {
+                pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
+            } else null
+        }
         IpNeighbourMonitor.unregisterCallback(this)
         DnsForwarder.unregisterClient(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         VpnMonitor.unregisterCallback(emptyCallback)
-        if (updateWorker.isActive) {
-            val done = CompletableDeferred<Unit>()
-            val result = updateChannel.trySend(RoutingUpdate.Barrier(done))
+        if (done != null) {
+            val result = updateSignal.trySend(Unit)
             if (result.isFailure) {
                 result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
                 return
             }
             done.await()
         }
-        updateChannel.close()
+        updateSignal.close()
         scope.cancel("Routing stopped")
         Timber.i("Stopped routing for $downstream by $caller")
     }
