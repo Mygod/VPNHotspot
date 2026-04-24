@@ -62,13 +62,13 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         val ifaceChanged = StickyEvent1 { iface }
         val configuration get() = reservation?.configuration
 
-        fun stop(shouldDisable: Boolean = true) {
+        fun stop(shouldDisable: Boolean = true, exit: Boolean = false) {
             when (iface) {
-                null -> return  // stopped
+                null -> if (!exit) return  // stopped
                 "" -> WifiApManager.cancelLocalOnlyHotspotRequest()
             }
             reservation?.close()
-            stopService(shouldDisable)
+            stopService(shouldDisable, exit)
         }
     }
 
@@ -120,17 +120,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         override fun onStopped() = onFrameworkStopped()
         override fun onFailed(reason: Int) = onFrameworkFailed(reason)
     }
-    private fun onFrameworkStarted(reservation: Reservation) {
+    private suspend fun onFrameworkStarted(reservation: Reservation) {
         val configuration = reservation.configuration
-        if (Build.VERSION.SDK_INT < 30 && configuration!!.isAutoShutdownEnabled) {
-            timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis, coroutineContext) {
-                reservation.close()
-            }
-        }
         // attempt to update again
         registerReceiver(null, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         val state = lastState
-        unregisterStateReceiver()
         if (state?.first != WifiApManager.WIFI_AP_STATE_ENABLED) {
             if (state?.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                 SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
@@ -139,8 +133,25 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
             }
             return stopService()
         }
-        waitingForIface = true
-        TetherStates.registerCallback(this)
+        var stopped = false
+        routingMutex.withLock {
+            unregisterStateReceiver()
+            if (binder.iface != "") {
+                if (this@LocalOnlyHotspotService.reservation === reservation) {
+                    this@LocalOnlyHotspotService.reservation = null
+                }
+                stopped = true
+                return@withLock
+            }
+            if (Build.VERSION.SDK_INT < 30 && configuration!!.isAutoShutdownEnabled) {
+                timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis, coroutineContext) {
+                    reservation.close()
+                }
+            }
+            waitingForIface = true
+            TetherStates.registerCallback(this@LocalOnlyHotspotService)
+        }
+        if (stopped) reservation.close()
     }
 
     override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
@@ -285,31 +296,26 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     }
 
     override fun onDestroy() {
-        binder.stop(false)
-        unregisterReceiver(true)
+        binder.stop(false, true)
         super.onDestroy()
     }
 
-    private fun stopService(shouldDisable: Boolean = true) {
-        if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
-        binder.iface = null
-        waitingForIface = false
-        unregisterReceiver()
-        ServiceNotification.stopForeground(this)
-        stopSelf()
-    }
-
-    private fun unregisterReceiver(exit: Boolean = false) {
-        TetherStates.unregisterCallback(this)
-        IpNeighbourMonitor.unregisterCallback(this)
-        timeoutMonitor?.close()
-        timeoutMonitor = null
-        launch {
+    private fun stopService(shouldDisable: Boolean = true, exit: Boolean = false) {
+        launch(start = CoroutineStart.UNDISPATCHED) {
             routingMutex.withLock {
+                if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
+                binder.iface = null
+                waitingForIface = false
+                TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
+                IpNeighbourMonitor.unregisterCallback(this@LocalOnlyHotspotService)
+                timeoutMonitor?.close()
+                timeoutMonitor = null
                 val manager = routingManager
                 manager?.stop()
                 if (routingManager === manager) routingManager = null
                 unregisterStateReceiver()
+                ServiceNotification.stopForeground(this@LocalOnlyHotspotService)
+                stopSelf()
             }
             if (exit) cancel()
         }
