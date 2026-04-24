@@ -32,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -144,9 +146,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
         val iface = interfaces.singleOrNull() ?: return
         launch {
-            if (!waitingForIface || binder.iface != "") return@launch
-            waitingForIface = false
-            onIfaceAvailable(iface)
+            routingMutex.withLock {
+                if (!waitingForIface || binder.iface != "") return@withLock
+                waitingForIface = false
+                onIfaceAvailable(iface)
+            }
         }
     }
 
@@ -191,6 +195,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
      */
     private val dispatcher = Dispatchers.Default.limitedParallelism(1, "LocalOnlyHotspotService")
     override val coroutineContext = dispatcher + Job()
+    private val routingMutex = Mutex()
     private var routingManager: RoutingManager? = null
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var waitingForIface = false
@@ -300,10 +305,12 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         timeoutMonitor?.close()
         timeoutMonitor = null
         launch {
-            val manager = routingManager
-            routingManager = null
-            manager?.stop()
-            unregisterStateReceiver()
+            routingMutex.withLock {
+                val manager = routingManager
+                manager?.stop()
+                if (routingManager === manager) routingManager = null
+                unregisterStateReceiver()
+            }
             if (exit) cancel()
         }
     }
