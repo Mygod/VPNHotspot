@@ -2,11 +2,9 @@ package be.mygod.vpnhotspot.net
 
 import android.net.IpPrefix
 import android.net.LinkProperties
-import android.net.MacAddress
 import android.os.Build
 import android.os.Process
 import android.system.Os
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.ipv6.Ipv6NatController
@@ -25,7 +23,17 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.BufferedWriter
 import java.io.IOException
@@ -109,21 +117,21 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             RootManager.use { it.execute(RoutingCommands.Clean()) }
         }
 
-        private fun RootSession.Transaction.iptables(command: String, revert: String) {
+        private suspend fun RootSession.Transaction.iptables(command: String, revert: String) {
             val result = execQuiet(command, revert)
             val message = result.message(listOf(command), err = false)
             if (result.err.isNotEmpty()) Timber.i(message)  // busy wait message
         }
-        private fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
+        private suspend fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
-        private fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
+        private suspend fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
-        private fun RootSession.Transaction.ip6tablesAdd(content: String, table: String = "filter") =
+        private suspend fun RootSession.Transaction.ip6tablesAdd(content: String, table: String = "filter") =
                 iptables("$IP6TABLES -t $table -A $content", "$IP6TABLES -t $table -D $content")
-        private fun RootSession.Transaction.ip6tablesInsert(content: String, table: String = "filter") =
+        private suspend fun RootSession.Transaction.ip6tablesInsert(content: String, table: String = "filter") =
                 iptables("$IP6TABLES -t $table -I $content", "$IP6TABLES -t $table -D $content")
 
-        private fun RootSession.Transaction.ndc(name: String, command: String, revert: String? = null) {
+        private suspend fun RootSession.Transaction.ndc(name: String, command: String, revert: String? = null) {
             val result = execQuiet(command, revert)
             val suffix = "200 0 $name operation succeeded\n"
             result.check(listOf(command), !result.out.endsWith(suffix))
@@ -138,7 +146,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 } == e.result.err.trim()
     }
 
-    private fun RootSession.Transaction.ipRule(action: String, priority: Int, rule: String = "") {
+    private suspend fun RootSession.Transaction.ipRule(action: String, priority: Int, rule: String = "") {
         try {
             exec("$IP rule add $rule iif $downstream $action priority $priority",
                     "$IP rule del $rule iif $downstream $action priority $priority")
@@ -146,7 +154,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             if (!shouldSuppressIpError(e)) throw e
         }
     }
-    private fun RootSession.Transaction.ip6Rule(action: String, priority: Int, rule: String = "") {
+    private suspend fun RootSession.Transaction.ip6Rule(action: String, priority: Int, rule: String = "") {
         try {
             exec("$IP -6 rule add $rule iif $downstream $action priority $priority",
                     "$IP -6 rule del $rule iif $downstream $action priority $priority")
@@ -154,7 +162,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             if (!shouldSuppressIpError(e)) throw e
         }
     }
-    private fun RootSession.Transaction.ipRuleLookup(ifindex: Int, priority: Int, rule: String = "") =
+    private suspend fun RootSession.Transaction.ipRuleLookup(ifindex: Int, priority: Int, rule: String = "") =
             // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
             ipRule("lookup ${1000 + ifindex}", priority, rule)
 
@@ -186,67 +194,97 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
     private val hostSubnet = "${hostAddress.address.hostAddress}/${hostAddress.networkPrefixLength}"
     lateinit var transaction: RootSession.Transaction
+    private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> Timber.w(t) })
 
     @Volatile
     private var stopped = false
     private var masqueradeMode = MasqueradeMode.None
 
     private val upstreams = HashSet<String>()
-    private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
-    private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
-        inner class Subrouting(priority: Int, val upstream: String) {
-            val ifindex = Os.if_nametoindex(upstream).also {
-                if (it <= 0) throw InterfaceGoneException(upstream)
-            }
-            val transaction = RootSession.beginTransaction().safeguard {
-                ipRuleLookup(ifindex, priority)
-                when (masqueradeMode) {
-                    MasqueradeMode.None -> { }  // nothing to be done here
-                    // note: specifying -i wouldn't work for POSTROUTING
-                    MasqueradeMode.Simple -> iptablesAdd(
-                        "vpnhotspot_masquerade -s $hostSubnet -o $upstream -j MASQUERADE", "nat")
-                    /**
-                     * 0 means that there are no interface addresses coming after, which is unused anyway.
-                     * Revert is intentionally omitted because netd tracks forwarding state globally by
-                     * interface pair without ownership, so disabling here may tear down system-owned state.
-                     *
-                     * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
-                     * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
-                     * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.cpp#652
-                     * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.h#40
-                     */
-                    MasqueradeMode.Netd -> ndc("Nat", "ndc nat enable $downstream $upstream 0")
+
+    private sealed class RoutingUpdate {
+        class UpstreamSnapshot(val upstream: Upstream, val properties: LinkProperties?) : RoutingUpdate()
+        class NeighboursSnapshot(val neighbours: Collection<IpNeighbour>) : RoutingUpdate()
+    }
+    private val updateLock = Any()
+    private val neighbourUpdateKey = Any()
+    private val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
+    private var pendingBarrier: CompletableDeferred<Unit>? = null
+    private val updateSignal = Channel<Unit>(Channel.CONFLATED)
+    private var updateWorker: Job? = null
+    private fun enqueue(update: RoutingUpdate) {
+        synchronized(updateLock) {
+            if (stopped) return
+            when (update) {
+                is RoutingUpdate.UpstreamSnapshot -> {
+                    pendingUpdates.remove(update.upstream)
+                    pendingUpdates[update.upstream] = update
                 }
-            }
-            init {
-                if (Build.VERSION.SDK_INT >= 31) try {
-                    runBlocking { RootManager.use { it.execute(IpSecForwardPolicyCommand(upstream)) } }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    SmartSnackbar.make(e).show()
-                    Timber.w(e)
+                is RoutingUpdate.NeighboursSnapshot -> {
+                    pendingUpdates.remove(neighbourUpdateKey)
+                    pendingUpdates[neighbourUpdateKey] = update
                 }
             }
         }
+        val result = updateSignal.trySend(Unit)
+        if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+    }
+    private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
+    private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
+        val subrouting = mutableMapOf<String, RootSession.Transaction>()
 
-        var subrouting = mutableMapOf<String, Subrouting>()
-
-        override fun onAvailable(properties: LinkProperties?): Unit = synchronized(this@Routing) {
-            if (stopped) return
+        override fun onAvailable(properties: LinkProperties?) {
+            enqueue(RoutingUpdate.UpstreamSnapshot(this, properties))
+        }
+        suspend fun update(properties: LinkProperties?) {
             val toRemove = subrouting.keys.toMutableSet()
             for (ifname in properties?.allInterfaceNames ?: emptyList()) {
                 if (toRemove.remove(ifname) || !upstreams.add(ifname)) continue
                 try {
-                    subrouting[ifname] = Subrouting(priority, ifname)
+                    val ifindex = Os.if_nametoindex(ifname).also {
+                        if (it <= 0) throw InterfaceGoneException(ifname)
+                    }
+                    val transaction = RootSession.beginTransaction().safeguard {
+                        ipRuleLookup(ifindex, priority)
+                        when (masqueradeMode) {
+                            MasqueradeMode.None -> { }  // nothing to be done here
+                            // note: specifying -i wouldn't work for POSTROUTING
+                            MasqueradeMode.Simple -> iptablesAdd(
+                                "vpnhotspot_masquerade -s $hostSubnet -o $ifname -j MASQUERADE", "nat")
+                            /**
+                             * 0 means that there are no interface addresses coming after, which is unused anyway.
+                             * Revert is intentionally omitted because netd tracks forwarding state globally by
+                             * interface pair without ownership, so disabling here may tear down system-owned state.
+                             *
+                             * https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
+                             * https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
+                             * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.cpp#652
+                             * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.h#40
+                             */
+                            MasqueradeMode.Netd -> ndc("Nat", "ndc nat enable $downstream $ifname 0")
+                        }
+                    }
+                    if (Build.VERSION.SDK_INT >= 31) try {
+                        RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) {
+                            transaction.revert()
+                            throw e
+                        }
+                        SmartSnackbar.make(e).show()
+                        Timber.w(e)
+                    }
+                    subrouting[ifname] = transaction
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
                     if (e !is CancellationException && e !is InterfaceGoneException) Timber.w(e)
                 }
             }
             for (ifname in toRemove) {
-                subrouting.remove(ifname)?.transaction?.revert()
+                subrouting.remove(ifname)?.revert()
                 check(upstreams.remove(ifname))
             }
+            ipv6NatSession?.update()
         }
     }
     private val fallbackUpstream = Upstream(RULE_PRIORITY_UPSTREAM_FALLBACK)
@@ -255,26 +293,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var ipv6NatSession: Ipv6NatSession? = null
     private data class Ipv6Prefix(val subnet: String, val gateway: String, val prefixLength: Int)
 
-    private inner class Ipv6NatSession : AutoCloseable {
+    private inner class Ipv6NatSession {
         private val prefix = generatePrefix()
         private val dnsBindAddress = if (useLocalnet()) "127.0.0.1" else hostAddress.address.hostAddress
         private val interceptMark = 0x6000 + (downstream.hashCode() and 0x1fff)
         private val replyMark = 0x7000 + (downstream.hashCode() and 0x1fff)
         private val mtu = NetworkInterface.getByName(downstream)?.mtu ?: 1500
         private var generationId = 0
-        private val mirroredUpstreamTables = mutableSetOf<String>()
+        private val mirroredUpstreamTables = mutableMapOf<String, RootSession.Transaction?>()
         lateinit var ports: Ipv6NatProtocol.SessionPorts
-
-        private val upstreamCallback = object : UpstreamMonitor.Callback {
-            override fun onAvailable(properties: LinkProperties?) {
-                update()
-            }
-        }
-        private val fallbackCallback = object : UpstreamMonitor.Callback {
-            override fun onAvailable(properties: LinkProperties?) {
-                update()
-            }
-        }
 
         private fun buildUpstream(network: android.net.Network?) = Ipv6NatProtocol.Upstream.from(network,
             network?.let(Services.connectivity::getLinkProperties))
@@ -282,7 +309,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             buildUpstream(UpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
             buildUpstream(FallbackUpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
         }
-        private fun syncPrefixRoutes(config: Ipv6NatProtocol.SessionConfig) {
+        private suspend fun syncPrefixRoutes(
+            config: Ipv6NatProtocol.SessionConfig,
+            setup: RootSession.Transaction? = null,
+        ) {
             val current = currentUpstreamTables()
             val subnet = "${prefix.subnet}/${prefix.prefixLength}"
             val staleSubnets = buildSet {
@@ -291,20 +321,45 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     add("${IpPrefix(address, route.prefixLength).address.hostAddress}/${route.prefixLength}")
                 }
             }
-            for (table in mirroredUpstreamTables + current) {
-                for (stale in staleSubnets) transaction.execQuiet("$IP -6 route del $stale dev $downstream table $table")
+            if (setup == null) {
+                if (staleSubnets.isNotEmpty()) RootSession.use { session ->
+                    for (table in mirroredUpstreamTables.keys + current) {
+                        for (stale in staleSubnets) {
+                            session.submit("$IP -6 route del $stale dev $downstream table $table")
+                        }
+                    }
+                }
+            } else for (table in mirroredUpstreamTables.keys + current) {
+                for (stale in staleSubnets) setup.execQuiet("$IP -6 route del $stale dev $downstream table $table")
             }
-            for (table in mirroredUpstreamTables - current) {
-                transaction.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
+            for (table in mirroredUpstreamTables.keys - current) {
+                val routeTransaction = mirroredUpstreamTables.remove(table)
+                if (routeTransaction == null) {
+                    if (setup == null) {
+                        RootSession.use { it.submit("$IP -6 route del $subnet dev $downstream table $table") }
+                    } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
+                } else routeTransaction.revert()
             }
-            for (table in current - mirroredUpstreamTables) try {
-                transaction.exec("$IP -6 route replace $subnet dev $downstream table $table",
-                    "$IP -6 route del $subnet dev $downstream table $table")
-            } catch (e: RoutingCommands.UnexpectedOutputException) {
-                if (!shouldSuppressIpError(e)) throw e
+            for (table in current - mirroredUpstreamTables.keys) {
+                if (setup == null) {
+                    mirroredUpstreamTables[table] = RootSession.beginTransaction().safeguard {
+                        try {
+                            exec("$IP -6 route replace $subnet dev $downstream table $table",
+                                "$IP -6 route del $subnet dev $downstream table $table")
+                        } catch (e: RoutingCommands.UnexpectedOutputException) {
+                            if (!shouldSuppressIpError(e)) throw e
+                        }
+                    }
+                } else {
+                    try {
+                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table",
+                            "$IP -6 route del $subnet dev $downstream table $table")
+                    } catch (e: RoutingCommands.UnexpectedOutputException) {
+                        if (!shouldSuppressIpError(e)) throw e
+                    }
+                    mirroredUpstreamTables[table] = null
+                }
             }
-            mirroredUpstreamTables.clear()
-            mirroredUpstreamTables.addAll(current)
         }
         private fun nextConfig(): Ipv6NatProtocol.SessionConfig {
             val gateway = InetAddress.getByName(prefix.gateway)
@@ -338,10 +393,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             )
         }
 
-        fun prepare() {
+        suspend fun prepare() {
             val config = nextConfig()
-            ports = runBlocking { Ipv6NatController.startSession(config) }
-            syncPrefixRoutes(config)
+            ports = Ipv6NatController.startSession(config)
+            syncPrefixRoutes(config, transaction)
             transaction.exec("$IP -6 addr add ${prefix.gateway}/${prefix.prefixLength} dev $downstream",
                 "$IP -6 addr del ${prefix.gateway}/${prefix.prefixLength} dev $downstream")
             if (dnsBindAddress == "127.0.0.1") {
@@ -400,16 +455,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 "mangle")
         }
 
-        fun commit() {
-            UpstreamMonitor.registerCallback(upstreamCallback)
-            FallbackUpstreamMonitor.registerCallback(fallbackCallback)
-        }
-
-        private fun update() {
+        suspend fun update() {
             try {
                 val config = nextConfig()
                 syncPrefixRoutes(config)
-                runBlocking { Ipv6NatController.replaceSession(config) }
+                Ipv6NatController.replaceSession(config)
             } catch (e: Exception) {
                 if (e !is CancellationException) {
                     Timber.w(e)
@@ -418,11 +468,18 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
         }
 
-        override fun close() {
-            UpstreamMonitor.unregisterCallback(upstreamCallback)
-            FallbackUpstreamMonitor.unregisterCallback(fallbackCallback)
+        suspend fun close(setup: RootSession.Transaction? = null) {
+            val subnet = "${prefix.subnet}/${prefix.prefixLength}"
+            for ((table, routeTransaction) in mirroredUpstreamTables.toList()) {
+                if (routeTransaction == null) {
+                    if (setup == null) {
+                        RootSession.use { it.submit("$IP -6 route del $subnet dev $downstream table $table") }
+                    } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
+                } else routeTransaction.revert()
+            }
+            mirroredUpstreamTables.clear()
             try {
-                runBlocking { Ipv6NatController.removeSession(downstream) }
+                Ipv6NatController.removeSession(downstream)
             } catch (e: Exception) {
                 if (e !is CancellationException) Timber.w(e)
             }
@@ -442,37 +499,37 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    private inner class Client(private val ip: Inet4Address, mac: MacAddress) : AutoCloseable {
-        private val transaction = RootSession.beginTransaction().safeguard {
-            val address = ip.hostAddress
-            iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")
-            iptablesInsert("vpnhotspot_acl -o $downstream -d $address -j ACCEPT")
-        }
-
-        init {
-            try {
-                TrafficRecorder.register(ip, downstream, mac)
-            } catch (e: Exception) {
-                close()
-                throw e
-            }
-        }
-
-        override fun close() {
+    private inner class Client(private val ip: Inet4Address, private val transaction: RootSession.Transaction) {
+        suspend fun close() {
             TrafficRecorder.unregister(ip, downstream)
             transaction.revert()
         }
     }
     private val clients = mutableMapOf<InetAddress, Client>()
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>): Unit = synchronized(this) {
-        if (stopped) return
+    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+        enqueue(RoutingUpdate.NeighboursSnapshot(neighbours))
+    }
+    private suspend fun updateNeighbours(neighbours: Collection<IpNeighbour>) {
         val toRemove = HashSet(clients.keys)
         for (neighbour in neighbours) {
             if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    AppDatabase.instance.clientRecordDao.lookupOrDefaultBlocking(neighbour.lladdr).blocked) continue
+                    AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr).blocked) continue
             toRemove.remove(neighbour.ip)
             try {
-                clients.computeIfAbsent(neighbour.ip) { Client(neighbour.ip, neighbour.lladdr) }
+                if (clients.containsKey(neighbour.ip)) continue
+                val address = neighbour.ip.hostAddress
+                val transaction = RootSession.beginTransaction().safeguard {
+                    iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")
+                    iptablesInsert("vpnhotspot_acl -o $downstream -d $address -j ACCEPT")
+                }
+                try {
+                    TrafficRecorder.register(neighbour.ip, downstream, neighbour.lladdr)
+                    clients[neighbour.ip] = Client(neighbour.ip, transaction)
+                } catch (e: Exception) {
+                    TrafficRecorder.unregister(neighbour.ip, downstream)
+                    transaction.revert()
+                    throw e
+                }
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
@@ -494,7 +551,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
      * The fallback approach is consistent with legacy system's IP forwarding approach,
      * but may be broken when system tethering shutdown before local-only interfaces.
      */
-    fun ipForward() {
+    suspend fun ipForward() {
         try {
             transaction.ndc("ipfwd", "ndc ipfwd enable vpnhotspot_$downstream",
                 "ndc ipfwd disable vpnhotspot_$downstream")
@@ -505,7 +562,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.exec("echo 1 >/proc/sys/net/ipv4/ip_forward")
     }
 
-    fun disableIpv6() {
+    suspend fun disableIpv6() {
         transaction.execQuiet("$IP6TABLES -N vpnhotspot_filter")
         transaction.ip6tablesInsert("INPUT -j vpnhotspot_filter")
         transaction.ip6tablesInsert("FORWARD -j vpnhotspot_filter")
@@ -514,10 +571,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.ip6tablesInsert("vpnhotspot_filter -o $downstream -j REJECT")
     }
 
-    fun ipv6Nat() {
+    suspend fun ipv6Nat() {
+        val session = Ipv6NatSession()
         try {
-            ipv6NatSession = Ipv6NatSession().apply { prepare() }
+            session.prepare()
+            ipv6NatSession = session
         } catch (e: Exception) {
+            withContext(NonCancellable) { session.close(transaction) }
             if (e is CancellationException) throw e
             Timber.w(e)
             SmartSnackbar.make(R.string.warn_ipv6_nat_fallback).show()
@@ -525,17 +585,17 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    fun forward() {
+    suspend fun forward() {
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
         transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
         transaction.iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
         transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
-        // the real forwarding filters will be added in Subrouting when clients are connected
+        // the real forwarding filters will be added when clients are connected
     }
 
-    fun masquerade(mode: MasqueradeMode) {
+    suspend fun masquerade(mode: MasqueradeMode) {
         masqueradeMode = mode
         if (mode == MasqueradeMode.Simple) {
             transaction.execQuiet("$IPTABLES -t nat -N vpnhotspot_masquerade")
@@ -544,22 +604,37 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    fun stop() {
-        synchronized(this) { stopped = true }
+    suspend fun stop() {
+        val done = synchronized(updateLock) {
+            stopped = true
+            if (updateWorker?.isActive == true) {
+                pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
+            } else null
+        }
         IpNeighbourMonitor.unregisterCallback(this)
-        ipv6NatSession?.close()
-        ipv6NatSession = null
         DnsForwarder.unregisterClient(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         VpnMonitor.unregisterCallback(emptyCallback)
+        if (done != null) {
+            val result = updateSignal.trySend(Unit)
+            if (result.isSuccess) {
+                done.await()
+            } else {
+                result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+            }
+        }
+        ipv6NatSession?.close()
+        ipv6NatSession = null
+        updateSignal.close()
+        scope.cancel("Routing stopped")
         Timber.i("Stopped routing for $downstream by $caller")
     }
 
     /**
      * Allow protect UDP sockets which will be used by DnsForwarder. Must call this first.
      */
-    fun allowProtect() {
+    suspend fun allowProtect() {
         val command = "ndc network protect allow ${Process.myUid()}"
         val result = transaction.execQuiet(command)
         val suffix = "200 0 success\n"
@@ -567,7 +642,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         if (result.out.length > suffix.length) Timber.i(result.message(listOf(command), true))
     }
 
-    fun commit() {
+    suspend fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         if (ipv6NatSession == null) {
             val useLocalnet = useLocalnet()
@@ -583,18 +658,41 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
-        ipv6NatSession?.commit()
+        check(updateWorker == null)
+        updateWorker = scope.launch {
+            updateSignal.consumeEach {
+                val batch = ArrayList<RoutingUpdate>()
+                val done = synchronized(updateLock) {
+                    batch.addAll(pendingUpdates.values)
+                    pendingUpdates.clear()
+                    pendingBarrier.also { pendingBarrier = null }
+                }
+                for (next in batch) try {
+                    when (next) {
+                        is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
+                        is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Timber.w(e)
+                }
+                done?.complete(Unit)
+            }
+        }
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this, true)
         if (VpnFirewallManager.mayBeAffected) VpnMonitor.registerCallback(emptyCallback)
     }
-    fun revert() {
+    suspend fun revert() = withContext(NonCancellable) {
         transaction.revert()
         stop()
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
-        synchronized(this) { clients.values.forEach { it.close() } }
-        fallbackUpstream.subrouting.values.forEach { it.transaction.revert() }
-        upstream.subrouting.values.forEach { it.transaction.revert() }
+        clients.values.forEach { it.close() }
+        clients.clear()
+        fallbackUpstream.subrouting.values.forEach { it.revert() }
+        fallbackUpstream.subrouting.clear()
+        upstream.subrouting.values.forEach { it.revert() }
+        upstream.subrouting.clear()
     }
 }

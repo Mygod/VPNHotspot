@@ -15,8 +15,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
@@ -27,6 +30,7 @@ object TrafficRecorder {
 
     private var lastUpdate = 0L
     private val records = mutableMapOf<IpDev, TrafficRecord>()
+    private val updateMutex = Mutex()
     val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
 
     fun register(ip: InetAddress, downstream: String, mac: MacAddress) {
@@ -39,11 +43,13 @@ object TrafficRecorder {
             scheduleUpdateLocked()
         }
     }
-    fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
+    suspend fun unregister(ip: InetAddress, downstream: String) {
         update()    // flush stats before removing
-        val key = IpDev(ip, downstream)
-        Timber.d("Unregistering $key")
-        if (records.remove(key) == null) Timber.w("Failed to find traffic record for $key.")
+        synchronized(this) {
+            val key = IpDev(ip, downstream)
+            Timber.d("Unregistering $key")
+            if (records.remove(key) == null) Timber.w("Failed to find traffic record for $key.")
+        }
     }
 
     private var updateJob: Job? = null
@@ -68,78 +74,85 @@ object TrafficRecorder {
         scheduleUpdateLocked()
     }
 
-    private fun doUpdate(timestamp: Long) {
-        val oldRecords = LongSparseArray<TrafficRecord>()
-        loop@ for (line in RootSession.use {
+    private suspend fun doUpdate(timestamp: Long) {
+        val lines = RootSession.use {
             val command = "$IPTABLES -nvx -L vpnhotspot_acl"
             val result = it.execQuiet(command)
             val message = result.message(listOf(command))
             if (result.err.isNotEmpty()) Timber.i(message)
-            result.out.lineSequence().drop(2)
-        }) {
-            if (line.isBlank()) continue
-            val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
-            try {
-                check(columns.size >= 9)
-                when (columns[2]) {
-                    "DROP" -> { }
-                    "ACCEPT" -> {
-                        val isReceive = columns[7] == ANYWHERE
-                        val isSend = columns[8] == ANYWHERE
-                        // this check might fail when the user performed an upgrade from 1.x
-                        check(isReceive != isSend) { "Failed to set up blocking rules, please clean routing rules" }
-                        val ip = InetAddresses.parseNumericAddress(columns[if (isReceive) 8 else 7])
-                        val downstream = columns[if (isReceive) 6 else 5]
-                        val key = IpDev(ip, downstream)
-                        val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules
-                        val record = if (oldRecord.id == null) oldRecord else TrafficRecord(
-                                timestamp = timestamp,
-                                mac = oldRecord.mac,
-                                ip = ip,
-                                downstream = downstream,
-                                sentPackets = -1,
-                                sentBytes = -1,
-                                receivedPackets = -1,
-                                receivedBytes = -1,
-                                previousId = oldRecord.id)
-                        if (isReceive) {
-                            if (record.receivedPackets == -1L && record.receivedBytes == -1L) {
-                                record.receivedPackets = columns[0].toLong()
-                                record.receivedBytes = columns[1].toLong()
-                            }
-                        } else {
-                            if (record.sentPackets == -1L && record.sentBytes == -1L) {
-                                record.sentPackets = columns[0].toLong()
-                                record.sentBytes = columns[1].toLong()
-                            }
-                        }
-                        oldRecord.id?.let { oldId ->
-                            check(records.put(key, record) == oldRecord)
-                            oldRecords[oldId] = oldRecord
-                        }
-                    }
-                    else -> check(false)
-                }
-            } catch (e: Exception) {
-                Timber.w(line)
-                Timber.w(e)
-            }
+            result.out.lineSequence().drop(2).toList()
         }
-        for ((_, record) in records) if (record.id == null) {
-            check(record.sentPackets >= 0)
-            check(record.sentBytes >= 0)
-            check(record.receivedPackets >= 0)
-            check(record.receivedBytes >= 0)
-            AppDatabase.instance.trafficRecordDao.insert(record)
-        }
-        foregroundListeners(records.values.toList(), oldRecords)
-    }
-    fun update(timeout: Boolean = false) {
         synchronized(this) {
-            unscheduleUpdateLocked()
-            if (records.isEmpty()) return
-            val timestamp = System.currentTimeMillis()
-            if (!timeout && timestamp - lastUpdate <= 100) return
+            val oldRecords = LongSparseArray<TrafficRecord>()
+            loop@ for (line in lines) {
+                if (line.isBlank()) continue
+                val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
+                try {
+                    check(columns.size >= 9)
+                    when (columns[2]) {
+                        "DROP" -> { }
+                        "ACCEPT" -> {
+                            val isReceive = columns[7] == ANYWHERE
+                            val isSend = columns[8] == ANYWHERE
+                            // this check might fail when the user performed an upgrade from 1.x
+                            check(isReceive != isSend) { "Failed to set up blocking rules, please clean routing rules" }
+                            val ip = InetAddresses.parseNumericAddress(columns[if (isReceive) 8 else 7])
+                            val downstream = columns[if (isReceive) 6 else 5]
+                            val key = IpDev(ip, downstream)
+                            val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules
+                            val record = if (oldRecord.id == null) oldRecord else TrafficRecord(
+                                    timestamp = timestamp,
+                                    mac = oldRecord.mac,
+                                    ip = ip,
+                                    downstream = downstream,
+                                    sentPackets = -1,
+                                    sentBytes = -1,
+                                    receivedPackets = -1,
+                                    receivedBytes = -1,
+                                    previousId = oldRecord.id)
+                            if (isReceive) {
+                                if (record.receivedPackets == -1L && record.receivedBytes == -1L) {
+                                    record.receivedPackets = columns[0].toLong()
+                                    record.receivedBytes = columns[1].toLong()
+                                }
+                            } else {
+                                if (record.sentPackets == -1L && record.sentBytes == -1L) {
+                                    record.sentPackets = columns[0].toLong()
+                                    record.sentBytes = columns[1].toLong()
+                                }
+                            }
+                            oldRecord.id?.let { oldId ->
+                                check(records.put(key, record) == oldRecord)
+                                oldRecords[oldId] = oldRecord
+                            }
+                        }
+                        else -> check(false)
+                    }
+                } catch (e: Exception) {
+                    Timber.w(line)
+                    Timber.w(e)
+                }
+            }
+            for ((_, record) in records) if (record.id == null) {
+                check(record.sentPackets >= 0)
+                check(record.sentBytes >= 0)
+                check(record.receivedPackets >= 0)
+                check(record.receivedBytes >= 0)
+                AppDatabase.instance.trafficRecordDao.insert(record)
+            }
+            foregroundListeners(records.values.toList(), oldRecords)
+        }
+    }
+    suspend fun update(timeout: Boolean = false) {
+        updateMutex.withLock {
+            val currentJob = currentCoroutineContext()[Job]
+            val timestamp = synchronized(this) {
+                if (updateJob === currentJob) updateJob = null else unscheduleUpdateLocked()
+                if (records.isEmpty()) return@withLock
+                val timestamp = System.currentTimeMillis()
+                if (!timeout && timestamp - lastUpdate <= 100) return@withLock
+                timestamp
+            }
             try {
                 doUpdate(timestamp)
             } catch (_: CancellationException) {
@@ -147,20 +160,24 @@ object TrafficRecorder {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
             }
-            lastUpdate = timestamp
-            scheduleUpdateLocked()
+            synchronized(this) {
+                lastUpdate = timestamp
+                if (records.isNotEmpty()) scheduleUpdateLocked()
+            }
         }
     }
 
-    fun clean() = synchronized(this) {
+    suspend fun clean() {
         update()
-        unscheduleUpdateLocked()
-        Timber.d("Cleaning records")
-        records.clear()
+        synchronized(this) {
+            unscheduleUpdateLocked()
+            Timber.d("Cleaning records")
+            records.clear()
+        }
     }
 
     /**
      * Possibly inefficient. Don't call this too often.
      */
-    fun isWorking(mac: MacAddress) = records.values.any { it.mac == mac }
+    fun isWorking(mac: MacAddress) = synchronized(this) { records.values.any { it.mac == mac } }
 }
