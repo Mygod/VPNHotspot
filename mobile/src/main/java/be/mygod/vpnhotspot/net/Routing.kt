@@ -169,7 +169,30 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val updateChannel = Channel<RoutingUpdate>(Channel.UNLIMITED)
     private val updateWorker = scope.launch {
         for (update in updateChannel) {
-            for (next in coalesceUpdates(update)) try {
+            val batch = ArrayList<RoutingUpdate>()
+            val pending = LinkedHashMap<Any, RoutingUpdate>()
+            fun flushPending() {
+                batch.addAll(pending.values)
+                pending.clear()
+            }
+            fun add(update: RoutingUpdate) = when (update) {
+                is RoutingUpdate.UpstreamSnapshot -> {
+                    pending.remove(update.upstream)
+                    pending[update.upstream] = update
+                }
+                is RoutingUpdate.NeighboursSnapshot -> {
+                    pending.remove(neighbourUpdateKey)
+                    pending[neighbourUpdateKey] = update
+                }
+                is RoutingUpdate.Barrier -> {
+                    flushPending()
+                    batch.add(update)
+                }
+            }
+            add(update)
+            while (true) add(updateChannel.tryReceive().getOrNull() ?: break)
+            flushPending()
+            for (next in batch) try {
                 when (next) {
                     is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
                     is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
@@ -185,42 +208,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         if (stopped) return
         val result = updateChannel.trySend(update)
         if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
-    }
-    private suspend fun awaitUpdates() {
-        if (!updateWorker.isActive) return
-        val done = CompletableDeferred<Unit>()
-        val result = updateChannel.trySend(RoutingUpdate.Barrier(done))
-        if (result.isFailure) {
-            result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
-            return
-        }
-        done.await()
-    }
-    private fun coalesceUpdates(first: RoutingUpdate): List<RoutingUpdate> {
-        val result = ArrayList<RoutingUpdate>()
-        val pending = LinkedHashMap<Any, RoutingUpdate>()
-        fun flushPending() {
-            result.addAll(pending.values)
-            pending.clear()
-        }
-        fun add(update: RoutingUpdate) = when (update) {
-            is RoutingUpdate.UpstreamSnapshot -> {
-                pending.remove(update.upstream)
-                pending[update.upstream] = update
-            }
-            is RoutingUpdate.NeighboursSnapshot -> {
-                pending.remove(neighbourUpdateKey)
-                pending[neighbourUpdateKey] = update
-            }
-            is RoutingUpdate.Barrier -> {
-                flushPending()
-                result.add(update)
-            }
-        }
-        add(first)
-        while (true) add(updateChannel.tryReceive().getOrNull() ?: break)
-        flushPending()
-        return result
     }
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
@@ -381,7 +368,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         VpnMonitor.unregisterCallback(emptyCallback)
-        awaitUpdates()
+        if (updateWorker.isActive) {
+            val done = CompletableDeferred<Unit>()
+            val result = updateChannel.trySend(RoutingUpdate.Barrier(done))
+            if (result.isFailure) {
+                result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+                return
+            }
+            done.await()
+        }
         updateChannel.close()
         scope.cancel("Routing stopped")
         Timber.i("Stopped routing for $downstream by $caller")

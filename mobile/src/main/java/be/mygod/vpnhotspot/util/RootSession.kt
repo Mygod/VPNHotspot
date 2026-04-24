@@ -7,18 +7,16 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.util.*
+import java.util.LinkedList
 
 class RootSession private constructor(private var server: RootServer?) {
     companion object {
         private val monitor = Mutex()
 
-        private suspend fun create() = RootSession(RootManager.acquire())
-
         suspend fun <T> use(operation: suspend (RootSession) -> T): T {
             monitor.lock()
             val session = try {
-                create()
+                RootSession(RootManager.acquire())
             } catch (e: Throwable) {
                 monitor.unlock()
                 throw e
@@ -36,7 +34,7 @@ class RootSession private constructor(private var server: RootServer?) {
         suspend fun beginTransaction(): Transaction {
             monitor.lock()
             return try {
-                create().Transaction()
+                RootSession(RootManager.acquire()).Transaction()
             } catch (e: Throwable) {
                 monitor.unlock()
                 throw e
@@ -90,7 +88,7 @@ class RootSession private constructor(private var server: RootServer?) {
                 val currentShell = if (wasLocked) this@RootSession else {
                     monitor.lock()
                     lockAcquired = true
-                    create()
+                    RootSession(RootManager.acquire())
                 }
                 shell = currentShell
                 revertCommands.forEach { currentShell.submit(it) }
