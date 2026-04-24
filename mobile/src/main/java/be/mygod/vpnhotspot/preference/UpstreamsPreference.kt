@@ -35,7 +35,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
             } else ifname
         }.joinTo(SpannableStringBuilder()).ifEmpty { "∅" }
 
-        override fun onAvailable(properties: LinkProperties?) {
+        override suspend fun onAvailable(properties: LinkProperties?) {
             val result = mutableMapOf<String, Boolean>()
             for (route in properties?.allRoutes ?: emptyList()) {
                 result.compute(route.`interface` ?: continue) { _, internet ->

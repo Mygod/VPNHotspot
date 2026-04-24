@@ -558,7 +558,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     /**
      * startService Step 3
      */
-    private fun doStartLocked(group: WifiP2pGroup) {
+    private suspend fun doStartLocked(group: WifiP2pGroup) {
         if (isAutoShutdownEnabled) timeoutMonitor = TetherTimeoutMonitor(shutdownTimeoutMillis, coroutineContext) {
             binder.shutdown()
         }
@@ -603,7 +603,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             }
         })
     }
-    private fun cleanLocked(shouldDisable: Boolean = true) {
+    private suspend fun cleanLocked(shouldDisable: Boolean = true) {
         if (shouldDisable) BootReceiver.delete<RepeaterService>()
         if (receiverRegistered) {
             ensureReceiverUnregistered(receiver)

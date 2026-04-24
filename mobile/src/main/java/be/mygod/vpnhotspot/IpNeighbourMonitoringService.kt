@@ -11,7 +11,7 @@ abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Call
     protected abstract val activeIfaces: List<String>
     protected open val inactiveIfaces get() = emptyList<String>()
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         this.neighbours = neighbours
         updateNotification()
     }

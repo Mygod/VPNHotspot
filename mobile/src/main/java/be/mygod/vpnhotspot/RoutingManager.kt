@@ -8,7 +8,8 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import androidx.core.content.edit
 
@@ -25,19 +26,20 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
 
         /**
-         * Thread safety: needs protection by companion object!
+         * Thread safety: needs protection by [monitor]!
          */
         private val active = mutableMapOf<String, RoutingManager>()
+        private val monitor = Mutex()
 
-        fun clean(reinit: Boolean = true) = synchronized(this) {
-            if (!reinit && active.isEmpty()) return@synchronized
+        suspend fun clean(reinit: Boolean = true) = monitor.withLock {
+            if (!reinit && active.isEmpty()) return@withLock
             for (manager in active.values) manager.routing?.stop()
             try {
-                runBlocking { Routing.clean() }
+                Routing.clean()
             } catch (e: Exception) {
                 Timber.d(e)
                 SmartSnackbar.make(e).show()
-                return
+                return@withLock
             }
             if (reinit) for (manager in active.values) manager.initRoutingLocked()
         }
@@ -47,7 +49,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
      * Both repeater and local-only hotspot are Wi-Fi based.
      */
     class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
-        override fun Routing.configure() {
+        override suspend fun Routing.configure() {
             ipForward() // local only interfaces need to enable ip_forward
             forward()
             masquerade(masqueradeMode)
@@ -57,12 +59,12 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     var started = false
         private set
     /**
-     * Thread safety: needs protection by companion object!
+     * Thread safety: needs protection by [monitor]!
      */
     private var routing: Routing? = null
     private var isWifi = forceWifi || TetherType.ofInterface(downstream).isWifi
 
-    fun start(fromMonitor: Boolean = false) = synchronized(RoutingManager) {
+    suspend fun start(fromMonitor: Boolean = false) = monitor.withLock {
         started = true
         when (val other = active.putIfAbsent(downstream, this)) {
             null -> {
@@ -86,7 +88,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    private fun initRoutingLocked(fromMonitor: Boolean = false) = try {
+    private suspend fun initRoutingLocked(fromMonitor: Boolean = false) = try {
         routing = Routing(caller, downstream).apply {
             transaction = RootSession.beginTransaction()
             try {
@@ -109,9 +111,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         false
     }
 
-    protected abstract fun Routing.configure()
+    protected abstract suspend fun Routing.configure()
 
-    fun stop() = synchronized(RoutingManager) {
+    suspend fun stop() = monitor.withLock {
         started = false
         if (active.remove(downstream, this)) {
             if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this

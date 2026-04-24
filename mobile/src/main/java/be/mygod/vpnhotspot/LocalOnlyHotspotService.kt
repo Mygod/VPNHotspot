@@ -145,11 +145,11 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         if (!waitingForIface || binder.iface != "") return
         interfaces.singleOrNull()?.let {
             waitingForIface = false
-            onIfaceAvailable(it)
+            launch { onIfaceAvailable(it) }
         }
     }
 
-    private fun onIfaceAvailable(iface: String) {
+    private suspend fun onIfaceAvailable(iface: String) {
         TetherStates.unregisterCallback(this)
         binder.iface = iface
         BootReceiver.add<LocalOnlyHotspotService>(Starter())
@@ -267,7 +267,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         }
     }
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         super.onIpNeighbourAvailable(neighbours)
         timeoutMonitor?.onClientsChanged(neighbours.none {
             it.ip is Inet4Address && it.state == IpNeighbour.State.VALID

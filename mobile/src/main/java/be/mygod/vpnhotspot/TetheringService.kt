@@ -45,7 +45,7 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
 
     private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
             RoutingManager(caller, downstream) {
-        override fun Routing.configure() {
+        override suspend fun Routing.configure() {
             forward()
             masquerade(masqueradeMode)
             if (app.pref.getBoolean("service.disableIpv6", true)) disableIpv6()

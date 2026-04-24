@@ -30,7 +30,7 @@ abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeigh
                 R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size))
     }
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override suspend fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         this.neighbours = neighbours
         updateTile()
     }

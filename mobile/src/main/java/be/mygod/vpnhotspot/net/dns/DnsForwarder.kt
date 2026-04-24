@@ -28,7 +28,6 @@ import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.readByteArray
@@ -46,7 +45,8 @@ class DnsForwarder : CoroutineScope {
         private var instance: DnsForwarder? = null
 
         private val clients = mutableSetOf<Any>()
-        fun registerClient(client: Any, useLocalnet: Boolean) = synchronized(clients) {
+        private val monitor = Mutex()
+        suspend fun registerClient(client: Any, useLocalnet: Boolean) = monitor.withLock {
             (instance ?: DnsForwarder().apply {
                 try {
                     start(useLocalnet)
@@ -57,7 +57,7 @@ class DnsForwarder : CoroutineScope {
                 instance = this
             }).also { clients.add(client) }
         }
-        fun unregisterClient(client: Any) = synchronized(clients) {
+        suspend fun unregisterClient(client: Any) = monitor.withLock {
             clients.remove(client).also {
                 if (it && clients.isEmpty()) {
                     instance?.stop()
@@ -76,13 +76,12 @@ class DnsForwarder : CoroutineScope {
     val tcpPort get() = tcp!!.localAddress.toJavaAddress().port
     val udpPort get() = udp!!.localAddress.toJavaAddress().port
 
-    private fun start(useLocalnet: Boolean) {
+    private suspend fun start(useLocalnet: Boolean) {
         val selectorManager = VpnProtectedSelectorManager(SelectorManager(
             coroutineContext + newSingleThreadContext("DnsForwarder")))
-        // these methods do not actually block
-        val t = runBlocking { aSocket(selectorManager).tcp().bind(if (useLocalnet) localhostAnyPort else null) }
+        val t = aSocket(selectorManager).tcp().bind(if (useLocalnet) localhostAnyPort else null)
         tcp = t
-        val u = runBlocking { aSocket(selectorManager).udp().bind(if (useLocalnet) localhostAnyPort else null) }
+        val u = aSocket(selectorManager).udp().bind(if (useLocalnet) localhostAnyPort else null)
         udp = u
         launch {
             while (true) {

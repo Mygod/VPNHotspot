@@ -13,7 +13,6 @@ import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 
 object VpnFirewallManager {
@@ -75,8 +74,8 @@ object VpnFirewallManager {
     }.value
 
     @RequiresApi(29)
-    private fun excludeFromFirewall(uid: Int) {
-        if (!runBlocking { removeUidInterfaceRules(uid) }) {
+    private suspend fun excludeFromFirewall(uid: Int) {
+        if (!removeUidInterfaceRules(uid)) {
             throw Exception("RemoveUidInterfaceRuleCommand failed to update")
         }
     }
@@ -89,7 +88,7 @@ object VpnFirewallManager {
             }
         }
     }
-    fun setup(transaction: RootSession.Transaction) {
+    suspend fun setup(transaction: RootSession.Transaction) {
         if (!mayBeAffected) return
         val uid = Process.myUid()
         if (Build.VERSION.SDK_INT < 31) return try {
@@ -107,7 +106,7 @@ object VpnFirewallManager {
             transaction.exec("settings put global $UIDS_ALLOWED_ON_RESTRICTED_NETWORKS '${allowed.joinToString(";")}'")
         }
         if (Build.VERSION.SDK_INT >= 33) try {
-            runBlocking { removeUidInterfaceRules(uid) }
+            removeUidInterfaceRules(uid)
         } catch (e: Exception) {
             SmartSnackbar.make(R.string.error_vpn_firewall_reboot).show()
             Timber.w(e)
