@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -170,26 +171,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
     private var pendingBarrier: CompletableDeferred<Unit>? = null
     private val updateSignal = Channel<Unit>(Channel.CONFLATED)
-    private val updateWorker = scope.launch {
-        updateSignal.consumeEach {
-            val batch = ArrayList<RoutingUpdate>()
-            val done = synchronized(updateLock) {
-                batch.addAll(pendingUpdates.values)
-                pendingUpdates.clear()
-                pendingBarrier.also { pendingBarrier = null }
-            }
-            for (next in batch) try {
-                when (next) {
-                    is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
-                    is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Timber.w(e)
-            }
-            done?.complete(Unit)
-        }
-    }
+    private var updateWorker: Job? = null
     private fun enqueue(update: RoutingUpdate) {
         synchronized(updateLock) {
             if (stopped) return
@@ -362,7 +344,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     suspend fun stop() {
         val done = synchronized(updateLock) {
             stopped = true
-            if (updateWorker.isActive) {
+            if (updateWorker?.isActive == true) {
                 pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
             } else null
         }
@@ -413,6 +395,27 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.iptablesInsert("PREROUTING -i $downstream -p udp -d $hostAddress --dport 53 -j DNAT --to-destination $forwarderIp:${forwarder.udpPort}", "nat")
         transaction.commit()
         Timber.i("Started routing for $downstream by $caller")
+        check(updateWorker == null)
+        updateWorker = scope.launch {
+            updateSignal.consumeEach {
+                val batch = ArrayList<RoutingUpdate>()
+                val done = synchronized(updateLock) {
+                    batch.addAll(pendingUpdates.values)
+                    pendingUpdates.clear()
+                    pendingBarrier.also { pendingBarrier = null }
+                }
+                for (next in batch) try {
+                    when (next) {
+                        is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
+                        is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
+                    }
+                } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+                    Timber.w(e)
+                }
+                done?.complete(Unit)
+            }
+        }
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
         IpNeighbourMonitor.registerCallback(this, true)
