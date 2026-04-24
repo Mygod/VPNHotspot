@@ -190,8 +190,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         }
     }
     private fun onFrameworkStopped(generation: Int) {
+        if (reservation?.generation == generation) reservation = null
         if (generation != lifecycleGeneration.get()) return
-        reservation = null
         if (binder.iface != null) stopService(generation = generation)
     }
     private fun onFrameworkFailed(reason: Int, generation: Int) {

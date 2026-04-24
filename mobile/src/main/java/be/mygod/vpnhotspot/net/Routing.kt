@@ -373,11 +373,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         VpnMonitor.unregisterCallback(emptyCallback)
         if (done != null) {
             val result = updateSignal.trySend(Unit)
-            if (result.isFailure) {
+            if (result.isSuccess) {
+                done.await()
+            } else {
                 result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
-                return
             }
-            done.await()
         }
         updateSignal.close()
         scope.cancel("Routing stopped")
