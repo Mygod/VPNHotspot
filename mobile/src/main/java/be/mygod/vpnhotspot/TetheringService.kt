@@ -128,10 +128,13 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
-                    if (downstreams[iface] == null) Downstream(this@TetheringService, iface).apply {
-                        if (start()) check(downstreams.put(iface, this) == null) else {
+                    if (downstreams[iface] == null) {
+                        val downstream = Downstream(this@TetheringService, iface)
+                        check(downstreams.put(iface, downstream) == null)
+                        if (!downstream.start()) {
                             dismissIfApplicable()
-                            stop()
+                            downstreams.remove(iface, downstream)
+                            downstream.stop()
                         }
                     }
                 }
@@ -139,13 +142,13 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
                     intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
                 if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
                     val downstream = downstreams[iface]
-                    if (downstream == null) Downstream(this@TetheringService, iface, true).apply {
-                        if (!start(true)) {
+                    if (downstream == null) {
+                        val monitored = Downstream(this@TetheringService, iface, true)
+                        check(downstreams.put(iface, monitored) == null)
+                        if (!monitored.start(true)) {
                             dismissIfApplicable()
-                            stop()
+                            monitored.stop()
                         }
-                        check(downstreams.put(iface, this) == null)
-                        downstreams[iface] = this
                     } else downstream.monitor = true
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
@@ -158,7 +161,9 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
     override fun onDestroy() {
         launch {
             unregisterReceiver()
-            downstreams.values.forEach { it.stop() }    // force clean to prevent leakage
+            val downstreams = downstreams.values.toList()
+            this@TetheringService.downstreams.clear()
+            downstreams.forEach { it.stop() }    // force clean to prevent leakage
             cancel()
         }
         super.onDestroy()

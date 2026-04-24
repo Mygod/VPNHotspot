@@ -145,17 +145,24 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         if (!waitingForIface || binder.iface != "") return
         interfaces.singleOrNull()?.let {
             waitingForIface = false
-            launch { onIfaceAvailable(it) }
+            onIfaceAvailable(it)
         }
     }
 
-    private suspend fun onIfaceAvailable(iface: String) {
+    private fun onIfaceAvailable(iface: String) {
         TetherStates.unregisterCallback(this)
         binder.iface = iface
         BootReceiver.add<LocalOnlyHotspotService>(Starter())
         check(routingManager == null)
-        routingManager = RoutingManager.LocalOnly(this, iface).apply { start() }
-        IpNeighbourMonitor.registerCallback(this)
+        val manager = RoutingManager.LocalOnly(this, iface)
+        routingManager = manager
+        launch {
+            if (routingManager !== manager || binder.iface != iface) return@launch
+            manager.start()
+            if (routingManager === manager && binder.iface == iface) {
+                IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
+            }
+        }
     }
     private fun onFrameworkStopped() {
         reservation = null
@@ -295,8 +302,9 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         timeoutMonitor?.close()
         timeoutMonitor = null
         launch {
-            routingManager?.stop()
+            val manager = routingManager
             routingManager = null
+            manager?.stop()
             unregisterStateReceiver()
             if (exit) cancel()
         }

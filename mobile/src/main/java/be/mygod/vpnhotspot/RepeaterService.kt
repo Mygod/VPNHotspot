@@ -569,7 +569,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             persistNextGroup = false
         }
         check(routingManager == null)
-        routingManager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!).apply { start() }
+        val manager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!)
+        routingManager = manager
+        manager.start()
+        if (routingManager !== manager) return
         status = Status.ACTIVE
         showNotification(group)
         BootReceiver.add<RepeaterService>(Starter())
@@ -612,8 +615,9 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         }
         timeoutMonitor?.close()
         timeoutMonitor = null
-        routingManager?.stop()
+        val manager = routingManager
         routingManager = null
+        manager?.stop()
         status = Status.IDLE
         ServiceNotification.stopForeground(this)
         stopSelf()
