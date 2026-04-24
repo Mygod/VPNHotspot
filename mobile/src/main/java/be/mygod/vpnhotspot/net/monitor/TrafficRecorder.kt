@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -144,8 +145,9 @@ object TrafficRecorder {
     }
     suspend fun update(timeout: Boolean = false) {
         updateMutex.withLock {
+            val currentJob = currentCoroutineContext()[Job]
             val timestamp = synchronized(this) {
-                unscheduleUpdateLocked()
+                if (updateJob === currentJob) updateJob = null else unscheduleUpdateLocked()
                 if (records.isEmpty()) return@withLock
                 val timestamp = System.currentTimeMillis()
                 if (!timeout && timestamp - lastUpdate <= 100) return@withLock
