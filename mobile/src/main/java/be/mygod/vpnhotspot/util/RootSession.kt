@@ -3,77 +3,121 @@ package be.mygod.vpnhotspot.util
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.util.*
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import java.util.LinkedList
 
-class RootSession : AutoCloseable {
+class RootSession private constructor(private var server: RootServer?) {
     companion object {
-        private val monitor = ReentrantLock()
+        private val monitor = Mutex()
 
-        fun <T> use(operation: (RootSession) -> T) = monitor.withLock { operation(RootSession()) }
-        fun beginTransaction(): Transaction {
+        suspend fun <T> use(operation: suspend (RootSession) -> T): T {
             monitor.lock()
+            val session = try {
+                RootSession(RootManager.acquire())
+            } catch (e: Throwable) {
+                monitor.unlock()
+                throw e
+            }
             try {
-                return RootSession().Transaction()
-            } catch (e: Exception) {
+                return operation(session)
+            } finally {
+                withContext(NonCancellable) {
+                    try {
+                        session.close()
+                    } finally {
+                        monitor.unlock()
+                    }
+                }
+            }
+        }
+        suspend fun beginTransaction(): Transaction {
+            monitor.lock()
+            return try {
+                RootSession(RootManager.acquire()).Transaction()
+            } catch (e: Throwable) {
                 monitor.unlock()
                 throw e
             }
         }
     }
 
-    private var server: RootServer? = runBlocking { RootManager.acquire() }
-    override fun close() {
-        server?.let { runBlocking { RootManager.release(it) } }
+    private suspend fun close() {
+        server?.let { RootManager.release(it) }
         server = null
     }
 
     /**
      * Don't care about the results, but still sync.
      */
-    fun submit(command: String) = execQuiet(command).message(listOf(command))?.let { Timber.v(it) }
+    suspend fun submit(command: String) = execQuiet(command).message(listOf(command))?.let { Timber.v(it) }
 
-    fun execQuiet(command: String, redirect: Boolean = false) = runBlocking {
+    suspend fun execQuiet(command: String, redirect: Boolean = false) =
         server!!.execute(RoutingCommands.Process(listOf("sh", "-c", command), redirect))
-    }
-    fun exec(command: String) = execQuiet(command).check(listOf(command))
+    suspend fun exec(command: String) = execQuiet(command).check(listOf(command))
 
     /**
      * This transaction is different from what you may have in mind since you can revert it after committing it.
      */
     inner class Transaction {
         private val revertCommands = LinkedList<String>()
+        private var locked = true
 
-        fun exec(command: String, revert: String? = null) = execQuiet(command, revert).check(listOf(command))
-        fun execQuiet(command: String, revert: String? = null): RoutingCommands.ProcessResult {
+        suspend fun exec(command: String, revert: String? = null) = execQuiet(command, revert).check(listOf(command))
+        suspend fun execQuiet(command: String, revert: String? = null): RoutingCommands.ProcessResult {
             if (revert != null) revertCommands.addFirst(revert) // add first just in case exec fails
             return this@RootSession.execQuiet(command)
         }
 
-        fun commit() = monitor.unlock()
-
-        fun revert() {
-            var locked = monitor.isHeldByCurrentThread
-            try {
-                if (revertCommands.isEmpty()) return
-                val shell = if (locked) this@RootSession else {
-                    monitor.lock()
-                    locked = true
-                    RootSession()
+        suspend fun commit() {
+            check(locked)
+            locked = false
+            withContext(NonCancellable) {
+                try {
+                    this@RootSession.close()
+                } finally {
+                    monitor.unlock()
                 }
-                revertCommands.forEach { shell.submit(it) }
+            }
+        }
+
+        suspend fun revert() = withContext(NonCancellable) {
+            val wasLocked = locked
+            var shell: RootSession? = null
+            var lockAcquired = false
+            try {
+                if (revertCommands.isEmpty()) return@withContext
+                val currentShell = if (wasLocked) this@RootSession else {
+                    monitor.lock()
+                    lockAcquired = true
+                    RootSession(RootManager.acquire())
+                }
+                shell = currentShell
+                revertCommands.forEach { currentShell.submit(it) }
             } catch (e: Exception) {            // if revert fails, it should fail silently
                 Timber.d(e)
             } finally {
                 revertCommands.clear()
-                if (locked) monitor.unlock()    // commit
+                if (wasLocked) {
+                    locked = false
+                    try {
+                        this@RootSession.close()
+                    } finally {
+                        monitor.unlock()        // commit
+                    }
+                } else if (lockAcquired) {
+                    try {
+                        shell?.close()
+                    } finally {
+                        monitor.unlock()        // commit
+                    }
+                }
             }
         }
 
-        fun safeguard(work: Transaction.() -> Unit) = try {
+        suspend fun safeguard(work: suspend Transaction.() -> Unit) = try {
             work()
             commit()
             this

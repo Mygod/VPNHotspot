@@ -61,11 +61,14 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Service for handling Wi-Fi P2P. `supported` must be checked before this service is started otherwise it would crash.
@@ -170,7 +173,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     }
 
     enum class Status {
-        IDLE, STARTING, ACTIVE, DESTROYED
+        IDLE, STARTING, ACTIVE, STOPPING, DESTROYED
     }
 
     inner class Binder : android.os.Binder() {
@@ -284,7 +287,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         when (intent.action) {
             WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
                 if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
-                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) launch { cleanLocked() }    // ignore P2P enabled
+                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean()    // ignore P2P enabled
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
@@ -303,9 +306,11 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     private val dispatcher = Dispatchers.Default.limitedParallelism(1, "RepeaterService")
     override val coroutineContext = dispatcher + Job()
+    private val cleanupMutex = Mutex()
     private var routingManager: RoutingManager? = null
     private var persistNextGroup = false
     private val deinitPending = AtomicBoolean(true)
+    private val lifecycleGeneration = AtomicInteger()
 
     var status = Status.IDLE
         private set(value) {
@@ -451,6 +456,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         BootReceiver.startIfEnabled()
         if (status != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
+        lifecycleGeneration.incrementAndGet()
         status = Status.STARTING
         // bump self to foreground location service (API 29+) to use location later, also to avoid getting killed
         showNotification()
@@ -543,6 +549,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo?, group: WifiP2pGroup?) = launch {
         Timber.d("P2P connection changed: $info\n$group")
+        if (status != Status.STARTING && status != Status.ACTIVE) return@launch
         when {
             info?.groupFormed != true || !info.isGroupOwner || group?.isGroupOwner != true -> {
                 if (routingManager != null) cleanLocked()
@@ -558,7 +565,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     /**
      * startService Step 3
      */
-    private fun doStartLocked(group: WifiP2pGroup) {
+    private suspend fun doStartLocked(group: WifiP2pGroup) {
         if (isAutoShutdownEnabled) timeoutMonitor = TetherTimeoutMonitor(shutdownTimeoutMillis, coroutineContext) {
             binder.shutdown()
         }
@@ -569,7 +576,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             persistNextGroup = false
         }
         check(routingManager == null)
-        routingManager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!).apply { start() }
+        val manager = RoutingManager.LocalOnly(this@RepeaterService, group.`interface`!!)
+        routingManager = manager
+        manager.start()
+        if (routingManager !== manager) return
         status = Status.ACTIVE
         showNotification(group)
         BootReceiver.add<RepeaterService>(Starter())
@@ -583,7 +593,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                 } else it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
             }
         }.show()
-        if (group != null) removeGroup() else launch { cleanLocked() }
+        if (group != null) removeGroup() else clean()
     }
 
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
@@ -592,7 +602,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private fun removeGroup() {
         p2pManager.removeGroup(channel ?: return, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {
-                launch { cleanLocked() }
+                clean()
             }
             override fun onFailure(reason: Int) {
                 if (reason != WifiP2pManager.BUSY) {
@@ -603,20 +613,30 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             }
         })
     }
-    private fun cleanLocked(shouldDisable: Boolean = true) {
-        if (shouldDisable) BootReceiver.delete<RepeaterService>()
-        if (receiverRegistered) {
-            ensureReceiverUnregistered(receiver)
-            p2pPoller?.cancel()
-            receiverRegistered = false
+    private fun clean(shouldDisable: Boolean = true) {
+        val generation = lifecycleGeneration.get()
+        launch { cleanLocked(shouldDisable, generation) }
+    }
+    private suspend fun cleanLocked(shouldDisable: Boolean = true, generation: Int = lifecycleGeneration.get()) {
+        cleanupMutex.withLock {
+            if (status != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
+            if (status != Status.DESTROYED) status = Status.STOPPING
+            if (shouldDisable) BootReceiver.delete<RepeaterService>()
+            if (receiverRegistered) {
+                ensureReceiverUnregistered(receiver)
+                p2pPoller?.cancel()
+                receiverRegistered = false
+            }
+            timeoutMonitor?.close()
+            timeoutMonitor = null
+            val manager = routingManager
+            routingManager = null
+            manager?.stop()
+            if (status != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
+            if (status != Status.DESTROYED) status = Status.IDLE
+            ServiceNotification.stopForeground(this)
+            stopSelf()
         }
-        timeoutMonitor?.close()
-        timeoutMonitor = null
-        routingManager?.stop()
-        routingManager = null
-        status = Status.IDLE
-        ServiceNotification.stopForeground(this)
-        stopSelf()
     }
 
     override fun onDestroy() {

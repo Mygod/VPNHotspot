@@ -73,7 +73,7 @@ class RepeaterTileService : KillableTileService() {
                     if (size > 0) subtitle(resources.getQuantityString(
                             R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size))
                 }
-                else -> {   // STARTING or DESTROYED, which should never occur
+                else -> {   // STARTING, STOPPING, or DESTROYED, which should never occur
                     state = Tile.STATE_UNAVAILABLE
                     label = getText(R.string.title_repeater)
                 }
