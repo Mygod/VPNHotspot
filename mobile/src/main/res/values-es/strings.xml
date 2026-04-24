@@ -138,8 +138,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_temp_hotspot_use_system_summary">Entrará en conflicto con otras aplicaciones que solo usan punto de acceso local</string>
     <string name="settings_service_wifi_lock">Mantener vivo el Wi\u2011Fi</string>
     <string name="settings_service_wifi_lock_none">Sistema por defecto</string>
-    <string name="settings_service_wifi_lock_full">Activado</string>
-    <string name="settings_service_wifi_lock_high_perf">Modo de alto rendimiento</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desactivar ahorro de energía</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baja latencia</string>
     <string name="settings_service_ip_monitor">Modo de monitorización del estado de la red</string>

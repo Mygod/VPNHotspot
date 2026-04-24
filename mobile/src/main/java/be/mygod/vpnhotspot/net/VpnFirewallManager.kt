@@ -38,7 +38,6 @@ object VpnFirewallManager {
                 "ro.product.first_api_level", fallback) as Long >= 28
         }
         when (Build.VERSION.SDK_INT) {
-            28 -> false
             // https://android.googlesource.com/platform/system/bpf/+/android-10.0.0_r1/libbpf_android/BpfUtils.cpp#263
             29 -> firstApiIsHigh(29L) && Os.uname().release.split('.', limit = 3).let { version ->
                 val major = version[0].toInt()
@@ -68,13 +67,11 @@ object VpnFirewallManager {
      */
     private val firewallMatcher by lazy { "^\\s*${Process.myUid()}\\D* IIF_MATCH ".toRegex(RegexOption.MULTILINE) }
 
-    @RequiresApi(29)
     private suspend fun removeUidInterfaceRules(uid: Int) = RootManager.use {
         if (Build.VERSION.SDK_INT >= 33) it.execute(JniInit())
         it.execute(RemoveUidInterfaceRuleCommand(uid))
     }.value
 
-    @RequiresApi(29)
     private fun excludeFromFirewall(uid: Int) {
         if (!runBlocking { removeUidInterfaceRules(uid) }) {
             throw Exception("RemoveUidInterfaceRuleCommand failed to update")

@@ -1,7 +1,11 @@
 package be.mygod.vpnhotspot.net.dns
 
+import android.net.DnsResolver
+import android.net.Network
+import android.os.CancellationSignal
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import io.ktor.network.selector.SelectorManager
 import io.ktor.network.sockets.BoundDatagramSocket
 import io.ktor.network.sockets.Datagram
@@ -29,14 +33,19 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.newSingleThreadContext
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.io.readByteArray
+import org.xbill.DNS.Flags
 import org.xbill.DNS.Message
 import org.xbill.DNS.Rcode
+import org.xbill.DNS.Section
 import timber.log.Timber
 import java.io.IOException
 import java.nio.channels.ClosedChannelException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Downstream user should make sure to also register for at least one UpstreamMonitors, which is also used by this forwarder.
@@ -160,9 +169,25 @@ class DnsForwarder : CoroutineScope {
         }
     }
 
+    private fun prepareDnsResponse(request: Message) = Message(request.header.id).apply {
+        header.setFlag(Flags.QR.toInt())    // this is a response
+        header.setFlag(Flags.RA.toInt())    // recursion available
+        if (request.header.getFlag(Flags.RD.toInt())) header.setFlag(Flags.RD.toInt())
+        request.question?.also { addRecord(it, Section.QUESTION) }
+    }
+    private suspend fun resolveRaw(network: Network, query: ByteArray) = suspendCancellableCoroutine { cont ->
+        val signal = CancellationSignal()
+        cont.invokeOnCancellation { signal.cancel() }
+        DnsResolver.getInstance().rawQuery(network, query, DnsResolver.FLAG_NO_RETRY, InPlaceExecutor, signal,
+            object : DnsResolver.Callback<ByteArray> {
+                override fun onAnswer(answer: ByteArray, rcode: Int) = cont.resume(answer)
+                override fun onError(error: DnsResolver.DnsException) =
+                    cont.resumeWithException(IOException(error))
+            })
+    }
     private suspend fun resolve(query: ByteArray, source: () -> String) = try {
-        DnsResolverCompat.resolveRaw(UpstreamMonitor.currentNetwork ?: FallbackUpstreamMonitor.currentNetwork ?:
-            throw IOException("no upstream available"), query)
+        resolveRaw(UpstreamMonitor.currentNetwork ?: FallbackUpstreamMonitor.currentNetwork ?:
+        throw IOException("no upstream available"), query)
     } catch (e: Exception) {
         when (e) {
             is CancellationException -> { }
@@ -170,7 +195,7 @@ class DnsForwarder : CoroutineScope {
             else -> Timber.w(e, source())
         }
         try {
-            DnsResolverCompat.prepareDnsResponse(Message(query)).apply {
+            prepareDnsResponse(Message(query)).apply {
                 header.rcode = if (e is UnsupportedOperationException) Rcode.NOTIMP else Rcode.SERVFAIL
             }.toWire()
         } catch (e: IOException) {

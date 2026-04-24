@@ -313,7 +313,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
-        if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
+        if (arg.p2pMode) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomizationWrapper.isGone = true
         else dialogView.macRandomization.onItemSelectedListener = this@WifiApDialogFragment
         if (arg.p2pMode || Build.VERSION.SDK_INT < 31) {

@@ -96,8 +96,6 @@
     <string name="settings_service_ipv6_mode">Modalita IPv6</string>
     <string name="settings_service_wifi_lock">Tieni il Wi\u2011Fi attivo</string>
     <string name="settings_service_wifi_lock_none">Default di sistema</string>
-    <string name="settings_service_wifi_lock_full">Attivo</string>
-    <string name="settings_service_wifi_lock_high_perf">Modalità prestazioni elevate</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disabilita il risparmio batteria</string>
     <string name="settings_service_wifi_lock_low_latency">Modalità latenza bassa</string>
     <string name="settings_service_ip_monitor">Modalità di monitoraggio dello stato della rete</string>

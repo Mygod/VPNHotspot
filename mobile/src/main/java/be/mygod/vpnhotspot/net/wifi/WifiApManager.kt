@@ -180,7 +180,7 @@ object WifiApManager {
     }
 
     /**
-     * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29-.
+     * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29.
      */
     @Deprecated("Use configuration instead", ReplaceWith("configuration"))
     @Suppress("DEPRECATION")

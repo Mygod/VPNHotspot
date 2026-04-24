@@ -13,7 +13,6 @@ import java.lang.reflect.InvocationTargetException
  * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/NetdNativeService.cpp#1138
  */
 @Parcelize
-@RequiresApi(29)
 data class RemoveUidInterfaceRuleCommand(private val uid: Int) : RootCommand<ParcelableBoolean> {
     /**
      * Netd is used before Android 13: https://android.googlesource.com/platform/system/netd/+/android-13.0.0_r1/server/NetdNativeService.cpp#1142

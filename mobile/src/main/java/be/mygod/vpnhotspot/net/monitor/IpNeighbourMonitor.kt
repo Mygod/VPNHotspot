@@ -20,7 +20,7 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
         /**
          * @param full Whether the invalid entries should also be parsed.
-         *  In this case it is more likely to trigger root request on API 29+.
+         *  In this case it is more likely to trigger a root request.
          *  However, even in light mode, caller should still filter out invalid entries in
          *  [Callback.onIpNeighbourAvailable] in case the full mode was requested by other callers.
          */

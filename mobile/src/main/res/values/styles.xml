@@ -1,7 +1,7 @@
 <resources>
 
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:navigationBarColor">@color/navigationBarColor</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightNavigationBar">@bool/is_day</item>
         <item name="actionBarStyle">@style/Widget.MaterialComponents.Light.ActionBar.Solid</item>
         <item name="colorPrimary">@color/colorPrimary</item>

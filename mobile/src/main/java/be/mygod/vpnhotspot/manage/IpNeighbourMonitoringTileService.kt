@@ -26,8 +26,8 @@ abstract class IpNeighbourMonitoringTileService : KillableTileService(), IpNeigh
                 .filter { it.ip is Inet4Address && it.state == IpNeighbour.State.VALID && filter(it.dev) }
                 .distinctBy { it.lladdr }
                 .size
-        if (size > 0) subtitle(resources.getQuantityString(
-                R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size))
+        if (size > 0) subtitle = resources.getQuantityString(
+                R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)
     }
 
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {

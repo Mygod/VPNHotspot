@@ -2,12 +2,10 @@ package be.mygod.vpnhotspot.net
 
 import android.os.Build
 import android.os.IBinder
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.PathClassLoader
 import java.io.File
 
-@RequiresApi(29)
 internal object Netd {
     private const val SERVICE_CONNECTIVITY_JAR = "/apex/com.android.tethering/javalib/service-connectivity.jar"
 

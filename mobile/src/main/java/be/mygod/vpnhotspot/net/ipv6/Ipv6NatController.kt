@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.ipv6
 import android.net.LocalSocket
 import android.net.LocalSocketAddress
 import android.os.Build
-import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.KillDaemon
 import be.mygod.vpnhotspot.root.RootManager
@@ -22,7 +21,6 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 
-@RequiresApi(29)
 object Ipv6NatController : CoroutineScope {
     private const val BINARY_NAME = "vpnhotspotd"
     private const val MAX_PACKET_SIZE = 65535

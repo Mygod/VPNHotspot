@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.util
 
-import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -204,15 +203,6 @@ fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
         appendLine()
     }
 }.trimEnd()
-
-private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
-    InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
-        isAccessible = true
-    }
-}
-fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
-    InetAddresses.parseNumericAddress(address)
-} else parseNumericAddress(null, address) as InetAddress
 
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")

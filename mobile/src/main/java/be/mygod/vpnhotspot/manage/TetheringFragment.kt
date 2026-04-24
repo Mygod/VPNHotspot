@@ -137,7 +137,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) = getItem(position).bindTo(holder)
     }
 
-    @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) app.startServiceWithLocation<RepeaterService>(requireContext()) else {
             Snackbar.make((activity as MainActivity).binding.fragmentHolder,

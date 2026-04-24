@@ -38,7 +38,6 @@ object RepeaterCommands {
     }
 
     @Parcelize
-    @RequiresApi(29)
     class RequestDeviceAddress : RootCommand<MacAddress?> {
         override suspend fun execute() = Services.p2p!!.run { requestDeviceAddress(obtainChannel()) }
     }

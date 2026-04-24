@@ -75,7 +75,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             }
 
         val title: CharSequence @Bindable get() {
-            if (Build.VERSION.SDK_INT >= 29) binder?.group?.frequency?.let {
+            binder?.group?.frequency?.let {
                 if (it != 0) return parent.getString(R.string.repeater_channel,
                         it, SoftApConfigurationCompat.frequencyToChannel(it))
             }
@@ -125,16 +125,14 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
             this@RepeaterManager.group = group
-            if (Build.VERSION.SDK_INT >= 29) notifyPropertyChanged(BR.title)
+            notifyPropertyChanged(BR.title)
             notifyPropertyChanged(BR.addresses)
         }
 
         fun toggle() {
             val binder = binder
             when (binder?.service?.status) {
-                RepeaterService.Status.IDLE -> if (Build.VERSION.SDK_INT < 29) parent.requireContext().let { context ->
-                    context.startForegroundService(Intent(context, RepeaterService::class.java))
-                } else parent.startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
+                RepeaterService.Status.IDLE -> parent.startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
                     Manifest.permission.NEARBY_WIFI_DEVICES
                 } else Manifest.permission.ACCESS_FINE_LOCATION)
                 RepeaterService.Status.ACTIVE -> binder.shutdown()

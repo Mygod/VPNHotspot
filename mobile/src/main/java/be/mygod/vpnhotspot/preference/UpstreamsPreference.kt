@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.preference
 
 import android.content.Context
 import android.graphics.Typeface
+import android.net.InetAddresses
 import android.net.LinkProperties
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
@@ -16,15 +17,14 @@ import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.format
-import be.mygod.vpnhotspot.util.parseNumericAddress
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(context, attrs),
         DefaultLifecycleObserver {
     companion object {
-        private val internetV4Address = parseNumericAddress("8.8.8.8")
-        private val internetV6Address = parseNumericAddress("2001:4860:4860::8888")
+        private val internetV4Address = InetAddresses.parseNumericAddress("8.8.8.8")
+        private val internetV6Address = InetAddresses.parseNumericAddress("2001:4860:4860::8888")
     }
 
     private open inner class Monitor : UpstreamMonitor.Callback {

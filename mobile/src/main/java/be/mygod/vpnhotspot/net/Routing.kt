@@ -162,7 +162,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         None,
         Simple,
         /**
-         * Netd does not support multiple tethering upstream below Android 9, which we heavily depend on.
+         * Netd does not support multiple tethering upstream on older Android releases, which we heavily depend on.
          *
          * Source: https://android.googlesource.com/platform/system/netd/+/3b47c793ff7ade843b1d85a9be8461c3b4dc693e
          */
@@ -255,7 +255,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var ipv6NatSession: Ipv6NatSession? = null
     private data class Ipv6Prefix(val subnet: String, val gateway: String, val prefixLength: Int)
 
-    @RequiresApi(29)
     private inner class Ipv6NatSession : AutoCloseable {
         private val prefix = generatePrefix()
         private val dnsBindAddress = if (useLocalnet()) "127.0.0.1" else hostAddress.address.hostAddress
@@ -516,11 +515,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     }
 
     fun ipv6Nat() {
-        if (Build.VERSION.SDK_INT < 29) {
-            SmartSnackbar.make(R.string.warn_ipv6_nat_fallback).show()
-            disableIpv6()
-            return
-        }
         try {
             ipv6NatSession = Ipv6NatSession().apply { prepare() }
         } catch (e: Exception) {

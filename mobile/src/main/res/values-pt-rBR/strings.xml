@@ -121,8 +121,6 @@
     <string name="settings_service_repeater_safe_mode_warning">Nomes curtos de rede podem exigir o desligamento do modo seguro.</string>
     <string name="settings_service_wifi_lock">Deixe o Wi\u2011Fi ativo</string>
     <string name="settings_service_wifi_lock_none">Padrão do sistema</string>
-    <string name="settings_service_wifi_lock_full">Ativo</string>
-    <string name="settings_service_wifi_lock_high_perf">Modo de alta performance</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desativar o modo de economia de energia</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baixa latência</string>
     <string name="settings_service_ip_monitor">Modo de monitoramento de rede</string>

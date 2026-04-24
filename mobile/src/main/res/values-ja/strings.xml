@@ -124,8 +124,6 @@
         他のアプリと競合します</string>
     <string name="settings_service_wifi_lock">Wi\u2011Fi 接続を維持</string>
     <string name="settings_service_wifi_lock_none">システムデフォルト</string>
-    <string name="settings_service_wifi_lock_full">ON</string>
-    <string name="settings_service_wifi_lock_high_perf">高パフォーマンスモード</string>
     <string name="settings_service_wifi_lock_high_perf_v29">パワーセーブを無効化する</string>
     <string name="settings_service_wifi_lock_low_latency">低遅延モード</string>
     <string name="settings_service_ip_monitor">ネットワークステータス監視モード</string>

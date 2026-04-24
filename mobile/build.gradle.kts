@@ -150,7 +150,7 @@ android {
     compileSdkMinor = 1
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 36
         versionCode = 1036
         versionName = "2.19.2"

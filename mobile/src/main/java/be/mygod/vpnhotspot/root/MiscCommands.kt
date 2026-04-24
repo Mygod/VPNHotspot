@@ -60,14 +60,12 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
                     |echo
                 """.trimMargin())
-                if (Build.VERSION.SDK_INT >= 29) {
-                    val dumpCommand = if (Build.VERSION.SDK_INT >= 33) {
-                        "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller"
-                    } else VpnFirewallManager.DUMP_COMMAND
-                    commands.appendLine("echo $dumpCommand\n$dumpCommand\necho")
-                    if (Build.VERSION.SDK_INT >= 31) commands.appendLine(
-                        "settings get global ${VpnFirewallManager.UIDS_ALLOWED_ON_RESTRICTED_NETWORKS}")
-                }
+                val dumpCommand = if (Build.VERSION.SDK_INT >= 33) {
+                    "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller"
+                } else VpnFirewallManager.DUMP_COMMAND
+                commands.appendLine("echo $dumpCommand\n$dumpCommand\necho")
+                if (Build.VERSION.SDK_INT >= 31) commands.appendLine(
+                    "settings get global ${VpnFirewallManager.UIDS_ALLOWED_ON_RESTRICTED_NETWORKS}")
                 commands.appendLine("""
                     |echo iptables -t filter
                     |iptables-save -t filter

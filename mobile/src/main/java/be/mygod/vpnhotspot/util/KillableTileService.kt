@@ -10,7 +10,6 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.IBinder
-import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.view.View
 import android.view.WindowManager
@@ -19,13 +18,6 @@ import java.lang.ref.WeakReference
 
 abstract class KillableTileService : TileService(), ServiceConnection {
     protected var tapPending = false
-
-    /**
-     * Compat helper for setSubtitle.
-     */
-    protected fun Tile.subtitle(value: CharSequence?) {
-        if (Build.VERSION.SDK_INT >= 29) subtitle = value
-    }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         if (tapPending) {
