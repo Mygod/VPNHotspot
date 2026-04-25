@@ -67,6 +67,17 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private val RULE_PRIORITY_UPSTREAM_FALLBACK = 20800 + rulePriorityShift
         private val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 20900 + rulePriorityShift
         /**
+         * Android fwmark uses the low bits for netId and platform routing metadata. Keep IPv6 NAT
+         * marks in the high-bit reserved area and always match through the mask.
+         *
+         * Sources:
+         * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+         * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
+         */
+        private const val IPV6_NAT_MARK_MASK = 0x18000000
+        private const val IPV6_NAT_INTERCEPT_MARK = 0x10000000
+        private const val IPV6_NAT_REPLY_MARK = 0x18000000
+        /**
          * Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
          * that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
          */
@@ -301,8 +312,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }.copyInto(ByteArray(16)).let { IpPrefix(InetAddress.getByAddress(it), 64) }
         private val gateway = InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
         private val dnsBindAddress = if (useLocalnet) "127.0.0.1" else hostAddress.address.hostAddress
-        private val interceptMark = 0x6000 + (downstream.hashCode() and 0x1fff)
-        private val replyMark = 0x7000 + (downstream.hashCode() and 0x1fff)
         private val mtu = NetworkInterface.getByName(downstream)?.mtu ?: 1500
         private var generationId = 0
         private val mirroredUpstreamTables = mutableMapOf<String, RootSession.Transaction?>()
@@ -388,7 +397,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 router = router,
                 gateway = checkNotNull(gateway.hostAddress),
                 prefixLength = prefix.prefixLength,
-                replyMark = replyMark,
+                replyMark = IPV6_NAT_REPLY_MARK,
                 dnsBindAddress = dnsBindAddress,
                 mtu = mtu,
                 deprecatedPrefixes = deprecatedPrefixes,
@@ -412,50 +421,41 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.iptablesInsert(
                 "PREROUTING -i $downstream -p udp -d ${hostAddress.address.hostAddress} --dport 53 -j DNAT --to-destination $dnsBindAddress:${ports.dnsUdp}",
                 "nat")
-            transaction.execQuiet("while $IP6TABLES -D INPUT -j vpnhotspot_v6_input; do done")
-            transaction.execQuiet("while $IP6TABLES -D FORWARD -j vpnhotspot_v6_forward; do done")
-            transaction.execQuiet("while $IP6TABLES -D OUTPUT -j vpnhotspot_v6_output; do done")
-            transaction.execQuiet("while $IP6TABLES -t mangle -D PREROUTING -j vpnhotspot_v6_tproxy; do done")
-            transaction.execQuiet("$IP6TABLES -F vpnhotspot_v6_input")
-            transaction.execQuiet("$IP6TABLES -F vpnhotspot_v6_forward")
-            transaction.execQuiet("$IP6TABLES -F vpnhotspot_v6_output")
-            transaction.execQuiet("$IP6TABLES -t mangle -F vpnhotspot_v6_tproxy")
-            transaction.execQuiet("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT; do done")
-            transaction.execQuiet("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT_REPLY; do done")
-            transaction.execQuiet("$IP -6 route flush table $IPV6_NAT_TABLE")
+            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_input")
+            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_forward")
+            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_output")
+            transaction.execQuiet("$IP6TABLES -t mangle -N vpnhotspot_v6_tproxy")
+            transaction.execQuiet("$IP6TABLES -C INPUT -j vpnhotspot_v6_input || $IP6TABLES -I INPUT -j vpnhotspot_v6_input")
+            transaction.execQuiet("$IP6TABLES -C FORWARD -j vpnhotspot_v6_forward || $IP6TABLES -I FORWARD -j vpnhotspot_v6_forward")
+            transaction.execQuiet("$IP6TABLES -C OUTPUT -j vpnhotspot_v6_output || $IP6TABLES -I OUTPUT -j vpnhotspot_v6_output")
+            transaction.execQuiet("$IP6TABLES -t mangle -C PREROUTING -j vpnhotspot_v6_tproxy || $IP6TABLES -t mangle -I PREROUTING -j vpnhotspot_v6_tproxy")
             try {
-                transaction.exec("$IP -6 route add local ::/0 dev lo table $IPV6_NAT_TABLE",
-                    "$IP -6 route del local ::/0 dev lo table $IPV6_NAT_TABLE")
+                transaction.exec("$IP -6 route add local ::/0 dev lo table $IPV6_NAT_TABLE")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
-            transaction.ip6Rule("lookup $IPV6_NAT_TABLE", RULE_PRIORITY_IPV6_NAT, "fwmark $interceptMark")
+            transaction.execQuiet("while $IP -6 rule del fwmark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK iif $downstream lookup $IPV6_NAT_TABLE priority $RULE_PRIORITY_IPV6_NAT; do done")
+            transaction.ip6Rule("lookup $IPV6_NAT_TABLE", RULE_PRIORITY_IPV6_NAT,
+                "fwmark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK")
             try {
+                transaction.execQuiet("while $IP -6 rule del to $prefix lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY; do done")
                 transaction.exec("$IP -6 rule add to $prefix lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY",
                     "$IP -6 rule del to $prefix lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
-            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_input")
-            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_forward")
-            transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_output")
-            transaction.execQuiet("$IP6TABLES -t mangle -N vpnhotspot_v6_tproxy")
-            transaction.ip6tablesInsert("INPUT -j vpnhotspot_v6_input")
-            transaction.ip6tablesInsert("FORWARD -j vpnhotspot_v6_forward")
-            transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
-            transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -p icmpv6 -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -m socket --transparent --nowildcard -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -j REJECT")
             transaction.ip6tablesAdd("vpnhotspot_v6_forward -i $downstream -j REJECT")
             transaction.ip6tablesAdd("vpnhotspot_v6_forward -o $downstream -j REJECT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $replyMark -j ACCEPT")
+            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $IPV6_NAT_REPLY_MARK/$IPV6_NAT_MARK_MASK -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -j REJECT")
             transaction.ip6tablesAdd(
-                "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ports.tcp} --tproxy-mark $interceptMark/$interceptMark",
+                "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ports.tcp} --tproxy-mark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK",
                 "mangle")
             transaction.ip6tablesAdd(
-                "vpnhotspot_v6_tproxy -i $downstream -p udp -j TPROXY --on-port ${ports.udp} --tproxy-mark $interceptMark/$interceptMark",
+                "vpnhotspot_v6_tproxy -i $downstream -p udp -j TPROXY --on-port ${ports.udp} --tproxy-mark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK",
                 "mangle")
         }
 

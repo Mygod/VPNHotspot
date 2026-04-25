@@ -407,6 +407,8 @@ on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 20
 gap between them.
 For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; IPv6 NAT
 uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
+For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; IPv6
+NAT uses masked high reserved bits `0x10000000/0x18000000` and `0x18000000/0x18000000`.
 
 Undocumented system binaries are all bundled and executable:
 
