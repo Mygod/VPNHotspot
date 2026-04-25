@@ -434,7 +434,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
-            transaction.execQuiet("while $IP -6 rule del fwmark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK iif $downstream lookup $IPV6_NAT_TABLE priority $RULE_PRIORITY_IPV6_NAT; do done")
             transaction.ip6Rule("lookup $IPV6_NAT_TABLE", RULE_PRIORITY_IPV6_NAT,
                 "fwmark $IPV6_NAT_INTERCEPT_MARK/$IPV6_NAT_MARK_MASK")
             try {
