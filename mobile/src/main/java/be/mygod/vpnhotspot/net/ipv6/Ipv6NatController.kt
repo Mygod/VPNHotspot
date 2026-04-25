@@ -2,9 +2,8 @@ package be.mygod.vpnhotspot.net.ipv6
 
 import android.net.LocalServerSocket
 import android.net.LocalSocket
-import android.os.Handler
-import android.os.Looper
 import android.os.MessageQueue
+import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.ErrnoException
 import android.system.Os
@@ -13,12 +12,14 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
+import be.mygod.vpnhotspot.util.Services
 import dalvik.system.BaseDexClassLoader
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.io.File
+import java.io.FileDescriptor
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -36,10 +37,12 @@ object Ipv6NatController {
     private var input: InputStream? = null
     private var output: OutputStream? = null
     private var connectionFile: File? = null
+    private var stdoutLogInput: ParcelFileDescriptor? = null
+    private var stderrLogInput: ParcelFileDescriptor? = null
+    private val stdoutLogLine = StringBuilder()
+    private val stderrLogLine = StringBuilder()
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
-    private val logPath by lazy { File(rootDir, "$BINARY_NAME.log") }
-    private val acceptHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /**
      * Android 10 bionic supports direct linker execution of uncompressed, page-aligned zip entries:
@@ -98,15 +101,39 @@ object Ipv6NatController {
         val connectionFile = File(rootDir, "$socketName.connection")
         check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
         this.connectionFile = connectionFile
+        var stdout: ParcelFileDescriptor? = null
+        var stderr: ParcelFileDescriptor? = null
         try {
+            val stdoutRead = ParcelFileDescriptor.createPipe().let {
+                stdout = it[1]
+                it[0].also { read -> stdoutLogInput = read }
+            }
+            val stderrRead = ParcelFileDescriptor.createPipe().let {
+                stderr = it[1]
+                it[0].also { read -> stderrLogInput = read }
+            }
+            readLog(stdoutRead.fileDescriptor, stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
+            readLog(stderrRead.fileDescriptor, stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
             LocalServerSocket(socketName).use { serverSocket ->
                 RootManager.use { server ->
-                    server.execute(RunDaemon(
-                        daemonCommand,
-                        socketName,
-                        connectionFile.absolutePath,
-                        logPath.absolutePath,
-                    ))
+                    try {
+                        server.execute(RunDaemon(
+                            daemonCommand,
+                            socketName,
+                            connectionFile.absolutePath,
+                            stdout!!,
+                            stderr!!,
+                        ))
+                    } finally {
+                        try {
+                            stdout?.close()
+                        } catch (_: IOException) { }
+                        try {
+                            stderr?.close()
+                        } catch (_: IOException) { }
+                        stdout = null
+                        stderr = null
+                    }
                 }
                 acceptLocked(serverSocket).also {
                     socket = it
@@ -115,6 +142,12 @@ object Ipv6NatController {
                 }
             }
         } catch (e: Exception) {
+            try {
+                stdout?.close()
+            } catch (_: IOException) { }
+            try {
+                stderr?.close()
+            } catch (_: IOException) { }
             closeConnectionLocked()
             throw e
         }
@@ -122,22 +155,26 @@ object Ipv6NatController {
 
     private fun newSocketName() = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
 
-    private suspend fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
+    private fun setNonblocking(descriptor: FileDescriptor) {
         try {
-            val flags = Os.fcntlInt(serverSocket.fileDescriptor, OsConstants.F_GETFL, 0)
-            Os.fcntlInt(serverSocket.fileDescriptor, OsConstants.F_SETFL, flags or OsConstants.O_NONBLOCK)
+            val flags = Os.fcntlInt(descriptor, OsConstants.F_GETFL, 0)
+            Os.fcntlInt(descriptor, OsConstants.F_SETFL, flags or OsConstants.O_NONBLOCK)
         } catch (e: ErrnoException) {
             throw e.rethrowAsIOException()
         }
+    }
+
+    private suspend fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
+        setNonblocking(serverSocket.fileDescriptor)
         return suspendCancellableCoroutine { continuation ->
             val completed = AtomicBoolean(false)
-            val queue = acceptHandler.looper.queue
+            val queue = Services.mainHandler.looper.queue
             val descriptor = serverSocket.fileDescriptor
             lateinit var timeout: Runnable
             lateinit var listener: MessageQueue.OnFileDescriptorEventListener
             fun finish(block: () -> Unit): Int {
                 if (completed.compareAndSet(false, true)) {
-                    acceptHandler.removeCallbacks(timeout)
+                    Services.mainHandler.removeCallbacks(timeout)
                     queue.removeOnFileDescriptorEventListener(descriptor)
                     block()
                 }
@@ -164,17 +201,17 @@ object Ipv6NatController {
                 }
             }
             continuation.invokeOnCancellation {
-                if (completed.compareAndSet(false, true)) acceptHandler.post {
-                    acceptHandler.removeCallbacks(timeout)
+                if (completed.compareAndSet(false, true)) Services.mainHandler.post {
+                    Services.mainHandler.removeCallbacks(timeout)
                     queue.removeOnFileDescriptorEventListener(descriptor)
                 }
             }
-            acceptHandler.post {
+            Services.mainHandler.post {
                 if (completed.get()) return@post
                 queue.addOnFileDescriptorEventListener(descriptor,
                     MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
                             MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR, listener)
-                acceptHandler.postDelayed(timeout, DaemonIpc.STARTUP_TIMEOUT_MILLIS)
+                Services.mainHandler.postDelayed(timeout, DaemonIpc.STARTUP_TIMEOUT_MILLIS)
             }
         }
     }
@@ -196,6 +233,56 @@ object Ipv6NatController {
 
     private fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
+    private fun readLog(descriptor: FileDescriptor, line: StringBuilder, log: (String) -> Unit) {
+        setNonblocking(descriptor)
+        val buffer = ByteArray(4096)
+        Services.mainHandler.looper.queue.addOnFileDescriptorEventListener(descriptor,
+            MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
+                    MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR) { _, events ->
+            if ((events and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
+                flushLog(line, log)
+                0
+            } else try {
+                while (true) {
+                    val count = Os.read(descriptor, buffer, 0, buffer.size)
+                    if (count == 0) {
+                        flushLog(line, log)
+                        break
+                    }
+                    val text = buffer.decodeToString(0, count)
+                    var start = 0
+                    while (true) {
+                        val end = text.indexOf('\n', start)
+                        if (end < 0) {
+                            line.append(text, start, text.length)
+                            break
+                        }
+                        line.append(text, start, end)
+                        flushLog(line, log)
+                        start = end + 1
+                    }
+                }
+                0
+            } catch (e: ErrnoException) {
+                if (e.errno == OsConstants.EAGAIN) {
+                    MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
+                            MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
+                } else {
+                    Timber.d(e)
+                    0
+                }
+            }
+        }
+    }
+
+    private fun flushLog(line: StringBuilder, log: (String) -> Unit) {
+        if (line.isNotEmpty()) {
+            if (line.last() == '\r') line.setLength(line.length - 1)
+            if (line.isNotEmpty()) log(line.toString())
+            line.clear()
+        }
+    }
+
     private fun closeConnectionLocked() {
         try {
             input?.close()
@@ -206,9 +293,25 @@ object Ipv6NatController {
         try {
             socket?.close()
         } catch (_: IOException) { }
+        stdoutLogInput?.fileDescriptor?.let {
+            Services.mainHandler.looper.queue.removeOnFileDescriptorEventListener(it)
+        }
+        stderrLogInput?.fileDescriptor?.let {
+            Services.mainHandler.looper.queue.removeOnFileDescriptorEventListener(it)
+        }
+        flushLog(stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
+        flushLog(stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
+        try {
+            stdoutLogInput?.close()
+        } catch (_: IOException) { }
+        try {
+            stderrLogInput?.close()
+        } catch (_: IOException) { }
         input = null
         output = null
         socket = null
+        stdoutLogInput = null
+        stderrLogInput = null
         connectionFile?.delete()
         connectionFile = null
     }
