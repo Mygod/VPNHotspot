@@ -52,19 +52,25 @@ import java.security.SecureRandom
 class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
     companion object {
         /**
-         * Since Android 5.0, RULE_PRIORITY_TETHERING = 18000.
-         * This also works for Wi-Fi direct where there's no rule at 18000.
+         * AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
+         * on API 29..30. Keep VPNHotspot rules inside that gap.
+         * This also works for Wi-Fi direct where there's no system tethering rule to override.
          *
-         * We override system tethering rules by adding our own rules at higher priority.
-         *
-         * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#65
+         * Sources:
+         * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#65
+         * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.h#51
          */
-        private const val RULE_PRIORITY_UPSTREAM = 17800
-        private const val RULE_PRIORITY_IPV6_NAT = 17750
-        private const val RULE_PRIORITY_IPV6_NAT_REPLY = 17760
-        private const val RULE_PRIORITY_UPSTREAM_FALLBACK = 17900
-        private const val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 17980
-        private const val IPV6_NAT_TABLE = 19999
+        private val rulePriorityShift = if (Build.VERSION.SDK_INT < 31) -3000 else 0
+        private val RULE_PRIORITY_IPV6_NAT = 20500 + rulePriorityShift
+        private val RULE_PRIORITY_IPV6_NAT_REPLY = 20600 + rulePriorityShift
+        private val RULE_PRIORITY_UPSTREAM = 20700 + rulePriorityShift
+        private val RULE_PRIORITY_UPSTREAM_FALLBACK = 20800 + rulePriorityShift
+        private val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 20900 + rulePriorityShift
+        /**
+         * Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
+         * that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
+         */
+        private const val IPV6_NAT_TABLE = 900
 
         private const val ROOT_DIR = "/system/bin/"
         const val IP = "${ROOT_DIR}ip"

@@ -403,7 +403,11 @@ Other:
   `onTetherStatesChanged`.
 * (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
 
-For `ip rule` priorities, `RULE_PRIORITY_SECURE_VPN` and `RULE_PRIORITY_TETHERING` is assumed to be 12000 (or higher) and 18000 respectively;
+For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
+on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
+gap between them. `RULE_PRIORITY_SECURE_VPN` is assumed to be 12000 or higher for DHCP workaround.
+For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; IPv6 NAT
+uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins;
 DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
 
 Undocumented system binaries are all bundled and executable:

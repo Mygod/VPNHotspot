@@ -13,13 +13,14 @@ import timber.log.Timber
 import java.io.IOException
 
 /**
- * Assuming RULE_PRIORITY_VPN_OUTPUT_TO_LOCAL = 11000.
- * Normally this is used to forward packets from remote to local, but it works anyways.
- * It just needs to be before RULE_PRIORITY_SECURE_VPN = 12000.
+ * Use priority 11000 so this runs before RULE_PRIORITY_SECURE_VPN, which is 12000 on API 29..30
+ * and 13000 in the latest AOSP checked below.
  * It would be great if we can gain better understanding into why this is only needed on some of the devices but not
  * others.
  *
- * Source: https://android.googlesource.com/platform/system/netd/+/b9baf26/server/RouteController.cpp#57
+ * Sources:
+ * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#59
+ * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.h#37
  */
 object DhcpWorkaround : SharedPreferences.OnSharedPreferenceChangeListener {
     private const val KEY_ENABLED = "service.dhcpWorkaround"
