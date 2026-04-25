@@ -58,7 +58,7 @@ abstract class GenerateGitJavaTask : DefaultTask() {
     }
 }
 
-abstract class BuildDaemonAssetsTask : DefaultTask() {
+abstract class BuildDaemonJniLibsTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDir: DirectoryProperty
@@ -107,7 +107,7 @@ abstract class BuildDaemonAssetsTask : DefaultTask() {
             }
             val binary = targetDir.resolve("$target/$profile/vpnhotspotd")
             check(binary.isFile) { "Missing daemon binary: ${binary.absolutePath}" }
-            outputDir.file("daemon/$abi/vpnhotspotd").get().asFile.apply {
+            outputDir.file("$abi/libvpnhotspotd.so").get().asFile.apply {
                 parentFile.mkdirs()
                 binary.copyTo(this, overwrite = true)
             }
@@ -190,15 +190,15 @@ androidComponents.onVariants { variant ->
         outputs.upToDateWhen { false }
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
-    val daemonTask = tasks.register<BuildDaemonAssetsTask>(
-        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonAssets") {
+    val daemonTask = tasks.register<BuildDaemonJniLibsTask>(
+        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonJniLibs") {
         sourceDir.set(layout.projectDirectory.dir("src/main/rust/vpnhotspotd"))
         cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
         hostTag.set(resolveNdkHostTag())
         ndkDir.set(resolveAndroidNdkDir(project))
-        outputDir.set(layout.buildDirectory.dir("generated/assets/daemon/${variant.name}"))
+        outputDir.set(layout.buildDirectory.dir("generated/jniLibs/daemon/${variant.name}"))
     }
-    variant.sources.assets?.addGeneratedSourceDirectory(daemonTask, BuildDaemonAssetsTask::outputDir)
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(daemonTask, BuildDaemonJniLibsTask::outputDir)
 }
 ksp {
     arg("room.expandProjection", "true")

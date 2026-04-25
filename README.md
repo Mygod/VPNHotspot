@@ -399,6 +399,8 @@ Other:
   and later tether-state updates from one `executor.execute { ... }` block in
   `onTetherStatesChanged`.
 * (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
+* `/system/bin/linker` and `/system/bin/linker64` can be invoked directly on an executable inside
+  a zip/APK using `path.zip!/program` when it is stored uncompressed and page-aligned.
 
 For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
@@ -413,6 +415,7 @@ Undocumented system binaries are all bundled and executable:
 * `/system/bin/ip` (`address link monitor neigh rule unreachable`);
 * `ndc` (`ipfwd nat network`);
 * `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
+* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`);
 * `sh`;
 * `su`.
 

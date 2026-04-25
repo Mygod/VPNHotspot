@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.net.ipv6
 
 import android.net.LocalServerSocket
 import android.net.LocalSocket
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.MessageQueue
@@ -14,6 +13,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
+import dalvik.system.BaseDexClassLoader
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -38,9 +38,19 @@ object Ipv6NatController {
     private var connectionFile: File? = null
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
-    private val daemonPath by lazy { File(rootDir, BINARY_NAME) }
     private val logPath by lazy { File(rootDir, "$BINARY_NAME.log") }
     private val acceptHandler by lazy { Handler(Looper.getMainLooper()) }
+
+    /**
+     * Android 10 bionic supports direct linker execution of uncompressed, page-aligned zip entries:
+     * https://android.googlesource.com/platform/bionic/+/android-10.0.0_r7/linker/linker_main.cpp#663
+     * Android 10 DexPathList returns zip native-library paths only for stored entries:
+     * https://android.googlesource.com/platform/libcore/+/android-10.0.0_r1/dalvik/src/main/java/dalvik/system/DexPathList.java#884
+     */
+    private val daemonCommand by lazy {
+        val path = (app.classLoader as BaseDexClassLoader).findLibrary(BINARY_NAME) ?: error("Daemon JNI missing")
+        listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
+    }
 
     internal suspend fun startSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
@@ -84,8 +94,6 @@ object Ipv6NatController {
 
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
-        daemonPath.delete()
-        extractBinaryLocked()
         val socketName = newSocketName()
         val connectionFile = File(rootDir, "$socketName.connection")
         check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
@@ -94,7 +102,7 @@ object Ipv6NatController {
             LocalServerSocket(socketName).use { serverSocket ->
                 RootManager.use { server ->
                     server.execute(RunDaemon(
-                        daemonPath.absolutePath,
+                        daemonCommand,
                         socketName,
                         connectionFile.absolutePath,
                         logPath.absolutePath,
@@ -169,21 +177,6 @@ object Ipv6NatController {
                 acceptHandler.postDelayed(timeout, DaemonIpc.STARTUP_TIMEOUT_MILLIS)
             }
         }
-    }
-
-    private fun extractBinaryLocked() {
-        val abi = Build.SUPPORTED_ABIS.firstOrNull {
-            try {
-                app.assets.open("daemon/$it/$BINARY_NAME").close()
-                true
-            } catch (_: IOException) {
-                false
-            }
-        } ?: error("No supported IPv6 NAT daemon asset found")
-        app.assets.open("daemon/$abi/$BINARY_NAME").use { input ->
-            daemonPath.outputStream().use { output -> input.copyTo(output) }
-        }
-        check(daemonPath.setExecutable(true, true)) { "Failed to chmod ${daemonPath.absolutePath}" }
     }
 
     private fun shutdownLocked() {

@@ -7,7 +7,7 @@ import java.io.File
 
 @Parcelize
 data class RunDaemon(
-    private val path: String,
+    private val command: List<String>,
     private val socketName: String,
     private val connectionFile: String,
     private val logPath: String,
@@ -16,7 +16,10 @@ data class RunDaemon(
         val devNull = File("/dev/null")
         val log = File(logPath)
         log.delete()
-        ProcessBuilder(path, "--socket-name", socketName, "--connection-file", connectionFile).fixPath(false)
+        ProcessBuilder(command + listOf(
+            "--socket-name", socketName,
+            "--connection-file", connectionFile,
+        )).fixPath(false)
             .redirectInput(ProcessBuilder.Redirect.from(devNull))
             .redirectOutput(ProcessBuilder.Redirect.appendTo(log))
             .redirectError(ProcessBuilder.Redirect.appendTo(log))
