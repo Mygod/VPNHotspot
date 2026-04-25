@@ -77,7 +77,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         const val IPTABLES = "iptables -w"
         const val IP6TABLES = "ip6tables -w"
 
-        private fun useLocalnet() = Os.uname().release.split('.', limit = 3).let { version ->
+        private val useLocalnet by lazy {
+            val version = Os.uname().release.split('.', limit = 3)
             val major = version[0].toInt()
             // https://github.com/torvalds/linux/commit/d0daebc3d622f95db181601cb0c4a0781f74f758
             major > 3 || major == 3 && version[1].toInt() >= 6
@@ -299,7 +300,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             it[0] = 0xfd.toByte()
         }.copyInto(ByteArray(16)).let { IpPrefix(InetAddress.getByAddress(it), 64) }
         private val gateway = InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
-        private val dnsBindAddress = if (useLocalnet()) "127.0.0.1" else hostAddress.address.hostAddress
+        private val dnsBindAddress = if (useLocalnet) "127.0.0.1" else hostAddress.address.hostAddress
         private val interceptMark = 0x6000 + (downstream.hashCode() and 0x1fff)
         private val replyMark = 0x7000 + (downstream.hashCode() and 0x1fff)
         private val mtu = NetworkInterface.getByName(downstream)?.mtu ?: 1500
@@ -635,7 +636,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     suspend fun commit() {
         transaction.ipRule("unreachable", RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM)
         if (ipv6NatSession == null) {
-            val useLocalnet = useLocalnet()
             val forwarder = DnsForwarder.registerClient(this, useLocalnet)
             val hostAddress = hostAddress.address.hostAddress
             val forwarderIp = if (useLocalnet) {
