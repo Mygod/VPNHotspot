@@ -134,8 +134,6 @@
     <string name="settings_service_upstream_auto">Detectar automaticamente VPN de sistema</string>
     <string name="settings_upstream_fallback">Interface upstream de fallback</string>
     <string name="settings_upstream_fallback_auto">Detectar automaticamente a rede padrão do sistema</string>
-    <string name="settings_service_dhcp_workaround">Ativar DHCP workaround</string>
-    <string name="settings_service_dhcp_workaround_summary">Use isso se o cliente não consegue obter endereço IP.</string>
     <string name="settings_service_clean">Limpar/re-aplicar regras de roteamento</string>
     <string name="settings_service_clean_summary">Atualize as configurações alteradas para os serviços ativos atualmente. Isso pode corrigir condições raras.</string>
     <string name="settings_system_tether_offload">Aceleração de Tethering do hardware</string>

@@ -151,8 +151,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_upstream_auto">Detección automática de VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaz de retorno de transmisión de subida</string>
     <string name="settings_upstream_fallback_auto">Detección automática de red predeterminada del sistema</string>
-    <string name="settings_service_dhcp_workaround">Activar solución alternativa de DHCP</string>
-    <string name="settings_service_dhcp_workaround_summary">Úsalo si los clientes no pueden obtener direcciones IP.</string>
     <string name="settings_service_clean">Limpiar/volver a aplicar reglas de enrutamiento</string>
     <string name="settings_service_clean_summary">Actualiza los ajustes modificados a los servicios activos actuales. También puede corregir condiciones de carrera poco frecuentes.</string>
     <string name="settings_system_tether_offload">Aceleración por hardware para conexión compartida</string>

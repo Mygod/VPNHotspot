@@ -107,8 +107,6 @@
     <string name="settings_service_upstream_auto">Individua automaticamente VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaccia fallback upstream</string>
     <string name="settings_upstream_fallback_auto">Individua automaticamente la rete default del sistema</string>
-    <string name="settings_service_dhcp_workaround">Abilita DHCP alternativo</string>
-    <string name="settings_service_dhcp_workaround_summary">Usalo se i client non riescono ad ottenere gli indirizzi IP.</string>
     <string name="settings_service_clean">Pulisci/riapplica regole di routing</string>
     <string name="settings_service_clean_summary">Aggiorna le impostazioni modificate ai servizi attivi. Può anche sistemare rare
         condizioni.</string>

@@ -23,7 +23,6 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.getSystemService
 import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
-import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.DeviceStorageApp
@@ -107,7 +106,6 @@ class App : Application() {
             }
         })
         ServiceNotification.updateNotificationChannels()
-        if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

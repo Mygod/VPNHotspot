@@ -150,8 +150,6 @@
     <string name="settings_service_upstream_auto">自動偵測系統 VPN</string>
     <string name="settings_upstream_fallback">後援上游介面</string>
     <string name="settings_upstream_fallback_auto">自動偵測系統預設網路</string>
-    <string name="settings_service_dhcp_workaround">啟用 DHCP 因應措施</string>
-    <string name="settings_service_dhcp_workaround_summary">若裝置無法取得 IP 位址，請嘗試啟用此選項。</string>
     <string name="settings_service_clean">清除/重新套用路由規則</string>
     <string name="settings_service_clean_summary">將變更套用至目前運作中的服務，也能修復偶發的競爭條件。</string>
     <string name="settings_system_tether_offload">網路共用硬體加速</string>

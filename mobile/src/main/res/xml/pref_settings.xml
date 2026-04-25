@@ -44,11 +44,6 @@
             app:icon="@drawable/ic_device_battery_charging_full"
             app:title="@string/settings_system_tether_offload"
             app:summary="@string/settings_system_tether_offload_summary"/>
-        <SwitchPreferenceCompat
-            app:key="service.dhcpWorkaround"
-            app:icon="@drawable/ic_action_build"
-            app:title="@string/settings_service_dhcp_workaround"
-            app:summary="@string/settings_service_dhcp_workaround_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_misc">

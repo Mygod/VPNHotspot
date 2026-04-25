@@ -92,9 +92,6 @@ Default settings are picked to suit general use cases and maximize compatibility
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
      but it might also decrease your battery life while tethering is enabled.
-* Enable DHCP workaround:
-    Only used if your device isn't able to get your clients IP addresses with VPN on.
-    This is a global setting, meaning it will only be applied once globally.
 
 ### Misc
 
@@ -405,10 +402,9 @@ Other:
 
 For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
-gap between them. `RULE_PRIORITY_SECURE_VPN` is assumed to be 12000 or higher for DHCP workaround.
+gap between them.
 For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; IPv6 NAT
-uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins;
-DHCP server like `dnsmasq` is assumed to run and send DHCP packets as root.
+uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 
 Undocumented system binaries are all bundled and executable:
 
