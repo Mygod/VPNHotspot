@@ -175,11 +175,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     enum class MasqueradeMode {
         None,
         Simple,
-        /**
-         * Netd does not support multiple tethering upstream on older Android releases, which we heavily depend on.
-         *
-         * Source: https://android.googlesource.com/platform/system/netd/+/3b47c793ff7ade843b1d85a9be8461c3b4dc693e
-         */
         Netd,
     }
 
@@ -297,10 +292,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
     private val emptyCallback = object : UpstreamMonitor.Callback { }
     private var ipv6NatSession: Ipv6NatSession? = null
-    private data class Ipv6Prefix(val subnet: String, val gateway: String, val prefixLength: Int)
 
     private inner class Ipv6NatSession {
-        private val prefix = generatePrefix()
+        private val prefix = ByteArray(8).also {
+            SecureRandom().nextBytes(it)
+            it[0] = 0xfd.toByte()
+        }.copyInto(ByteArray(16)).let { IpPrefix(InetAddress.getByAddress(it), 64) }
+        private val gateway = InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
         private val dnsBindAddress = if (useLocalnet()) "127.0.0.1" else hostAddress.address.hostAddress
         private val interceptMark = 0x6000 + (downstream.hashCode() and 0x1fff)
         private val replyMark = 0x7000 + (downstream.hashCode() and 0x1fff)
@@ -320,11 +318,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             setup: RootSession.Transaction? = null,
         ) {
             val current = currentUpstreamTables()
-            val subnet = "${prefix.subnet}/${prefix.prefixLength}"
+            val subnet = prefix.toString()
             val staleSubnets = buildSet {
                 for (route in config.deprecatedPrefixes) {
                     val address = InetAddress.getByName(route.address)
-                    add("${IpPrefix(address, route.prefixLength).address.hostAddress}/${route.prefixLength}")
+                    add(IpPrefix(address, route.prefixLength).toString())
                 }
             }
             if (setup == null) {
@@ -368,7 +366,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
         }
         private fun nextConfig(): Ipv6NatProtocol.SessionConfig {
-            val gateway = InetAddress.getByName(prefix.gateway)
             val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
             val router = interfaceAddresses.firstNotNullOfOrNull { address ->
                 val inet = address.address
@@ -388,7 +385,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 generationId = ++generationId,
                 downstream = downstream,
                 router = router,
-                gateway = prefix.gateway,
+                gateway = checkNotNull(gateway.hostAddress),
                 prefixLength = prefix.prefixLength,
                 replyMark = replyMark,
                 dnsBindAddress = dnsBindAddress,
@@ -403,8 +400,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val config = nextConfig()
             ports = Ipv6NatController.startSession(config)
             syncPrefixRoutes(config, transaction)
-            transaction.exec("$IP -6 addr add ${prefix.gateway}/${prefix.prefixLength} dev $downstream",
-                "$IP -6 addr del ${prefix.gateway}/${prefix.prefixLength} dev $downstream")
+            transaction.exec("$IP -6 addr add ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream",
+                "$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
             if (dnsBindAddress == "127.0.0.1") {
                 transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
             }
@@ -433,8 +430,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
             transaction.ip6Rule("lookup $IPV6_NAT_TABLE", RULE_PRIORITY_IPV6_NAT, "fwmark $interceptMark")
             try {
-                transaction.exec("$IP -6 rule add to ${prefix.subnet}/${prefix.prefixLength} lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY",
-                    "$IP -6 rule del to ${prefix.subnet}/${prefix.prefixLength} lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY")
+                transaction.exec("$IP -6 rule add to $prefix lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY",
+                    "$IP -6 rule del to $prefix lookup $downstream priority $RULE_PRIORITY_IPV6_NAT_REPLY")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
@@ -475,7 +472,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
 
         suspend fun close(setup: RootSession.Transaction? = null) {
-            val subnet = "${prefix.subnet}/${prefix.prefixLength}"
+            val subnet = prefix.toString()
             for ((table, routeTransaction) in mirroredUpstreamTables.toList()) {
                 if (routeTransaction == null) {
                     if (setup == null) {
@@ -489,19 +486,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             } catch (e: Exception) {
                 if (e !is CancellationException) Timber.w(e)
             }
-        }
-
-        private fun generatePrefix(): Ipv6Prefix {
-            val bytes = ByteArray(8)
-            SecureRandom().nextBytes(bytes)
-            bytes[0] = 0xfd.toByte()
-            val prefix = buildString {
-                for (index in bytes.indices step 2) {
-                    if (index > 0) append(':')
-                    append("%02x%02x".format(bytes[index].toInt() and 0xff, bytes[index + 1].toInt() and 0xff))
-                }
-            }
-            return Ipv6Prefix("$prefix::", "$prefix::1", 64)
         }
     }
 
