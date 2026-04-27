@@ -31,8 +31,8 @@ import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -70,8 +70,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             if (Build.VERSION.SDK_INT >= 30) rootCallbackJob = owner.lifecycleScope.launch {
                 try {
                     RootManager.use {
-                        handleClientsChanged(it.create(TetheringCommands.RegisterTetheringEventCallback(),
-                            owner.lifecycleScope))
+                        handleClientsChanged(it.flow(TetheringCommands.RegisterTetheringEventCallback()))
                     }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {
@@ -86,8 +85,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     }
 
     private suspend fun handleClientsChanged(
-        channel: ReceiveChannel<TetheringCommands.OnClientsChanged>,
-    ) = channel.consumeEach { event ->
+        flow: Flow<TetheringCommands.OnClientsChanged>,
+    ) = flow.collect { event ->
         tetheringClients = event.clients.associate { client ->
             getMacAddress(client) as MacAddress to TetheredClient(
                 TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {

@@ -11,24 +11,23 @@ import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.ParcelableString
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootCommandNoResult
-import be.mygod.librootkotlinx.isEBADF
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.isEBADF
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.onClosed
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -125,15 +124,18 @@ sealed class ProcessData : Parcelable {
 
 @Parcelize
 class ProcessListener(private val terminateRegex: Regex,
-                      private vararg val command: String) : RootCommandChannel<ProcessData> {
-    override fun create(scope: CoroutineScope) = scope.produce(Dispatchers.IO, capacity) {
+                      private vararg val command: String) : RootFlow<ProcessData> {
+    override fun flow() = channelFlow {
         val process = ProcessBuilder(*command).start()
         // we need to destroy process before waiting for the readers during cleanup, so we cannot use coroutineScope
-        val stdout = launch {
+        val stdout = launch(Dispatchers.IO) {
             try {
                 process.inputStream.bufferedReader().useLines { lines ->
                     for (line in lines) {
-                        trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
+                        trySend(ProcessData.StdoutLine(line)).onFailure {
+                            if (it != null) throw it
+                            return@useLines
+                        }
                         if (terminateRegex.containsMatchIn(line)) process.destroy()
                     }
                 }
@@ -141,21 +143,25 @@ class ProcessListener(private val terminateRegex: Regex,
                 if (!e.isEBADF) Timber.w(e)
             }
         }
-        val stderr = launch {
+        val stderr = launch(Dispatchers.IO) {
             try {
                 process.errorStream.bufferedReader().useLines { lines ->
-                    for (line in lines) trySend(ProcessData.StderrLine(line)).onClosed {
+                    for (line in lines) trySend(ProcessData.StderrLine(line)).onFailure {
+                        if (it != null) throw it
                         return@useLines
-                    }.onFailure { throw it!! }
+                    }
                 }
             } catch (_: InterruptedIOException) { } catch (e: IOException) {
                 if (!e.isEBADF) Timber.w(e)
             }
         }
-        val exit = launch {
+        val exit = launch(Dispatchers.IO) {
             trySend(ProcessData.Exit(runInterruptible {
                 process.waitFor()
-            })).onClosed { return@launch }.onFailure { throw it!! }
+            })).onFailure {
+                if (it != null) throw it
+                return@launch
+            }
         }
         try {
             joinAll(stdout, stderr, exit)
@@ -168,7 +174,7 @@ class ProcessListener(private val terminateRegex: Regex,
                 joinAll(stdout, stderr, exit)
             }
         }
-    }
+    }.buffer(Channel.UNLIMITED)
 }
 
 @Parcelize

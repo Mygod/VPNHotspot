@@ -5,7 +5,6 @@ import android.os.Build
 import android.os.Process
 import android.system.Os
 import androidx.annotation.RequiresApi
-import be.mygod.librootkotlinx.JniInit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.root.RootManager
@@ -67,7 +66,6 @@ object VpnFirewallManager {
     private val firewallMatcher by lazy { "^\\s*${Process.myUid()}\\D* IIF_MATCH ".toRegex(RegexOption.MULTILINE) }
 
     private suspend fun removeUidInterfaceRules(uid: Int) = RootManager.use {
-        if (Build.VERSION.SDK_INT >= 33) it.execute(JniInit())
         it.execute(RemoveUidInterfaceRuleCommand(uid))
     }.value
 

@@ -107,7 +107,7 @@ object RepeaterCommands {
                 if (target == channel) channel = null
             }
         }
-        return initialize(systemContext, Looper.getMainLooper(), uninitializer).also {
+        return initialize(Services.context, Looper.getMainLooper(), uninitializer).also {
             uninitializer.target = it
             channel = it    // cache the instance until invalidated
         }

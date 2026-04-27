@@ -31,6 +31,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -93,19 +96,29 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     }
     @RequiresApi(30)
     inner class Root(rootServer: RootServer, override val generation: Int) : Reservation {
-        private val channel = rootServer.create(WifiApCommands.StartLocalOnlyHotspot(), this@LocalOnlyHotspotService)
+        private val callbacks = rootServer.flow(WifiApCommands.StartLocalOnlyHotspot())
+        private var job: Job? = null
         override var configuration: SoftApConfigurationCompat? = null
             private set
-        override fun close() = channel.cancel()
+        override fun close() {
+            job?.cancel()
+        }
 
         suspend fun work() {
-            for (callback in channel) when (callback) {
-                is LocalOnlyHotspotCallbacks.OnStarted -> {
-                    configuration = callback.config.toCompat()
-                    onFrameworkStarted(this)
+            job = currentCoroutineContext().job
+            try {
+                callbacks.collect { callback ->
+                    when (callback) {
+                        is LocalOnlyHotspotCallbacks.OnStarted -> {
+                            configuration = callback.config.toCompat()
+                            onFrameworkStarted(this)
+                        }
+                        is LocalOnlyHotspotCallbacks.OnStopped -> onFrameworkStopped(generation)
+                        is LocalOnlyHotspotCallbacks.OnFailed -> onFrameworkFailed(callback.reason, generation)
+                    }
                 }
-                is LocalOnlyHotspotCallbacks.OnStopped -> onFrameworkStopped(generation)
-                is LocalOnlyHotspotCallbacks.OnFailed -> onFrameworkFailed(callback.reason, generation)
+            } finally {
+                job = null
             }
         }
     }

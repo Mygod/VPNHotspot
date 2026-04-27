@@ -14,8 +14,11 @@ import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
+import android.system.ErrnoException
+import android.system.OsConstants
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -28,10 +31,12 @@ import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
+import androidx.core.os.ParcelCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
+import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -42,6 +47,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.io.IOException
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -60,6 +66,9 @@ tailrec fun Throwable.getRootCause(): Throwable {
 }
 val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
 
+val IOException.isEBADF get() = (cause as? ErrnoException)?.errno == OsConstants.EBADF ||
+        message?.lowercase(Locale.ENGLISH) == "stream closed"
+
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
  * marvelously for everybody.
@@ -73,6 +82,19 @@ fun Long.toPluralInt(): Int {
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
 inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+fun Parcelable?.toByteArray(parcelableFlags: Int = 0) = useParcel { parcel ->
+    parcel.writeParcelable(this, parcelableFlags)
+    parcel.marshall()
+}
+
+fun <T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?, clazz: Class<T>) = useParcel { parcel ->
+    parcel.unmarshall(this, 0, size)
+    parcel.setDataPosition(0)
+    ParcelCompat.readParcelable(parcel, classLoader, clazz)
+}
+inline fun <reified T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?) =
+    toParcelable(classLoader, T::class.java)
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {

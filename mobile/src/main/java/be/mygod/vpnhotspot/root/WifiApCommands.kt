@@ -6,20 +6,19 @@ import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandChannel
+import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.ClosedSendChannelException
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.channels.consumeEach
-import kotlinx.coroutines.channels.onClosed
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -70,15 +69,13 @@ object WifiApCommands {
     }
 
     @Parcelize
-    class RegisterSoftApCallback : RootCommandChannel<SoftApCallbackParcel> {
-        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
-            val finish = CompletableDeferred<Unit>()
+    class RegisterSoftApCallback : RootFlow<SoftApCallbackParcel> {
+        override fun flow() = callbackFlow {
             val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
                 private fun push(parcel: SoftApCallbackParcel) {
-                    trySend(parcel).onClosed {
-                        finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
-                        return
-                    }.onFailure { throw it!! }
+                    trySend(parcel).onFailure {
+                        close(it ?: IllegalStateException("Flow buffer rejected Soft AP callback"))
+                    }
                 }
 
                 override fun onStateChanged(state: Int, failureReason: Int) =
@@ -99,20 +96,18 @@ object WifiApCommands {
                 override fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) =
                     push(SoftApCallbackParcel.OnClientsDisconnected(info, clients))
             }) {
-                scope.launch {
+                launch {
                     try {
                         it.run()
                     } catch (e: Throwable) {
-                        finish.completeExceptionally(e)
+                        close(e)
                     }
                 }
             }
-            try {
-                finish.await()
-            } finally {
+            awaitClose {
                 WifiApManager.unregisterSoftApCallback(key)
             }
-        }
+        }.buffer(Channel.UNLIMITED)
     }
 
     private data class AutoFiringCallbacks(
@@ -127,7 +122,7 @@ object WifiApCommands {
     private val callbacks = mutableSetOf<WifiApManager.SoftApCallbackCompat>()
     private val lastCallback = AutoFiringCallbacks()
     private var rootCallbackJob: Job? = null
-    private suspend fun handleChannel(channel: ReceiveChannel<SoftApCallbackParcel>) = channel.consumeEach { parcel ->
+    private suspend fun handleFlow(flow: Flow<SoftApCallbackParcel>) = flow.collect { parcel ->
         when (parcel) {
             is SoftApCallbackParcel.OnStateChanged -> synchronized(callbacks) { lastCallback.state = parcel }
             is SoftApCallbackParcel.OnNumClientsChanged -> synchronized(callbacks) { lastCallback.numClients = parcel }
@@ -147,7 +142,7 @@ object WifiApCommands {
         if (wasEmpty) {
             rootCallbackJob = GlobalScope.launch {
                 try {
-                    RootManager.use { server -> handleChannel(server.create(RegisterSoftApCallback(), this)) }
+                    RootManager.use { server -> handleFlow(server.flow(RegisterSoftApCallback())) }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {
                     Timber.w(e)
@@ -192,17 +187,16 @@ object WifiApCommands {
 
     @Parcelize
     @RequiresApi(30)
-    class StartLocalOnlyHotspot : RootCommandChannel<LocalOnlyHotspotCallbacks> {
-        override fun create(scope: CoroutineScope) = scope.produce(capacity = capacity) {
-            val finish = CompletableDeferred<Unit>()
+    class StartLocalOnlyHotspot : RootFlow<LocalOnlyHotspotCallbacks> {
+        override fun flow() = callbackFlow {
             var lohr: WifiManager.LocalOnlyHotspotReservation? = null
+            var completed = false
             WifiApManager.startLocalOnlyHotspot(WifiApManager.configuration, object :
                 WifiManager.LocalOnlyHotspotCallback() {
                 private fun push(parcel: LocalOnlyHotspotCallbacks) {
-                    trySend(parcel).onClosed {
-                        finish.completeExceptionally(it ?: ClosedSendChannelException("Channel was closed normally"))
-                        return
-                    }.onFailure { throw it!! }
+                    trySend(parcel).onFailure {
+                        close(it ?: IllegalStateException("Flow buffer rejected local-only hotspot callback"))
+                    }
                 }
                 override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
                     if (reservation == null) onFailed(-3) else {
@@ -213,29 +207,27 @@ object WifiApCommands {
                 }
                 override fun onStopped() {
                     push(LocalOnlyHotspotCallbacks.OnStopped())
-                    finish.complete(Unit)
+                    completed = true
+                    close()
                 }
                 override fun onFailed(reason: Int) {
                     push(LocalOnlyHotspotCallbacks.OnFailed(reason))
-                    finish.complete(Unit)
+                    completed = true
+                    close()
                 }
             }) {
-                scope.launch {
+                launch {
                     try {
                         it.run()
                     } catch (e: Throwable) {
-                        finish.completeExceptionally(e)
+                        close(e)
                     }
                 }
             }
-            try {
-                finish.await()
-            } catch (e: Exception) {
-                WifiApManager.cancelLocalOnlyHotspotRequest()
-                throw e
-            } finally {
+            awaitClose {
+                if (!completed) WifiApManager.cancelLocalOnlyHotspotRequest()
                 lohr?.close()
             }
-        }
+        }.buffer(Channel.UNLIMITED)
     }
 }
