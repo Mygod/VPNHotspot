@@ -5,12 +5,12 @@ import androidx.core.content.edit
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.io.isEBADF
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.root.ProcessData
 import be.mygod.vpnhotspot.root.ProcessListener
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
-import be.mygod.vpnhotspot.util.isEBADF
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers

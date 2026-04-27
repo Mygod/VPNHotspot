@@ -4,9 +4,9 @@ import java.io.EOFException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import kotlin.time.Duration.Companion.seconds
 
 internal object DaemonIpc {
-    const val STARTUP_TIMEOUT_MILLIS = 10_000L
     const val MAX_FRAME_SIZE = 65535
 
     fun readFrame(input: InputStream): ByteArray {

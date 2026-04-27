@@ -6,20 +6,34 @@ import android.os.MessageQueue
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.ErrnoException
-import android.system.Os
 import android.system.OsConstants
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.io.ParcelFileDescriptorReadChannel
+import be.mygod.vpnhotspot.io.drainLines
+import be.mygod.vpnhotspot.io.isNonblocking
+import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.BaseDexClassLoader
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readLineTo
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.File
-import java.io.FileDescriptor
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -27,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.seconds
 
 object Ipv6NatController {
     private const val BINARY_NAME = "vpnhotspotd"
@@ -37,10 +52,13 @@ object Ipv6NatController {
     private var input: InputStream? = null
     private var output: OutputStream? = null
     private var connectionFile: File? = null
-    private var stdoutLogInput: ParcelFileDescriptor? = null
-    private var stderrLogInput: ParcelFileDescriptor? = null
+    private var stdoutLogChannel: ParcelFileDescriptorReadChannel? = null
+    private var stderrLogChannel: ParcelFileDescriptorReadChannel? = null
     private val stdoutLogLine = StringBuilder()
     private val stderrLogLine = StringBuilder()
+    private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private var stdoutLogJob: Job? = null
+    private var stderrLogJob: Job? = null
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
 
@@ -97,23 +115,31 @@ object Ipv6NatController {
 
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
-        val socketName = newSocketName()
+        val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
         val connectionFile = File(rootDir, "$socketName.connection")
         check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
         this.connectionFile = connectionFile
         var stdout: ParcelFileDescriptor? = null
         var stderr: ParcelFileDescriptor? = null
+        var stdoutRead: ParcelFileDescriptor? = null
+        var stderrRead: ParcelFileDescriptor? = null
         try {
-            val stdoutRead = ParcelFileDescriptor.createPipe().let {
-                stdout = it[1]
-                it[0].also { read -> stdoutLogInput = read }
-            }
-            val stderrRead = ParcelFileDescriptor.createPipe().let {
-                stderr = it[1]
-                it[0].also { read -> stderrLogInput = read }
-            }
-            readLog(stdoutRead.fileDescriptor, stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
-            readLog(stderrRead.fileDescriptor, stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
+            val stdoutPipe = ParcelFileDescriptor.createPipe()
+            val stdoutReadEnd = stdoutPipe[0]
+            stdoutRead = stdoutReadEnd
+            stdout = stdoutPipe[1]
+            val stderrPipe = ParcelFileDescriptor.createPipe()
+            val stderrReadEnd = stderrPipe[0]
+            stderrRead = stderrReadEnd
+            stderr = stderrPipe[1]
+            val stdoutChannel = stdoutReadEnd.openReadChannel(Services.mainHandler.looper)
+            stdoutLogChannel = stdoutChannel
+            stdoutRead = null
+            val stderrChannel = stderrReadEnd.openReadChannel(Services.mainHandler.looper)
+            stderrLogChannel = stderrChannel
+            stderrRead = null
+            stdoutLogJob = readLog(stdoutChannel, stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
+            stderrLogJob = readLog(stderrChannel, stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
             LocalServerSocket(socketName).use { serverSocket ->
                 RootManager.use { server ->
                     try {
@@ -143,6 +169,12 @@ object Ipv6NatController {
             }
         } catch (e: Exception) {
             try {
+                stdoutRead?.close()
+            } catch (_: IOException) { }
+            try {
+                stderrRead?.close()
+            } catch (_: IOException) { }
+            try {
                 stdout?.close()
             } catch (_: IOException) { }
             try {
@@ -153,70 +185,55 @@ object Ipv6NatController {
         }
     }
 
-    private fun newSocketName() = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
-
-    private fun setNonblocking(descriptor: FileDescriptor) {
-        try {
-            val flags = Os.fcntlInt(descriptor, OsConstants.F_GETFL, 0)
-            Os.fcntlInt(descriptor, OsConstants.F_SETFL, flags or OsConstants.O_NONBLOCK)
-        } catch (e: ErrnoException) {
-            throw e.rethrowAsIOException()
-        }
-    }
-
     private suspend fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
-        setNonblocking(serverSocket.fileDescriptor)
-        return suspendCancellableCoroutine { continuation ->
-            val completed = AtomicBoolean(false)
-            val queue = Services.mainHandler.looper.queue
-            val descriptor = serverSocket.fileDescriptor
-            lateinit var timeout: Runnable
-            lateinit var listener: MessageQueue.OnFileDescriptorEventListener
-            fun finish(block: () -> Unit): Int {
-                if (completed.compareAndSet(false, true)) {
-                    Services.mainHandler.removeCallbacks(timeout)
-                    queue.removeOnFileDescriptorEventListener(descriptor)
-                    block()
-                }
-                return 0
-            }
-            timeout = Runnable {
-                finish { continuation.resumeWithException(IOException("Timed out waiting for $BINARY_NAME to connect")) }
-            }
-            listener = MessageQueue.OnFileDescriptorEventListener { _, events ->
-                if (completed.get()) {
-                    0
-                } else if ((events and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
-                    finish {
-                        continuation.resumeWithException(IOException("Unexpected $BINARY_NAME listener event $events"))
+        val descriptor = serverSocket.fileDescriptor
+        descriptor.isNonblocking = true
+        return withTimeoutOrNull(10.seconds) {
+            suspendCancellableCoroutine { continuation ->
+                val events = MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
+                        MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
+                val active = AtomicBoolean(true)
+                val messageQueue = Services.mainHandler.looper.queue
+                val listener = MessageQueue.OnFileDescriptorEventListener { _, receivedEvents ->
+                    if (!active.get() || !continuation.isActive) return@OnFileDescriptorEventListener 0
+                    if ((receivedEvents and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
+                        if (active.compareAndSet(true, false) && continuation.isActive) {
+                            continuation.resumeWithException(IOException("Unexpected $BINARY_NAME listener event " +
+                                    receivedEvents))
+                        }
+                        return@OnFileDescriptorEventListener 0
                     }
-                } else try {
-                    val accepted = serverSocket.accept()
-                    finish { continuation.resume(accepted) }
-                } catch (e: IOException) {
-                    if ((e.cause as? ErrnoException)?.errno == OsConstants.EAGAIN) {
-                        MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
-                                MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
-                    } else finish { continuation.resumeWithException(e) }
+                    try {
+                        val accepted = serverSocket.accept()
+                        if (active.compareAndSet(true, false) && continuation.isActive) {
+                            continuation.resume(accepted)
+                        } else {
+                            accepted.close()
+                        }
+                        0
+                    } catch (e: IOException) {
+                        if ((e.cause as? ErrnoException)?.errno == OsConstants.EAGAIN) {
+                            events
+                        } else {
+                            if (active.compareAndSet(true, false) && continuation.isActive) {
+                                continuation.resumeWithException(e)
+                            }
+                            0
+                        }
+                    }
+                }
+                messageQueue.addOnFileDescriptorEventListener(descriptor, events, listener)
+                continuation.invokeOnCancellation {
+                    if (active.compareAndSet(true, false)) messageQueue.removeOnFileDescriptorEventListener(descriptor)
+                }
+                if (!continuation.isActive && active.compareAndSet(true, false)) {
+                    messageQueue.removeOnFileDescriptorEventListener(descriptor)
                 }
             }
-            continuation.invokeOnCancellation {
-                if (completed.compareAndSet(false, true)) Services.mainHandler.post {
-                    Services.mainHandler.removeCallbacks(timeout)
-                    queue.removeOnFileDescriptorEventListener(descriptor)
-                }
-            }
-            Services.mainHandler.post {
-                if (completed.get()) return@post
-                queue.addOnFileDescriptorEventListener(descriptor,
-                    MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
-                            MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR, listener)
-                Services.mainHandler.postDelayed(timeout, DaemonIpc.STARTUP_TIMEOUT_MILLIS)
-            }
-        }
+        } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private fun shutdownLocked() {
+    private suspend fun shutdownLocked() {
         try {
             if (output != null) writePacketLocked(Ipv6NatProtocol.shutdown())
         } catch (e: Exception) {
@@ -233,45 +250,20 @@ object Ipv6NatController {
 
     private fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
-    private fun readLog(descriptor: FileDescriptor, line: StringBuilder, log: (String) -> Unit) {
-        setNonblocking(descriptor)
-        val buffer = ByteArray(4096)
-        Services.mainHandler.looper.queue.addOnFileDescriptorEventListener(descriptor,
-            MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
-                    MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR) { _, events ->
-            if ((events and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
-                flushLog(line, log)
-                0
-            } else try {
-                while (true) {
-                    val count = Os.read(descriptor, buffer, 0, buffer.size)
-                    if (count == 0) {
-                        flushLog(line, log)
-                        break
-                    }
-                    val text = buffer.decodeToString(0, count)
-                    var start = 0
-                    while (true) {
-                        val end = text.indexOf('\n', start)
-                        if (end < 0) {
-                            line.append(text, start, text.length)
-                            break
-                        }
-                        line.append(text, start, end)
-                        flushLog(line, log)
-                        start = end + 1
-                    }
-                }
-                0
-            } catch (e: ErrnoException) {
-                if (e.errno == OsConstants.EAGAIN) {
-                    MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
-                            MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
-                } else {
-                    Timber.d(e)
-                    0
-                }
+    private fun readLog(channel: ByteReadChannel, line: StringBuilder, log: (String) -> Unit) = logScope.launch {
+        var flushOnCompletion = true
+        try {
+            while (channel.readLineTo(line) >= 0) {
+                log(line.toString())
+                line.clear()
             }
+        } catch (e: CancellationException) {
+            flushOnCompletion = false
+            throw e
+        } catch (e: ErrnoException) {
+            if (e.errno != OsConstants.EBADF) Timber.w(e)
+        } finally {
+            if (flushOnCompletion) flushLog(line, log)
         }
     }
 
@@ -283,7 +275,7 @@ object Ipv6NatController {
         }
     }
 
-    private fun closeConnectionLocked() {
+    private suspend fun closeConnectionLocked() = withContext(NonCancellable) {
         try {
             input?.close()
         } catch (_: IOException) { }
@@ -293,25 +285,43 @@ object Ipv6NatController {
         try {
             socket?.close()
         } catch (_: IOException) { }
-        stdoutLogInput?.fileDescriptor?.let {
-            Services.mainHandler.looper.queue.removeOnFileDescriptorEventListener(it)
+        withContext(Dispatchers.Main.immediate) {
+            stdoutLogJob?.cancelAndJoin()
+            stderrLogJob?.cancelAndJoin()
+            stdoutLogJob = null
+            stderrLogJob = null
+            stdoutLogChannel?.let {
+                try {
+                    it.drain()
+                    it.drainLines(stdoutLogLine, flushPartial = true) { line ->
+                        Timber.tag(BINARY_NAME).i(line)
+                    }
+                } catch (e: ErrnoException) {
+                    if (e.errno != OsConstants.EBADF) Timber.w(e)
+                } finally {
+                    it.cancel(null)
+                }
+            }
+            stderrLogChannel?.let {
+                try {
+                    it.drain()
+                    it.drainLines(stderrLogLine, flushPartial = true) { line ->
+                        Timber.tag(BINARY_NAME).e(line)
+                    }
+                } catch (e: ErrnoException) {
+                    if (e.errno != OsConstants.EBADF) Timber.w(e)
+                } finally {
+                    it.cancel(null)
+                }
+            }
+            flushLog(stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
+            flushLog(stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
         }
-        stderrLogInput?.fileDescriptor?.let {
-            Services.mainHandler.looper.queue.removeOnFileDescriptorEventListener(it)
-        }
-        flushLog(stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
-        flushLog(stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
-        try {
-            stdoutLogInput?.close()
-        } catch (_: IOException) { }
-        try {
-            stderrLogInput?.close()
-        } catch (_: IOException) { }
         input = null
         output = null
         socket = null
-        stdoutLogInput = null
-        stderrLogInput = null
+        stdoutLogChannel = null
+        stderrLogChannel = null
         connectionFile?.delete()
         connectionFile = null
     }

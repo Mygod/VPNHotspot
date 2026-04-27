@@ -14,12 +14,12 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.io.isEBADF
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.isEBADF
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable

@@ -17,8 +17,6 @@ import android.os.Build
 import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
-import android.system.ErrnoException
-import android.system.OsConstants
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -47,7 +45,6 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
-import java.io.IOException
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -65,9 +62,6 @@ tailrec fun Throwable.getRootCause(): Throwable {
     return this
 }
 val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
-
-val IOException.isEBADF get() = (cause as? ErrnoException)?.errno == OsConstants.EBADF ||
-        message?.lowercase(Locale.ENGLISH) == "stream closed"
 
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
