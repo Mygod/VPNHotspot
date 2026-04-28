@@ -1,8 +1,9 @@
-package be.mygod.vpnhotspot.root
+package be.mygod.vpnhotspot.root.daemon
 
 import android.os.ParcelFileDescriptor
 import android.os.Parcelable
 import be.mygod.librootkotlinx.RootCommand
+import be.mygod.vpnhotspot.root.Jni
 import kotlinx.parcelize.Parcelize
 import java.io.File
 

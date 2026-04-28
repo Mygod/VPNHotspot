@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.root
+package be.mygod.vpnhotspot.root.daemon
 
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.writeByte

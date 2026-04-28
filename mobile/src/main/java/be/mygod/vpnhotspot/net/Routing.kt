@@ -7,8 +7,6 @@ import android.os.Process
 import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.ipv6.Ipv6NatController
-import be.mygod.vpnhotspot.net.ipv6.Ipv6NatProtocol
 import be.mygod.vpnhotspot.net.dns.DnsForwarder
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
@@ -18,6 +16,8 @@ import be.mygod.vpnhotspot.net.monitor.VpnMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
+import be.mygod.vpnhotspot.root.daemon.DaemonController
+import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
@@ -315,16 +315,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private val mtu = NetworkInterface.getByName(downstream)?.mtu ?: 1500
         private var generationId = 0
         private val mirroredUpstreamTables = mutableMapOf<String, RootSession.Transaction?>()
-        lateinit var ports: Ipv6NatProtocol.SessionPorts
+        lateinit var ports: DaemonProtocol.SessionPorts
 
-        private fun buildUpstream(network: android.net.Network?) = Ipv6NatProtocol.Upstream.from(network,
+        private fun buildUpstream(network: android.net.Network?) = DaemonProtocol.Upstream.from(network,
             network?.let(Services.connectivity::getLinkProperties))
         private fun currentUpstreamTables() = buildSet {
             buildUpstream(UpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
             buildUpstream(FallbackUpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
         }
         private suspend fun syncPrefixRoutes(
-            config: Ipv6NatProtocol.SessionConfig,
+            config: DaemonProtocol.SessionConfig,
             setup: RootSession.Transaction? = null,
         ) {
             val current = currentUpstreamTables()
@@ -375,7 +375,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 }
             }
         }
-        private fun nextConfig(): Ipv6NatProtocol.SessionConfig {
+        private fun nextConfig(): DaemonProtocol.SessionConfig {
             val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
             val router = interfaceAddresses.firstNotNullOfOrNull { address ->
                 val inet = address.address
@@ -387,10 +387,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (inet !is Inet6Address || inet.isLinkLocalAddress || inet.isLoopbackAddress ||
                         inet.isMulticastAddress || inet == gateway) null else {
                     val hostAddress = inet.hostAddress ?: return@mapNotNull null
-                    Ipv6NatProtocol.Route(hostAddress, address.networkPrefixLength.toInt())
+                    DaemonProtocol.Route(hostAddress, address.networkPrefixLength.toInt())
                 }
             }
-            return Ipv6NatProtocol.SessionConfig(
+            return DaemonProtocol.SessionConfig(
                 sessionId = downstream,
                 generationId = ++generationId,
                 downstream = downstream,
@@ -408,7 +408,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
         suspend fun prepare() {
             val config = nextConfig()
-            ports = Ipv6NatController.startSession(config)
+            ports = DaemonController.startSession(config)
             syncPrefixRoutes(config, transaction)
             transaction.exec("$IP -6 addr add ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream",
                 "$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
@@ -462,7 +462,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             try {
                 val config = nextConfig()
                 syncPrefixRoutes(config)
-                Ipv6NatController.replaceSession(config)
+                DaemonController.replaceSession(config)
             } catch (e: Exception) {
                 if (e !is CancellationException) {
                     Timber.w(e)
@@ -482,7 +482,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
             mirroredUpstreamTables.clear()
             try {
-                Ipv6NatController.removeSession(downstream)
+                DaemonController.removeSession(downstream)
             } catch (e: Exception) {
                 if (e !is CancellationException) Timber.w(e)
             }

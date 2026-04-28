@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net.ipv6
+package be.mygod.vpnhotspot.root.daemon
 
 import android.net.LinkProperties
 import android.net.Network
@@ -13,7 +13,7 @@ import java.io.IOException
 import java.net.Inet6Address
 import java.net.InetAddress
 
-internal object Ipv6NatProtocol {
+internal object DaemonProtocol {
     const val STATUS_OK = 0
     const val STATUS_ERROR = 1
 

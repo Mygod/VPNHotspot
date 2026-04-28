@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net.ipv6
+package be.mygod.vpnhotspot.root.daemon
 
 import android.net.LocalServerSocket
 import android.net.LocalSocket
@@ -13,9 +13,7 @@ import be.mygod.vpnhotspot.io.drainLines
 import be.mygod.vpnhotspot.io.isNonblocking
 import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.io.openWriteChannel
-import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
-import be.mygod.vpnhotspot.root.RunDaemon
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
@@ -42,7 +40,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
-object Ipv6NatController {
+object DaemonController {
     private const val BINARY_NAME = "vpnhotspotd"
 
     private val lock = Mutex()
@@ -68,11 +66,11 @@ object Ipv6NatController {
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
-    internal suspend fun startSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
+    internal suspend fun startSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
         try {
-            writePacketLocked(Ipv6NatProtocol.startSession(config))
-            Ipv6NatProtocol.readPorts(readPacketLocked()).also {
+            writePacketLocked(DaemonProtocol.startSession(config))
+            DaemonProtocol.readPorts(readPacketLocked()).also {
                 activeSessions.add(config.sessionId)
             }
         } catch (e: Exception) {
@@ -82,11 +80,11 @@ object Ipv6NatController {
         }
     }
 
-    internal suspend fun replaceSession(config: Ipv6NatProtocol.SessionConfig) = lock.withLock {
+    internal suspend fun replaceSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
         ensureDaemonLocked()
         try {
-            writePacketLocked(Ipv6NatProtocol.replaceSession(config))
-            Ipv6NatProtocol.readAck(readPacketLocked())
+            writePacketLocked(DaemonProtocol.replaceSession(config))
+            DaemonProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
@@ -97,8 +95,8 @@ object Ipv6NatController {
     internal suspend fun removeSession(sessionId: String) = lock.withLock {
         if (output == null) return@withLock
         try {
-            writePacketLocked(Ipv6NatProtocol.removeSession(sessionId))
-            Ipv6NatProtocol.readAck(readPacketLocked())
+            writePacketLocked(DaemonProtocol.removeSession(sessionId))
+            DaemonProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
@@ -107,7 +105,7 @@ object Ipv6NatController {
         activeSessions.remove(sessionId)
         if (activeSessions.isEmpty()) {
             try {
-                if (output != null) writePacketLocked(Ipv6NatProtocol.shutdown())
+                if (output != null) writePacketLocked(DaemonProtocol.shutdown())
             } catch (e: Exception) {
                 Timber.w(e)
             }
