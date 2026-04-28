@@ -51,13 +51,9 @@ object Ipv6NatController {
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
     private var connectionFile: File? = null
-    private var stdoutLogChannel: ParcelFileDescriptorReadChannel? = null
-    private var stderrLogChannel: ParcelFileDescriptorReadChannel? = null
-    private val stdoutLogLine = StringBuilder()
-    private val stderrLogLine = StringBuilder()
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
-    private var stdoutLogJob: Job? = null
-    private var stderrLogJob: Job? = null
+    private val stdoutLog = DaemonLog { Timber.tag(BINARY_NAME).i(it) }
+    private val stderrLog = DaemonLog { Timber.tag(BINARY_NAME).e(it) }
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
 
@@ -127,25 +123,9 @@ object Ipv6NatController {
         this.connectionFile = connectionFile
         var stdout: ParcelFileDescriptor? = null
         var stderr: ParcelFileDescriptor? = null
-        var stdoutRead: ParcelFileDescriptor? = null
-        var stderrRead: ParcelFileDescriptor? = null
         try {
-            val stdoutPipe = ParcelFileDescriptor.createPipe()
-            val stdoutReadEnd = stdoutPipe[0]
-            stdoutRead = stdoutReadEnd
-            stdout = stdoutPipe[1]
-            val stderrPipe = ParcelFileDescriptor.createPipe()
-            val stderrReadEnd = stderrPipe[0]
-            stderrRead = stderrReadEnd
-            stderr = stderrPipe[1]
-            val stdoutChannel = stdoutReadEnd.openReadChannel(Services.mainHandler.looper)
-            stdoutLogChannel = stdoutChannel
-            stdoutRead = null
-            val stderrChannel = stderrReadEnd.openReadChannel(Services.mainHandler.looper)
-            stderrLogChannel = stderrChannel
-            stderrRead = null
-            stdoutLogJob = readLog(stdoutChannel, stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
-            stderrLogJob = readLog(stderrChannel, stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
+            stdout = stdoutLog.openPipe(logScope)
+            stderr = stderrLog.openPipe(logScope)
             LocalServerSocket(socketName).use { serverSocket ->
                 RootManager.use { server ->
                     try {
@@ -174,12 +154,6 @@ object Ipv6NatController {
                 }
             }
         } catch (e: Exception) {
-            try {
-                stdoutRead?.close()
-            } catch (_: IOException) { }
-            try {
-                stderrRead?.close()
-            } catch (_: IOException) { }
             try {
                 stdout?.close()
             } catch (_: IOException) { }
@@ -245,17 +219,6 @@ object Ipv6NatController {
 
     private suspend fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
-    private fun readLog(channel: ByteReadChannel, line: StringBuilder, log: (String) -> Unit) = logScope.launch {
-        try {
-            while (channel.readLineTo(line) >= 0) {
-                log(line.toString())
-                line.clear()
-            }
-        } catch (e: ErrnoException) {
-            if (e.errno != OsConstants.EBADF) Timber.w(e)
-        }
-    }
-
     private suspend fun closeConnectionLocked() = withContext(NonCancellable) {
         input?.cancel(null)
         output?.cancel(null)
@@ -263,41 +226,64 @@ object Ipv6NatController {
             socket?.close()
         } catch (_: IOException) { }
         withContext(Dispatchers.Main.immediate) {
-            stdoutLogJob?.cancelAndJoin()
-            stderrLogJob?.cancelAndJoin()
-            stdoutLogJob = null
-            stderrLogJob = null
-            stdoutLogChannel?.let {
-                try {
-                    it.drain()
-                    it.drainLines(stdoutLogLine, flushPartial = true) { line ->
-                        Timber.tag(BINARY_NAME).i(line)
-                    }
-                } catch (e: ErrnoException) {
-                    if (e.errno != OsConstants.EBADF) Timber.w(e)
-                } finally {
-                    it.cancel(null)
-                }
-            }
-            stderrLogChannel?.let {
-                try {
-                    it.drain()
-                    it.drainLines(stderrLogLine, flushPartial = true) { line ->
-                        Timber.tag(BINARY_NAME).e(line)
-                    }
-                } catch (e: ErrnoException) {
-                    if (e.errno != OsConstants.EBADF) Timber.w(e)
-                } finally {
-                    it.cancel(null)
-                }
-            }
+            stdoutLog.close()
+            stderrLog.close()
         }
         input = null
         output = null
         socket = null
-        stdoutLogChannel = null
-        stderrLogChannel = null
         connectionFile?.delete()
         connectionFile = null
+    }
+
+    private class DaemonLog(private val log: (String) -> Unit) {
+        private var channel: ParcelFileDescriptorReadChannel? = null
+        private val line = StringBuilder()
+        private var job: Job? = null
+
+        fun openPipe(scope: CoroutineScope): ParcelFileDescriptor {
+            val pipe = ParcelFileDescriptor.createPipe()
+            var readEnd: ParcelFileDescriptor? = pipe[0]
+            var writeEnd: ParcelFileDescriptor? = pipe[1]
+            try {
+                val channel = readEnd!!.openReadChannel(Services.mainHandler.looper)
+                this.channel = channel
+                readEnd = null
+                job = scope.launch {
+                    try {
+                        while (channel.readLineTo(line) >= 0) {
+                            log(line.toString())
+                            line.clear()
+                        }
+                    } catch (e: ErrnoException) {
+                        if (e.errno != OsConstants.EBADF) Timber.w(e)
+                    }
+                }
+                return writeEnd!!.also { writeEnd = null }
+            } finally {
+                try {
+                    readEnd?.close()
+                } catch (_: IOException) { }
+                try {
+                    writeEnd?.close()
+                } catch (_: IOException) { }
+            }
+        }
+
+        suspend fun close() {
+            job?.cancelAndJoin()
+            job = null
+            channel?.let {
+                try {
+                    it.drain()
+                    it.drainLines(line, flushPartial = true, block = log)
+                } catch (e: ErrnoException) {
+                    if (e.errno != OsConstants.EBADF) Timber.w(e)
+                } finally {
+                    it.cancel(null)
+                }
+            }
+            channel = null
+        }
     }
 }
