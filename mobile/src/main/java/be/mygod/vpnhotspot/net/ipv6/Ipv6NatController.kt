@@ -19,7 +19,6 @@ import be.mygod.vpnhotspot.util.Services
 import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readLineTo
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -110,7 +109,14 @@ object Ipv6NatController {
             Timber.w(e)
         }
         activeSessions.remove(sessionId)
-        if (activeSessions.isEmpty()) shutdownLocked()
+        if (activeSessions.isEmpty()) {
+            try {
+                if (output != null) writePacketLocked(Ipv6NatProtocol.shutdown())
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
+            closeConnectionLocked()
+        }
     }
 
     private suspend fun ensureDaemonLocked() {
@@ -233,16 +239,6 @@ object Ipv6NatController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private suspend fun shutdownLocked() {
-        try {
-            if (output != null) writePacketLocked(Ipv6NatProtocol.shutdown())
-        } catch (e: Exception) {
-            Timber.w(e)
-        }
-        closeConnectionLocked()
-        activeSessions.clear()
-    }
-
     private fun writePacketLocked(packet: ByteArray) {
         DaemonIpc.writeFrame(output!!, packet)
         output!!.flush()
@@ -251,27 +247,13 @@ object Ipv6NatController {
     private fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
     private fun readLog(channel: ByteReadChannel, line: StringBuilder, log: (String) -> Unit) = logScope.launch {
-        var flushOnCompletion = true
         try {
             while (channel.readLineTo(line) >= 0) {
                 log(line.toString())
                 line.clear()
             }
-        } catch (e: CancellationException) {
-            flushOnCompletion = false
-            throw e
         } catch (e: ErrnoException) {
             if (e.errno != OsConstants.EBADF) Timber.w(e)
-        } finally {
-            if (flushOnCompletion) flushLog(line, log)
-        }
-    }
-
-    private fun flushLog(line: StringBuilder, log: (String) -> Unit) {
-        if (line.isNotEmpty()) {
-            if (line.last() == '\r') line.setLength(line.length - 1)
-            if (line.isNotEmpty()) log(line.toString())
-            line.clear()
         }
     }
 
@@ -314,8 +296,6 @@ object Ipv6NatController {
                     it.cancel(null)
                 }
             }
-            flushLog(stdoutLogLine) { Timber.tag(BINARY_NAME).i(it) }
-            flushLog(stderrLogLine) { Timber.tag(BINARY_NAME).e(it) }
         }
         input = null
         output = null
