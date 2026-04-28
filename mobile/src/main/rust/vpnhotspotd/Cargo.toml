@@ -3,6 +3,10 @@ name = "vpnhotspotd"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+tokio = { version = "1.51.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7.18"
+
 [profile.release]
 panic = "abort"
 lto = "thin"

@@ -93,7 +93,7 @@ abstract class BuildDaemonJniLibsTask : DefaultTask() {
             Triple("x86_64", "x86_64-linux-android", "x86_64-linux-android29-clang"),
         )
         for ((abi, target, linker) in targets) {
-            val command = mutableListOf("cargo", "build", "--offline", "--target", target).apply {
+            val command = mutableListOf("cargo", "build", "--locked", "--target", target).apply {
                 if (profile == "release") add("--release")
             }
             val process = ProcessBuilder(command).directory(cargoDir).redirectErrorStream(true).apply {

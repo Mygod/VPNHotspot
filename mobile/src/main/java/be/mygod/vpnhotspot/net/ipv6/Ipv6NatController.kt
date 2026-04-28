@@ -12,12 +12,14 @@ import be.mygod.vpnhotspot.io.ParcelFileDescriptorReadChannel
 import be.mygod.vpnhotspot.io.drainLines
 import be.mygod.vpnhotspot.io.isNonblocking
 import be.mygod.vpnhotspot.io.openReadChannel
+import be.mygod.vpnhotspot.io.openWriteChannel
 import be.mygod.vpnhotspot.root.DaemonIpc
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RunDaemon
 import be.mygod.vpnhotspot.util.Services
 import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readLineTo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,8 +36,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.File
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -48,8 +48,8 @@ object Ipv6NatController {
     private val lock = Mutex()
     private val activeSessions = mutableSetOf<String>()
     private var socket: LocalSocket? = null
-    private var input: InputStream? = null
-    private var output: OutputStream? = null
+    private var input: ByteReadChannel? = null
+    private var output: ByteWriteChannel? = null
     private var connectionFile: File? = null
     private var stdoutLogChannel: ParcelFileDescriptorReadChannel? = null
     private var stderrLogChannel: ParcelFileDescriptorReadChannel? = null
@@ -169,8 +169,8 @@ object Ipv6NatController {
                 }
                 acceptLocked(serverSocket).also {
                     socket = it
-                    input = it.inputStream
-                    output = it.outputStream
+                    input = ParcelFileDescriptor.dup(it.fileDescriptor).openReadChannel(Services.mainHandler.looper)
+                    output = ParcelFileDescriptor.dup(it.fileDescriptor).openWriteChannel(Services.mainHandler.looper)
                 }
             }
         } catch (e: Exception) {
@@ -239,12 +239,11 @@ object Ipv6NatController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private fun writePacketLocked(packet: ByteArray) {
+    private suspend fun writePacketLocked(packet: ByteArray) {
         DaemonIpc.writeFrame(output!!, packet)
-        output!!.flush()
     }
 
-    private fun readPacketLocked() = DaemonIpc.readFrame(input!!)
+    private suspend fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
     private fun readLog(channel: ByteReadChannel, line: StringBuilder, log: (String) -> Unit) = logScope.launch {
         try {
@@ -258,12 +257,8 @@ object Ipv6NatController {
     }
 
     private suspend fun closeConnectionLocked() = withContext(NonCancellable) {
-        try {
-            input?.close()
-        } catch (_: IOException) { }
-        try {
-            output?.close()
-        } catch (_: IOException) { }
+        input?.cancel(null)
+        output?.cancel(null)
         try {
             socket?.close()
         } catch (_: IOException) { }

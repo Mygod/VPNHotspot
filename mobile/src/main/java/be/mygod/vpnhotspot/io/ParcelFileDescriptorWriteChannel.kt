@@ -9,10 +9,8 @@ import android.system.Os
 import android.system.OsConstants
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.readAvailable
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,90 +21,59 @@ import kotlin.coroutines.resume
  */
 class ParcelFileDescriptorWriteChannel(
     private val descriptor: ParcelFileDescriptor,
-    scope: CoroutineScope,
     looper: Looper = Looper.getMainLooper(),
     private val buffer: ByteArray = ByteArray(4096),
-    private val channel: ByteChannel = ByteChannel(autoFlush = true),
+    private val channel: ByteChannel = ByteChannel(),
 ) : ByteWriteChannel by channel {
     private val fileDescriptor = descriptor.fileDescriptor
     private val handler = Handler(looper)
     private val closed = AtomicBoolean()
-    private val pump: Deferred<Unit>
 
     init {
         fileDescriptor.isNonblocking = true
-        pump = scope.async {
-            var failure: Throwable? = null
-            var start = 0
-            var end = 0
-            try {
-                while (true) {
-                    if (start == end) {
-                        val count = channel.readAvailable(buffer)
-                        if (count < 0) break
-                        start = 0
-                        end = count
-                    }
-                    while (start < end) {
-                        val count = try {
-                            Os.write(fileDescriptor, buffer, start, end - start)
-                        } catch (e: ErrnoException) {
-                            when (e.errno) {
-                                OsConstants.EAGAIN -> {
-                                    awaitOutputReady()
-                                    continue
-                                }
-                                OsConstants.EINTR -> continue
-                                else -> throw e
-                            }
-                        }
-                        if (count > 0) {
-                            start += count
-                        } else {
-                            awaitOutputReady()
-                        }
-                    }
-                }
-            } catch (e: Throwable) {
-                failure = e
-                channel.cancel(e)
-                throw e
-            } finally {
-                val closeError = closeDescriptor()
-                if (closeError != null) {
-                    if (failure == null) {
-                        channel.cancel(closeError)
-                        throw closeError
-                    } else {
-                        failure.addSuppressed(closeError)
-                    }
-                }
-            }
-        }
     }
 
     override fun cancel(cause: Throwable?) {
-        pump.cancel()
         val closeError = closeDescriptor()
         if (cause != null && closeError != null) cause.addSuppressed(closeError)
         channel.cancel(cause ?: closeError)
+    }
+
+    override suspend fun flush() {
+        channel.flush()
+        while (channel.availableForRead > 0) {
+            val count = channel.readAvailable(buffer)
+            if (count < 0) break
+            var offset = 0
+            while (offset < count) {
+                val written = try {
+                    Os.write(fileDescriptor, buffer, offset, count - offset)
+                } catch (e: ErrnoException) {
+                    when (e.errno) {
+                        OsConstants.EAGAIN -> {
+                            awaitOutputReady()
+                            continue
+                        }
+                        OsConstants.EINTR -> continue
+                        else -> throw e
+                    }
+                }
+                if (written > 0) {
+                    offset += written
+                } else {
+                    awaitOutputReady()
+                }
+            }
+        }
     }
 
     override suspend fun flushAndClose() {
         var failure: Throwable? = null
         try {
             channel.flushAndClose()
+            flush()
         } catch (e: Throwable) {
             failure = e
-        }
-        try {
-            pump.await()
-        } catch (e: Throwable) {
-            if (failure == null) {
-                failure = e
-            } else if (failure !== e) {
-                failure.addSuppressed(e)
-            }
         }
         closeDescriptor()?.let {
             if (failure == null) {
@@ -153,7 +120,6 @@ class ParcelFileDescriptorWriteChannel(
 }
 
 fun ParcelFileDescriptor.openWriteChannel(
-    scope: CoroutineScope,
     looper: Looper = Looper.getMainLooper(),
     buffer: ByteArray = ByteArray(4096),
-) = ParcelFileDescriptorWriteChannel(this, scope, looper, buffer)
+) = ParcelFileDescriptorWriteChannel(this, looper, buffer)

@@ -1,20 +1,26 @@
 use std::collections::HashMap;
 use std::env;
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
-use std::io::{self, Read, Write};
+use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{
-    Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream,
-    UdpSocket,
+    Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, UdpSocket,
 };
-use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::PathBuf;
 use std::ptr::null;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{sync_channel, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::io::unix::AsyncFd;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{
+    TcpListener as TokioTcpListener, TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket,
+    UnixStream,
+};
+use tokio::sync::{mpsc, Mutex, Semaphore};
+use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 const AF_UNIX: c_int = 1;
 const AF_INET6: c_int = 10;
@@ -38,10 +44,6 @@ const O_NONBLOCK: c_int = 0x800;
 const EINPROGRESS: i32 = 115;
 
 const MSG_DONTWAIT: c_int = 0x40;
-const MSG_NOSIGNAL: c_int = 0x4000;
-const POLLIN: i16 = 0x1;
-const POLLOUT: i16 = 0x4;
-
 const IPV6_RECVORIGDSTADDR: c_int = 74;
 const IPV6_TRANSPARENT: c_int = 75;
 const IPV6_V6ONLY: c_int = 26;
@@ -121,11 +123,46 @@ struct Cmsghdr {
     cmsg_type: c_int,
 }
 
-#[repr(C)]
-struct PollFd {
-    fd: c_int,
-    events: i16,
-    revents: i16,
+#[derive(Clone, Copy)]
+struct BorrowedRawFd(RawFd);
+
+impl AsRawFd for BorrowedRawFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
+struct ResolverQuery {
+    fd: Option<RawFd>,
+}
+
+impl ResolverQuery {
+    fn finish(mut self, rcode: &mut c_int, answer: &mut [u8]) -> c_int {
+        unsafe {
+            android_res_nresult(
+                self.fd.take().unwrap(),
+                rcode,
+                answer.as_mut_ptr(),
+                answer.len(),
+            )
+        }
+    }
+}
+
+impl AsRawFd for ResolverQuery {
+    fn as_raw_fd(&self) -> RawFd {
+        self.fd.unwrap()
+    }
+}
+
+impl Drop for ResolverQuery {
+    fn drop(&mut self) {
+        if let Some(fd) = self.fd.take() {
+            unsafe {
+                android_res_cancel(fd);
+            }
+        }
+    }
 }
 
 #[link(name = "android")]
@@ -133,6 +170,7 @@ unsafe extern "C" {
     fn android_setsocknetwork(network: u64, fd: c_int) -> c_int;
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
     fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
+    fn android_res_cancel(nsend_fd: c_int);
 }
 
 unsafe extern "C" {
@@ -149,8 +187,6 @@ unsafe extern "C" {
     ) -> c_int;
     fn if_nametoindex(name: *const c_char) -> c_uint;
     fn listen(fd: c_int, backlog: c_int) -> c_int;
-    fn poll(fds: *mut PollFd, nfds: usize, timeout: c_int) -> c_int;
-    fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
     fn recvfrom(
         fd: c_int,
         buf: *mut c_void,
@@ -160,7 +196,6 @@ unsafe extern "C" {
         addrlen: *mut u32,
     ) -> isize;
     fn recvmsg(fd: c_int, msg: *mut MsgHdr, flags: c_int) -> isize;
-    fn send(fd: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize;
     fn sendto(
         fd: c_int,
         buf: *const c_void,
@@ -217,7 +252,7 @@ struct SessionPorts {
 
 struct Session {
     config: Arc<Mutex<SessionConfig>>,
-    stop: Arc<AtomicBool>,
+    stop: CancellationToken,
     ports: SessionPorts,
 }
 
@@ -228,8 +263,21 @@ struct AssociationKey {
 }
 
 struct UdpAssociation {
-    socket: UdpSocket,
+    id: u64,
+    socket: Arc<TokioUdpSocket>,
     last_active: Instant,
+    stop: CancellationToken,
+}
+
+enum UdpAssociationEvent {
+    Active(AssociationKey, u64),
+    Closed(AssociationKey, u64),
+}
+
+enum RaRequest {
+    RouterSolicitation(SocketAddrV6),
+    Ignored,
+    WouldBlock,
 }
 
 struct Args {
@@ -237,13 +285,14 @@ struct Args {
     connection_file: PathBuf,
 }
 
-fn main() -> io::Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     let args = parse_args()?;
-    let controller = connect_control_socket(&args.socket_name, &args.connection_file)?;
+    let mut controller = connect_control_socket(&args.socket_name, &args.connection_file).await?;
     eprintln!("connected to {}", args.socket_name);
-    let sessions = Arc::new(Mutex::new(HashMap::<String, Session>::new()));
+    let mut sessions = HashMap::<String, Session>::new();
     loop {
-        let packet = match recv_packet(controller) {
+        let packet = match recv_packet(&mut controller).await {
             Ok(packet) => packet,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
             Err(e) => {
@@ -251,10 +300,10 @@ fn main() -> io::Result<()> {
                 break;
             }
         };
-        let response = match handle_packet(&packet, &sessions) {
+        let response = match handle_packet(&packet, &mut sessions).await {
             Ok(HandleResult::Reply(reply)) => Some(reply),
             Ok(HandleResult::Shutdown(reply)) => {
-                if let Err(e) = send_packet(controller, &reply) {
+                if let Err(e) = send_packet(&mut controller, &reply).await {
                     eprintln!("controller send failed: {e}");
                 }
                 break;
@@ -262,17 +311,15 @@ fn main() -> io::Result<()> {
             Err(e) => Some(error_packet(e)),
         };
         if let Some(response) = response {
-            if let Err(e) = send_packet(controller, &response) {
+            if let Err(e) = send_packet(&mut controller, &response).await {
                 eprintln!("controller send failed: {e}");
                 break;
             }
         }
     }
-    for session in sessions.lock().unwrap().values() {
-        session.stop.store(true, Ordering::Relaxed);
-    }
-    unsafe {
-        close(controller);
+    for session in sessions.values() {
+        withdraw_session_prefixes(session).await;
+        session.stop.cancel();
     }
     Ok(())
 }
@@ -282,48 +329,46 @@ enum HandleResult {
     Shutdown(Vec<u8>),
 }
 
-fn handle_packet(
+async fn handle_packet(
     packet: &[u8],
-    sessions: &Arc<Mutex<HashMap<String, Session>>>,
+    sessions: &mut HashMap<String, Session>,
 ) -> io::Result<HandleResult> {
     let mut parser = Parser::new(packet);
     match parser.read_u32()? {
         CMD_START_SESSION => {
             let config = parser.read_session_config()?;
-            let mut sessions = sessions.lock().unwrap();
             if sessions.contains_key(&config.session_id) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     "session already exists",
                 ));
             }
-            let session = start_session(config)?;
+            let session = start_session(config).await?;
             let reply = ports_packet(session.ports);
-            let session_id = session.config.lock().unwrap().session_id.clone();
+            let session_id = session.config.lock().await.session_id.clone();
             sessions.insert(session_id, session);
             Ok(HandleResult::Reply(reply))
         }
         CMD_REPLACE_SESSION => {
             let config = parser.read_session_config()?;
-            let sessions = sessions.lock().unwrap();
             let session = sessions
                 .get(&config.session_id)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
-            *session.config.lock().unwrap() = config;
+            *session.config.lock().await = config;
             Ok(HandleResult::Reply(ok_packet()))
         }
         CMD_REMOVE_SESSION => {
             let session_id = parser.read_utf()?;
-            if let Some(session) = sessions.lock().unwrap().remove(&session_id) {
-                withdraw_session_prefixes(&session);
-                session.stop.store(true, Ordering::Relaxed);
+            if let Some(session) = sessions.remove(&session_id) {
+                withdraw_session_prefixes(&session).await;
+                session.stop.cancel();
             }
             Ok(HandleResult::Reply(ok_packet()))
         }
         CMD_SHUTDOWN => {
-            for session in sessions.lock().unwrap().values() {
-                withdraw_session_prefixes(session);
-                session.stop.store(true, Ordering::Relaxed);
+            for session in sessions.values() {
+                withdraw_session_prefixes(session).await;
+                session.stop.cancel();
             }
             Ok(HandleResult::Shutdown(ok_packet()))
         }
@@ -334,8 +379,8 @@ fn handle_packet(
     }
 }
 
-fn start_session(config: SessionConfig) -> io::Result<Session> {
-    let stop = Arc::new(AtomicBool::new(false));
+async fn start_session(config: SessionConfig) -> io::Result<Session> {
+    let stop = CancellationToken::new();
     let shared = Arc::new(Mutex::new(config.clone()));
 
     let tcp_listener = create_tproxy_tcp_listener(config.reply_mark)?;
@@ -350,11 +395,11 @@ fn start_session(config: SessionConfig) -> io::Result<Session> {
     dns_udp_socket.set_nonblocking(true)?;
     let dns_udp = dns_udp_socket.local_addr()?.port();
 
-    spawn_tcp_loop(tcp_listener, shared.clone(), stop.clone());
-    spawn_udp_loop(udp_listener, shared.clone(), stop.clone());
-    spawn_dns_tcp_loop(dns_tcp_listener, shared.clone(), stop.clone());
-    spawn_dns_udp_loop(dns_udp_socket, shared.clone(), stop.clone());
-    spawn_ra_loop(shared.clone(), stop.clone());
+    spawn_tcp_loop(tcp_listener, shared.clone(), stop.clone())?;
+    spawn_udp_loop(udp_listener, shared.clone(), stop.clone())?;
+    spawn_dns_tcp_loop(dns_tcp_listener, shared.clone(), stop.clone())?;
+    spawn_dns_udp_loop(dns_udp_socket, shared.clone(), stop.clone())?;
+    spawn_ra_loop(shared.clone(), stop.clone())?;
 
     Ok(Session {
         config: shared,
@@ -368,47 +413,48 @@ fn start_session(config: SessionConfig) -> io::Result<Session> {
     })
 }
 
-fn spawn_tcp_loop(listener: TcpListener, config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
-    let (sender, receiver) = sync_channel::<TcpStream>(TCP_WORKER_COUNT);
-    let receiver = Arc::new(Mutex::new(receiver));
-    for _ in 0..TCP_WORKER_COUNT {
-        let config = config.clone();
-        let receiver = receiver.clone();
-        let stop = stop.clone();
-        thread::spawn(move || {
-            while !stop.load(Ordering::Relaxed) {
-                let socket = match receiver.lock().unwrap().recv_timeout(LOOP_SLEEP) {
-                    Ok(socket) => socket,
-                    Err(RecvTimeoutError::Timeout) => continue,
-                    Err(RecvTimeoutError::Disconnected) => return,
-                };
-                if let Err(e) = handle_tcp_connection(socket, config.clone()) {
-                    eprintln!("tcp proxy failed: {e}");
-                }
-            }
-        });
-    }
-    thread::spawn(move || {
-        while !stop.load(Ordering::Relaxed) {
-            match listener.accept() {
-                Ok((socket, _)) => {
-                    if let Err(e) = sender.send(socket) {
-                        eprintln!("tcp queue failed: {e}");
-                        return;
+fn spawn_tcp_loop(
+    listener: TcpListener,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+) -> io::Result<()> {
+    let listener = TokioTcpListener::from_std(listener)?;
+    tokio::spawn(async move {
+        let limit = Arc::new(Semaphore::new(TCP_WORKER_COUNT));
+        loop {
+            let permit = tokio::select! {
+                _ = stop.cancelled() => break,
+                permit = limit.clone().acquire_owned() => match permit {
+                    Ok(permit) => permit,
+                    Err(_) => break,
+                },
+            };
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                accepted = listener.accept() => {
+                    match accepted {
+                        Ok((socket, _)) => {
+                            let config = config.clone();
+                            tokio::spawn(async move {
+                                let _permit = permit;
+                                if let Err(e) = handle_tcp_connection(socket, config).await {
+                                    eprintln!("tcp proxy failed: {e}");
+                                }
+                            });
+                        }
+                        Err(e) => eprintln!("tcp accept failed: {e}"),
                     }
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => thread::sleep(LOOP_SLEEP),
-                Err(e) => {
-                    eprintln!("tcp accept failed: {e}");
-                    thread::sleep(LOOP_SLEEP);
                 }
             }
         }
     });
+    Ok(())
 }
 
-fn handle_tcp_connection(inbound: TcpStream, config: Arc<Mutex<SessionConfig>>) -> io::Result<()> {
-    inbound.set_nonblocking(false)?;
+async fn handle_tcp_connection(
+    inbound: TokioTcpStream,
+    config: Arc<Mutex<SessionConfig>>,
+) -> io::Result<()> {
     let destination = match inbound.local_addr()? {
         SocketAddr::V6(destination) => destination,
         _ => {
@@ -418,7 +464,7 @@ fn handle_tcp_connection(inbound: TcpStream, config: Arc<Mutex<SessionConfig>>) 
             ))
         }
     };
-    let snapshot = config.lock().unwrap().clone();
+    let snapshot = config.lock().await.clone();
     set_sockopt(
         inbound.as_raw_fd(),
         SOL_SOCKET,
@@ -426,271 +472,332 @@ fn handle_tcp_connection(inbound: TcpStream, config: Arc<Mutex<SessionConfig>>) 
         &snapshot.reply_mark,
     )?;
     if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
-        return handle_dns_tcp_connection(inbound, &snapshot);
+        return handle_dns_tcp_connection(inbound, snapshot).await;
     }
     let upstream = select_upstream(&snapshot, *destination.ip())
         .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no upstream route"))?;
-    let outbound = connect_upstream_tcp(&upstream, destination)?;
-    relay_tcp(inbound, outbound)
+    let outbound = connect_upstream_tcp(&upstream, destination).await?;
+    relay_tcp(inbound, outbound).await
 }
 
-fn relay_tcp(mut inbound: TcpStream, mut outbound: TcpStream) -> io::Result<()> {
-    let mut upstream_reader = outbound.try_clone()?;
-    let mut downstream_writer = inbound.try_clone()?;
-    let reverse = thread::spawn(move || -> io::Result<()> {
-        let result = io::copy(&mut upstream_reader, &mut downstream_writer);
-        let _ = downstream_writer.shutdown(Shutdown::Write);
-        result.map(|_| ())
-    });
-    let forward = io::copy(&mut inbound, &mut outbound);
-    let _ = outbound.shutdown(Shutdown::Write);
-    let reverse_result = reverse
-        .join()
-        .unwrap_or_else(|_| Err(io::Error::other("tcp relay panicked")));
-    forward?;
-    reverse_result
+async fn relay_tcp(mut inbound: TokioTcpStream, mut outbound: TokioTcpStream) -> io::Result<()> {
+    tokio::io::copy_bidirectional(&mut inbound, &mut outbound)
+        .await
+        .map(|_| ())
 }
 
-fn spawn_udp_loop(listener: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
-    thread::spawn(move || {
-        let listener_fd = listener.as_raw_fd();
+fn spawn_udp_loop(
+    listener: UdpSocket,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+) -> io::Result<()> {
+    let listener = AsyncFd::new(listener)?;
+    tokio::spawn(async move {
+        let listener_fd = listener.get_ref().as_raw_fd();
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
+        let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
+        let mut next_association_id = 0u64;
         let mut buffer = [0u8; 65535];
-        while !stop.load(Ordering::Relaxed) {
-            let now = Instant::now();
-            associations.retain(|_, association| {
-                now.duration_since(association.last_active) < UDP_ASSOC_IDLE
-            });
-
-            let mut keys = Vec::with_capacity(associations.len());
-            let mut poll_fds = Vec::with_capacity(associations.len() + 1);
-            poll_fds.push(PollFd {
-                fd: listener_fd,
-                events: POLLIN,
-                revents: 0,
-            });
-            for (key, association) in associations.iter() {
-                keys.push(*key);
-                poll_fds.push(PollFd {
-                    fd: association.socket.as_raw_fd(),
-                    events: POLLIN,
-                    revents: 0,
-                });
-            }
-            let timeout = LOOP_SLEEP.as_millis().min(c_int::MAX as u128) as c_int;
-            let result = unsafe { poll(poll_fds.as_mut_ptr(), poll_fds.len(), timeout) };
-            if result < 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                eprintln!("udp poll failed: {error}");
-                thread::sleep(LOOP_SLEEP);
-                continue;
-            }
-            if poll_fds[0].revents & POLLIN != 0 {
-                loop {
-                    match recv_udp_packet(listener_fd, &mut buffer) {
-                        Ok((size, client, destination)) => {
-                            let snapshot = config.lock().unwrap().clone();
-                            if destination.ip() == &snapshot.gateway
-                                && destination.port() == DNS_PORT
-                            {
-                                if let Ok(response) = resolve_dns_query(&snapshot, &buffer[..size])
-                                {
-                                    if let Err(e) = send_udp_response(
-                                        destination,
-                                        client,
-                                        snapshot.reply_mark,
-                                        &response,
-                                    ) {
-                                        eprintln!("dns udp response failed: {e}");
-                                    }
-                                }
-                                continue;
-                            }
-                            if destination.ip().is_multicast()
-                                || destination.ip().is_unicast_link_local()
-                                || destination.ip().is_loopback()
-                                || destination.ip().is_unspecified()
-                            {
-                                continue;
-                            }
-                            let upstream = match select_upstream(&snapshot, *destination.ip()) {
-                                Some(network) => network,
-                                None => continue,
-                            };
-                            let key = AssociationKey {
-                                client,
-                                destination,
-                            };
-                            if !associations.contains_key(&key) {
-                                while associations.len() >= UDP_ASSOC_MAX {
-                                    let stale = associations
-                                        .iter()
-                                        .min_by_key(|(_, association)| association.last_active)
-                                        .map(|(key, _)| *key);
-                                    if let Some(stale) = stale {
-                                        associations.remove(&stale);
-                                    } else {
-                                        break;
-                                    }
-                                }
-                                let upstream = match connect_upstream_udp(&upstream, destination) {
-                                    Ok(socket) => socket,
-                                    Err(e) => {
-                                        eprintln!("udp connect failed: {e}");
-                                        continue;
-                                    }
-                                };
-                                associations.insert(
-                                    key,
-                                    UdpAssociation {
-                                        socket: upstream,
-                                        last_active: now,
-                                    },
-                                );
-                            }
-                            let association = associations.get_mut(&key).unwrap();
-                            association.last_active = now;
-                            if let Err(e) = association.socket.send(&buffer[..size]) {
-                                eprintln!("udp send failed: {e}");
-                                associations.remove(&key);
-                            }
-                        }
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                        Err(e) => {
-                            eprintln!("udp recv failed: {e}");
-                            break;
+        let handle_association_event =
+            |associations: &mut HashMap<AssociationKey, UdpAssociation>, event| match event {
+                UdpAssociationEvent::Active(key, id) => {
+                    if let Some(association) = associations.get_mut(&key) {
+                        if association.id == id {
+                            association.last_active = Instant::now();
                         }
                     }
                 }
-            }
-            for (index, key) in keys.into_iter().enumerate() {
-                if poll_fds[index + 1].revents == 0 {
-                    continue;
+                UdpAssociationEvent::Closed(key, id) => {
+                    let remove = associations
+                        .get(&key)
+                        .map_or(false, |association| association.id == id);
+                    if remove {
+                        if let Some(association) = associations.remove(&key) {
+                            association.stop.cancel();
+                        }
+                    }
                 }
-                let mut remove = false;
-                if let Some(association) = associations.get_mut(&key) {
+            };
+        loop {
+            while let Ok(event) = association_event_rx.try_recv() {
+                handle_association_event(&mut associations, event);
+            }
+            let now = Instant::now();
+            associations.retain(|_, association| {
+                let active = now.duration_since(association.last_active) < UDP_ASSOC_IDLE;
+                if !active {
+                    association.stop.cancel();
+                }
+                active
+            });
+            let next_expiry = associations
+                .values()
+                .map(|association| association.last_active + UDP_ASSOC_IDLE)
+                .min();
+
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                _ = async {
+                    if let Some(deadline) = next_expiry {
+                        time::sleep_until(time::Instant::from_std(deadline)).await;
+                    } else {
+                        std::future::pending::<()>().await;
+                    }
+                } => {}
+                event = association_event_rx.recv() => match event {
+                    Some(event) => handle_association_event(&mut associations, event),
+                    None => break,
+                },
+                ready = listener.readable() => {
+                    let Ok(mut ready) = ready else {
+                        break;
+                    };
                     loop {
-                        match association.socket.recv(&mut buffer) {
-                            Ok(size) => {
-                                association.last_active = Instant::now();
-                                let mark = config.lock().unwrap().reply_mark;
-                                if let Err(e) = send_udp_response(
-                                    key.destination,
-                                    key.client,
-                                    mark,
-                                    &buffer[..size],
-                                ) {
-                                    eprintln!("udp response failed: {e}");
-                                    remove = true;
-                                    break;
+                        match recv_udp_packet(listener_fd, &mut buffer) {
+                            Ok((size, client, destination)) => {
+                                let activity = Instant::now();
+                                let snapshot = config.lock().await.clone();
+                                if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
+                                    let query = buffer[..size].to_vec();
+                                    let query_stop = stop.child_token();
+                                    tokio::spawn(async move {
+                                        tokio::select! {
+                                            _ = query_stop.cancelled() => {}
+                                            result = resolve_dns_query(&snapshot, &query) => match result {
+                                                Ok(response) => {
+                                                    if let Err(e) = send_udp_response(
+                                                        destination,
+                                                        client,
+                                                        snapshot.reply_mark,
+                                                        &response,
+                                                    ).await {
+                                                        eprintln!("dns udp response failed: {e}");
+                                                    }
+                                                }
+                                                Err(e) => eprintln!("dns udp resolve failed: {e}"),
+                                            }
+                                        }
+                                    });
+                                    continue;
+                                }
+                                if destination.ip().is_multicast()
+                                    || destination.ip().is_unicast_link_local()
+                                    || destination.ip().is_loopback()
+                                    || destination.ip().is_unspecified()
+                                {
+                                    continue;
+                                }
+                                let upstream = match select_upstream(&snapshot, *destination.ip()) {
+                                    Some(network) => network,
+                                    None => continue,
+                                };
+                                let key = AssociationKey { client, destination };
+                                if !associations.contains_key(&key) {
+                                    while associations.len() >= UDP_ASSOC_MAX {
+                                        let stale = associations
+                                            .iter()
+                                            .min_by_key(|(_, association)| association.last_active)
+                                            .map(|(key, _)| *key);
+                                        if let Some(stale) = stale {
+                                            if let Some(association) = associations.remove(&stale) {
+                                                association.stop.cancel();
+                                            }
+                                        } else {
+                                            break;
+                                        }
+                                    }
+                                    let upstream = match connect_upstream_udp(&upstream, destination).await {
+                                        Ok(socket) => Arc::new(socket),
+                                        Err(e) => {
+                                            eprintln!("udp connect failed: {e}");
+                                            continue;
+                                        }
+                                    };
+                                    let association_stop = stop.child_token();
+                                    let association_id = next_association_id;
+                                    next_association_id = next_association_id.wrapping_add(1);
+                                    tokio::spawn(run_udp_association(
+                                        key,
+                                        association_id,
+                                        upstream.clone(),
+                                        config.clone(),
+                                        association_stop.clone(),
+                                        association_event_tx.clone(),
+                                    ));
+                                    associations.insert(
+                                        key,
+                                        UdpAssociation {
+                                            id: association_id,
+                                            socket: upstream,
+                                            last_active: activity,
+                                            stop: association_stop,
+                                        },
+                                    );
+                                }
+                                let association = associations.get_mut(&key).unwrap();
+                                association.last_active = activity;
+                                if let Err(e) = association.socket.send(&buffer[..size]).await {
+                                    eprintln!("udp send failed: {e}");
+                                    if let Some(association) = associations.remove(&key) {
+                                        association.stop.cancel();
+                                    }
                                 }
                             }
-                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                                ready.clear_ready();
+                                break;
+                            }
                             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                             Err(e) => {
-                                eprintln!("udp upstream recv failed: {e}");
-                                remove = true;
+                                eprintln!("udp recv failed: {e}");
                                 break;
                             }
                         }
                     }
                 }
-                if remove {
-                    associations.remove(&key);
+            }
+        }
+        for association in associations.values() {
+            association.stop.cancel();
+        }
+    });
+    Ok(())
+}
+
+async fn run_udp_association(
+    key: AssociationKey,
+    id: u64,
+    socket: Arc<TokioUdpSocket>,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+    association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
+) {
+    let mut buffer = [0u8; 65535];
+    loop {
+        tokio::select! {
+            _ = stop.cancelled() => break,
+            result = socket.recv(&mut buffer) => match result {
+                Ok(size) => {
+                    let mark = config.lock().await.reply_mark;
+                    if let Err(e) = send_udp_response(key.destination, key.client, mark, &buffer[..size]).await {
+                        eprintln!("udp response failed: {e}");
+                        break;
+                    }
+                    let _ = association_event_tx.send(UdpAssociationEvent::Active(key, id));
+                }
+                Err(e) => {
+                    eprintln!("udp upstream recv failed: {e}");
+                    break;
                 }
             }
         }
-    });
+    }
+    stop.cancel();
+    let _ = association_event_tx.send(UdpAssociationEvent::Closed(key, id));
 }
 
-fn send_udp_response(
+async fn send_udp_response(
     source: SocketAddrV6,
     target: SocketAddrV6,
     mark: u32,
     payload: &[u8],
 ) -> io::Result<()> {
-    let socket = create_udp_reply_socket(source, mark)?;
-    socket.send_to(payload, SocketAddr::V6(target))?;
+    let socket = TokioUdpSocket::from_std(create_udp_reply_socket(source, mark)?)?;
+    socket.send_to(payload, SocketAddr::V6(target)).await?;
     Ok(())
 }
 
 fn spawn_dns_tcp_loop(
     listener: TcpListener,
     config: Arc<Mutex<SessionConfig>>,
-    stop: Arc<AtomicBool>,
-) {
-    thread::spawn(move || {
-        while !stop.load(Ordering::Relaxed) {
-            match listener.accept() {
-                Ok((socket, _)) => {
-                    let config = config.clone();
-                    thread::spawn(move || {
-                        let snapshot = config.lock().unwrap().clone();
-                        if let Err(e) = handle_dns_tcp_connection(socket, &snapshot) {
-                            eprintln!("dns tcp failed: {e}");
-                        }
-                    });
-                }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => thread::sleep(LOOP_SLEEP),
-                Err(e) => {
-                    eprintln!("dns tcp accept failed: {e}");
-                    thread::sleep(LOOP_SLEEP);
+    stop: CancellationToken,
+) -> io::Result<()> {
+    let listener = TokioTcpListener::from_std(listener)?;
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                accepted = listener.accept() => match accepted {
+                    Ok((socket, _)) => {
+                        let config = config.clone();
+                        tokio::spawn(async move {
+                            let snapshot = config.lock().await.clone();
+                            if let Err(e) = handle_dns_tcp_connection(socket, snapshot).await {
+                                eprintln!("dns tcp failed: {e}");
+                            }
+                        });
+                    }
+                    Err(e) => eprintln!("dns tcp accept failed: {e}"),
                 }
             }
         }
     });
+    Ok(())
 }
 
-fn handle_dns_tcp_connection(mut socket: TcpStream, config: &SessionConfig) -> io::Result<()> {
-    socket.set_nonblocking(false)?;
+async fn handle_dns_tcp_connection(
+    mut socket: TokioTcpStream,
+    config: SessionConfig,
+) -> io::Result<()> {
     loop {
         let mut header = [0u8; 2];
-        match socket.read_exact(&mut header) {
-            Ok(()) => {}
+        match socket.read_exact(&mut header).await {
+            Ok(_) => {}
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => return Ok(()),
             Err(e) => return Err(e),
         }
         let length = u16::from_be_bytes(header) as usize;
         let mut query = vec![0u8; length];
-        socket.read_exact(&mut query)?;
-        let response = resolve_dns_query(config, &query)?;
-        socket.write_all(&(response.len() as u16).to_be_bytes())?;
-        socket.write_all(&response)?;
-        socket.flush()?;
+        socket.read_exact(&mut query).await?;
+        let response = resolve_dns_query(&config, &query).await?;
+        socket
+            .write_all(&(response.len() as u16).to_be_bytes())
+            .await?;
+        socket.write_all(&response).await?;
+        socket.flush().await?;
     }
 }
 
-fn spawn_dns_udp_loop(socket: UdpSocket, config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
-    thread::spawn(move || {
+fn spawn_dns_udp_loop(
+    socket: UdpSocket,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+) -> io::Result<()> {
+    let socket = Arc::new(TokioUdpSocket::from_std(socket)?);
+    tokio::spawn(async move {
         let mut buffer = [0u8; 65535];
-        while !stop.load(Ordering::Relaxed) {
-            match socket.recv_from(&mut buffer) {
-                Ok((size, source)) => {
-                    let snapshot = config.lock().unwrap().clone();
-                    match resolve_dns_query(&snapshot, &buffer[..size]) {
-                        Ok(response) => {
-                            let _ = socket.send_to(&response, source);
-                        }
-                        Err(e) => eprintln!("dns udp resolve failed: {e}"),
-                    }
+        loop {
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                received = socket.recv_from(&mut buffer) => match received {
+                    Ok((size, source)) => {
+                        let snapshot = config.lock().await.clone();
+                        let query = buffer[..size].to_vec();
+                        let socket = socket.clone();
+                        let query_stop = stop.child_token();
+                        tokio::spawn(async move {
+                            tokio::select! {
+                                _ = query_stop.cancelled() => {}
+                                result = resolve_dns_query(&snapshot, &query) => match result {
+                                    Ok(response) => {
+                                        let _ = socket.send_to(&response, source).await;
+                                    }
+                                    Err(e) => eprintln!("dns udp resolve failed: {e}"),
+                                }
+                            }
+                        });
+                    },
+                    Err(e) => eprintln!("dns udp recv failed: {e}"),
                 }
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => thread::sleep(LOOP_SLEEP),
-                Err(e) => {
-                    eprintln!("dns udp recv failed: {e}");
-                    thread::sleep(LOOP_SLEEP);
-                }
-            }
+            };
         }
     });
+    Ok(())
 }
 
-fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
-    thread::spawn(move || {
-        let snapshot = config.lock().unwrap().clone();
+fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: CancellationToken) -> io::Result<()> {
+    tokio::spawn(async move {
+        let snapshot = config.lock().await.clone();
         let socket = match create_ra_recv_socket(&snapshot.downstream, snapshot.reply_mark) {
             Ok(fd) => fd,
             Err(e) => {
@@ -698,14 +805,22 @@ fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
                 return;
             }
         };
+        let socket = unsafe { OwnedFd::from_raw_fd(socket) };
+        let socket = match AsyncFd::new(socket) {
+            Ok(socket) => socket,
+            Err(e) => {
+                eprintln!("ra async socket failed: {e}");
+                return;
+            }
+        };
         let mut last_sent: Option<Instant> = None;
         let mut last_deprecated_sent: Option<Instant> = None;
         let mut deprecated_prefixes = HashMap::<Route, Instant>::new();
         let mut buffer = [0u8; 1500];
-        while !stop.load(Ordering::Relaxed) {
+        loop {
             let now = Instant::now();
             let (current, send_current) = {
-                let mut current = config.lock().unwrap();
+                let mut current = config.lock().await;
                 let new_deprecated_prefixes = std::mem::take(&mut current.deprecated_prefixes);
                 let send_current = !new_deprecated_prefixes.is_empty();
                 for prefix in new_deprecated_prefixes {
@@ -721,28 +836,43 @@ fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: Arc<AtomicBool>) {
                     &current,
                     &deprecated_prefixes.keys().copied().collect::<Vec<_>>(),
                     true,
-                );
+                )
+                .await;
                 last_deprecated_sent = Some(now);
             }
             if send_current || last_sent.map_or(true, |last| last.elapsed() >= RA_PERIOD) {
-                let _ = send_ra(&current, None);
+                let _ = send_ra(&current, None).await;
                 last_sent = Some(now);
             }
-            match recv_ra_request(socket, &mut buffer) {
-                Ok(Some(source)) => {
-                    let _ = send_ra(&current, Some(source));
-                }
-                Ok(None) => thread::sleep(LOOP_SLEEP),
-                Err(e) => {
-                    eprintln!("ra recv failed: {e}");
-                    thread::sleep(LOOP_SLEEP);
+            tokio::select! {
+                _ = stop.cancelled() => break,
+                _ = time::sleep(LOOP_SLEEP) => {}
+                ready = socket.readable() => {
+                    let Ok(mut ready) = ready else {
+                        break;
+                    };
+                    loop {
+                        match recv_ra_request(socket.get_ref().as_raw_fd(), &mut buffer) {
+                            Ok(RaRequest::RouterSolicitation(source)) => {
+                                let _ = send_ra(&current, Some(source)).await;
+                            }
+                            Ok(RaRequest::Ignored) => continue,
+                            Ok(RaRequest::WouldBlock) => {
+                                ready.clear_ready();
+                                break;
+                            }
+                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(e) => {
+                                eprintln!("ra recv failed: {e}");
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
-        unsafe {
-            close(socket);
-        }
     });
+    Ok(())
 }
 
 fn create_ra_recv_socket(interface: &str, mark: u32) -> io::Result<RawFd> {
@@ -777,10 +907,11 @@ fn create_ra_send_socket(interface: &str, mark: u32, router: Ipv6Addr) -> io::Re
             size_of::<SockAddrIn6>() as u32,
         )
     })?;
+    set_nonblocking(fd)?;
     Ok(fd)
 }
 
-fn recv_ra_request(fd: RawFd, buffer: &mut [u8]) -> io::Result<Option<SocketAddrV6>> {
+fn recv_ra_request(fd: RawFd, buffer: &mut [u8]) -> io::Result<RaRequest> {
     let mut address: SockAddrIn6 = unsafe { zeroed() };
     let mut length = size_of::<SockAddrIn6>() as u32;
     let size = unsafe {
@@ -796,17 +927,19 @@ fn recv_ra_request(fd: RawFd, buffer: &mut [u8]) -> io::Result<Option<SocketAddr
     if size < 0 {
         let error = io::Error::last_os_error();
         if error.kind() == io::ErrorKind::WouldBlock {
-            return Ok(None);
+            return Ok(RaRequest::WouldBlock);
         }
         return Err(error);
     }
     if size == 0 || buffer[0] != 133 {
-        return Ok(None);
+        return Ok(RaRequest::Ignored);
     }
-    Ok(Some(socket_addr_v6_from_raw(address)))
+    Ok(RaRequest::RouterSolicitation(socket_addr_v6_from_raw(
+        address,
+    )))
 }
 
-fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<()> {
+async fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<()> {
     let fd = create_ra_send_socket(&config.downstream, config.reply_mark, config.router)?;
     let ifindex = interface_index(&config.downstream)?;
     let destination =
@@ -817,14 +950,15 @@ fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<(
         &packet,
         raw_addr_v6(destination),
         size_of::<SockAddrIn6>() as u32,
-    );
+    )
+    .await;
     unsafe {
         close(fd);
     }
     result
 }
 
-fn send_deprecated_ra(
+async fn send_deprecated_ra(
     fd: RawFd,
     config: &SessionConfig,
     prefix: Route,
@@ -849,9 +983,10 @@ fn send_deprecated_ra(
         raw_addr_v6(destination),
         size_of::<SockAddrIn6>() as u32,
     )
+    .await
 }
 
-fn withdraw_prefixes_once(config: &SessionConfig, prefixes: &[Route], keep_router: bool) {
+async fn withdraw_prefixes_once(config: &SessionConfig, prefixes: &[Route], keep_router: bool) {
     let fd = match create_ra_send_socket(&config.downstream, config.reply_mark, config.router) {
         Ok(fd) => fd,
         Err(e) => {
@@ -860,21 +995,21 @@ fn withdraw_prefixes_once(config: &SessionConfig, prefixes: &[Route], keep_route
         }
     };
     for prefix in prefixes.iter().cloned() {
-        let _ = send_deprecated_ra(fd, config, prefix, keep_router);
+        let _ = send_deprecated_ra(fd, config, prefix, keep_router).await;
     }
     unsafe {
         close(fd);
     }
 }
 
-fn withdraw_session_prefixes(session: &Session) {
-    let snapshot = session.config.lock().unwrap().clone();
+async fn withdraw_session_prefixes(session: &Session) {
+    let snapshot = session.config.lock().await.clone();
     let mut prefixes = snapshot.deprecated_prefixes.clone();
     prefixes.push(Route {
         prefix: ipv6_to_u128(snapshot.gateway),
         prefix_len: snapshot.prefix_len,
     });
-    withdraw_prefixes_once(&snapshot, &prefixes, false);
+    withdraw_prefixes_once(&snapshot, &prefixes, false).await;
 }
 
 fn make_ra_packet(gateway: Ipv6Addr, prefix_len: u8, mtu: u32) -> Vec<u8> {
@@ -923,15 +1058,15 @@ fn make_ra_packet_with_lifetimes(
     packet
 }
 
-fn resolve_dns_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>> {
+async fn resolve_dns_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>> {
     if let Some(primary) = config.primary.as_ref() {
-        match query_network(primary.network_handle, query) {
+        match query_network(primary.network_handle, query).await {
             Ok(response) => return Ok(response),
             Err(e) => eprintln!("dns primary failed: {e}"),
         }
     }
     if let Some(fallback) = config.fallback.as_ref() {
-        return query_network(fallback.network_handle, query);
+        return query_network(fallback.network_handle, query).await;
     }
     Err(io::Error::new(
         io::ErrorKind::NotConnected,
@@ -939,7 +1074,7 @@ fn resolve_dns_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>
     ))
 }
 
-fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
+async fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
     let fd = unsafe {
         android_res_nsend(
             network_handle,
@@ -951,10 +1086,13 @@ fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
     if fd < 0 {
         return Err(io::Error::from_raw_os_error(-fd));
     }
+    let fd = ResolverQuery { fd: Some(fd) };
+    set_nonblocking(fd.as_raw_fd())?;
+    let fd = AsyncFd::new(fd)?;
+    let _ = fd.readable().await?;
     let mut response = vec![0u8; 4096];
     let mut rcode = 0;
-    let size =
-        unsafe { android_res_nresult(fd, &mut rcode, response.as_mut_ptr(), response.len()) };
+    let size = fd.into_inner().finish(&mut rcode, &mut response);
     if size < 0 {
         return Err(io::Error::from_raw_os_error(-size));
     }
@@ -990,7 +1128,10 @@ fn create_tproxy_udp_listener(mark: u32) -> io::Result<UdpSocket> {
     Ok(socket)
 }
 
-fn connect_upstream_tcp(upstream: &Upstream, destination: SocketAddrV6) -> io::Result<TcpStream> {
+async fn connect_upstream_tcp(
+    upstream: &Upstream,
+    destination: SocketAddrV6,
+) -> io::Result<TokioTcpStream> {
     let fd = create_socket(AF_INET6, SOCK_STREAM, 0)?;
     if unsafe { android_setsocknetwork(upstream.network_handle, fd) } != 0 {
         let error = io::Error::last_os_error();
@@ -1027,18 +1168,15 @@ fn connect_upstream_tcp(upstream: &Upstream, destination: SocketAddrV6) -> io::R
             }
             return Err(error);
         }
-        wait_for_tcp_connect(fd, TCP_CONNECT_TIMEOUT)?;
+        wait_for_socket_connect(fd, TCP_CONNECT_TIMEOUT).await?;
     }
-    if let Err(error) = clear_nonblocking(fd) {
-        unsafe {
-            close(fd);
-        }
-        return Err(error);
-    }
-    Ok(unsafe { TcpStream::from_raw_fd(fd) })
+    TokioTcpStream::from_std(unsafe { TcpStream::from_raw_fd(fd) })
 }
 
-fn connect_upstream_udp(upstream: &Upstream, destination: SocketAddrV6) -> io::Result<UdpSocket> {
+async fn connect_upstream_udp(
+    upstream: &Upstream,
+    destination: SocketAddrV6,
+) -> io::Result<TokioUdpSocket> {
     let fd = create_socket(AF_INET6, SOCK_DGRAM, 0)?;
     if unsafe { android_setsocknetwork(upstream.network_handle, fd) } != 0 {
         let error = io::Error::last_os_error();
@@ -1061,7 +1199,7 @@ fn connect_upstream_udp(upstream: &Upstream, destination: SocketAddrV6) -> io::R
         )
     })?;
     set_nonblocking(fd)?;
-    Ok(unsafe { UdpSocket::from_raw_fd(fd) })
+    TokioUdpSocket::from_std(unsafe { UdpSocket::from_raw_fd(fd) })
 }
 
 fn bind_upstream_socket(fd: RawFd, interface: &str) -> io::Result<()> {
@@ -1075,6 +1213,7 @@ fn bind_upstream_socket(fd: RawFd, interface: &str) -> io::Result<()> {
 fn create_udp_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<UdpSocket> {
     let fd = create_socket(AF_INET6, SOCK_DGRAM, 0)?;
     let one = 1;
+    set_sockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one)?;
     set_sockopt(fd, SOL_SOCKET, SO_MARK, &mark)?;
     set_sockopt(fd, IPPROTO_IPV6, IPV6_TRANSPARENT, &one)?;
     syscall(unsafe {
@@ -1084,6 +1223,7 @@ fn create_udp_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<UdpSoc
             size_of::<SockAddrIn6>() as u32,
         )
     })?;
+    set_nonblocking(fd)?;
     Ok(unsafe { UdpSocket::from_raw_fd(fd) })
 }
 
@@ -1131,7 +1271,10 @@ fn recv_udp_packet(
     Ok((size as usize, source, destination))
 }
 
-fn connect_control_socket(socket_name: &str, connection_file: &PathBuf) -> io::Result<RawFd> {
+async fn connect_control_socket(
+    socket_name: &str,
+    connection_file: &PathBuf,
+) -> io::Result<UnixStream> {
     let address = abstract_unix_addr(socket_name)?;
     let length = abstract_unix_addr_len(socket_name);
     let start = Instant::now();
@@ -1143,12 +1286,37 @@ fn connect_control_socket(socket_name: &str, connection_file: &PathBuf) -> io::R
             ));
         }
         let fd = create_socket(AF_UNIX, SOCK_STREAM, 0)?;
+        set_nonblocking(fd)?;
         if unsafe { connect(fd, &address as *const _ as *const SockAddr, length) } == 0 {
-            return Ok(fd);
+            return UnixStream::from_std(unsafe { StdUnixStream::from_raw_fd(fd) });
         }
         let error = io::Error::last_os_error();
-        unsafe {
-            close(fd);
+        let raw_os_error = error.raw_os_error();
+        if error.kind() == io::ErrorKind::WouldBlock || raw_os_error == Some(EINPROGRESS) {
+            match wait_for_socket_connect(
+                fd,
+                DAEMON_STARTUP_TIMEOUT.saturating_sub(start.elapsed()),
+            )
+            .await
+            {
+                Ok(()) => return UnixStream::from_std(unsafe { StdUnixStream::from_raw_fd(fd) }),
+                Err(e) => {
+                    unsafe {
+                        close(fd);
+                    }
+                    if e.kind() != io::ErrorKind::TimedOut
+                        && start.elapsed() < DAEMON_STARTUP_TIMEOUT
+                    {
+                        time::sleep(LOOP_SLEEP).await;
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        } else {
+            unsafe {
+                close(fd);
+            }
         }
         if start.elapsed() >= DAEMON_STARTUP_TIMEOUT {
             return Err(io::Error::new(
@@ -1156,13 +1324,13 @@ fn connect_control_socket(socket_name: &str, connection_file: &PathBuf) -> io::R
                 format!("control socket connect timed out: {error}"),
             ));
         }
-        thread::sleep(LOOP_SLEEP);
+        time::sleep(LOOP_SLEEP).await;
     }
 }
 
-fn recv_packet(fd: RawFd) -> io::Result<Vec<u8>> {
+async fn recv_packet(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
     let mut header = [0u8; 4];
-    recv_exact(fd, &mut header)?;
+    socket.read_exact(&mut header).await?;
     let length = u32::from_be_bytes(header) as usize;
     if length == 0 || length > MAX_CONTROL_PACKET_SIZE {
         return Err(io::Error::new(
@@ -1171,40 +1339,22 @@ fn recv_packet(fd: RawFd) -> io::Result<Vec<u8>> {
         ));
     }
     let mut buffer = vec![0u8; length];
-    recv_exact(fd, &mut buffer)?;
+    socket.read_exact(&mut buffer).await?;
     Ok(buffer)
 }
 
-fn send_packet(fd: RawFd, packet: &[u8]) -> io::Result<()> {
+async fn send_packet(socket: &mut UnixStream, packet: &[u8]) -> io::Result<()> {
     if packet.is_empty() || packet.len() > MAX_CONTROL_PACKET_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!("invalid control frame length {}", packet.len()),
         ));
     }
-    send_all(fd, &(packet.len() as u32).to_be_bytes())?;
-    send_all(fd, packet)
-}
-
-fn recv_exact(fd: RawFd, mut buffer: &mut [u8]) -> io::Result<()> {
-    while !buffer.is_empty() {
-        let size = unsafe { recv(fd, buffer.as_mut_ptr() as *mut c_void, buffer.len(), 0) };
-        if size == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::UnexpectedEof,
-                "controller disconnected",
-            ));
-        }
-        if size < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() == io::ErrorKind::Interrupted {
-                continue;
-            }
-            return Err(error);
-        }
-        buffer = &mut buffer[size as usize..];
-    }
-    Ok(())
+    socket
+        .write_all(&(packet.len() as u32).to_be_bytes())
+        .await?;
+    socket.write_all(packet).await?;
+    socket.flush().await
 }
 
 fn parse_args() -> io::Result<Args> {
@@ -1401,31 +1551,13 @@ fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     syscall(unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) })
 }
 
-fn clear_nonblocking(fd: RawFd) -> io::Result<()> {
-    let flags = unsafe { fcntl(fd, F_GETFL) };
-    if flags < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    syscall(unsafe { fcntl(fd, F_SETFL, flags & !O_NONBLOCK) })
-}
-
-fn wait_for_tcp_connect(fd: RawFd, timeout: Duration) -> io::Result<()> {
-    let mut poll_fd = PollFd {
-        fd,
-        events: POLLOUT,
-        revents: 0,
-    };
-    let timeout_ms = timeout.as_millis().min(c_int::MAX as u128) as c_int;
-    let result = unsafe { poll(&mut poll_fd, 1, timeout_ms) };
-    if result < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if result == 0 {
+async fn wait_for_socket_connect(fd: RawFd, timeout: Duration) -> io::Result<()> {
+    if time::timeout(timeout, wait_for_output(fd)).await.is_err() {
         return Err(io::Error::new(
             io::ErrorKind::TimedOut,
             "tcp connect timed out",
         ));
-    }
+    };
     let mut socket_error = 0;
     let mut socket_error_len = size_of::<c_int>() as u32;
     syscall(unsafe {
@@ -1444,6 +1576,12 @@ fn wait_for_tcp_connect(fd: RawFd, timeout: Duration) -> io::Result<()> {
     }
 }
 
+async fn wait_for_output(fd: RawFd) -> io::Result<()> {
+    let fd = AsyncFd::new(BorrowedRawFd(fd))?;
+    let _ = fd.writable().await?;
+    Ok(())
+}
+
 fn syscall(result: c_int) -> io::Result<()> {
     if result < 0 {
         Err(io::Error::last_os_error())
@@ -1452,35 +1590,12 @@ fn syscall(result: c_int) -> io::Result<()> {
     }
 }
 
-fn send_all(fd: RawFd, mut packet: &[u8]) -> io::Result<()> {
-    while !packet.is_empty() {
-        let written = unsafe {
-            send(
-                fd,
-                packet.as_ptr() as *const c_void,
-                packet.len(),
-                MSG_NOSIGNAL,
-            )
-        };
-        if written < 0 {
-            let error = io::Error::last_os_error();
-            if error.kind() == io::ErrorKind::Interrupted {
-                continue;
-            }
-            return Err(error);
-        }
-        if written == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "control socket write failed",
-            ));
-        }
-        packet = &packet[written as usize..];
-    }
-    Ok(())
-}
-
-fn sendto_all(fd: RawFd, mut packet: &[u8], address: SockAddrIn6, length: u32) -> io::Result<()> {
+async fn sendto_all(
+    fd: RawFd,
+    mut packet: &[u8],
+    address: SockAddrIn6,
+    length: u32,
+) -> io::Result<()> {
     while !packet.is_empty() {
         let written = unsafe {
             sendto(
@@ -1493,7 +1608,21 @@ fn sendto_all(fd: RawFd, mut packet: &[u8], address: SockAddrIn6, length: u32) -
             )
         };
         if written < 0 {
-            return Err(io::Error::last_os_error());
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::Interrupted {
+                continue;
+            }
+            if error.kind() == io::ErrorKind::WouldBlock {
+                wait_for_output(fd).await?;
+                continue;
+            }
+            return Err(error);
+        }
+        if written == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "socket write failed",
+            ));
         }
         packet = &packet[written as usize..];
     }

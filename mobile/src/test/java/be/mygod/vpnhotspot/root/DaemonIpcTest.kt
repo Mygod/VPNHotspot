@@ -1,75 +1,80 @@
 package be.mygod.vpnhotspot.root
 
+import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.writeByte
+import io.ktor.utils.io.writeInt
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.EOFException
 import java.io.IOException
-import java.io.InputStream
 
 class DaemonIpcTest {
     @Test
-    fun readFrameHandlesSplitHeaderAndBody() {
-        assertArrayEquals(byteArrayOf(1, 2, 3),
-            DaemonIpc.readFrame(ChunkedInputStream(byteArrayOf(0, 0, 0, 3, 1, 2, 3), 1)))
+    fun readFrameHandlesSplitHeaderAndBody() = runBlocking {
+        val input = ByteChannel()
+        val writer = launch {
+            for (byte in byteArrayOf(0, 0, 0, 3, 1, 2, 3)) {
+                input.writeByte(byte)
+                input.flush()
+            }
+            input.flushAndClose()
+        }
+        assertArrayEquals(byteArrayOf(1, 2, 3), DaemonIpc.readFrame(input))
+        writer.join()
     }
 
     @Test
-    fun readFrameHandlesMultipleFrames() {
-        val output = ByteArrayOutputStream()
-        DaemonIpc.writeFrame(output, byteArrayOf(1, 2))
-        DaemonIpc.writeFrame(output, byteArrayOf(3))
-        val input = ByteArrayInputStream(output.toByteArray())
-        assertArrayEquals(byteArrayOf(1, 2), DaemonIpc.readFrame(input))
-        assertArrayEquals(byteArrayOf(3), DaemonIpc.readFrame(input))
+    fun readFrameHandlesMultipleFrames() = runBlocking {
+        val channel = ByteChannel()
+        DaemonIpc.writeFrame(channel, byteArrayOf(1, 2))
+        DaemonIpc.writeFrame(channel, byteArrayOf(3))
+        channel.flushAndClose()
+        assertArrayEquals(byteArrayOf(1, 2), DaemonIpc.readFrame(channel))
+        assertArrayEquals(byteArrayOf(3), DaemonIpc.readFrame(channel))
     }
 
     @Test
     fun readFrameRejectsUnexpectedEof() {
         assertThrows(EOFException::class.java) {
-            DaemonIpc.readFrame(ByteArrayInputStream(byteArrayOf(0, 0, 0, 3, 1)))
+            runBlocking {
+                val input = ByteChannel()
+                for (byte in byteArrayOf(0, 0, 0, 3, 1)) input.writeByte(byte)
+                input.flushAndClose()
+                DaemonIpc.readFrame(input)
+            }
         }
     }
 
     @Test
     fun readFrameRejectsInvalidLength() {
         assertThrows(IOException::class.java) {
-            DaemonIpc.readFrame(ByteArrayInputStream(byteArrayOf(0, 0, 0, 0)))
+            runBlocking {
+                val input = ByteChannel()
+                input.writeInt(0)
+                input.flushAndClose()
+                DaemonIpc.readFrame(input)
+            }
         }
         assertThrows(IOException::class.java) {
-            DaemonIpc.readFrame(ByteArrayInputStream(byteArrayOf(0, 1, 0, 0)))
+            runBlocking {
+                val input = ByteChannel()
+                input.writeInt(DaemonIpc.MAX_FRAME_SIZE + 1)
+                input.flushAndClose()
+                DaemonIpc.readFrame(input)
+            }
         }
     }
 
     @Test
     fun writeFrameRejectsInvalidLength() {
         assertThrows(IllegalArgumentException::class.java) {
-            DaemonIpc.writeFrame(ByteArrayOutputStream(), ByteArray(0))
+            runBlocking { DaemonIpc.writeFrame(ByteChannel(), ByteArray(0)) }
         }
         assertThrows(IllegalArgumentException::class.java) {
-            DaemonIpc.writeFrame(ByteArrayOutputStream(), ByteArray(DaemonIpc.MAX_FRAME_SIZE + 1))
-        }
-    }
-
-    private class ChunkedInputStream(
-        private val data: ByteArray,
-        private val chunkSize: Int,
-    ) : InputStream() {
-        private var offset = 0
-
-        override fun read(): Int {
-            if (offset >= data.size) return -1
-            return data[offset++].toInt() and 0xFF
-        }
-
-        override fun read(buffer: ByteArray, off: Int, len: Int): Int {
-            if (offset >= data.size) return -1
-            val count = minOf(len, chunkSize, data.size - offset)
-            data.copyInto(buffer, off, offset, offset + count)
-            offset += count
-            return count
+            runBlocking { DaemonIpc.writeFrame(ByteChannel(), ByteArray(DaemonIpc.MAX_FRAME_SIZE + 1)) }
         }
     }
 }
