@@ -4,10 +4,11 @@ import android.net.LinkProperties
 import android.net.Network
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.DataOutputStream
+import kotlinx.io.Buffer
+import kotlinx.io.Sink
+import kotlinx.io.Source
+import kotlinx.io.readByteArray
+import kotlinx.io.readString
 import java.io.IOException
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -73,67 +74,76 @@ internal object Ipv6NatProtocol {
 
     fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION) { writeSession(config) }
     fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION) { writeSession(config) }
-    fun removeSession(sessionId: String) = writePacket(CMD_REMOVE_SESSION) { writeUTF(sessionId) }
+    fun removeSession(sessionId: String) = writePacket(CMD_REMOVE_SESSION) { writeUtf(sessionId) }
     fun shutdown() = writePacket(CMD_SHUTDOWN) { }
 
     fun readPorts(packet: ByteArray): SessionPorts {
-        val input = DataInputStream(ByteArrayInputStream(packet))
+        val input = Buffer().apply { write(packet) }
         readStatus(input)
-        return SessionPorts(input.readUnsignedShort(), input.readUnsignedShort(),
-            input.readUnsignedShort(), input.readUnsignedShort())
+        return SessionPorts(input.readUnsignedShortValue(), input.readUnsignedShortValue(),
+            input.readUnsignedShortValue(), input.readUnsignedShortValue())
     }
 
     fun readAck(packet: ByteArray) {
-        readStatus(DataInputStream(ByteArrayInputStream(packet)))
+        readStatus(Buffer().apply { write(packet) })
     }
 
-    private fun writePacket(command: Int, block: DataOutputStream.() -> Unit): ByteArray {
-        val bytes = ByteArrayOutputStream()
-        DataOutputStream(bytes).use { output ->
-            output.writeInt(command)
-            output.block()
-        }
-        return bytes.toByteArray()
+    private fun writePacket(command: Int, block: Sink.() -> Unit): ByteArray {
+        val output = Buffer()
+        output.writeInt(command)
+        output.block()
+        return output.readByteArray()
     }
 
-    private fun DataOutputStream.writeSession(config: SessionConfig) {
-        writeUTF(config.sessionId)
+    private fun Sink.writeSession(config: SessionConfig) {
+        writeUtf(config.sessionId)
         writeInt(config.generationId)
-        writeUTF(config.downstream)
-        writeUTF(config.router)
-        writeUTF(config.gateway)
+        writeUtf(config.downstream)
+        writeUtf(config.router)
+        writeUtf(config.gateway)
         writeInt(config.prefixLength)
         writeInt(config.replyMark)
-        writeUTF(config.dnsBindAddress)
+        writeUtf(config.dnsBindAddress)
         writeInt(config.mtu)
         writeInt(config.deprecatedPrefixes.size)
         for (prefix in config.deprecatedPrefixes) {
-            writeUTF(prefix.address)
+            writeUtf(prefix.address)
             writeInt(prefix.prefixLength)
         }
         writeUpstream(config.primary)
         writeUpstream(config.fallback)
     }
 
-    private fun DataOutputStream.writeUpstream(upstream: Upstream?) {
-        writeBoolean(upstream != null)
+    private fun Sink.writeUpstream(upstream: Upstream?) {
+        writeByte((if (upstream != null) 1 else 0).toByte())
         if (upstream == null) return
         writeLong(upstream.networkHandle)
-        writeUTF(upstream.interfaceName)
+        writeUtf(upstream.interfaceName)
         writeInt(upstream.dnsServers.size)
-        for (server in upstream.dnsServers) writeUTF(server)
+        for (server in upstream.dnsServers) writeUtf(server)
         writeInt(upstream.routes.size)
         for (route in upstream.routes) {
-            writeUTF(route.address)
+            writeUtf(route.address)
             writeInt(route.prefixLength)
         }
     }
 
-    private fun readStatus(input: DataInputStream) {
-        when (val status = input.readUnsignedByte()) {
+    private fun readStatus(input: Source) {
+        when (val status = input.readByte().toInt() and 0xFF) {
             STATUS_OK -> { }
-            STATUS_ERROR -> throw IOException(input.readUTF())
+            STATUS_ERROR -> throw IOException(input.readUtf())
             else -> throw IOException("Unknown daemon status $status")
         }
     }
+
+    private fun Sink.writeUtf(value: String) {
+        val bytes = value.encodeToByteArray()
+        require(bytes.size <= UShort.MAX_VALUE.toInt()) { "String too long" }
+        writeShort(bytes.size.toShort())
+        write(bytes)
+    }
+
+    private fun Source.readUnsignedShortValue() = readShort().toInt() and 0xFFFF
+
+    private fun Source.readUtf() = readString(readUnsignedShortValue().toLong())
 }

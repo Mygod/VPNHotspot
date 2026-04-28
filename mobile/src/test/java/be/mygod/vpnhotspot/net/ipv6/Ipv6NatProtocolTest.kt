@@ -1,9 +1,10 @@
 package be.mygod.vpnhotspot.net.ipv6
 
+import kotlinx.io.Buffer
+import kotlinx.io.Source
+import kotlinx.io.readString
 import org.junit.Assert.assertEquals
 import org.junit.Test
-import java.io.ByteArrayInputStream
-import java.io.DataInputStream
 
 class Ipv6NatProtocolTest {
     @Test
@@ -38,40 +39,40 @@ class Ipv6NatProtocolTest {
                 routes = listOf(Ipv6NatProtocol.Route("2001:db8:ffff::", 48)),
             ),
         ))
-        DataInputStream(ByteArrayInputStream(packet)).use { input ->
+        Buffer().apply { write(packet) }.let { input ->
             assertEquals(Ipv6NatProtocol.CMD_START_SESSION, input.readInt())
-            assertEquals("wlan0", input.readUTF())
+            assertEquals("wlan0", input.readUtf())
             assertEquals(7, input.readInt())
-            assertEquals("wlan0", input.readUTF())
-            assertEquals("fe80::1", input.readUTF())
-            assertEquals("fd00:1234:5678:9abc::1", input.readUTF())
+            assertEquals("wlan0", input.readUtf())
+            assertEquals("fe80::1", input.readUtf())
+            assertEquals("fd00:1234:5678:9abc::1", input.readUtf())
             assertEquals(64, input.readInt())
             assertEquals(0x71d8, input.readInt())
-            assertEquals("127.0.0.1", input.readUTF())
+            assertEquals("127.0.0.1", input.readUtf())
             assertEquals(1440, input.readInt())
             assertEquals(2, input.readInt())
-            assertEquals("2600:db8::59", input.readUTF())
+            assertEquals("2600:db8::59", input.readUtf())
             assertEquals(64, input.readInt())
-            assertEquals("fd00:dead:beef::1", input.readUTF())
+            assertEquals("fd00:dead:beef::1", input.readUtf())
             assertEquals(64, input.readInt())
 
             assertEquals(true, input.readBoolean())
             assertEquals(123L, input.readLong())
-            assertEquals("tun0", input.readUTF())
+            assertEquals("tun0", input.readUtf())
             assertEquals(1, input.readInt())
-            assertEquals("2001:4860:4860::8888", input.readUTF())
+            assertEquals("2001:4860:4860::8888", input.readUtf())
             assertEquals(2, input.readInt())
-            assertEquals("::", input.readUTF())
+            assertEquals("::", input.readUtf())
             assertEquals(0, input.readInt())
-            assertEquals("2001:db8::", input.readUTF())
+            assertEquals("2001:db8::", input.readUtf())
             assertEquals(32, input.readInt())
 
             assertEquals(true, input.readBoolean())
             assertEquals(456L, input.readLong())
-            assertEquals("tun1", input.readUTF())
+            assertEquals("tun1", input.readUtf())
             assertEquals(0, input.readInt())
             assertEquals(1, input.readInt())
-            assertEquals("2001:db8:ffff::", input.readUTF())
+            assertEquals("2001:db8:ffff::", input.readUtf())
             assertEquals(48, input.readInt())
         }
     }
@@ -88,4 +89,8 @@ class Ipv6NatProtocolTest {
         assertEquals(Ipv6NatProtocol.SessionPorts(0x1234, 0x2345, 0x3456, 0x4567),
             Ipv6NatProtocol.readPorts(packet))
     }
+
+    private fun Source.readBoolean() = readByte().toInt() != 0
+
+    private fun Source.readUtf() = readString((readShort().toInt() and 0xFFFF).toLong())
 }
