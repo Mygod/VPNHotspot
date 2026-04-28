@@ -9,10 +9,10 @@ import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
+import be.mygod.librootkotlinx.systemContext
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
-import com.topjohnwu.superuser.internal.Utils
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.Channel
@@ -48,7 +48,7 @@ object RootManager : RootSession(), Logger {
                 }
             })
             Logger.me = RootManager
-            Services.init { Utils.getContext() }
+            Services.init { systemContext }
             UnblockCentral.needInit = false
         }
     }

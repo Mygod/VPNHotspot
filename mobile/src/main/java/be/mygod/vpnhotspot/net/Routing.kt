@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -425,10 +426,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_forward")
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_output")
             transaction.execQuiet("$IP6TABLES -t mangle -N vpnhotspot_v6_tproxy")
-            transaction.execQuiet("$IP6TABLES -C INPUT -j vpnhotspot_v6_input || $IP6TABLES -I INPUT -j vpnhotspot_v6_input")
-            transaction.execQuiet("$IP6TABLES -C FORWARD -j vpnhotspot_v6_forward || $IP6TABLES -I FORWARD -j vpnhotspot_v6_forward")
-            transaction.execQuiet("$IP6TABLES -C OUTPUT -j vpnhotspot_v6_output || $IP6TABLES -I OUTPUT -j vpnhotspot_v6_output")
-            transaction.execQuiet("$IP6TABLES -t mangle -C PREROUTING -j vpnhotspot_v6_tproxy || $IP6TABLES -t mangle -I PREROUTING -j vpnhotspot_v6_tproxy")
+            transaction.ip6tablesInsert("INPUT -j vpnhotspot_v6_input")
+            transaction.ip6tablesInsert("FORWARD -j vpnhotspot_v6_forward")
+            transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
+            transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
             try {
                 transaction.exec("$IP -6 route add local ::/0 dev lo table $IPV6_NAT_TABLE")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
@@ -570,8 +571,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             withContext(NonCancellable) { session.close(transaction) }
             if (e is CancellationException) throw e
             Timber.w(e)
-            SmartSnackbar.make(R.string.warn_ipv6_nat_fallback).show()
-            disableIpv6()
+            SmartSnackbar.make(app.getString(R.string.warn_ipv6_nat_failed, e.readableMessage)).show()
         }
     }
 

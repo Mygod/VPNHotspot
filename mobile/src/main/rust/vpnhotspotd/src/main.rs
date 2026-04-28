@@ -6,7 +6,7 @@ use std::mem::{size_of, zeroed};
 use std::net::{
     Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, TcpListener, TcpStream, UdpSocket,
 };
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream as StdUnixStream;
 use std::path::PathBuf;
 use std::ptr::null;
@@ -1132,24 +1132,16 @@ async fn connect_upstream_tcp(
     upstream: &Upstream,
     destination: SocketAddrV6,
 ) -> io::Result<TokioTcpStream> {
-    let fd = create_socket(AF_INET6, SOCK_STREAM, 0)?;
-    if unsafe { android_setsocknetwork(upstream.network_handle, fd) } != 0 {
+    let fd = unsafe { OwnedFd::from_raw_fd(create_socket(AF_INET6, SOCK_STREAM, 0)?) };
+    if unsafe { android_setsocknetwork(upstream.network_handle, fd.as_raw_fd()) } != 0 {
         let error = io::Error::last_os_error();
-        unsafe {
-            close(fd);
-        }
         return Err(error);
     }
-    if let Err(error) = bind_upstream_socket(fd, &upstream.interface) {
-        unsafe {
-            close(fd);
-        }
-        return Err(error);
-    }
-    set_nonblocking(fd)?;
+    bind_upstream_socket(fd.as_raw_fd(), &upstream.interface)?;
+    set_nonblocking(fd.as_raw_fd())?;
     let connect_result = unsafe {
         connect(
-            fd,
+            fd.as_raw_fd(),
             &raw_addr_v6(destination) as *const _ as *const SockAddr,
             size_of::<SockAddrIn6>() as u32,
         )
@@ -1157,20 +1149,14 @@ async fn connect_upstream_tcp(
     if connect_result < 0 {
         let error = io::Error::last_os_error();
         let Some(raw_os_error) = error.raw_os_error() else {
-            unsafe {
-                close(fd);
-            }
             return Err(error);
         };
         if error.kind() != io::ErrorKind::WouldBlock && raw_os_error != EINPROGRESS {
-            unsafe {
-                close(fd);
-            }
             return Err(error);
         }
-        wait_for_socket_connect(fd, TCP_CONNECT_TIMEOUT).await?;
+        wait_for_socket_connect(fd.as_raw_fd(), TCP_CONNECT_TIMEOUT).await?;
     }
-    TokioTcpStream::from_std(unsafe { TcpStream::from_raw_fd(fd) })
+    TokioTcpStream::from_std(unsafe { TcpStream::from_raw_fd(fd.into_raw_fd()) })
 }
 
 async fn connect_upstream_udp(
