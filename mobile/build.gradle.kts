@@ -144,7 +144,8 @@ android {
         release {
             isShrinkResources = true
             isMinifyEnabled = true
-            vcsInfo.include = true
+            // BuildGit already records the commit; AGP's VCS tag task fails when Git packs branch refs.
+            vcsInfo.include = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
