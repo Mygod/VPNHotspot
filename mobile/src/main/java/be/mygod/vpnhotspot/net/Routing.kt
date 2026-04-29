@@ -62,8 +62,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.h#51
          */
         private val rulePriorityShift = if (Build.VERSION.SDK_INT < 31) -3000 else 0
-        private val RULE_PRIORITY_DAEMON = 20500 + rulePriorityShift
-        private val RULE_PRIORITY_DAEMON_REPLY = 20600 + rulePriorityShift
+        private val RULE_PRIORITY_DAEMON = 20600 + rulePriorityShift
         private val RULE_PRIORITY_UPSTREAM = 20700 + rulePriorityShift
         private val RULE_PRIORITY_UPSTREAM_FALLBACK = 20800 + rulePriorityShift
         private val RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM = 20900 + rulePriorityShift
@@ -75,9 +74,24 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
          * https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
          */
-        private const val DAEMON_MARK_MASK = 0x18000000
-        private const val DAEMON_INTERCEPT_MARK = 0x10000000
-        private const val DAEMON_REPLY_MARK = 0x18000000
+        private const val DAEMON_INTERCEPT_FWMARK = "0x10000000/0x10000000"
+
+        /**
+         * Daemon reply sockets use Android's local-network fwmark so AOSP routes them through
+         * local_network before VPN UID rules. This is LOCAL_NET_ID 99 plus explicitlySelected and
+         * protectedFromVpn.
+         *
+         * Sources:
+         * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/binder/android/net/INetd.aidl#768
+         * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+         * https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#653
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-15.0.0_r1/service-t/src/com/android/server/NsdService.java#1761
+         * https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/include/Fwmark.h#24
+         * https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/server/RouteController.cpp#605
+         */
+        private const val DAEMON_REPLY_MARK_MASK = 0x0003FFFF
+        private const val DAEMON_REPLY_MARK = 0x00030063
+
         /**
          * Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
          * that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
@@ -119,20 +133,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("$IP6TABLES -X vpnhotspot_v6_output")
             commands.appendLine("$IP6TABLES -t mangle -F vpnhotspot_v6_tproxy")
             commands.appendLine("$IP6TABLES -t mangle -X vpnhotspot_v6_tproxy")
-            commands.appendLine("while $IP rule del priority $RULE_PRIORITY_DAEMON; do done")
-            commands.appendLine("while $IP rule del priority $RULE_PRIORITY_DAEMON_REPLY; do done")
-            commands.appendLine("$IP route flush table $DAEMON_TABLE")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON; do done")
-            commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON_REPLY; do done")
             commands.appendLine("$IP -6 route flush table $DAEMON_TABLE")
             val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             for (networkInterface in networkInterfaces) {
                 val prefix = ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)
                 commands.appendLine("$IP -6 addr del ${ipv6NatGateway(prefix).hostAddress}/64 dev ${networkInterface.name}")
-                for (upstream in networkInterfaces) {
-                    commands.appendLine(
-                        "$IP -6 route del $prefix dev ${networkInterface.name} table ${upstream.name} 2>/dev/null")
-                }
+                commands.appendLine(
+                    "$IP -6 route del $prefix dev ${networkInterface.name} table local_network 2>/dev/null")
             }
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
@@ -334,68 +342,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private val prefix by lazy { ipv6NatPrefix(ipv6NatPrefixSeed, downstream) }
         private val gateway by lazy { ipv6NatGateway(prefix) }
         private val mtu by lazy { NetworkInterface.getByName(downstream)?.mtu ?: 1500 }
-        private val mirroredUpstreamTables = mutableMapOf<String, RootSession.Transaction?>()
         lateinit var ports: DaemonProtocol.SessionPorts
 
         private fun buildUpstream(network: android.net.Network?) = DaemonProtocol.Upstream.from(network,
             network?.let(Services.connectivity::getLinkProperties))
-        private fun currentUpstreamTables() = buildSet {
-            buildUpstream(UpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
-            buildUpstream(FallbackUpstreamMonitor.currentNetwork)?.interfaceName?.takeIf(String::isNotEmpty)?.let(::add)
-        }
-        private suspend fun syncPrefixRoutes(
-            config: DaemonProtocol.SessionConfig,
-            setup: RootSession.Transaction? = null,
-        ) {
-            val ipv6Nat = checkNotNull(config.ipv6Nat)
-            val current = currentUpstreamTables()
-            val subnet = prefix.toString()
-            val staleSubnets = buildSet {
-                for (route in ipv6Nat.suppressedPrefixes) {
-                    val address = InetAddress.getByName(route.address)
-                    add(IpPrefix(address, route.prefixLength).toString())
-                }
-            }
-            if (setup == null) {
-                if (staleSubnets.isNotEmpty()) RootSession.use { session ->
-                    for (table in mirroredUpstreamTables.keys + current) {
-                        for (stale in staleSubnets) {
-                            session.submit("$IP -6 route del $stale dev $downstream table $table")
-                        }
-                    }
-                }
-            } else for (table in mirroredUpstreamTables.keys + current) {
-                for (stale in staleSubnets) setup.execQuiet("$IP -6 route del $stale dev $downstream table $table")
-            }
-            for (table in mirroredUpstreamTables.keys - current) {
-                val routeTransaction = mirroredUpstreamTables.remove(table)
-                if (routeTransaction == null) {
-                    if (setup == null) {
-                        RootSession.use { it.submit("$IP -6 route del $subnet dev $downstream table $table") }
-                    } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
-                } else routeTransaction.revert()
-            }
-            for (table in current - mirroredUpstreamTables.keys) {
-                if (setup == null) {
-                    mirroredUpstreamTables[table] = RootSession.beginTransaction().safeguard {
-                        try {
-                            exec("$IP -6 route replace $subnet dev $downstream table $table",
-                                "$IP -6 route del $subnet dev $downstream table $table")
-                        } catch (e: RoutingCommands.UnexpectedOutputException) {
-                            if (!shouldSuppressIpError(e)) throw e
-                        }
-                    }
-                } else {
-                    try {
-                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table",
-                            "$IP -6 route del $subnet dev $downstream table $table")
-                    } catch (e: RoutingCommands.UnexpectedOutputException) {
-                        if (!shouldSuppressIpError(e)) throw e
-                    }
-                    mirroredUpstreamTables[table] = null
-                }
-            }
-        }
         private fun nextConfig(): DaemonProtocol.SessionConfig {
             val ipv6NatConfig = if (ipv6Nat) {
                 val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
@@ -442,7 +392,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 "nat")
             if (!ipv6Nat) return
             val ipv6NatPorts = checkNotNull(ports.ipv6Nat)
-            syncPrefixRoutes(config, transaction)
+            val subnet = prefix.toString()
+            try {
+                transaction.exec("$IP -6 route replace $subnet dev $downstream table local_network",
+                    "$IP -6 route del $subnet dev $downstream table local_network")
+            } catch (e: RoutingCommands.UnexpectedOutputException) {
+                if (!shouldSuppressIpError(e)) throw e
+            }
             transaction.exec("$IP -6 addr replace ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream",
                 "$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_input")
@@ -459,33 +415,25 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (!shouldSuppressIpError(e)) throw e
             }
             transaction.ip6Rule("lookup $DAEMON_TABLE", RULE_PRIORITY_DAEMON,
-                "fwmark $DAEMON_INTERCEPT_MARK/$DAEMON_MARK_MASK")
-            try {
-                transaction.execQuiet("while $IP -6 rule del to $prefix lookup $downstream priority $RULE_PRIORITY_DAEMON_REPLY; do done")
-                transaction.exec("$IP -6 rule add to $prefix lookup $downstream priority $RULE_PRIORITY_DAEMON_REPLY",
-                    "$IP -6 rule del to $prefix lookup $downstream priority $RULE_PRIORITY_DAEMON_REPLY")
-            } catch (e: RoutingCommands.UnexpectedOutputException) {
-                if (!shouldSuppressIpError(e)) throw e
-            }
+                "fwmark $DAEMON_INTERCEPT_FWMARK")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -p icmpv6 -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -m socket --transparent --nowildcard -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -j REJECT")
             transaction.ip6tablesAdd("vpnhotspot_v6_forward -i $downstream -j REJECT")
             transaction.ip6tablesAdd("vpnhotspot_v6_forward -o $downstream -j REJECT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $DAEMON_REPLY_MARK/$DAEMON_MARK_MASK -j ACCEPT")
+            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $DAEMON_REPLY_MARK/$DAEMON_REPLY_MARK_MASK -j ACCEPT")
             transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -j REJECT")
             transaction.ip6tablesInsert(
-                "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ipv6NatPorts.tcp} --tproxy-mark $DAEMON_INTERCEPT_MARK/$DAEMON_MARK_MASK",
+                "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ipv6NatPorts.tcp} --tproxy-mark $DAEMON_INTERCEPT_FWMARK",
                 "mangle")
             transaction.ip6tablesInsert(
-                "vpnhotspot_v6_tproxy -i $downstream -p udp -j TPROXY --on-port ${ipv6NatPorts.udp} --tproxy-mark $DAEMON_INTERCEPT_MARK/$DAEMON_MARK_MASK",
+                "vpnhotspot_v6_tproxy -i $downstream -p udp -j TPROXY --on-port ${ipv6NatPorts.udp} --tproxy-mark $DAEMON_INTERCEPT_FWMARK",
                 "mangle")
         }
 
         suspend fun update() {
             try {
                 val config = nextConfig()
-                if (ipv6Nat) syncPrefixRoutes(config)
                 DaemonController.replaceSession(config)
             } catch (e: Exception) {
                 if (e !is CancellationException) {
@@ -501,18 +449,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         ) {
             if (ipv6Nat) {
                 val subnet = prefix.toString()
-                for ((table, routeTransaction) in mirroredUpstreamTables.toList()) {
-                    if (routeTransaction == null) {
-                        if (setup == null) {
-                            RootSession.use {
-                                it.submit("$IP -6 route del $subnet dev $downstream table $table")
-                            }
-                        } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
-                    } else routeTransaction.revert()
-                }
-                mirroredUpstreamTables.clear()
                 if (setup == null) {
-                    RootSession.use { it.submit("$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream") }
+                    RootSession.use {
+                        it.submit("$IP -6 route del $subnet dev $downstream table local_network")
+                        it.submit("$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
+                    }
+                } else {
+                    setup.execQuiet("$IP -6 route del $subnet dev $downstream table local_network")
                 }
             }
             try {
