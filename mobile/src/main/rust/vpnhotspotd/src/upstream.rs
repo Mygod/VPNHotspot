@@ -13,7 +13,7 @@ use crate::socket::await_connect;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[link(name = "android")]
+#[cfg_attr(target_os = "android", link(name = "android"))]
 unsafe extern "C" {
     fn android_setsocknetwork(network: u64, fd: c_int) -> c_int;
 }

@@ -1,7 +1,7 @@
 use std::io;
 use std::net::Ipv6Addr;
 
-use crate::model::{ipv6_to_u128, Route, SessionConfig, SessionPorts, Upstream};
+use crate::model::{ipv6_to_u128, Ipv6NatConfig, Route, SessionConfig, SessionPorts, Upstream};
 
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
@@ -48,10 +48,15 @@ pub(crate) fn ok_packet() -> Vec<u8> {
 
 pub(crate) fn ports_packet(ports: SessionPorts) -> Vec<u8> {
     let mut packet = vec![STATUS_OK];
-    packet.extend_from_slice(&ports.tcp.to_be_bytes());
-    packet.extend_from_slice(&ports.udp.to_be_bytes());
     packet.extend_from_slice(&ports.dns_tcp.to_be_bytes());
     packet.extend_from_slice(&ports.dns_udp.to_be_bytes());
+    if let Some(ipv6_nat) = ports.ipv6_nat {
+        packet.push(1);
+        packet.extend_from_slice(&ipv6_nat.tcp.to_be_bytes());
+        packet.extend_from_slice(&ipv6_nat.udp.to_be_bytes());
+    } else {
+        packet.push(0);
+    }
     packet
 }
 
@@ -110,40 +115,38 @@ impl<'a> Parser<'a> {
 
     fn read_session_config(&mut self) -> io::Result<SessionConfig> {
         let session_id = self.read_utf()?;
-        let _generation_id = self.read_i32()?;
         let downstream = self.read_utf()?;
-        let router = self
-            .read_utf()?
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid router address"))?;
-        let gateway = self
-            .read_utf()?
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address"))?;
-        let prefix_len = self.read_i32()? as u8;
-        let reply_mark = self.read_u32()?;
         let dns_bind_address = self
             .read_utf()?
             .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid dns bind address"))?;
-        let mtu = self.read_i32()? as u32;
-        let suppressed_prefixes = self.read_routes()?;
-        let cleanup_prefixes = self.read_routes()?;
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid DNS bind address"))?;
+        let reply_mark = self.read_u32()?;
         let primary = self.read_upstream()?;
         let fallback = self.read_upstream()?;
+        let ipv6_nat = if self.read_bool()? {
+            Some(Ipv6NatConfig {
+                router: self.read_utf()?.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "invalid router address")
+                })?,
+                gateway: self.read_utf()?.parse().map_err(|_| {
+                    io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address")
+                })?,
+                prefix_len: self.read_i32()? as u8,
+                mtu: self.read_i32()? as u32,
+                suppressed_prefixes: self.read_routes()?,
+                cleanup_prefixes: self.read_routes()?,
+            })
+        } else {
+            None
+        };
         Ok(SessionConfig {
             session_id,
             downstream,
-            router,
-            gateway,
-            prefix_len,
-            reply_mark,
             dns_bind_address,
-            mtu,
-            suppressed_prefixes,
-            cleanup_prefixes,
+            reply_mark,
             primary,
             fallback,
+            ipv6_nat,
         })
     }
 
@@ -153,10 +156,6 @@ impl<'a> Parser<'a> {
         }
         let network_handle = self.read_u64()?;
         let interface = self.read_utf()?;
-        let dns_servers = self.read_i32()? as usize;
-        for _ in 0..dns_servers {
-            let _ = self.read_utf()?;
-        }
         Ok(Some(Upstream {
             network_handle,
             interface,

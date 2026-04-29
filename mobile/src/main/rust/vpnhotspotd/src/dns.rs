@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Arc;
 
@@ -13,10 +13,14 @@ use tokio::sync::Mutex;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
+use crate::dns_wire;
 use crate::model::SessionConfig;
+
 pub(crate) const DNS_PORT: u16 = 53;
 // android/multinetwork.h: ResNsendFlags::ANDROID_RESOLV_NO_RETRY.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
+// Maximum DNS message size carried over TCP or EDNS0 UDP.
+const DNS_MAX_PACKET: usize = 65_535;
 
 struct ResolverQuery {
     fd: Option<RawFd>,
@@ -63,11 +67,23 @@ fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-#[link(name = "android")]
+#[cfg_attr(target_os = "android", link(name = "android"))]
 unsafe extern "C" {
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
     fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
     fn android_res_cancel(nsend_fd: c_int);
+}
+
+pub(crate) fn create_tcp_listener(bind_address: Ipv4Addr) -> io::Result<TcpListener> {
+    let listener = TcpListener::bind((bind_address, 0))?;
+    listener.set_nonblocking(true)?;
+    Ok(listener)
+}
+
+pub(crate) fn create_udp_listener(bind_address: Ipv4Addr) -> io::Result<UdpSocket> {
+    let socket = UdpSocket::bind((bind_address, 0))?;
+    socket.set_nonblocking(true)?;
+    Ok(socket)
 }
 
 pub(crate) fn spawn_tcp_loop(
@@ -83,10 +99,16 @@ pub(crate) fn spawn_tcp_loop(
                 accepted = listener.accept() => match accepted {
                     Ok((socket, _)) => {
                         let config = config.clone();
+                        let connection_stop = stop.child_token();
                         spawn(async move {
-                            let snapshot = config.lock().await.clone();
-                            if let Err(e) = handle_tcp_connection(socket, snapshot).await {
-                                eprintln!("dns tcp failed: {e}");
+                            select! {
+                                _ = connection_stop.cancelled() => {}
+                                result = async {
+                                    let snapshot = config.lock().await.clone();
+                                    handle_tcp_connection(socket, snapshot).await
+                                } => if let Err(e) = result {
+                                    eprintln!("dns tcp failed: {e}");
+                                }
                             }
                         });
                     }
@@ -112,7 +134,9 @@ pub(crate) async fn handle_tcp_connection(
         let length = u16::from_be_bytes(header) as usize;
         let mut query = vec![0u8; length];
         socket.read_exact(&mut query).await?;
-        let response = resolve_query(&config, &query).await?;
+        let Some(response) = resolve_or_error(&config, &query).await else {
+            continue;
+        };
         socket
             .write_all(&(response.len() as u16).to_be_bytes())
             .await?;
@@ -141,11 +165,10 @@ pub(crate) fn spawn_udp_loop(
                         spawn(async move {
                             select! {
                                 _ = query_stop.cancelled() => {}
-                                result = resolve_query(&snapshot, &query) => match result {
-                                    Ok(response) => {
+                                response = resolve_or_error(&snapshot, &query) => {
+                                    if let Some(response) = response {
                                         let _ = socket.send_to(&response, source).await;
                                     }
-                                    Err(e) => eprintln!("dns udp resolve failed: {e}"),
                                 }
                             }
                         });
@@ -160,10 +183,7 @@ pub(crate) fn spawn_udp_loop(
 
 pub(crate) async fn resolve_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>> {
     if let Some(primary) = config.primary.as_ref() {
-        match query_network(primary.network_handle, query).await {
-            Ok(response) => return Ok(response),
-            Err(e) => eprintln!("dns primary failed: {e}"),
-        }
+        return query_network(primary.network_handle, query).await;
     }
     if let Some(fallback) = config.fallback.as_ref() {
         return query_network(fallback.network_handle, query).await;
@@ -172,6 +192,16 @@ pub(crate) async fn resolve_query(config: &SessionConfig, query: &[u8]) -> io::R
         io::ErrorKind::NotConnected,
         "no DNS upstream",
     ))
+}
+
+async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<Vec<u8>> {
+    match resolve_query(config, query).await {
+        Ok(response) => Some(response),
+        Err(e) => {
+            eprintln!("dns resolve failed: {e}");
+            dns_wire::servfail_response(query)
+        }
+    }
 }
 
 async fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
@@ -190,7 +220,7 @@ async fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>>
     set_nonblocking(fd.as_raw_fd())?;
     let fd = AsyncFd::new(fd)?;
     let _ = fd.readable().await?;
-    let mut response = vec![0u8; 4096];
+    let mut response = vec![0u8; DNS_MAX_PACKET];
     let mut rcode = 0;
     let size = fd.into_inner().finish(&mut rcode, &mut response);
     if size < 0 {

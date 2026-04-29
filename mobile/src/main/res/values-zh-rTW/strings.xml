@@ -183,8 +183,6 @@
     <string name="exception_interface_not_found">重大錯誤：找不到下游介面</string>
     <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
-    <string name="warn_vpn_firewall">警告：有些 VPN 應用程式若未將本應用程式設為系統應用或手動設定 DNS，就無法使用 VPN 網路共用。</string>
-    <string name="error_vpn_firewall_reboot">請重新啟動裝置，才能使用 VPN 網路共用。</string>
 
     <string name="configuration_view">Wi\u2011Fi 設定</string>
     <string name="configuration_invalid">設定可能無效</string>

@@ -27,9 +27,13 @@ pub(crate) fn spawn_loop(
                     match accepted {
                         Ok((socket, _)) => {
                             let config = config.clone();
+                            let connection_stop = stop.child_token();
                             spawn(async move {
-                                if let Err(e) = handle_connection(socket, config).await {
-                                    eprintln!("tcp proxy failed: {e}");
+                                select! {
+                                    _ = connection_stop.cancelled() => {}
+                                    result = handle_connection(socket, config) => if let Err(e) = result {
+                                        eprintln!("tcp proxy failed: {e}");
+                                    }
                                 }
                             });
                         }
@@ -57,7 +61,11 @@ async fn handle_connection(
     };
     let snapshot = config.lock().await.clone();
     SockRef::from(&inbound).set_mark(snapshot.reply_mark)?;
-    if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
+    let ipv6_nat = snapshot
+        .ipv6_nat
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
+    if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
         return dns::handle_tcp_connection(inbound, snapshot).await;
     }
     let upstream = select_upstream(&snapshot, *destination.ip())

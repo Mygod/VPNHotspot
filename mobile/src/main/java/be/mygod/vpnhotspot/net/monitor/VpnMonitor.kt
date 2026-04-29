@@ -4,7 +4,6 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
-import be.mygod.vpnhotspot.net.VpnFirewallManager
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import kotlinx.coroutines.GlobalScope
@@ -22,7 +21,6 @@ object VpnMonitor : UpstreamMonitor() {
     override val currentLinkProperties: LinkProperties? get() = currentNetwork?.let { available[it] }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         private fun fireCallbacks(properties: LinkProperties?, callbacks: Iterable<Callback>) = GlobalScope.launch {
-            if (properties != null) VpnFirewallManager.excludeIfNeeded(this)
             callbacks.forEach { it.onAvailable(properties) }
         }
 

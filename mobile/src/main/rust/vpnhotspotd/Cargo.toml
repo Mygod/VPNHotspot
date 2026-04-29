@@ -3,6 +3,14 @@ name = "vpnhotspotd"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vpnhotspotd"
+path = "src/main.rs"
+test = false
+
 [dependencies]
 libc = "0.2.186"
 socket2 = { version = "0.6.3", features = ["all"] }
@@ -11,7 +19,7 @@ tokio-util = "0.7.18"
 
 [profile.release]
 panic = "abort"
-lto = "thin"
+lto = "fat"
 codegen-units = 1
 
 [profile.dev]

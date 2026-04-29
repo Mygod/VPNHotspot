@@ -11,7 +11,6 @@ import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import java.io.IOException
 import java.net.Inet6Address
-import java.net.InetAddress
 
 internal object DaemonProtocol {
     const val STATUS_OK = 0
@@ -30,7 +29,6 @@ internal object DaemonProtocol {
     data class Upstream(
         val networkHandle: Long,
         val interfaceName: String,
-        val dnsServers: List<String>,
         val routes: List<Route>,
     ) {
         companion object {
@@ -38,7 +36,6 @@ internal object DaemonProtocol {
                 null
             } else Upstream(network.networkHandle,
                 properties.interfaceName ?: properties.allInterfaceNames.firstOrNull().orEmpty(),
-                properties.dnsServers.mapNotNull(InetAddress::getHostAddress),
                 properties.allRoutes.mapNotNull { route ->
                     val destination = route.destination
                     val address = destination.address
@@ -52,25 +49,32 @@ internal object DaemonProtocol {
 
     data class SessionConfig(
         val sessionId: String,
-        val generationId: Int,
         val downstream: String,
+        val dnsBindAddress: String,
+        val replyMark: Int,
+        val primary: Upstream?,
+        val fallback: Upstream?,
+        val ipv6Nat: Ipv6NatConfig?,
+    )
+
+    data class Ipv6NatConfig(
         val router: String,
         val gateway: String,
         val prefixLength: Int,
-        val replyMark: Int,
-        val dnsBindAddress: String,
         val mtu: Int,
         val suppressedPrefixes: List<Route>,
         val cleanupPrefixes: List<Route>,
-        val primary: Upstream?,
-        val fallback: Upstream?,
     )
 
     data class SessionPorts(
-        val tcp: Int,
-        val udp: Int,
         val dnsTcp: Int,
         val dnsUdp: Int,
+        val ipv6Nat: Ipv6NatPorts?,
+    )
+
+    data class Ipv6NatPorts(
+        val tcp: Int,
+        val udp: Int,
     )
 
     enum class RemoveMode(val protocolValue: Byte) {
@@ -89,8 +93,13 @@ internal object DaemonProtocol {
     fun readPorts(packet: ByteArray): SessionPorts {
         val input = Buffer().apply { write(packet) }
         readStatus(input)
-        return SessionPorts(input.readUnsignedShortValue(), input.readUnsignedShortValue(),
-            input.readUnsignedShortValue(), input.readUnsignedShortValue())
+        return SessionPorts(
+            input.readUnsignedShortValue(),
+            input.readUnsignedShortValue(),
+            if (input.readByte() != 0.toByte()) {
+                Ipv6NatPorts(input.readUnsignedShortValue(), input.readUnsignedShortValue())
+            } else null,
+        )
     }
 
     fun readAck(packet: ByteArray) {
@@ -106,26 +115,28 @@ internal object DaemonProtocol {
 
     private fun Sink.writeSession(config: SessionConfig) {
         writeUtf(config.sessionId)
-        writeInt(config.generationId)
         writeUtf(config.downstream)
-        writeUtf(config.router)
-        writeUtf(config.gateway)
-        writeInt(config.prefixLength)
-        writeInt(config.replyMark)
         writeUtf(config.dnsBindAddress)
-        writeInt(config.mtu)
-        writeInt(config.suppressedPrefixes.size)
-        for (prefix in config.suppressedPrefixes) {
-            writeUtf(prefix.address)
-            writeInt(prefix.prefixLength)
-        }
-        writeInt(config.cleanupPrefixes.size)
-        for (prefix in config.cleanupPrefixes) {
-            writeUtf(prefix.address)
-            writeInt(prefix.prefixLength)
-        }
+        writeInt(config.replyMark)
         writeUpstream(config.primary)
         writeUpstream(config.fallback)
+        val ipv6Nat = config.ipv6Nat
+        writeByte((if (ipv6Nat != null) 1 else 0).toByte())
+        if (ipv6Nat == null) return
+        writeUtf(ipv6Nat.router)
+        writeUtf(ipv6Nat.gateway)
+        writeInt(ipv6Nat.prefixLength)
+        writeInt(ipv6Nat.mtu)
+        writeInt(ipv6Nat.suppressedPrefixes.size)
+        for (prefix in ipv6Nat.suppressedPrefixes) {
+            writeUtf(prefix.address)
+            writeInt(prefix.prefixLength)
+        }
+        writeInt(ipv6Nat.cleanupPrefixes.size)
+        for (prefix in ipv6Nat.cleanupPrefixes) {
+            writeUtf(prefix.address)
+            writeInt(prefix.prefixLength)
+        }
     }
 
     private fun Sink.writeUpstream(upstream: Upstream?) {
@@ -133,8 +144,6 @@ internal object DaemonProtocol {
         if (upstream == null) return
         writeLong(upstream.networkHandle)
         writeUtf(upstream.interfaceName)
-        writeInt(upstream.dnsServers.size)
-        for (server in upstream.dnsServers) writeUtf(server)
         writeInt(upstream.routes.size)
         for (route in upstream.routes) {
             writeUtf(route.address)

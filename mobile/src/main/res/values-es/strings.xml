@@ -190,8 +190,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="exception_interface_not_found">Fatal: No se ha encontrado la interfaz de transmisión de bajada</string>
     <string name="noisy_su_failure">Algo salió mal, por favor verifica la información de depuración.</string>
     <string name="permission_missing">Permiso faltante</string>
-    <string name="warn_vpn_firewall">Advertencia: La conexión compartida de VPN no funcionará con algunas aplicaciones de VPN a menos que sistematices esta aplicación o configures el DNS manualmente</string>
-    <string name="error_vpn_firewall_reboot">Por favor, reinicia tu dispositivo para que funcione la conexión compartida de VPN</string>
 
     <string name="configuration_view">Configuración Wi\u2011Fi</string>
     <string name="configuration_invalid">Configuración posiblemente no válida</string>

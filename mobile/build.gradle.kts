@@ -88,7 +88,7 @@ abstract class BuildDaemonJniLibsTask : DefaultTask() {
         )
         for ((abi, target) in targets) {
             val command = mutableListOf("cargo", "ndk", "--target", abi, "--platform", androidPlatform.get().toString(),
-                "build", "--locked").apply {
+                "build", "--locked", "--bin", "vpnhotspotd").apply {
                 if (profile == "release") add("--release")
             }
             val process = ProcessBuilder(command).directory(cargoDir).redirectErrorStream(true).apply {
@@ -188,12 +188,11 @@ dependencies {
     implementation(libs.core.i18n)
     implementation(libs.core.ktx)
     implementation(libs.dexmaker)
-    implementation(libs.dnsjava)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.fragment.ktx)
     implementation(libs.hiddenapibypass)
-    implementation(libs.ktor.network.jvm)
+    implementation(libs.ktor.io.jvm)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.librootkotlinx)

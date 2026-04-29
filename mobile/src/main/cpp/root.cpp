@@ -2,8 +2,6 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <linux/bpf.h>
-#include <linux/unistd.h>
 #include <jni.h>
 #include <android/log.h>
 #include <vector>
@@ -135,64 +133,4 @@ Java_be_mygod_vpnhotspot_root_Jni_launchProcess(JNIEnv *env, [[maybe_unused]] jo
         if (argv[i] != nullptr) env->ReleaseStringUTFChars(strings[i], argv[i]);
         if (strings[i] != nullptr) env->DeleteLocalRef(strings[i]);
     }
-}
-
-struct android_net_UidOwnerValue {
-    [[maybe_unused]] int32_t iif;
-    uint32_t rule;
-};
-
-inline long bpf(enum bpf_cmd cmd, const bpf_attr& attr) {
-    return syscall(__NR_bpf, cmd, &attr, sizeof(attr));
-}
-
-static long map_fd = -1L;
-
-// based on: https://cs.android.com/android/platform/superproject/+/main:packages/modules/Connectivity/staticlibs/native/bpfmapjni/com_android_net_module_util_BpfMap.cpp;l=34;drc=9eca02a8fa20aa14920f0dd3bf88c06ce04a2575
-// https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-13.0.0_r1/service/native/TrafficController.cpp#190
-extern "C" JNIEXPORT jboolean JNICALL
-Java_be_mygod_vpnhotspot_root_Jni_removeUidInterfaceRules(JNIEnv *env, [[maybe_unused]] jobject obj,
-                                                          jstring path, jint uid, jlong rules) {
-    // mapRetrieveLocklessRW to bypass locking
-    if (map_fd < 0) {
-        const char *pathname = env->GetStringUTFChars(path, nullptr);
-        // https://android.googlesource.com/platform/frameworks/libs/net/+/android-13.0.0_r1/common/native/bpf_syscall_wrappers/include/BpfSyscallWrappers.h#100
-        map_fd = bpf(BPF_OBJ_GET, {
-                .pathname = (uint64_t)pathname,
-        });
-        env->ReleaseStringUTFChars(path, pathname);
-        if (map_fd < 0) {
-            int err = errno;
-            if (err != ENOSYS) jniThrowErrnoException(env, "BPF_OBJ_GET", err);
-            return false;
-        }
-    }
-    android_net_UidOwnerValue value;
-    // findMapEntry
-    if (bpf(BPF_MAP_LOOKUP_ELEM, {
-            .map_fd = (uint32_t)map_fd,
-            .key = (uint64_t)&uid,
-            .value = (uint64_t)&value,
-    })) {
-        if (errno != ENOENT) jniThrowErrnoException(env, "BPF_MAP_LOOKUP_ELEM", errno);
-        return false;
-    }
-    if (!(value.rule & rules)) return false;
-    if (value.rule &= ~rules) {
-        // writeToMapEntry
-        if (bpf(BPF_MAP_UPDATE_ELEM, {
-                .map_fd = (uint32_t)map_fd,
-                .key = (uint64_t)&uid,
-                .value = (uint64_t)&value,
-                .flags = BPF_ANY,
-        })) jniThrowErrnoException(env, "BPF_MAP_UPDATE_ELEM", errno);
-        // deleteMapEntry
-    } else if (bpf(BPF_MAP_DELETE_ELEM, {
-            .map_fd = (uint32_t)map_fd,
-            .key = (uint64_t)&uid,
-    })) {
-        int err = errno;
-        if (err != ENOENT) jniThrowErrnoException(env, "BPF_MAP_DELETE_ELEM", err);
-    }
-    return true;
 }

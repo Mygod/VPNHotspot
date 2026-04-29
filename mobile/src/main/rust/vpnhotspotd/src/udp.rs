@@ -115,7 +115,10 @@ pub(crate) fn spawn_loop(
                             Ok((size, client, destination)) => {
                                 let activity = Instant::now();
                                 let snapshot = config.lock().await.clone();
-                                if destination.ip() == &snapshot.gateway && destination.port() == DNS_PORT {
+                                let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
+                                    continue;
+                                };
+                                if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
                                     let query = buffer[..size].to_vec();
                                     let query_stop = stop.child_token();
                                     spawn(async move {

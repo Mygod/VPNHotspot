@@ -1,6 +1,6 @@
 # VPN Hotspot
 
-[![CircleCI](https://circleci.com/gh/Mygod/VPNHotspot.svg?style=shield)](https://circleci.com/gh/Mygod/VPNHotspot)
+[![Test](https://github.com/Mygod/VPNHotspot/actions/workflows/test.yml/badge.svg)](https://github.com/Mygod/VPNHotspot/actions/workflows/test.yml)
 [![API](https://img.shields.io/badge/API-29%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=29)
 [![Releases](https://img.shields.io/github/downloads/Mygod/VPNHotspot/total.svg)](https://github.com/Mygod/VPNHotspot/releases)
 [![Language: Kotlin](https://img.shields.io/github/languages/top/Mygod/VPNHotspot.svg)](https://github.com/Mygod/VPNHotspot/search?l=kotlin)
@@ -170,7 +170,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/ConnectivityManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
-* (prior to API 33) `Landroid/net/INetd;->firewallRemoveUidInterfaceRules([I)V`
 * (since API 31) `Landroid/net/INetd;->ipSecUpdateSecurityPolicy(IIILjava/lang/String;Ljava/lang/String;IIII)V`
 * (since API 30) `Landroid/net/IIntResultListener$Stub;-><init>()V,blocked`
 * (since API 30) `Landroid/net/IIntResultListener;->onResult(I)V,blocked`
@@ -183,9 +182,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,blocked`
 * (since API 31) `Landroid/net/IpSecManager;->DIRECTION_FWD:I,blocked`
 * (since API 31) `Landroid/net/IpSecManager;->INVALID_SECURITY_PARAMETER_INDEX:I,blocked`
-* (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->IIF_MATCH:J,blocked`
-* (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->LOCKDOWN_VPN_MATCH:J,blocked`
-* (since API 33) `Landroid/net/connectivity/android/net/BpfNetMapsConstants;->UID_OWNER_MAP_PATH:Ljava/lang/String;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApCapability;->getCountryCode()Ljava/lang/String;,blocked`
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
@@ -390,26 +386,28 @@ Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
-* `IPv6 NAT` mode depends on the NDK multinetwork DNS entry points exported from `libandroid`.
-* (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*` and
-  `android.net.BpfNetMapsConstants`, may be jarjar-relocated under the optional prefixes
+* Daemon DNS forwarding depends on the NDK multinetwork DNS entry points exported from `libandroid`,
+  including `ResNsendFlags::ANDROID_RESOLV_NO_RETRY = 1`.
+* Daemon DNS forwarding uses IPv4 DNAT rules to redirect client DNS to the root daemon.
+* `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
+* (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*`, may be
+  jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
 * (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in
   `onTetherStatesChanged`.
-* (since API 33) `mUidOwnerMap` is located at `/sys/fs/bpf/netd_shared/map_netd_uid_owner_map` and is consistent with AOSP usages.
 * `/system/bin/linker` and `/system/bin/linker64` can be invoked directly on an executable inside
   a zip/APK using `path.zip!/program` when it is stored uncompressed and page-aligned.
 
 For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
 gap between them.
-For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; IPv6 NAT
-uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
+For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`
+TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 Clean flushes table 900 because that table is reserved by VPNHotspot.
-For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; IPv6
-NAT uses masked high reserved bits `0x10000000/0x18000000` and `0x18000000/0x18000000`.
+For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
+TPROXY uses masked high reserved bits `0x10000000/0x18000000` and `0x18000000/0x18000000`.
 
 Undocumented system binaries are all bundled and executable:
 

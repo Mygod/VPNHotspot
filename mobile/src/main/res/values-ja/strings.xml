@@ -169,9 +169,6 @@
     <string name="exception_interface_not_found">致命的: ダウンストリームインターフェースが見つかりません</string>
     <string name="noisy_su_failure">問題が発生しました。デバッグ情報を確認してください。</string>
     <string name="permission_missing">権限がありません</string>
-    <string name="warn_vpn_firewall">警告: このアプリをシステム化するか、手動で DNS を設定しない限り
-        VPN テザリングは一部の VPN アプリでは機能しません</string>
-    <string name="error_vpn_firewall_reboot">VPN テザリングを機能させるにはデバイスを再起動してください</string>
     <string name="configuration_view">Wi\u2011Fi の構成</string>
     <string name="configuration_invalid">無効な設定の可能性があります</string>
     <string name="configuration_share">QR コードで共有</string>

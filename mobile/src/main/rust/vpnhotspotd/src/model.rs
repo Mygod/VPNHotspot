@@ -17,24 +17,34 @@ pub(crate) struct Upstream {
 pub(crate) struct SessionConfig {
     pub(crate) session_id: String,
     pub(crate) downstream: String,
+    pub(crate) dns_bind_address: Ipv4Addr,
+    pub(crate) reply_mark: u32,
+    pub(crate) primary: Option<Upstream>,
+    pub(crate) fallback: Option<Upstream>,
+    pub(crate) ipv6_nat: Option<Ipv6NatConfig>,
+}
+
+#[derive(Clone)]
+pub(crate) struct Ipv6NatConfig {
     pub(crate) router: Ipv6Addr,
     pub(crate) gateway: Ipv6Addr,
     pub(crate) prefix_len: u8,
-    pub(crate) reply_mark: u32,
-    pub(crate) dns_bind_address: Ipv4Addr,
     pub(crate) mtu: u32,
     pub(crate) suppressed_prefixes: Vec<Route>,
     pub(crate) cleanup_prefixes: Vec<Route>,
-    pub(crate) primary: Option<Upstream>,
-    pub(crate) fallback: Option<Upstream>,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct SessionPorts {
-    pub(crate) tcp: u16,
-    pub(crate) udp: u16,
     pub(crate) dns_tcp: u16,
     pub(crate) dns_udp: u16,
+    pub(crate) ipv6_nat: Option<Ipv6NatPorts>,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Ipv6NatPorts {
+    pub(crate) tcp: u16,
+    pub(crate) udp: u16,
 }
 
 pub(crate) fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {

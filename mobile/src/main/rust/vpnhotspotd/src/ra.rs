@@ -58,7 +58,10 @@ pub(crate) fn spawn_loop(
             let now = Instant::now();
             let (current, send_current) = {
                 let mut current = config.lock().await;
-                let new_suppressed_prefixes = take(&mut current.suppressed_prefixes);
+                let Some(ipv6_nat) = current.ipv6_nat.as_mut() else {
+                    break;
+                };
+                let new_suppressed_prefixes = take(&mut ipv6_nat.suppressed_prefixes);
                 let send_current = !new_suppressed_prefixes.is_empty();
                 for prefix in new_suppressed_prefixes {
                     suppressed_prefixes.insert(prefix, now + SUPPRESSED_RA_WINDOW);
@@ -127,7 +130,10 @@ pub(crate) async fn withdraw_prefixes_once(
     prefixes: &[Route],
     keep_router: bool,
 ) {
-    let fd = match create_send_socket(&config.downstream, config.reply_mark, config.router) {
+    let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
+        return;
+    };
+    let fd = match create_send_socket(&config.downstream, config.reply_mark, ipv6_nat.router) {
         Ok(fd) => fd,
         Err(e) => {
             eprintln!("ra send socket failed: {e}");
@@ -193,10 +199,14 @@ fn recv_request(socket: &Socket, buffer: &mut [MaybeUninit<u8>]) -> io::Result<R
 }
 
 async fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<()> {
-    let fd = create_send_socket(&config.downstream, config.reply_mark, config.router)?;
+    let ipv6_nat = config
+        .ipv6_nat
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
+    let fd = create_send_socket(&config.downstream, config.reply_mark, ipv6_nat.router)?;
     let ifindex = interface_index(&config.downstream)?;
     let destination = target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, ifindex));
-    let packet = make_current_ra_packet(config.gateway, config.prefix_len, config.mtu);
+    let packet = make_current_ra_packet(ipv6_nat.gateway, ipv6_nat.prefix_len, ipv6_nat.mtu);
     sendto_all(&fd, &packet, SockAddr::from(destination)).await
 }
 
@@ -206,9 +216,13 @@ async fn send_zero_lifetime_ra(
     prefix: Route,
     keep_router: bool,
 ) -> io::Result<()> {
+    let ipv6_nat = config
+        .ipv6_nat
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
     let ifindex = interface_index(&config.downstream)?;
     let destination = SocketAddrV6::new(ALL_NODES, 0, 0, ifindex);
-    let packet = make_zero_lifetime_ra_packet(prefix, config.mtu, keep_router);
+    let packet = make_zero_lifetime_ra_packet(prefix, ipv6_nat.mtu, keep_router);
     sendto_all(socket, &packet, SockAddr::from(destination)).await
 }
 
