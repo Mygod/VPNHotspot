@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
 
 ## Build, Test, and Development Commands
 Use Gradle from the repo root.
@@ -23,6 +23,16 @@ Follow existing Kotlin style: 4-space indentation, concise expression bodies onl
 - Do not use `runCatching` for new code; follow the repo’s normal explicit `try`/`catch` style.
 - Do not suppress unexpected exceptions. Best-effort cleanup should catch only the expected failure mode and rethrow the rest.
 - Preserve existing comments; do not casually shorten or rewrite them.
+
+## Rust Daemon Code Hygiene
+Rust daemon code should be event-driven and async-first. Prefer Tokio readiness, cancellation tokens, notifications, channels, and deadline timers over polling loops, fixed sleeps, or manually managed worker threads.
+
+- Do not use `std::thread`, blocking worker loops, `spawn_blocking`, or blocking `std::sync::mpsc` patterns unless a blocking platform API leaves no practical alternative. If one is unavoidable, keep it isolated and document why async readiness cannot be used.
+- Do not add retry loops with fixed sleeps for steady-state work. Use socket readiness, `AsyncFd`, `Notify`, channels, or `sleep_until` deadlines tied to real protocol timers. Short startup-only retries are acceptable only when no readiness source exists yet.
+- Set file descriptors and sockets non-blocking before handing them to Tokio or `AsyncFd`. Do not call blocking `accept`, `recv`, `read`, `write`, DNS, or socket APIs from async tasks.
+- Keep raw `libc` and unsafe code at the owner module boundary that needs it. Prefer `socket2`/Tokio/std APIs when they expose the required behavior, but do not create broad `sys`/`utils` modules just to hide one call site.
+- Avoid arbitrary concurrency caps, queue sizes, or timeouts. If a limit is required for resource protection, name it by the resource being limited and justify the chosen value from behavior or platform constraints.
+- Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines
 Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Use AndroidX instrumentation tests only when behavior depends on framework/runtime integration. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
