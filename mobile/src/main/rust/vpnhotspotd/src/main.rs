@@ -1163,29 +1163,20 @@ async fn connect_upstream_udp(
     upstream: &Upstream,
     destination: SocketAddrV6,
 ) -> io::Result<TokioUdpSocket> {
-    let fd = create_socket(AF_INET6, SOCK_DGRAM, 0)?;
-    if unsafe { android_setsocknetwork(upstream.network_handle, fd) } != 0 {
-        let error = io::Error::last_os_error();
-        unsafe {
-            close(fd);
-        }
-        return Err(error);
+    let fd = unsafe { OwnedFd::from_raw_fd(create_socket(AF_INET6, SOCK_DGRAM, 0)?) };
+    if unsafe { android_setsocknetwork(upstream.network_handle, fd.as_raw_fd()) } != 0 {
+        return Err(io::Error::last_os_error());
     }
-    if let Err(error) = bind_upstream_socket(fd, &upstream.interface) {
-        unsafe {
-            close(fd);
-        }
-        return Err(error);
-    }
+    bind_upstream_socket(fd.as_raw_fd(), &upstream.interface)?;
     syscall(unsafe {
         connect(
-            fd,
+            fd.as_raw_fd(),
             &raw_addr_v6(destination) as *const _ as *const SockAddr,
             size_of::<SockAddrIn6>() as u32,
         )
     })?;
-    set_nonblocking(fd)?;
-    TokioUdpSocket::from_std(unsafe { UdpSocket::from_raw_fd(fd) })
+    set_nonblocking(fd.as_raw_fd())?;
+    TokioUdpSocket::from_std(unsafe { UdpSocket::from_raw_fd(fd.into_raw_fd()) })
 }
 
 fn bind_upstream_socket(fd: RawFd, interface: &str) -> io::Result<()> {
