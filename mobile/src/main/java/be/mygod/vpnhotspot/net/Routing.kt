@@ -82,19 +82,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private const val IPV6_NAT_INTERCEPT_MARK = 0x10000000
         private const val IPV6_NAT_REPLY_MARK = 0x18000000
         /**
-         * Local app-owned rtnetlink route protocol tag for IPv6 NAT routes. This is not an
-         * AOSP/Linux reserved constant; it is just an unused 8-bit value outside the well-known
-         * protocol names normally shipped in `rt_protos` (kernel/boot/static/RA/routing daemons).
-         *
-         * The tag is only used for cleanup/ownership matching. It does not affect route selection,
-         * but it lets exact deletes avoid removing untagged/platform routes and gives Clean a
-         * stateless way to find stale mirrored routes after app data loss, force-stop, or upgrade.
-         * Since the field is global and only 8-bit, a collision with another component using the
-         * same protocol number is possible. Treat broad proto-based flushing as best-effort app
-         * recovery, not as a strong namespace.
-         */
-        private const val IPV6_NAT_ROUTE_PROTO = 200
-        /**
          * Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
          * that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
          */
@@ -141,15 +128,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("$IP6TABLES -t mangle -X vpnhotspot_v6_tproxy")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT; do done")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT_REPLY; do done")
-            // Best-effort stateless cleanup for mirrored routes in upstream tables that may no
-            // longer be known to the app. `proto` narrows this to routes previously tagged by us,
-            // but it is not collision-proof because route protocol is a global 8-bit field.
-            commands.appendLine("$IP -6 route flush table all proto $IPV6_NAT_ROUTE_PROTO")
             commands.appendLine("$IP -6 route flush table $IPV6_NAT_TABLE")
-            for (networkInterface in Collections.list(NetworkInterface.getNetworkInterfaces())) {
-                commands.appendLine("$IP -6 addr del ${
-                    ipv6NatGateway(ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)).hostAddress
-                }/64 dev ${networkInterface.name}")
+            val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            for (networkInterface in networkInterfaces) {
+                val prefix = ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)
+                commands.appendLine("$IP -6 addr del ${ipv6NatGateway(prefix).hostAddress}/64 dev ${networkInterface.name}")
+                for (upstream in networkInterfaces) {
+                    commands.appendLine(
+                        "$IP -6 route del $prefix dev ${networkInterface.name} table ${upstream.name} 2>/dev/null")
+                }
             }
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
@@ -398,16 +385,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (setup == null) {
                     mirroredUpstreamTables[table] = RootSession.beginTransaction().safeguard {
                         try {
-                            exec("$IP -6 route replace $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO",
-                                "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
+                            exec("$IP -6 route replace $subnet dev $downstream table $table",
+                                "$IP -6 route del $subnet dev $downstream table $table")
                         } catch (e: RoutingCommands.UnexpectedOutputException) {
                             if (!shouldSuppressIpError(e)) throw e
                         }
                     }
                 } else {
                     try {
-                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO",
-                            "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
+                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table",
+                            "$IP -6 route del $subnet dev $downstream table $table")
                     } catch (e: RoutingCommands.UnexpectedOutputException) {
                         if (!shouldSuppressIpError(e)) throw e
                     }
@@ -471,8 +458,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
             transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
             try {
-                transaction.exec(
-                    "$IP -6 route replace local ::/0 dev lo table $IPV6_NAT_TABLE proto $IPV6_NAT_ROUTE_PROTO")
+                transaction.exec("$IP -6 route replace local ::/0 dev lo table $IPV6_NAT_TABLE")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
@@ -522,10 +508,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (routeTransaction == null) {
                     if (setup == null) {
                         RootSession.use {
-                            it.submit("$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
+                            it.submit("$IP -6 route del $subnet dev $downstream table $table")
                         }
-                    } else setup.execQuiet(
-                        "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
+                    } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
                 } else routeTransaction.revert()
             }
             mirroredUpstreamTables.clear()
