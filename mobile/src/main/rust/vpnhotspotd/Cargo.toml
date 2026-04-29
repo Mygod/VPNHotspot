@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+libc = "0.2.186"
+socket2 = { version = "0.6.3", features = ["all"] }
 tokio = { version = "1.51.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.18"
 
