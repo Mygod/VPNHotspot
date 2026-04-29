@@ -13,10 +13,10 @@ import timber.log.Timber
 
 object RoutingCommands {
     @Parcelize
-    class Clean : RootCommandNoResult {
+    class Clean(private val ipv6NatPrefixSeed: String) : RootCommandNoResult {
         override suspend fun execute() = withContext(Dispatchers.IO) {
             val process = ProcessBuilder("sh").fixPath(true).start()
-            process.outputStream.bufferedWriter().use(Routing.Companion::appendCleanCommands)
+            process.outputStream.bufferedWriter().use { Routing.appendCleanCommands(it, ipv6NatPrefixSeed) }
             when (val code = process.waitFor()) {
                 0 -> { }
                 else -> Timber.w("Unexpected exit code $code")

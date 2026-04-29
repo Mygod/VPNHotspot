@@ -60,7 +60,8 @@ internal object DaemonProtocol {
         val replyMark: Int,
         val dnsBindAddress: String,
         val mtu: Int,
-        val deprecatedPrefixes: List<Route>,
+        val suppressedPrefixes: List<Route>,
+        val cleanupPrefixes: List<Route>,
         val primary: Upstream?,
         val fallback: Upstream?,
     )
@@ -72,10 +73,18 @@ internal object DaemonProtocol {
         val dnsUdp: Int,
     )
 
+    enum class RemoveMode(val protocolValue: Byte) {
+        PreserveCleanup(0),
+        WithdrawCleanup(1),
+    }
+
     fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION) { writeSession(config) }
     fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION) { writeSession(config) }
-    fun removeSession(sessionId: String) = writePacket(CMD_REMOVE_SESSION) { writeUtf(sessionId) }
-    fun shutdown() = writePacket(CMD_SHUTDOWN) { }
+    fun removeSession(sessionId: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION) {
+        writeUtf(sessionId)
+        writeByte(mode.protocolValue)
+    }
+    fun shutdown(mode: RemoveMode) = writePacket(CMD_SHUTDOWN) { writeByte(mode.protocolValue) }
 
     fun readPorts(packet: ByteArray): SessionPorts {
         val input = Buffer().apply { write(packet) }
@@ -105,8 +114,13 @@ internal object DaemonProtocol {
         writeInt(config.replyMark)
         writeUtf(config.dnsBindAddress)
         writeInt(config.mtu)
-        writeInt(config.deprecatedPrefixes.size)
-        for (prefix in config.deprecatedPrefixes) {
+        writeInt(config.suppressedPrefixes.size)
+        for (prefix in config.suppressedPrefixes) {
+            writeUtf(prefix.address)
+            writeInt(prefix.prefixLength)
+        }
+        writeInt(config.cleanupPrefixes.size)
+        for (prefix in config.cleanupPrefixes) {
             writeUtf(prefix.address)
             writeInt(prefix.prefixLength)
         }

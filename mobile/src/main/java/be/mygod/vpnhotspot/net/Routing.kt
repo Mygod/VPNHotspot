@@ -1,9 +1,11 @@
 package be.mygod.vpnhotspot.net
 
+import android.annotation.SuppressLint
 import android.net.IpPrefix
 import android.net.LinkProperties
 import android.os.Build
 import android.os.Process
+import android.provider.Settings
 import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -43,7 +45,8 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
-import java.security.SecureRandom
+import java.security.MessageDigest
+import java.util.Collections
 
 /**
  * A transaction wrapper that helps set up routing environment.
@@ -79,6 +82,19 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private const val IPV6_NAT_INTERCEPT_MARK = 0x10000000
         private const val IPV6_NAT_REPLY_MARK = 0x18000000
         /**
+         * Local app-owned rtnetlink route protocol tag for IPv6 NAT routes. This is not an
+         * AOSP/Linux reserved constant; it is just an unused 8-bit value outside the well-known
+         * protocol names normally shipped in `rt_protos` (kernel/boot/static/RA/routing daemons).
+         *
+         * The tag is only used for cleanup/ownership matching. It does not affect route selection,
+         * but it lets exact deletes avoid removing untagged/platform routes and gives Clean a
+         * stateless way to find stale mirrored routes after app data loss, force-stop, or upgrade.
+         * Since the field is global and only 8-bit, a collision with another component using the
+         * same protocol number is possible. Treat broad proto-based flushing as best-effort app
+         * recovery, not as a strong namespace.
+         */
+        private const val IPV6_NAT_ROUTE_PROTO = 200
+        /**
          * Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
          * that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
          */
@@ -96,7 +112,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             major > 3 || major == 3 && version[1].toInt() >= 6
         }
 
-        fun appendCleanCommands(commands: BufferedWriter) {
+        fun appendCleanCommands(commands: BufferedWriter, ipv6NatPrefixSeed: String) {
             commands.appendLine("$IPTABLES -t nat -F PREROUTING")
             commands.appendLine("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
             commands.appendLine("$IPTABLES -F vpnhotspot_fwd")
@@ -125,15 +141,41 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("$IP6TABLES -t mangle -X vpnhotspot_v6_tproxy")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT; do done")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_IPV6_NAT_REPLY; do done")
+            // Best-effort stateless cleanup for mirrored routes in upstream tables that may no
+            // longer be known to the app. `proto` narrows this to routes previously tagged by us,
+            // but it is not collision-proof because route protocol is a global 8-bit field.
+            commands.appendLine("$IP -6 route flush table all proto $IPV6_NAT_ROUTE_PROTO")
             commands.appendLine("$IP -6 route flush table $IPV6_NAT_TABLE")
+            for (networkInterface in Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                commands.appendLine("$IP -6 addr del ${
+                    ipv6NatGateway(ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)).hostAddress
+                }/64 dev ${networkInterface.name}")
+            }
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
         }
 
+        private val ipv6NatPrefixSeed: String
+            @SuppressLint("HardwareIds")
+            get() = "${app.packageName}\u0000${
+                Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+            }"
+
+        private fun ipv6NatPrefix(seed: String, downstream: String): IpPrefix {
+            val raw = ByteArray(16)
+            MessageDigest.getInstance("SHA-256").digest("$seed\u0000$downstream".encodeToByteArray())
+                .copyInto(raw, 1, endIndex = 7)
+            raw[0] = 0xfd.toByte()
+            return IpPrefix(InetAddress.getByAddress(raw), 64)
+        }
+
+        private fun ipv6NatGateway(prefix: IpPrefix) =
+                InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
+
         suspend fun clean() {
             TrafficRecorder.clean()
-            RootManager.use { it.execute(RoutingCommands.Clean()) }
+            RootManager.use { it.execute(RoutingCommands.Clean(ipv6NatPrefixSeed)) }
         }
 
         private suspend fun RootSession.Transaction.iptables(command: String, revert: String) {
@@ -307,11 +349,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var ipv6NatSession: Ipv6NatSession? = null
 
     private inner class Ipv6NatSession {
-        private val prefix = ByteArray(8).also {
-            SecureRandom().nextBytes(it)
-            it[0] = 0xfd.toByte()
-        }.copyInto(ByteArray(16)).let { IpPrefix(InetAddress.getByAddress(it), 64) }
-        private val gateway = InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
+        private val prefix = ipv6NatPrefix(ipv6NatPrefixSeed, downstream)
+        private val gateway = ipv6NatGateway(prefix)
         private val dnsBindAddress = if (useLocalnet) "127.0.0.1" else hostAddress.address.hostAddress
         private val mtu = NetworkInterface.getByName(downstream)?.mtu ?: 1500
         private var generationId = 0
@@ -331,7 +370,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val current = currentUpstreamTables()
             val subnet = prefix.toString()
             val staleSubnets = buildSet {
-                for (route in config.deprecatedPrefixes) {
+                for (route in config.suppressedPrefixes) {
                     val address = InetAddress.getByName(route.address)
                     add(IpPrefix(address, route.prefixLength).toString())
                 }
@@ -359,16 +398,16 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (setup == null) {
                     mirroredUpstreamTables[table] = RootSession.beginTransaction().safeguard {
                         try {
-                            exec("$IP -6 route replace $subnet dev $downstream table $table",
-                                "$IP -6 route del $subnet dev $downstream table $table")
+                            exec("$IP -6 route replace $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO",
+                                "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
                         } catch (e: RoutingCommands.UnexpectedOutputException) {
                             if (!shouldSuppressIpError(e)) throw e
                         }
                     }
                 } else {
                     try {
-                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table",
-                            "$IP -6 route del $subnet dev $downstream table $table")
+                        setup.exec("$IP -6 route replace $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO",
+                            "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
                     } catch (e: RoutingCommands.UnexpectedOutputException) {
                         if (!shouldSuppressIpError(e)) throw e
                     }
@@ -383,7 +422,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 if (inet !is Inet6Address || !inet.isLinkLocalAddress || inet.isLoopbackAddress ||
                         inet.isMulticastAddress) null else inet.hostAddress?.substringBefore('%')
             } ?: throw IOException("Missing link-local router address on $downstream")
-            val deprecatedPrefixes = interfaceAddresses.mapNotNull { address ->
+            val suppressedPrefixes = interfaceAddresses.mapNotNull { address ->
                 val inet = address.address
                 if (inet !is Inet6Address || inet.isLinkLocalAddress || inet.isLoopbackAddress ||
                         inet.isMulticastAddress || inet == gateway) null else {
@@ -401,7 +440,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 replyMark = IPV6_NAT_REPLY_MARK,
                 dnsBindAddress = dnsBindAddress,
                 mtu = mtu,
-                deprecatedPrefixes = deprecatedPrefixes,
+                suppressedPrefixes = suppressedPrefixes,
+                cleanupPrefixes = emptyList(),
                 primary = buildUpstream(UpstreamMonitor.currentNetwork),
                 fallback = buildUpstream(FallbackUpstreamMonitor.currentNetwork),
             )
@@ -411,7 +451,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val config = nextConfig()
             ports = DaemonController.startSession(config)
             syncPrefixRoutes(config, transaction)
-            transaction.exec("$IP -6 addr add ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream",
+            transaction.exec("$IP -6 addr replace ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream",
                 "$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
             if (dnsBindAddress == "127.0.0.1") {
                 transaction.exec("echo 1 >/proc/sys/net/ipv4/conf/all/route_localnet")
@@ -431,7 +471,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
             transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
             try {
-                transaction.exec("$IP -6 route add local ::/0 dev lo table $IPV6_NAT_TABLE")
+                transaction.exec(
+                    "$IP -6 route replace local ::/0 dev lo table $IPV6_NAT_TABLE proto $IPV6_NAT_ROUTE_PROTO")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
                 if (!shouldSuppressIpError(e)) throw e
             }
@@ -472,18 +513,27 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
         }
 
-        suspend fun close(setup: RootSession.Transaction? = null) {
+        suspend fun close(
+            setup: RootSession.Transaction? = null,
+            removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
+        ) {
             val subnet = prefix.toString()
             for ((table, routeTransaction) in mirroredUpstreamTables.toList()) {
                 if (routeTransaction == null) {
                     if (setup == null) {
-                        RootSession.use { it.submit("$IP -6 route del $subnet dev $downstream table $table") }
-                    } else setup.execQuiet("$IP -6 route del $subnet dev $downstream table $table")
+                        RootSession.use {
+                            it.submit("$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
+                        }
+                    } else setup.execQuiet(
+                        "$IP -6 route del $subnet dev $downstream table $table proto $IPV6_NAT_ROUTE_PROTO")
                 } else routeTransaction.revert()
             }
             mirroredUpstreamTables.clear()
+            if (setup == null) {
+                RootSession.use { it.submit("$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream") }
+            }
             try {
-                DaemonController.removeSession(downstream)
+                DaemonController.removeSession(downstream, removeMode)
             } catch (e: Exception) {
                 if (e !is CancellationException) Timber.w(e)
             }
@@ -594,7 +644,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
 
-    suspend fun stop() {
+    suspend fun stop(withdrawCleanupPrefixes: Boolean = false) {
         val done = synchronized(updateLock) {
             stopped = true
             if (updateWorker?.isActive == true) {
@@ -614,7 +664,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
             }
         }
-        ipv6NatSession?.close()
+        ipv6NatSession?.close(removeMode = if (withdrawCleanupPrefixes) {
+            DaemonProtocol.RemoveMode.WithdrawCleanup
+        } else DaemonProtocol.RemoveMode.PreserveCleanup)
         ipv6NatSession = null
         updateSignal.close()
         scope.cancel("Routing stopped")

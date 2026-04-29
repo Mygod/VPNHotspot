@@ -19,10 +19,11 @@ class DaemonProtocolTest {
             replyMark = 0x71d8,
             dnsBindAddress = "127.0.0.1",
             mtu = 1440,
-            deprecatedPrefixes = listOf(
+            suppressedPrefixes = listOf(
                 DaemonProtocol.Route("2600:db8::59", 64),
                 DaemonProtocol.Route("fd00:dead:beef::1", 64),
             ),
+            cleanupPrefixes = listOf(DaemonProtocol.Route("fd00:cafe::1", 64)),
             primary = DaemonProtocol.Upstream(
                 networkHandle = 123L,
                 interfaceName = "tun0",
@@ -54,6 +55,9 @@ class DaemonProtocolTest {
             assertEquals("2600:db8::59", input.readUtf())
             assertEquals(64, input.readInt())
             assertEquals("fd00:dead:beef::1", input.readUtf())
+            assertEquals(64, input.readInt())
+            assertEquals(1, input.readInt())
+            assertEquals("fd00:cafe::1", input.readUtf())
             assertEquals(64, input.readInt())
 
             assertEquals(true, input.readBoolean())
@@ -88,6 +92,27 @@ class DaemonProtocolTest {
         )
         assertEquals(DaemonProtocol.SessionPorts(0x1234, 0x2345, 0x3456, 0x4567),
             DaemonProtocol.readPorts(packet))
+    }
+
+    @Test
+    fun removeSessionEncodesRemoveMode() {
+        Buffer().apply {
+            write(DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup))
+        }.let { input ->
+            assertEquals(DaemonProtocol.CMD_REMOVE_SESSION, input.readInt())
+            assertEquals("wlan0", input.readUtf())
+            assertEquals(true, input.readBoolean())
+        }
+    }
+
+    @Test
+    fun shutdownEncodesRemoveMode() {
+        Buffer().apply {
+            write(DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup))
+        }.let { input ->
+            assertEquals(DaemonProtocol.CMD_SHUTDOWN, input.readInt())
+            assertEquals(false, input.readBoolean())
+        }
     }
 
     private fun Source.readBoolean() = readByte().toInt() != 0

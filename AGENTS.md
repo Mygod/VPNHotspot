@@ -30,6 +30,14 @@ Add or update unit tests in `mobile/src/test/java` for parser, routing, and comp
 ## Commit & Pull Request Guidelines
 Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.
 
+## Reversible Routing & Root State
+Routing, firewall, address, route, and daemon changes should be reversible without relying on app-owned persistent state. Prefer deterministic identifiers and self-describing system/kernel state that `Clean` or reapply can reconstruct after process death, force-stop, reboot, or app data clear.
+
+- Do not make cleanup depend on private app databases, preferences, caches, or in-memory bookkeeping when the state can outlive the app process.
+- Prefer idempotent mutations such as replace/delete-by-identifier over add-only operations that require remembering exactly what happened earlier.
+- Scope cleanup to mutations this app can identify deterministically. Do not delete or withdraw platform/user state just because it shares an interface or address family.
+- Root-side changes must document their cleanup path, including what happens during normal stop, Clean, reapply, and interrupted startup.
+
 ## Platform API Reflection, Hidden API & Root Changes
 Do not hand-wave platform API reflection, hidden API, or root behavior.
 

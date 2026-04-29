@@ -86,8 +86,8 @@ Default settings are picked to suit general use cases and maximize compatibility
   - System IPv6:
     Disable this app's IPv6 kill switch and leave IPv6 handling to the platform/current routing setup.
   - IPv6 NAT:
-    Assigns a ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
-    This mode is outbound-only, keeps IPv4 tethering unchanged, retransmits stale downstream prefix withdrawal for a short window when prefixes roll without dropping the live router advertisement, cleans stale mirrored `/64` routes and IPv6 NAT hooks before reapplying them, and ties daemon lifetime to the app control connection. If setup fails, the error is reported; select `Block IPv6` manually if you want a strict IPv6 kill switch.
+    Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
+    This mode is outbound-only, keeps IPv4 tethering unchanged, leaves platform/existing IPv6 addresses alone, withdraws app-owned prefixes on stop, cleans app-owned mirrored `/64` routes and IPv6 NAT hooks before reapplying them, and ties daemon lifetime to the app control connection. If setup fails, the error is reported; select `Block IPv6` manually if you want a strict IPv6 kill switch.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
@@ -407,6 +407,8 @@ on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 20
 gap between them.
 For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; IPv6 NAT
 uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
+IPv6 NAT mirrored routes use route protocol 200 as an app-owned cleanup tag; Clean also flushes table
+900 for migration from older untagged entries.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; IPv6
 NAT uses masked high reserved bits `0x10000000/0x18000000` and `0x18000000/0x18000000`.
 

@@ -44,7 +44,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
         suspend fun clean(reinit: Boolean = true) = monitor.withLock {
             if (!reinit && active.isEmpty()) return@withLock
-            for (manager in active.values) manager.routing?.stop()
+            for (manager in active.values) {
+                manager.routing?.stop(withdrawCleanupPrefixes = true)
+            }
             try {
                 Routing.clean()
             } catch (e: Exception) {

@@ -92,10 +92,13 @@ object DaemonController {
         }
     }
 
-    internal suspend fun removeSession(sessionId: String) = lock.withLock {
+    internal suspend fun removeSession(
+        sessionId: String,
+        removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
+    ) = lock.withLock {
         if (output == null) return@withLock
         try {
-            writePacketLocked(DaemonProtocol.removeSession(sessionId))
+            writePacketLocked(DaemonProtocol.removeSession(sessionId, removeMode))
             DaemonProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
             closeConnectionLocked()
@@ -105,7 +108,8 @@ object DaemonController {
         activeSessions.remove(sessionId)
         if (activeSessions.isEmpty()) {
             try {
-                if (output != null) writePacketLocked(DaemonProtocol.shutdown())
+                if (output != null) writePacketLocked(DaemonProtocol.shutdown(
+                    DaemonProtocol.RemoveMode.PreserveCleanup))
             } catch (e: Exception) {
                 Timber.w(e)
             }

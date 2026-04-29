@@ -60,8 +60,8 @@ const CMD_SHUTDOWN: u32 = 4;
 
 const DNS_PORT: u16 = 53;
 const RA_PERIOD: Duration = Duration::from_secs(30);
-const DEPRECATED_RA_PERIOD: Duration = Duration::from_secs(3);
-const DEPRECATED_RA_WINDOW: Duration = Duration::from_secs(15);
+const SUPPRESSED_RA_PERIOD: Duration = Duration::from_secs(3);
+const SUPPRESSED_RA_WINDOW: Duration = Duration::from_secs(15);
 const LOOP_SLEEP: Duration = Duration::from_millis(50);
 const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -237,7 +237,8 @@ struct SessionConfig {
     reply_mark: u32,
     dns_bind_address: Ipv4Addr,
     mtu: u32,
-    deprecated_prefixes: Vec<Route>,
+    suppressed_prefixes: Vec<Route>,
+    cleanup_prefixes: Vec<Route>,
     primary: Option<Upstream>,
     fallback: Option<Upstream>,
 }
@@ -252,6 +253,7 @@ struct SessionPorts {
 
 struct Session {
     config: Arc<Mutex<SessionConfig>>,
+    cleanup_prefixes: Vec<Route>,
     stop: CancellationToken,
     ports: SessionPorts,
 }
@@ -318,7 +320,7 @@ async fn main() -> io::Result<()> {
         }
     }
     for session in sessions.values() {
-        withdraw_session_prefixes(session).await;
+        withdraw_session_prefixes(session, false).await;
         session.stop.cancel();
     }
     Ok(())
@@ -352,22 +354,39 @@ async fn handle_packet(
         CMD_REPLACE_SESSION => {
             let config = parser.read_session_config()?;
             let session = sessions
-                .get(&config.session_id)
+                .get_mut(&config.session_id)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
+            for prefix in config.cleanup_prefixes.iter().copied() {
+                if !session.cleanup_prefixes.contains(&prefix) {
+                    session.cleanup_prefixes.push(prefix);
+                }
+            }
+            let previous = session.config.lock().await.clone();
+            if previous.gateway != config.gateway || previous.prefix_len != config.prefix_len {
+                let previous_prefix = Route {
+                    prefix: ipv6_to_u128(previous.gateway),
+                    prefix_len: previous.prefix_len,
+                };
+                if !session.cleanup_prefixes.contains(&previous_prefix) {
+                    session.cleanup_prefixes.push(previous_prefix);
+                }
+            }
             *session.config.lock().await = config;
             Ok(HandleResult::Reply(ok_packet()))
         }
         CMD_REMOVE_SESSION => {
             let session_id = parser.read_utf()?;
+            let withdraw_cleanup = parser.read_bool()?;
             if let Some(session) = sessions.remove(&session_id) {
-                withdraw_session_prefixes(&session).await;
+                withdraw_session_prefixes(&session, withdraw_cleanup).await;
                 session.stop.cancel();
             }
             Ok(HandleResult::Reply(ok_packet()))
         }
         CMD_SHUTDOWN => {
+            let withdraw_cleanup = parser.read_bool()?;
             for session in sessions.values() {
-                withdraw_session_prefixes(session).await;
+                withdraw_session_prefixes(session, withdraw_cleanup).await;
                 session.stop.cancel();
             }
             Ok(HandleResult::Shutdown(ok_packet()))
@@ -382,6 +401,7 @@ async fn handle_packet(
 async fn start_session(config: SessionConfig) -> io::Result<Session> {
     let stop = CancellationToken::new();
     let shared = Arc::new(Mutex::new(config.clone()));
+    let cleanup_prefixes = config.cleanup_prefixes.clone();
 
     let tcp_listener = create_tproxy_tcp_listener(config.reply_mark)?;
     let tcp = tcp_listener.local_addr()?.port();
@@ -403,6 +423,7 @@ async fn start_session(config: SessionConfig) -> io::Result<Session> {
 
     Ok(Session {
         config: shared,
+        cleanup_prefixes,
         stop,
         ports: SessionPorts {
             tcp,
@@ -814,31 +835,31 @@ fn spawn_ra_loop(config: Arc<Mutex<SessionConfig>>, stop: CancellationToken) -> 
             }
         };
         let mut last_sent: Option<Instant> = None;
-        let mut last_deprecated_sent: Option<Instant> = None;
-        let mut deprecated_prefixes = HashMap::<Route, Instant>::new();
+        let mut last_suppressed_sent: Option<Instant> = None;
+        let mut suppressed_prefixes = HashMap::<Route, Instant>::new();
         let mut buffer = [0u8; 1500];
         loop {
             let now = Instant::now();
             let (current, send_current) = {
                 let mut current = config.lock().await;
-                let new_deprecated_prefixes = std::mem::take(&mut current.deprecated_prefixes);
-                let send_current = !new_deprecated_prefixes.is_empty();
-                for prefix in new_deprecated_prefixes {
-                    deprecated_prefixes.insert(prefix, now + DEPRECATED_RA_WINDOW);
+                let new_suppressed_prefixes = std::mem::take(&mut current.suppressed_prefixes);
+                let send_current = !new_suppressed_prefixes.is_empty();
+                for prefix in new_suppressed_prefixes {
+                    suppressed_prefixes.insert(prefix, now + SUPPRESSED_RA_WINDOW);
                 }
                 (current.clone(), send_current)
             };
-            deprecated_prefixes.retain(|_, deadline| *deadline > now);
-            if !deprecated_prefixes.is_empty()
-                && last_deprecated_sent.map_or(true, |last| last.elapsed() >= DEPRECATED_RA_PERIOD)
+            suppressed_prefixes.retain(|_, deadline| *deadline > now);
+            if !suppressed_prefixes.is_empty()
+                && last_suppressed_sent.map_or(true, |last| last.elapsed() >= SUPPRESSED_RA_PERIOD)
             {
                 withdraw_prefixes_once(
                     &current,
-                    &deprecated_prefixes.keys().copied().collect::<Vec<_>>(),
+                    &suppressed_prefixes.keys().copied().collect::<Vec<_>>(),
                     true,
                 )
                 .await;
-                last_deprecated_sent = Some(now);
+                last_suppressed_sent = Some(now);
             }
             if send_current || last_sent.map_or(true, |last| last.elapsed() >= RA_PERIOD) {
                 let _ = send_ra(&current, None).await;
@@ -958,7 +979,7 @@ async fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Re
     result
 }
 
-async fn send_deprecated_ra(
+async fn send_zero_lifetime_ra(
     fd: RawFd,
     config: &SessionConfig,
     prefix: Route,
@@ -966,10 +987,10 @@ async fn send_deprecated_ra(
 ) -> io::Result<()> {
     let ifindex = interface_index(&config.downstream)?;
     let destination = SocketAddrV6::new("ff02::1".parse().unwrap(), 0, 0, ifindex);
-    let deprecated_gateway = Ipv6Addr::from(prefix.prefix);
+    let withdrawn_gateway = Ipv6Addr::from(prefix.prefix);
     let packet = make_ra_packet_with_lifetimes(
-        deprecated_gateway,
-        deprecated_gateway,
+        withdrawn_gateway,
+        withdrawn_gateway,
         prefix.prefix_len,
         config.mtu,
         if keep_router { 1800 } else { 0 },
@@ -995,16 +1016,20 @@ async fn withdraw_prefixes_once(config: &SessionConfig, prefixes: &[Route], keep
         }
     };
     for prefix in prefixes.iter().cloned() {
-        let _ = send_deprecated_ra(fd, config, prefix, keep_router).await;
+        let _ = send_zero_lifetime_ra(fd, config, prefix, keep_router).await;
     }
     unsafe {
         close(fd);
     }
 }
 
-async fn withdraw_session_prefixes(session: &Session) {
+async fn withdraw_session_prefixes(session: &Session, withdraw_cleanup: bool) {
     let snapshot = session.config.lock().await.clone();
-    let mut prefixes = snapshot.deprecated_prefixes.clone();
+    let mut prefixes = if withdraw_cleanup {
+        session.cleanup_prefixes.clone()
+    } else {
+        Vec::new()
+    };
     prefixes.push(Route {
         prefix: ipv6_to_u128(snapshot.gateway),
         prefix_len: snapshot.prefix_len,
@@ -1402,7 +1427,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deprecated_ra_uses_deprecated_dns_server() {
+    fn zero_lifetime_ra_withdraws_dns_server() {
         let dns_server: Ipv6Addr = "fd47:6b7c:2186:b452::1".parse().unwrap();
         let packet = make_ra_packet_with_lifetimes(dns_server, dns_server, 64, 1500, 0, 0, 0, 0);
         assert_eq!(&packet[40..44], &0u32.to_be_bytes());
@@ -1718,7 +1743,8 @@ impl<'a> Parser<'a> {
             .parse()
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid dns bind address"))?;
         let mtu = self.read_i32()? as u32;
-        let deprecated_prefixes = self.read_routes()?;
+        let suppressed_prefixes = self.read_routes()?;
+        let cleanup_prefixes = self.read_routes()?;
         let primary = self.read_upstream()?;
         let fallback = self.read_upstream()?;
         Ok(SessionConfig {
@@ -1730,7 +1756,8 @@ impl<'a> Parser<'a> {
             reply_mark,
             dns_bind_address,
             mtu,
-            deprecated_prefixes,
+            suppressed_prefixes,
+            cleanup_prefixes,
             primary,
             fallback,
         })
