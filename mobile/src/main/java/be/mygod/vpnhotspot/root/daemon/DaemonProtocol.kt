@@ -16,6 +16,8 @@ internal object DaemonProtocol {
     const val STATUS_OK = 0
     const val STATUS_ERROR = 1
 
+    class StatusException(message: String) : IOException(message)
+
     const val CMD_START_SESSION = 1
     const val CMD_REPLACE_SESSION = 2
     const val CMD_REMOVE_SESSION = 3
@@ -152,7 +154,7 @@ internal object DaemonProtocol {
     private fun readStatus(input: Source) {
         when (val status = input.readByte().toInt() and 0xFF) {
             STATUS_OK -> { }
-            STATUS_ERROR -> throw IOException(input.readUtf())
+            STATUS_ERROR -> throw StatusException(input.readUtf())
             else -> throw IOException("Unknown daemon status $status")
         }
     }

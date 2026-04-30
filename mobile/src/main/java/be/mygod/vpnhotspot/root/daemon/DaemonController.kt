@@ -75,6 +75,8 @@ object DaemonController {
             DaemonProtocol.readPorts(readPacketLocked()).also {
                 activeSessions.add(config.sessionId)
             }
+        } catch (e: DaemonProtocol.StatusException) {
+            throw e
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
@@ -87,6 +89,8 @@ object DaemonController {
             ensureDaemonLocked()
             writePacketLocked(DaemonProtocol.replaceSession(config))
             DaemonProtocol.readAck(readPacketLocked())
+        } catch (e: DaemonProtocol.StatusException) {
+            throw e
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
