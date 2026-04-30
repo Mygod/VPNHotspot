@@ -49,9 +49,11 @@ object DaemonController {
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
     private var connectionFile: File? = null
+    private var daemonStdioClosing = false
+    private var daemonStdioEofReported = false
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
-    private val stdoutLog = DaemonLog { Timber.tag(BINARY_NAME).i(it) }
-    private val stderrLog = DaemonLog { Timber.tag(BINARY_NAME).e(it) }
+    private val stdoutLog = DaemonLog("stdout") { Timber.tag(BINARY_NAME).i(it) }
+    private val stderrLog = DaemonLog("stderr") { Timber.tag(BINARY_NAME).e(it) }
 
     private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
 
@@ -67,8 +69,8 @@ object DaemonController {
     }
 
     internal suspend fun startSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
-        ensureDaemonLocked()
         try {
+            ensureDaemonLocked()
             writePacketLocked(DaemonProtocol.startSession(config))
             DaemonProtocol.readPorts(readPacketLocked()).also {
                 activeSessions.add(config.sessionId)
@@ -81,8 +83,8 @@ object DaemonController {
     }
 
     internal suspend fun replaceSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
-        ensureDaemonLocked()
         try {
+            ensureDaemonLocked()
             writePacketLocked(DaemonProtocol.replaceSession(config))
             DaemonProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
@@ -117,8 +119,12 @@ object DaemonController {
         }
     }
 
+    private class DaemonStdioEofException(message: String) : IOException(message)
+
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
+        daemonStdioClosing = false
+        daemonStdioEofReported = false
         val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
         val connectionFile = File(rootDir, "$socketName.connection")
         check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
@@ -222,6 +228,7 @@ object DaemonController {
     private suspend fun readPacketLocked() = DaemonIpc.readFrame(input!!)
 
     private suspend fun closeConnectionLocked() = withContext(NonCancellable) {
+        daemonStdioClosing = true
         input?.cancel(null)
         output?.cancel(null)
         try {
@@ -238,7 +245,7 @@ object DaemonController {
         connectionFile = null
     }
 
-    private class DaemonLog(private val log: (String) -> Unit) {
+    private class DaemonLog(private val stream: String, private val log: (String) -> Unit) {
         private var channel: ParcelFileDescriptorReadChannel? = null
         private val line = StringBuilder()
         private var job: Job? = null
@@ -256,6 +263,17 @@ object DaemonController {
                         while (channel.readLineTo(line) >= 0) {
                             log(line.toString())
                             line.clear()
+                        }
+                        if (line.isNotEmpty()) {
+                            log(line.toString())
+                            line.clear()
+                        }
+                        lock.withLock {
+                            val sessions = activeSessions.size
+                            if (!daemonStdioClosing && sessions > 0 && !daemonStdioEofReported) {
+                                daemonStdioEofReported = true
+                                Timber.w(DaemonStdioEofException("$BINARY_NAME $stream EOF activeSessions=$sessions"))
+                            }
                         }
                     } catch (e: ErrnoException) {
                         if (e.errno != OsConstants.EBADF) Timber.w(e)
