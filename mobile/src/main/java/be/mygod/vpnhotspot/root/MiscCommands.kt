@@ -4,21 +4,27 @@ import android.content.Context
 import android.net.TetheringManager
 import android.os.Build
 import android.os.Parcelable
+import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
+import android.system.ErrnoException
+import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.ParcelableString
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.io.isEBADF
+import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readLine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -31,17 +37,88 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
-import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InterruptedIOException
 
 fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     environment().compute("PATH") { _, value ->
         if (value.isNullOrEmpty()) "/system/bin" else "$value:/system/bin"
     }
     redirectErrorStream(redirect)
+}
+
+internal suspend fun ByteReadChannel.forEachLineSafely(block: (String) -> Boolean) {
+    try {
+        while (true) {
+            val line = readLine() ?: break
+            if (!block(line)) break
+        }
+    } catch (e: ErrnoException) {
+        if (e.errno != OsConstants.EBADF) throw e
+    } catch (e: IOException) {
+        if (!e.isEBADF) throw e
+    }
+}
+
+internal suspend fun <T> ProcessBuilder.withOutputChannels(
+    block: suspend (Process, ByteReadChannel, ByteReadChannel) -> T,
+): T {
+    val stdoutPipe = ParcelFileDescriptor.createPipe()
+    val stderrPipe = ParcelFileDescriptor.createPipe()
+    var stdoutRead: ParcelFileDescriptor? = stdoutPipe[0]
+    var stdoutWrite: ParcelFileDescriptor? = stdoutPipe[1]
+    var stderrRead: ParcelFileDescriptor? = stderrPipe[0]
+    var stderrWrite: ParcelFileDescriptor? = stderrPipe[1]
+    var stdoutChannel: ByteReadChannel? = null
+    var stderrChannel: ByteReadChannel? = null
+    var process: Process? = null
+    var started = false
+    try {
+        redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdoutWrite!!.fd}")))
+        redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderrWrite!!.fd}")))
+        process = start()
+        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler.looper).also {
+            stdoutRead = null
+            stdoutChannel = it
+        }
+        val stderr = stderrRead!!.openReadChannel(Services.mainHandler.looper).also {
+            stderrRead = null
+            stderrChannel = it
+        }
+        stdoutWrite.close()
+        stdoutWrite = null
+        stderrWrite.close()
+        stderrWrite = null
+        started = true
+        return try {
+            block(process, stdout, stderr)
+        } catch (e: Throwable) {
+            if (process.isAlive) process.destroyForcibly()
+            throw e
+        } finally {
+            stdout.cancel(null)
+            stderr.cancel(null)
+            stdoutChannel = null
+            stderrChannel = null
+        }
+    } finally {
+        if (!started) process?.destroyForcibly()
+        stdoutChannel?.cancel(null)
+        stderrChannel?.cancel(null)
+        try {
+            stdoutRead?.close()
+        } catch (_: IOException) { }
+        try {
+            stdoutWrite?.close()
+        } catch (_: IOException) { }
+        try {
+            stderrRead?.close()
+        } catch (_: IOException) { }
+        try {
+            stderrWrite?.close()
+        } catch (_: IOException) { }
+    }
 }
 
 @Parcelize
@@ -117,52 +194,48 @@ sealed class ProcessData : Parcelable {
 class ProcessListener(private val terminateRegex: Regex,
                       private vararg val command: String) : RootFlow<ProcessData> {
     override fun flow() = channelFlow {
-        val process = ProcessBuilder(*command).start()
-        // we need to destroy process before waiting for the readers during cleanup, so we cannot use coroutineScope
-        val stdout = launch(Dispatchers.IO) {
-            try {
-                process.inputStream.bufferedReader().useLines { lines ->
-                    for (line in lines) {
-                        trySend(ProcessData.StdoutLine(line)).onFailure {
-                            if (it != null) throw it
-                            return@useLines
-                        }
-                        if (terminateRegex.containsMatchIn(line)) process.destroy()
-                    }
-                }
-            } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                if (!e.isEBADF) Timber.w(e)
-            }
-        }
-        val stderr = launch(Dispatchers.IO) {
-            try {
-                process.errorStream.bufferedReader().useLines { lines ->
-                    for (line in lines) trySend(ProcessData.StderrLine(line)).onFailure {
+        ProcessBuilder(*command).withOutputChannels { process, stdoutChannel, stderrChannel ->
+            // we need to destroy process before waiting for the readers during cleanup, so we cannot use coroutineScope
+            val stdout = launch(Dispatchers.IO) {
+                stdoutChannel.forEachLineSafely { line ->
+                    var keepGoing = true
+                    trySend(ProcessData.StdoutLine(line)).onFailure {
                         if (it != null) throw it
-                        return@useLines
+                        keepGoing = false
                     }
+                    if (!keepGoing) return@forEachLineSafely false
+                    if (terminateRegex.containsMatchIn(line)) process.destroy()
+                    true
                 }
-            } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                if (!e.isEBADF) Timber.w(e)
             }
-        }
-        val exit = launch(Dispatchers.IO) {
-            trySend(ProcessData.Exit(runInterruptible {
-                process.waitFor()
-            })).onFailure {
-                if (it != null) throw it
-                return@launch
+            val stderr = launch(Dispatchers.IO) {
+                stderrChannel.forEachLineSafely { line ->
+                    var keepGoing = true
+                    trySend(ProcessData.StderrLine(line)).onFailure {
+                        if (it != null) throw it
+                        keepGoing = false
+                    }
+                    keepGoing
+                }
             }
-        }
-        try {
-            joinAll(stdout, stderr, exit)
-        } finally {
-            withContext(NonCancellable) {
-                if (process.isAlive) process.destroyForcibly()
-                stdout.cancel()
-                stderr.cancel()
-                exit.cancel()
+            val exit = launch(Dispatchers.IO) {
+                trySend(ProcessData.Exit(runInterruptible {
+                    process.waitFor()
+                })).onFailure {
+                    if (it != null) throw it
+                    return@launch
+                }
+            }
+            try {
                 joinAll(stdout, stderr, exit)
+            } finally {
+                withContext(NonCancellable) {
+                    if (process.isAlive) process.destroyForcibly()
+                    stdout.cancel()
+                    stderr.cancel()
+                    exit.cancel()
+                    joinAll(stdout, stderr, exit)
+                }
             }
         }
     }.buffer(Channel.UNLIMITED)

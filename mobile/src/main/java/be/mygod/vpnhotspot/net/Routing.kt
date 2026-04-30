@@ -103,6 +103,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         const val IPTABLES = "iptables -w"
         const val IP6TABLES = "ip6tables -w"
 
+        /**
+         * Uses `ip -batch` for Clean's one-shot deterministic `ip` cleanup commands; Android 10's
+         * bundled iproute2 supports `-force -batch -`.
+         *
+         * Sources:
+         * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#50
+         * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#122
+         * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#251
+         */
         fun appendCleanCommands(commands: BufferedWriter, ipv6NatPrefixSeed: String) {
             commands.appendLine("$IPTABLES -t nat -F PREROUTING")
             commands.appendLine("while $IPTABLES -t mangle -D PREROUTING -j vpnhotspot_dns_tproxy; do done")
@@ -134,14 +143,15 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("$IP6TABLES -t mangle -F vpnhotspot_v6_tproxy")
             commands.appendLine("$IP6TABLES -t mangle -X vpnhotspot_v6_tproxy")
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON; do done")
-            commands.appendLine("$IP -6 route flush table $DAEMON_TABLE")
             val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
+            commands.appendLine("$IP -force -6 -batch - <<'EOF_IP6_BATCH' || true")
+            commands.appendLine("route flush table $DAEMON_TABLE")
             for (networkInterface in networkInterfaces) {
                 val prefix = ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)
-                commands.appendLine("$IP -6 addr del ${ipv6NatGateway(prefix).hostAddress}/64 dev ${networkInterface.name}")
-                commands.appendLine(
-                    "$IP -6 route del $prefix dev ${networkInterface.name} table local_network 2>/dev/null")
+                commands.appendLine("addr del ${ipv6NatGateway(prefix).hostAddress}/64 dev ${networkInterface.name}")
+                commands.appendLine("route del $prefix dev ${networkInterface.name} table local_network")
             }
+            commands.appendLine("EOF_IP6_BATCH")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_FALLBACK; do done")
             commands.appendLine("while $IP rule del priority $RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM; do done")
