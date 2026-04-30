@@ -26,7 +26,6 @@ pub(crate) struct SessionConfig {
 
 #[derive(Clone)]
 pub(crate) struct Ipv6NatConfig {
-    pub(crate) router: Ipv6Addr,
     pub(crate) gateway: Ipv6Addr,
     pub(crate) prefix_len: u8,
     pub(crate) mtu: u32,

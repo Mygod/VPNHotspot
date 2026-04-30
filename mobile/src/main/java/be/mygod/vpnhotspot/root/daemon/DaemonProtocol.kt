@@ -58,7 +58,6 @@ internal object DaemonProtocol {
     )
 
     data class Ipv6NatConfig(
-        val router: String,
         val gateway: String,
         val prefixLength: Int,
         val mtu: Int,
@@ -123,7 +122,6 @@ internal object DaemonProtocol {
         val ipv6Nat = config.ipv6Nat
         writeByte((if (ipv6Nat != null) 1 else 0).toByte())
         if (ipv6Nat == null) return
-        writeUtf(ipv6Nat.router)
         writeUtf(ipv6Nat.gateway)
         writeInt(ipv6Nat.prefixLength)
         writeInt(ipv6Nat.mtu)

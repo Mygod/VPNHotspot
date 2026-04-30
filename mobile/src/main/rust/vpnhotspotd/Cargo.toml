@@ -13,6 +13,7 @@ test = false
 
 [dependencies]
 libc = "0.2.186"
+linux-raw-sys = { version = "0.12.1", default-features = false, features = ["no_std", "netlink"] }
 socket2 = { version = "0.6.3", features = ["all"] }
 tokio = { version = "1.51.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.18"

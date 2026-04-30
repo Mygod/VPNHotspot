@@ -125,9 +125,6 @@ impl<'a> Parser<'a> {
         let fallback = self.read_upstream()?;
         let ipv6_nat = if self.read_bool()? {
             Some(Ipv6NatConfig {
-                router: self.read_utf()?.parse().map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "invalid router address")
-                })?,
                 gateway: self.read_utf()?.parse().map_err(|_| {
                     io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address")
                 })?,

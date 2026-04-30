@@ -1,13 +1,15 @@
 use std::collections::HashMap;
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::io;
-use std::mem::{take, MaybeUninit};
+use std::mem::{size_of, take, MaybeUninit};
 use std::net::{Ipv6Addr, SocketAddrV6};
-use std::os::fd::AsFd;
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
+use std::ptr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use libc::{if_nametoindex, MSG_DONTWAIT};
+use linux_raw_sys::netlink::{sockaddr_nl, NETLINK_ROUTE, RTMGRP_IPV6_IFADDR};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::{Mutex, Notify};
@@ -50,10 +52,20 @@ pub(crate) fn spawn_loop(
                 return;
             }
         };
+        let mut address_monitor = match AddressMonitor::new() {
+            Ok(monitor) => Some(monitor),
+            Err(e) => {
+                eprintln!("ra address monitor failed: {e}");
+                None
+            }
+        };
         let mut next_ra = Instant::now();
         let mut next_suppressed_ra = None;
         let mut suppressed_prefixes = HashMap::<Route, Instant>::new();
         let mut buffer = [MaybeUninit::<u8>::uninit(); 1500];
+        let mut last_router = None;
+        let mut address_changed = false;
+        let mut waiting_logged = false;
         loop {
             let now = Instant::now();
             let (current, send_current) = {
@@ -68,24 +80,59 @@ pub(crate) fn spawn_loop(
                 }
                 (current.clone(), send_current)
             };
+            let send_address_changed = take(&mut address_changed);
+            let router = match link_local_router(&current.downstream) {
+                Ok(router) => router,
+                Err(e) => {
+                    eprintln!("ra link-local lookup failed on {}: {e}", current.downstream);
+                    None
+                }
+            };
+            let router_changed = router != last_router;
+            if router_changed {
+                last_router = router;
+                if let Some(router) = router {
+                    eprintln!(
+                        "ra using link-local router address {router} on {}",
+                        current.downstream
+                    );
+                    waiting_logged = false;
+                }
+            }
+            if router.is_none() {
+                if !waiting_logged {
+                    eprintln!(
+                        "ra waiting for link-local router address on {}",
+                        current.downstream
+                    );
+                    waiting_logged = true;
+                }
+                if next_ra <= now {
+                    next_ra = now + RA_PERIOD;
+                }
+                next_suppressed_ra = None;
+            }
             suppressed_prefixes.retain(|_, deadline| *deadline > now);
             if suppressed_prefixes.is_empty() {
                 next_suppressed_ra = None;
             }
-            if !suppressed_prefixes.is_empty()
-                && next_suppressed_ra.is_none_or(|deadline| deadline <= now)
-            {
-                withdraw_prefixes_once(
-                    &current,
-                    &suppressed_prefixes.keys().copied().collect::<Vec<_>>(),
-                    true,
-                )
-                .await;
-                next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
-            }
-            if send_current || next_ra <= now {
-                let _ = send_ra(&current, None).await;
-                next_ra = now + RA_PERIOD;
+            if let Some(router) = router {
+                if !suppressed_prefixes.is_empty()
+                    && next_suppressed_ra.is_none_or(|deadline| deadline <= now)
+                {
+                    withdraw_prefixes_once_with_router(
+                        &current,
+                        &suppressed_prefixes.keys().copied().collect::<Vec<_>>(),
+                        true,
+                        router,
+                    )
+                    .await;
+                    next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
+                }
+                if send_current || router_changed || send_address_changed || next_ra <= now {
+                    let _ = send_ra(&current, router, None).await;
+                    next_ra = now + RA_PERIOD;
+                }
             }
             let next_deadline = [Some(next_ra), next_suppressed_ra]
                 .into_iter()
@@ -97,6 +144,19 @@ pub(crate) fn spawn_loop(
                 _ = stop.cancelled() => break,
                 _ = config_changed.notified() => {}
                 _ = sleep_until(TokioInstant::from_std(next_deadline)) => {}
+                address_event = async {
+                    match address_monitor.as_ref() {
+                        Some(monitor) => monitor.wait().await,
+                        None => std::future::pending::<io::Result<()>>().await,
+                    }
+                } => {
+                    if let Err(e) = address_event {
+                        eprintln!("ra address monitor failed: {e}");
+                        address_monitor = None;
+                    } else {
+                        address_changed = true;
+                    }
+                }
                 ready = socket.readable() => {
                     let Ok(mut ready) = ready else {
                         break;
@@ -104,7 +164,9 @@ pub(crate) fn spawn_loop(
                     loop {
                         match recv_request(socket.get_ref(), &mut buffer) {
                             Ok(RaRequest::RouterSolicitation(source)) => {
-                                let _ = send_ra(&current, Some(source)).await;
+                                if let Some(router) = router {
+                                    let _ = send_ra(&current, router, Some(source)).await;
+                                }
                             }
                             Ok(RaRequest::Ignored) => continue,
                             Ok(RaRequest::WouldBlock) => {
@@ -130,10 +192,36 @@ pub(crate) async fn withdraw_prefixes_once(
     prefixes: &[Route],
     keep_router: bool,
 ) {
-    let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
+    if config.ipv6_nat.is_none() {
         return;
+    }
+    let router = match link_local_router(&config.downstream) {
+        Ok(Some(router)) => router,
+        Ok(None) => {
+            eprintln!(
+                "ra withdraw skipped: missing link-local router address on {}",
+                config.downstream
+            );
+            return;
+        }
+        Err(e) => {
+            eprintln!("ra link-local lookup failed on {}: {e}", config.downstream);
+            return;
+        }
     };
-    let fd = match create_send_socket(&config.downstream, config.reply_mark, ipv6_nat.router) {
+    withdraw_prefixes_once_with_router(config, prefixes, keep_router, router).await;
+}
+
+async fn withdraw_prefixes_once_with_router(
+    config: &SessionConfig,
+    prefixes: &[Route],
+    keep_router: bool,
+    router: Ipv6Addr,
+) {
+    if config.ipv6_nat.is_none() {
+        return;
+    }
+    let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
         Ok(fd) => fd,
         Err(e) => {
             eprintln!("ra send socket failed: {e}");
@@ -181,6 +269,121 @@ fn interface_index(interface: &str) -> io::Result<u32> {
     }
 }
 
+fn link_local_router(interface: &str) -> io::Result<Option<Ipv6Addr>> {
+    let interface = CString::new(interface)?;
+    let mut addresses = ptr::null_mut();
+    if unsafe { libc::getifaddrs(&mut addresses) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let _addresses = IfAddrs(addresses);
+    let mut current = addresses;
+    while !current.is_null() {
+        let ifaddr = unsafe { &*current };
+        if !ifaddr.ifa_name.is_null() && !ifaddr.ifa_addr.is_null() {
+            let name = unsafe { CStr::from_ptr(ifaddr.ifa_name) };
+            let address = unsafe { &*ifaddr.ifa_addr };
+            if name == interface.as_c_str() && address.sa_family as i32 == libc::AF_INET6 {
+                let address = unsafe { &*(ifaddr.ifa_addr as *const libc::sockaddr_in6) };
+                let address = Ipv6Addr::from(address.sin6_addr.s6_addr);
+                if is_router_link_local(address) {
+                    return Ok(Some(address));
+                }
+            }
+        }
+        current = unsafe { (*current).ifa_next };
+    }
+    Ok(None)
+}
+
+struct IfAddrs(*mut libc::ifaddrs);
+
+impl Drop for IfAddrs {
+    fn drop(&mut self) {
+        unsafe { libc::freeifaddrs(self.0) };
+    }
+}
+
+fn is_router_link_local(address: Ipv6Addr) -> bool {
+    address.is_unicast_link_local() && !address.is_loopback() && !address.is_multicast()
+}
+
+struct AddressMonitor {
+    socket: AsyncFd<OwnedFd>,
+}
+
+impl AddressMonitor {
+    fn new() -> io::Result<Self> {
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_NETLINK,
+                libc::SOCK_RAW | libc::SOCK_CLOEXEC | libc::SOCK_NONBLOCK,
+                NETLINK_ROUTE as libc::c_int,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let address = sockaddr_nl {
+            nl_family: libc::AF_NETLINK as _,
+            nl_pad: 0,
+            nl_pid: 0,
+            nl_groups: RTMGRP_IPV6_IFADDR,
+        };
+        if unsafe {
+            libc::bind(
+                fd.as_raw_fd(),
+                &address as *const _ as *const libc::sockaddr,
+                size_of::<sockaddr_nl>() as libc::socklen_t,
+            )
+        } != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(Self {
+            socket: AsyncFd::new(fd)?,
+        })
+    }
+
+    async fn wait(&self) -> io::Result<()> {
+        let mut buffer = [0u8; 4096];
+        loop {
+            let mut ready = self.socket.readable().await?;
+            let mut changed = false;
+            loop {
+                let result = unsafe {
+                    libc::recv(
+                        self.socket.get_ref().as_raw_fd(),
+                        buffer.as_mut_ptr() as *mut libc::c_void,
+                        buffer.len(),
+                        libc::MSG_DONTWAIT,
+                    )
+                };
+                if result > 0 {
+                    changed = true;
+                    continue;
+                }
+                if result == 0 {
+                    ready.clear_ready();
+                    return Ok(());
+                }
+                let error = io::Error::last_os_error();
+                if error.kind() == io::ErrorKind::Interrupted {
+                    continue;
+                }
+                if error.kind() == io::ErrorKind::WouldBlock {
+                    ready.clear_ready();
+                    if changed {
+                        return Ok(());
+                    }
+                    break;
+                }
+                return Err(error);
+            }
+        }
+    }
+}
+
 fn recv_request(socket: &Socket, buffer: &mut [MaybeUninit<u8>]) -> io::Result<RaRequest> {
     let (size, address) = match socket.recv_from_with_flags(buffer, MSG_DONTWAIT) {
         Ok(result) => result,
@@ -198,12 +401,16 @@ fn recv_request(socket: &Socket, buffer: &mut [MaybeUninit<u8>]) -> io::Result<R
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "expected ipv6 source"))
 }
 
-async fn send_ra(config: &SessionConfig, target: Option<SocketAddrV6>) -> io::Result<()> {
+async fn send_ra(
+    config: &SessionConfig,
+    router: Ipv6Addr,
+    target: Option<SocketAddrV6>,
+) -> io::Result<()> {
     let ipv6_nat = config
         .ipv6_nat
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
-    let fd = create_send_socket(&config.downstream, config.reply_mark, ipv6_nat.router)?;
+    let fd = create_send_socket(&config.downstream, config.reply_mark, router)?;
     let ifindex = interface_index(&config.downstream)?;
     let destination = target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, ifindex));
     let packet = make_current_ra_packet(ipv6_nat.gateway, ipv6_nat.prefix_len, ipv6_nat.mtu);
@@ -347,5 +554,13 @@ mod tests {
         .encode();
         assert_eq!(&packet[40..44], &0u32.to_be_bytes());
         assert_eq!(&packet[packet.len() - 16..], &dns_server.octets());
+    }
+
+    #[test]
+    fn router_link_local_filter_accepts_only_unicast_link_local() {
+        assert!(is_router_link_local("fe80::1".parse().unwrap()));
+        assert!(!is_router_link_local("fd00::1".parse().unwrap()));
+        assert!(!is_router_link_local("ff02::1".parse().unwrap()));
+        assert!(!is_router_link_local("::1".parse().unwrap()));
     }
 }

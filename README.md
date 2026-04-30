@@ -390,6 +390,8 @@ Other:
   including `ResNsendFlags::ANDROID_RESOLV_NO_RETRY = 1`.
 * Daemon DNS forwarding uses IPv4 DNAT rules to redirect client DNS to the root daemon.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
+* `IPv6 NAT` router advertisement startup waits for downstream IPv6 link-local address changes through
+  Linux rtnetlink group `RTMGRP_IPV6_IFADDR`.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*`, may be
   jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.

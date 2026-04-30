@@ -28,7 +28,6 @@ class DaemonProtocolTest {
                 routes = listOf(DaemonProtocol.Route("2001:db8:ffff::", 48)),
             ),
             ipv6Nat = DaemonProtocol.Ipv6NatConfig(
-                router = "fe80::1",
                 gateway = "fd00:1234:5678:9abc::1",
                 prefixLength = 64,
                 mtu = 1440,
@@ -63,7 +62,6 @@ class DaemonProtocolTest {
             assertEquals(48, input.readInt())
 
             assertEquals(true, input.readBoolean())
-            assertEquals("fe80::1", input.readUtf())
             assertEquals("fd00:1234:5678:9abc::1", input.readUtf())
             assertEquals(64, input.readInt())
             assertEquals(1440, input.readInt())

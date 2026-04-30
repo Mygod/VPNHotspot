@@ -381,13 +381,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private fun nextConfig(): DaemonProtocol.SessionConfig {
             val ipv6NatConfig = if (ipv6Nat) {
                 val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
-                val router = interfaceAddresses.firstNotNullOfOrNull { address ->
-                    val inet = address.address
-                    if (inet !is Inet6Address || !inet.isLinkLocalAddress || inet.isLoopbackAddress ||
-                            inet.isMulticastAddress) null else inet.hostAddress?.substringBefore('%')
-                } ?: throw IOException("Missing link-local router address on $downstream")
                 DaemonProtocol.Ipv6NatConfig(
-                    router = router,
                     gateway = checkNotNull(gateway.hostAddress),
                     prefixLength = prefix.prefixLength,
                     mtu = mtu,
