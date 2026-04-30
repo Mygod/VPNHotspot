@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.root.daemon
 import android.os.ParcelFileDescriptor
 import android.os.Parcelable
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.vpnhotspot.root.Jni
 import kotlinx.parcelize.Parcelize
 import java.io.File
 
@@ -16,15 +15,17 @@ data class RunDaemon(
     private val stderr: ParcelFileDescriptor,
 ) : RootCommand<Parcelable?> {
     override suspend fun execute() = null.also {
-        val fullCommand = (command + listOf(
-            "--socket-name", socketName,
-            "--connection-file", connectionFile,
-        )).toTypedArray()
         stdout.use { stdout ->
             stderr.use { stderr ->
-                ParcelFileDescriptor.open(File("/dev/null"), ParcelFileDescriptor.MODE_READ_ONLY).use { devNull ->
-                    Jni.launchProcess(fullCommand, devNull.fd, stdout.fd, stderr.fd)
-                }
+                ProcessBuilder(command + listOf(
+                    "--socket-name", socketName,
+                    "--connection-file", connectionFile,
+                ))
+                    .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+                    // Opened before fork, then dup2'd onto the child stdio fds.
+                    .redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdout.fd}")))
+                    .redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderr.fd}")))
+                    .start()
             }
         }
     }

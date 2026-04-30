@@ -62,7 +62,7 @@ object DaemonController {
      * https://android.googlesource.com/platform/libcore/+/android-10.0.0_r1/dalvik/src/main/java/dalvik/system/DexPathList.java#884
      */
     private val daemonCommand by lazy {
-        val path = (app.classLoader as BaseDexClassLoader).findLibrary(BINARY_NAME) ?: error("Daemon JNI missing")
+        val path = (app.classLoader as BaseDexClassLoader).findLibrary(BINARY_NAME) ?: error("Daemon binary missing")
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 

@@ -57,7 +57,7 @@ abstract class GenerateGitJavaTask : DefaultTask() {
     }
 }
 
-abstract class BuildDaemonJniLibsTask : DefaultTask() {
+abstract class BuildDaemonNativeLibsTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDir: DirectoryProperty
@@ -130,7 +130,6 @@ android {
         versionName = "2.19.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
-        externalNativeBuild.cmake.arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
     }
     buildFeatures {
         buildConfig = true
@@ -156,7 +155,6 @@ android {
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
-    externalNativeBuild.cmake.path = file("src/main/cpp/CMakeLists.txt")
 }
 androidComponents.onVariants { variant ->
     val task = tasks.register<GenerateGitJavaTask>("generate${variant.name.replaceFirstChar(Char::titlecase)}GitJava") {
@@ -165,14 +163,14 @@ androidComponents.onVariants { variant ->
         outputs.upToDateWhen { false }
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
-    val daemonTask = tasks.register<BuildDaemonJniLibsTask>(
-        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonJniLibs") {
+    val daemonTask = tasks.register<BuildDaemonNativeLibsTask>(
+        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonNativeLibs") {
         sourceDir.set(layout.projectDirectory.dir("src/main/rust/vpnhotspotd"))
         cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
         androidPlatform.set(android.defaultConfig.minSdk!!)
-        outputDir.set(layout.buildDirectory.dir("generated/jniLibs/daemon/${variant.name}"))
+        outputDir.set(layout.buildDirectory.dir("generated/nativeLibs/daemon/${variant.name}"))
     }
-    variant.sources.jniLibs?.addGeneratedSourceDirectory(daemonTask, BuildDaemonJniLibsTask::outputDir)
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(daemonTask, BuildDaemonNativeLibsTask::outputDir)
 }
 ksp {
     arg("room.expandProjection", "true")
