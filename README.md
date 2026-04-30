@@ -408,8 +408,9 @@ TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 9
 Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
 deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
 and only deletes VPNHotspot prefixes reconstructed from current interface names. Clean batches
-one-shot deterministic `ip` cleanup commands with `/system/bin/ip -force -batch -`, which is assumed
-to be supported by Android's bundled iproute2 on API 29+.
+one-shot deterministic `ip` cleanup commands with `/system/bin/ip -force -batch -` and one-shot
+iptables cleanup with `iptables-restore -w --noflush` and `ip6tables-restore -w --noflush`, which
+are assumed to be supported by Android's bundled iproute2 and iptables on API 29+.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
 TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sockets use the
 AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
@@ -418,6 +419,7 @@ AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99
 Undocumented system binaries are all bundled and executable:
 
 * `iptables-save`, `ip6tables-save`;
+* `iptables-restore`, `ip6tables-restore` (`-w --noflush`);
 * `echo`;
 * `/system/bin/ip` (`address link monitor neigh rule unreachable`);
 * `ndc` (`ipfwd nat network`);

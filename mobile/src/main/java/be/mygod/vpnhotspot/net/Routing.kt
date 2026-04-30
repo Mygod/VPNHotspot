@@ -102,46 +102,71 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         const val IP = "${ROOT_DIR}ip"
         const val IPTABLES = "iptables -w"
         const val IP6TABLES = "ip6tables -w"
+        private const val IPTABLES_RESTORE = "iptables-restore -w --noflush"
+        private const val IP6TABLES_RESTORE = "ip6tables-restore -w --noflush"
 
         /**
-         * Uses `ip -batch` for Clean's one-shot deterministic `ip` cleanup commands; Android 10's
-         * bundled iproute2 supports `-force -batch -`.
+         * Uses batch tools for Clean's one-shot deterministic cleanup commands. Android 10's bundled
+         * iproute2 supports `ip -force -batch -`; Android 10's bundled iptables-restore supports
+         * `-w --noflush`, and with `--noflush`, `:chain - [0:0]` flushes an existing user chain or
+         * creates a missing one before the following `-X chain`.
          *
          * Sources:
          * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#50
          * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#122
          * https://android.googlesource.com/platform/external/iproute2/+/android-10.0.0_r1/ip/ip.c#251
+         * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/iptables-restore.c#33
+         * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/iptables-restore.c#354
+         * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#36
+         * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#355
          */
+        private fun BufferedWriter.appendIptablesRestore(command: String, blocks: Map<String, List<String>>) {
+            appendLine("$command <<'EOF_IPTABLES_RESTORE' || true")
+            for ((table, lines) in blocks) {
+                appendLine("*$table")
+                for (line in lines) appendLine(line)
+                appendLine("COMMIT")
+            }
+            appendLine("EOF_IPTABLES_RESTORE")
+        }
+
         fun appendCleanCommands(commands: BufferedWriter, ipv6NatPrefixSeed: String) {
-            commands.appendLine("$IPTABLES -t nat -F PREROUTING")
             commands.appendLine("while $IPTABLES -t mangle -D PREROUTING -j vpnhotspot_dns_tproxy; do done")
-            commands.appendLine("$IPTABLES -t mangle -F vpnhotspot_dns_tproxy")
-            commands.appendLine("$IPTABLES -t mangle -X vpnhotspot_dns_tproxy")
             commands.appendLine("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
-            commands.appendLine("$IPTABLES -F vpnhotspot_fwd")
-            commands.appendLine("$IPTABLES -X vpnhotspot_fwd")
-            commands.appendLine("$IPTABLES -F vpnhotspot_acl")
-            commands.appendLine("$IPTABLES -X vpnhotspot_acl")
             commands.appendLine("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-            commands.appendLine("$IPTABLES -t nat -F vpnhotspot_masquerade")
-            commands.appendLine("$IPTABLES -t nat -X vpnhotspot_masquerade")
+            commands.appendIptablesRestore(IPTABLES_RESTORE, mapOf(
+                "mangle" to listOf(
+                    ":vpnhotspot_dns_tproxy - [0:0]",
+                    "-X vpnhotspot_dns_tproxy"),
+                "filter" to listOf(
+                    ":vpnhotspot_fwd - [0:0]",
+                    ":vpnhotspot_acl - [0:0]",
+                    "-X vpnhotspot_fwd",
+                    "-X vpnhotspot_acl"),
+                "nat" to listOf(
+                    "-F PREROUTING",
+                    ":vpnhotspot_masquerade - [0:0]",
+                    "-X vpnhotspot_masquerade")))
             commands.appendLine("while $IP6TABLES -D INPUT -j vpnhotspot_filter; do done")
             commands.appendLine("while $IP6TABLES -D FORWARD -j vpnhotspot_filter; do done")
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
-            commands.appendLine("$IP6TABLES -F vpnhotspot_filter")
-            commands.appendLine("$IP6TABLES -X vpnhotspot_filter")
             commands.appendLine("while $IP6TABLES -D INPUT -j vpnhotspot_v6_input; do done")
             commands.appendLine("while $IP6TABLES -D FORWARD -j vpnhotspot_v6_forward; do done")
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_v6_output; do done")
             commands.appendLine("while $IP6TABLES -t mangle -D PREROUTING -j vpnhotspot_v6_tproxy; do done")
-            commands.appendLine("$IP6TABLES -F vpnhotspot_v6_input")
-            commands.appendLine("$IP6TABLES -X vpnhotspot_v6_input")
-            commands.appendLine("$IP6TABLES -F vpnhotspot_v6_forward")
-            commands.appendLine("$IP6TABLES -X vpnhotspot_v6_forward")
-            commands.appendLine("$IP6TABLES -F vpnhotspot_v6_output")
-            commands.appendLine("$IP6TABLES -X vpnhotspot_v6_output")
-            commands.appendLine("$IP6TABLES -t mangle -F vpnhotspot_v6_tproxy")
-            commands.appendLine("$IP6TABLES -t mangle -X vpnhotspot_v6_tproxy")
+            commands.appendIptablesRestore(IP6TABLES_RESTORE, mapOf(
+                "filter" to listOf(
+                    ":vpnhotspot_filter - [0:0]",
+                    ":vpnhotspot_v6_input - [0:0]",
+                    ":vpnhotspot_v6_forward - [0:0]",
+                    ":vpnhotspot_v6_output - [0:0]",
+                    "-X vpnhotspot_filter",
+                    "-X vpnhotspot_v6_input",
+                    "-X vpnhotspot_v6_forward",
+                    "-X vpnhotspot_v6_output"),
+                "mangle" to listOf(
+                    ":vpnhotspot_v6_tproxy - [0:0]",
+                    "-X vpnhotspot_v6_tproxy")))
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON; do done")
             val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             commands.appendLine("$IP -force -6 -batch - <<'EOF_IP6_BATCH' || true")
