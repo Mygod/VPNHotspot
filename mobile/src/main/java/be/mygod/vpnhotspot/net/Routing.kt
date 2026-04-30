@@ -120,11 +120,12 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
          * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#36
          * https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#355
          */
-        private fun BufferedWriter.appendIptablesRestore(command: String, blocks: Map<String, List<String>>) {
-            appendLine("$command <<'EOF_IPTABLES_RESTORE' || true")
-            for ((table, lines) in blocks) {
-                appendLine("*$table")
-                for (line in lines) appendLine(line)
+        private fun BufferedWriter.appendIptablesRestore(command: String, blocks: List<String>) {
+            append(command)
+            appendLine(" <<'EOF_IPTABLES_RESTORE' || true")
+            for (block in blocks) {
+                append('*')
+                appendLine(block)
                 appendLine("COMMIT")
             }
             appendLine("EOF_IPTABLES_RESTORE")
@@ -134,19 +135,19 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("while $IPTABLES -t mangle -D PREROUTING -j vpnhotspot_dns_tproxy; do done")
             commands.appendLine("while $IPTABLES -D FORWARD -j vpnhotspot_fwd; do done")
             commands.appendLine("while $IPTABLES -t nat -D POSTROUTING -j vpnhotspot_masquerade; do done")
-            commands.appendIptablesRestore(IPTABLES_RESTORE, mapOf(
-                "mangle" to listOf(
-                    ":vpnhotspot_dns_tproxy - [0:0]",
-                    "-X vpnhotspot_dns_tproxy"),
-                "filter" to listOf(
-                    ":vpnhotspot_fwd - [0:0]",
-                    ":vpnhotspot_acl - [0:0]",
-                    "-X vpnhotspot_fwd",
-                    "-X vpnhotspot_acl"),
-                "nat" to listOf(
-                    "-F PREROUTING",
-                    ":vpnhotspot_masquerade - [0:0]",
-                    "-X vpnhotspot_masquerade")))
+            commands.appendIptablesRestore(IPTABLES_RESTORE, listOf(
+                """mangle
+                |:vpnhotspot_dns_tproxy - [0:0]
+                |-X vpnhotspot_dns_tproxy""".trimMargin(),
+                """filter
+                |:vpnhotspot_fwd - [0:0]
+                |:vpnhotspot_acl - [0:0]
+                |-X vpnhotspot_fwd
+                |-X vpnhotspot_acl""".trimMargin(),
+                """nat
+                |-F PREROUTING
+                |:vpnhotspot_masquerade - [0:0]
+                |-X vpnhotspot_masquerade""".trimMargin()))
             commands.appendLine("while $IP6TABLES -D INPUT -j vpnhotspot_filter; do done")
             commands.appendLine("while $IP6TABLES -D FORWARD -j vpnhotspot_filter; do done")
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_filter; do done")
@@ -154,19 +155,19 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             commands.appendLine("while $IP6TABLES -D FORWARD -j vpnhotspot_v6_forward; do done")
             commands.appendLine("while $IP6TABLES -D OUTPUT -j vpnhotspot_v6_output; do done")
             commands.appendLine("while $IP6TABLES -t mangle -D PREROUTING -j vpnhotspot_v6_tproxy; do done")
-            commands.appendIptablesRestore(IP6TABLES_RESTORE, mapOf(
-                "filter" to listOf(
-                    ":vpnhotspot_filter - [0:0]",
-                    ":vpnhotspot_v6_input - [0:0]",
-                    ":vpnhotspot_v6_forward - [0:0]",
-                    ":vpnhotspot_v6_output - [0:0]",
-                    "-X vpnhotspot_filter",
-                    "-X vpnhotspot_v6_input",
-                    "-X vpnhotspot_v6_forward",
-                    "-X vpnhotspot_v6_output"),
-                "mangle" to listOf(
-                    ":vpnhotspot_v6_tproxy - [0:0]",
-                    "-X vpnhotspot_v6_tproxy")))
+            commands.appendIptablesRestore(IP6TABLES_RESTORE, listOf(
+                """filter
+                |:vpnhotspot_filter - [0:0]
+                |:vpnhotspot_v6_input - [0:0]
+                |:vpnhotspot_v6_forward - [0:0]
+                |:vpnhotspot_v6_output - [0:0]
+                |-X vpnhotspot_filter
+                |-X vpnhotspot_v6_input
+                |-X vpnhotspot_v6_forward
+                |-X vpnhotspot_v6_output""".trimMargin(),
+                """mangle
+                |:vpnhotspot_v6_tproxy - [0:0]
+                |-X vpnhotspot_v6_tproxy""".trimMargin()))
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON; do done")
             val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
             commands.appendLine("$IP -force -6 -batch - <<'EOF_IP6_BATCH' || true")
@@ -209,12 +210,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val message = result.message(listOf(command), err = false)
             if (result.err.isNotEmpty()) Timber.i(message)  // busy wait message
         }
-        private suspend fun RootSession.Transaction.iptablesAdd(content: String, table: String = "filter") =
-                iptables("$IPTABLES -t $table -A $content", "$IPTABLES -t $table -D $content")
         private suspend fun RootSession.Transaction.iptablesInsert(content: String, table: String = "filter") =
                 iptables("$IPTABLES -t $table -I $content", "$IPTABLES -t $table -D $content")
-        private suspend fun RootSession.Transaction.ip6tablesAdd(content: String, table: String = "filter") =
-                iptables("$IP6TABLES -t $table -A $content", "$IP6TABLES -t $table -D $content")
         private suspend fun RootSession.Transaction.ip6tablesInsert(content: String, table: String = "filter") =
                 iptables("$IP6TABLES -t $table -I $content", "$IP6TABLES -t $table -D $content")
 
@@ -331,7 +328,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                         when (masqueradeMode) {
                             MasqueradeMode.None -> { }  // nothing to be done here
                             // note: specifying -i wouldn't work for POSTROUTING
-                            MasqueradeMode.Simple -> iptablesAdd(
+                            MasqueradeMode.Simple -> iptablesInsert(
                                 "vpnhotspot_masquerade -s $hostSubnet -o $ifname -j MASQUERADE", "nat")
                             /**
                              * 0 means that there are no interface addresses coming after, which is unused anyway.
@@ -451,13 +448,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
             transaction.ip6Rule("lookup $DAEMON_TABLE", RULE_PRIORITY_DAEMON,
                 "fwmark $DAEMON_INTERCEPT_FWMARK")
-            transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -p icmpv6 -j ACCEPT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -m socket --transparent --nowildcard -j ACCEPT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_input -i $downstream -j REJECT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_forward -i $downstream -j REJECT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_forward -o $downstream -j REJECT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $DAEMON_REPLY_MARK/$DAEMON_REPLY_MARK_MASK -j ACCEPT")
-            transaction.ip6tablesAdd("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -j REJECT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_input -i $downstream -j REJECT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_input -i $downstream -m socket --transparent --nowildcard -j ACCEPT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_input -i $downstream -p icmpv6 -j ACCEPT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_forward -o $downstream -j REJECT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_forward -i $downstream -j REJECT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -j REJECT")
+            transaction.ip6tablesInsert("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $DAEMON_REPLY_MARK/$DAEMON_REPLY_MARK_MASK -j ACCEPT")
             transaction.ip6tablesInsert(
                 "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ipv6NatPorts.tcp} --tproxy-mark $DAEMON_INTERCEPT_FWMARK",
                 "mangle")
@@ -590,9 +587,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.execQuiet("$IPTABLES -N vpnhotspot_fwd")
         transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
+        transaction.iptablesInsert("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
         transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
         transaction.iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
-        transaction.iptablesAdd("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
         // the real forwarding filters will be added when clients are connected
     }
 
