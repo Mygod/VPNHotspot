@@ -194,7 +194,7 @@ pub(crate) async fn resolve_query(config: &SessionConfig, query: &[u8]) -> io::R
     ))
 }
 
-async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<Vec<u8>> {
+pub(crate) async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<Vec<u8>> {
     match resolve_query(config, query).await {
         Ok(response) => Some(response),
         Err(e) => {

@@ -3,11 +3,13 @@ package be.mygod.vpnhotspot.net
 import android.annotation.SuppressLint
 import android.net.IpPrefix
 import android.net.LinkProperties
+import android.net.MacAddress
 import android.os.Build
 import android.provider.Settings
 import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.ALL_ZEROS_ADDRESS
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
@@ -166,7 +168,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 |-X vpnhotspot_v6_forward
                 |-X vpnhotspot_v6_output""".trimMargin(),
                 """mangle
+                |:vpnhotspot_acl - [0:0]
                 |:vpnhotspot_v6_tproxy - [0:0]
+                |-X vpnhotspot_acl
                 |-X vpnhotspot_v6_tproxy""".trimMargin()))
             commands.appendLine("while $IP -6 rule del priority $RULE_PRIORITY_DAEMON; do done")
             val networkInterfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
@@ -370,7 +374,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val upstream = Upstream(RULE_PRIORITY_UPSTREAM)
     private var daemonSession: DaemonSession? = null
 
-    private inner class DaemonSession(private val ipv6Nat: Boolean) {
+    private inner class DaemonSession(val ipv6Nat: Boolean) {
         private val prefix by lazy { ipv6NatPrefix(ipv6NatPrefixSeed, downstream) }
         private val gateway by lazy { ipv6NatGateway(prefix) }
         private val mtu by lazy { NetworkInterface.getByName(downstream)?.mtu ?: 1500 }
@@ -430,11 +434,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_input")
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_forward")
             transaction.execQuiet("$IP6TABLES -N vpnhotspot_v6_output")
+            transaction.execQuiet("$IP6TABLES -t mangle -N vpnhotspot_acl")
             transaction.execQuiet("$IP6TABLES -t mangle -N vpnhotspot_v6_tproxy")
-            transaction.ip6tablesInsert("INPUT -j vpnhotspot_v6_input")
-            transaction.ip6tablesInsert("FORWARD -j vpnhotspot_v6_forward")
-            transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
-            transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
             try {
                 transaction.exec("$IP -6 route replace local ::/0 dev lo table $DAEMON_TABLE")
             } catch (e: RoutingCommands.UnexpectedOutputException) {
@@ -449,12 +450,18 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             transaction.ip6tablesInsert("vpnhotspot_v6_forward -i $downstream -j REJECT")
             transaction.ip6tablesInsert("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -j REJECT")
             transaction.ip6tablesInsert("vpnhotspot_v6_output -o $downstream -p icmpv6 --icmpv6-type 134 -m mark --mark $DAEMON_REPLY_MARK/$DAEMON_REPLY_MARK_MASK -j ACCEPT")
+            transaction.ip6tablesInsert("vpnhotspot_acl -j DROP", "mangle")
             transaction.ip6tablesInsert(
                 "vpnhotspot_v6_tproxy -i $downstream -p tcp -j TPROXY --on-port ${ipv6NatPorts.tcp} --tproxy-mark $DAEMON_INTERCEPT_FWMARK",
                 "mangle")
             transaction.ip6tablesInsert(
                 "vpnhotspot_v6_tproxy -i $downstream -p udp -j TPROXY --on-port ${ipv6NatPorts.udp} --tproxy-mark $DAEMON_INTERCEPT_FWMARK",
                 "mangle")
+            transaction.ip6tablesInsert("vpnhotspot_v6_tproxy -i $downstream -j vpnhotspot_acl", "mangle")
+            transaction.ip6tablesInsert("INPUT -j vpnhotspot_v6_input")
+            transaction.ip6tablesInsert("FORWARD -j vpnhotspot_v6_forward")
+            transaction.ip6tablesInsert("OUTPUT -j vpnhotspot_v6_output")
+            transaction.ip6tablesInsert("PREROUTING -j vpnhotspot_v6_tproxy", "mangle")
         }
 
         suspend fun update() {
@@ -470,18 +477,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
 
         suspend fun close(
-            setup: RootSession.Transaction? = null,
             removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
         ) {
             if (ipv6Nat) {
                 val subnet = prefix.toString()
-                if (setup == null) {
-                    RootSession.use {
-                        it.submit("$IP -6 route del $subnet dev $downstream table local_network")
-                        it.submit("$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
-                    }
-                } else {
-                    setup.execQuiet("$IP -6 route del $subnet dev $downstream table local_network")
+                RootSession.use {
+                    it.submit("$IP -6 route del $subnet dev $downstream table local_network")
+                    it.submit("$IP -6 addr del ${gateway.hostAddress}/${prefix.prefixLength} dev $downstream")
                 }
             }
             try {
@@ -499,27 +501,52 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
     }
     private val clients = mutableMapOf<InetAddress, Client>()
+    private val allowedClients = mutableMapOf<MacAddress, RootSession.Transaction>()
     override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
         enqueue(RoutingUpdate.NeighboursSnapshot(neighbours))
     }
     private suspend fun updateNeighbours(neighbours: Collection<IpNeighbour>) {
         val toRemove = HashSet(clients.keys)
+        val allowedToRemove = HashSet(allowedClients.keys)
+        val records = mutableMapOf<MacAddress, Boolean>()
         for (neighbour in neighbours) {
-            if (neighbour.dev != downstream || neighbour.ip !is Inet4Address ||
-                    AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr).blocked) continue
-            toRemove.remove(neighbour.ip)
+            if (neighbour.dev != downstream || neighbour.state != IpNeighbour.State.VALID ||
+                    neighbour.lladdr == ALL_ZEROS_ADDRESS) continue
+            var blocked = records[neighbour.lladdr]
+            if (blocked == null) {
+                blocked = AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr).blocked
+                records[neighbour.lladdr] = blocked
+            }
+            if (blocked == true) continue
+            if (!allowedToRemove.remove(neighbour.lladdr) && !allowedClients.containsKey(neighbour.lladdr)) try {
+                val transaction = RootSession.beginTransaction().safeguard {
+                    iptablesInsert(
+                        "vpnhotspot_fwd -i $downstream -m mac --mac-source ${neighbour.lladdr} -j vpnhotspot_acl")
+                    if (daemonSession?.ipv6Nat == true) {
+                        ip6tablesInsert("vpnhotspot_acl -m mac --mac-source ${neighbour.lladdr} -j RETURN", "mangle")
+                    }
+                }
+                allowedClients[neighbour.lladdr] = transaction
+            } catch (e: Exception) {
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+                continue
+            }
+            val ip = neighbour.ip
+            if (ip !is Inet4Address) continue
+            toRemove.remove(ip)
             try {
-                if (clients.containsKey(neighbour.ip)) continue
-                val address = neighbour.ip.hostAddress
+                if (clients.containsKey(ip)) continue
+                val address = ip.hostAddress
                 val transaction = RootSession.beginTransaction().safeguard {
                     iptablesInsert("vpnhotspot_acl -i $downstream -s $address -j ACCEPT")
                     iptablesInsert("vpnhotspot_acl -o $downstream -d $address -j ACCEPT")
                 }
                 try {
-                    TrafficRecorder.register(neighbour.ip, downstream, neighbour.lladdr)
-                    clients[neighbour.ip] = Client(neighbour.ip, transaction)
+                    TrafficRecorder.register(ip, downstream, neighbour.lladdr)
+                    clients[ip] = Client(ip, transaction)
                 } catch (e: Exception) {
-                    TrafficRecorder.unregister(neighbour.ip, downstream)
+                    TrafficRecorder.unregister(ip, downstream)
                     transaction.revert()
                     throw e
                 }
@@ -532,6 +559,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             TrafficRecorder.update()    // record stats before removing rules to prevent stats losing
             for (address in toRemove) clients.remove(address)!!.close()
         }
+        for (mac in allowedToRemove) allowedClients.remove(mac)!!.revert()
     }
 
     /**
@@ -570,7 +598,13 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             session.prepare()
             daemonSession = session
         } catch (e: Exception) {
-            withContext(NonCancellable) { session.close(transaction) }
+            withContext(NonCancellable) {
+                try {
+                    DaemonController.removeSession(downstream)
+                } catch (removeError: Exception) {
+                    if (removeError !is CancellationException) Timber.w(removeError)
+                }
+            }
             if (e is CancellationException) throw e
             Timber.w(e)
             SmartSnackbar.make(app.getString(R.string.warn_ipv6_nat_failed, e.readableMessage)).show()
@@ -582,7 +616,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         transaction.execQuiet("$IPTABLES -N vpnhotspot_acl")
         transaction.iptablesInsert("FORWARD -j vpnhotspot_fwd")
         transaction.iptablesInsert("vpnhotspot_fwd -i $downstream ! -o $downstream -j REJECT") // ensure blocking works
-        transaction.iptablesInsert("vpnhotspot_fwd -i $downstream -j vpnhotspot_acl")
         transaction.iptablesInsert("vpnhotspot_fwd -o $downstream -m state --state ESTABLISHED,RELATED -j vpnhotspot_acl")
         // the real forwarding filters will be added when clients are connected
     }
@@ -631,7 +664,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 session.prepare()
                 daemonSession = session
             } catch (e: Exception) {
-                withContext(NonCancellable) { session.close(transaction) }
+                withContext(NonCancellable) { session.close() }
                 throw e
             }
         }
@@ -668,6 +701,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         TrafficRecorder.update()    // record stats before exiting to prevent stats losing
         clients.values.forEach { it.close() }
         clients.clear()
+        allowedClients.values.forEach { it.revert() }
+        allowedClients.clear()
         fallbackUpstream.subrouting.values.forEach { it.revert() }
         fallbackUpstream.subrouting.clear()
         upstream.subrouting.values.forEach { it.revert() }

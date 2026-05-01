@@ -19,7 +19,7 @@ use tokio::time::{sleep_until, Instant as TokioInstant};
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
-use crate::dns::{resolve_query, DNS_PORT};
+use crate::dns::{resolve_or_error, DNS_PORT};
 use crate::model::SessionConfig;
 use crate::upstream::{connect_udp, select_upstream};
 
@@ -124,8 +124,8 @@ pub(crate) fn spawn_loop(
                                     spawn(async move {
                                         select! {
                                             _ = query_stop.cancelled() => {}
-                                            result = resolve_query(&snapshot, &query) => match result {
-                                                Ok(response) => {
+                                            response = resolve_or_error(&snapshot, &query) => {
+                                                if let Some(response) = response {
                                                     if let Err(e) = send_response(
                                                         destination,
                                                         client,
@@ -135,7 +135,6 @@ pub(crate) fn spawn_loop(
                                                         eprintln!("dns udp response failed: {e}");
                                                     }
                                                 }
-                                                Err(e) => eprintln!("dns udp resolve failed: {e}"),
                                             }
                                         }
                                     });
