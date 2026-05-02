@@ -30,7 +30,7 @@ data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand
             }
         }
         val (tunnel, inbound) = findTarget(upstream, dump) ?: return ParcelableBoolean(false)
-        updateSecurityPolicy(
+        Netd.ipSecUpdateSecurityPolicy(
             Netd.service,
             tunnel.groupValues[2].toInt(),
             OsConstants.AF_INET,
@@ -54,25 +54,6 @@ data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand
             """mConfig=\{mMode=TUNNEL,\s*mSourceAddress=([^,]+),\s*mDestinationAddress=([^,]+),\s*mNetwork=([^,]+),.*?mXfrmInterfaceId=(\d+)\}""",
             setOf(RegexOption.DOT_MATCHES_ALL),
         )
-
-        /**
-         * https://android.googlesource.com/platform/system/netd/+/android-12.0.0_r1/server/binder/android/net/INetd.aidl#397
-         * https://android.googlesource.com/platform/frameworks/base/+/android-12.0.0_r1/services/core/java/com/android/server/IpSecService.java#1883
-         */
-        private val updateSecurityPolicy by lazy {
-            Netd.getMethod(
-                "ipSecUpdateSecurityPolicy",
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                String::class.java,
-                String::class.java,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-            )
-        }
 
         fun findTarget(upstream: String, dump: String): Pair<MatchResult, MatchResult>? {
             val tunnel = tunnelRecord.findAll(dump).firstOrNull { it.groupValues[3] == upstream } ?: return null
