@@ -29,47 +29,38 @@ class InterfaceMonitor(private val ifaceRegex: String) : UpstreamMonitor() {
     private val available = HashMap<Network, LinkProperties?>()
     override val currentLinkProperties: LinkProperties? get() = currentNetwork?.let { available[it] }
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            val properties = Services.connectivity.getLinkProperties(network)
-            if (properties?.allInterfaceNames?.any(iface) != true) return
-            val callbacks = synchronized(this@InterfaceMonitor) {
-                available[network] = properties
-                currentNetwork = network
-                callbacks.toList()
-            }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
-        }
-
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             val matched = properties.allInterfaceNames.any(iface)
-            val (callbacks, newProperties) = synchronized(this@InterfaceMonitor) {
+            val (callbacks, newNetwork, newProperties) = synchronized(this@InterfaceMonitor) {
                 if (matched) {
                     available[network] = properties
                     if (currentNetwork == null) currentNetwork = network else if (currentNetwork != network) return
-                    callbacks.toList() to properties
+                    Triple(callbacks.toList(), network, properties)
                 } else {
                     available.remove(network)
                     if (currentNetwork != network) return
                     val nextBest = available.entries.firstOrNull()
                     currentNetwork = nextBest?.key
-                    callbacks.toList() to nextBest?.value
+                    Triple(callbacks.toList(), nextBest?.key, nextBest?.value)
                 }
             }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(newProperties) } }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(newNetwork, newProperties) } }
         }
 
         override fun onLost(network: Network) {
+            var nextNetwork: Network? = null
             var properties: LinkProperties? = null
             val callbacks = synchronized(this@InterfaceMonitor) {
                 if (available.remove(network) == null || currentNetwork != network) return
                 val next = available.entries.firstOrNull()
                 currentNetwork = next?.run {
+                    nextNetwork = key
                     properties = value
                     key
                 }
                 callbacks.toList()
             }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(nextNetwork, properties) } }
         }
     }
 
@@ -77,7 +68,7 @@ class InterfaceMonitor(private val ifaceRegex: String) : UpstreamMonitor() {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) GlobalScope.launch {
-                callback.onAvailable(currentLinkProperties)
+                callback.onAvailable(currentNetwork, currentLinkProperties)
             }
         } else {
             Services.registerNetworkCallback(request, networkCallback)

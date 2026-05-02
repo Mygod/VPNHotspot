@@ -6,20 +6,16 @@ pub(crate) struct Route {
     pub(crate) prefix_len: u8,
 }
 
-#[derive(Clone)]
-pub(crate) struct Upstream {
-    pub(crate) network_handle: u64,
-    pub(crate) interface: String,
-    pub(crate) routes: Vec<Route>,
-}
+pub(crate) type Network = u64;
 
 #[derive(Clone)]
 pub(crate) struct SessionConfig {
     pub(crate) downstream: String,
     pub(crate) dns_bind_address: Ipv4Addr,
     pub(crate) reply_mark: u32,
-    pub(crate) primary: Option<Upstream>,
-    pub(crate) fallback: Option<Upstream>,
+    pub(crate) primary_network: Option<Network>,
+    pub(crate) primary_routes: Vec<Route>,
+    pub(crate) fallback_network: Option<Network>,
     pub(crate) ipv6_nat: Option<Ipv6NatConfig>,
 }
 

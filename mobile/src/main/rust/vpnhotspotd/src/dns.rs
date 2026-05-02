@@ -14,7 +14,7 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns_wire;
-use crate::model::SessionConfig;
+use crate::model::{Network, SessionConfig};
 
 pub(crate) const DNS_PORT: u16 = 53;
 // android/multinetwork.h: ResNsendFlags::ANDROID_RESOLV_NO_RETRY.
@@ -182,11 +182,11 @@ pub(crate) fn spawn_udp_loop(
 }
 
 pub(crate) async fn resolve_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>> {
-    if let Some(primary) = config.primary.as_ref() {
-        return query_network(primary.network_handle, query).await;
+    if let Some(primary) = config.primary_network {
+        return query_network(primary, query).await;
     }
-    if let Some(fallback) = config.fallback.as_ref() {
-        return query_network(fallback.network_handle, query).await;
+    if let Some(fallback) = config.fallback_network {
+        return query_network(fallback, query).await;
     }
     Err(io::Error::new(
         io::ErrorKind::NotConnected,
@@ -204,10 +204,10 @@ pub(crate) async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Op
     }
 }
 
-async fn query_network(network_handle: u64, query: &[u8]) -> io::Result<Vec<u8>> {
+async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
     let fd = unsafe {
         android_res_nsend(
-            network_handle,
+            network,
             query.as_ptr(),
             query.len(),
             ANDROID_RESOLV_NO_RETRY,

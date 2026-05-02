@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.net.IpPrefix
 import android.net.LinkProperties
 import android.net.MacAddress
+import android.net.Network
+import android.net.RouteInfo
 import android.os.Build
 import android.provider.Settings
 import android.system.Os
@@ -19,9 +21,9 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
-import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.util.allInterfaceNames
+import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
@@ -286,7 +288,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private val upstreams = HashSet<String>()
 
     private sealed class RoutingUpdate {
-        class UpstreamSnapshot(val upstream: Upstream, val properties: LinkProperties?) : RoutingUpdate()
+        class UpstreamSnapshot(
+            val upstream: Upstream,
+            val network: Network?,
+            val properties: LinkProperties?,
+        ) : RoutingUpdate()
         class NeighboursSnapshot(val neighbours: Collection<IpNeighbour>) : RoutingUpdate()
     }
     private val updateLock = Any()
@@ -315,11 +321,17 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private open inner class Upstream(val priority: Int) : UpstreamMonitor.Callback {
         val subrouting = mutableMapOf<String, RootSession.Transaction>()
+        var network: Network? = null
+            private set
+        var properties: LinkProperties? = null
+            private set
 
-        override fun onAvailable(properties: LinkProperties?) {
-            enqueue(RoutingUpdate.UpstreamSnapshot(this, properties))
+        override fun onAvailable(network: Network?, properties: LinkProperties?) {
+            enqueue(RoutingUpdate.UpstreamSnapshot(this, network, properties))
         }
-        suspend fun update(properties: LinkProperties?) {
+        suspend fun update(network: Network?, properties: LinkProperties?) {
+            this.network = network
+            this.properties = properties
             val toRemove = subrouting.keys.toMutableSet()
             for (ifname in properties?.allInterfaceNames ?: emptyList()) {
                 if (toRemove.remove(ifname) || !upstreams.add(ifname)) continue
@@ -380,8 +392,6 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         private val mtu by lazy { NetworkInterface.getByName(downstream)?.mtu ?: 1500 }
         lateinit var ports: DaemonProtocol.SessionPorts
 
-        private fun buildUpstream(network: android.net.Network?) = DaemonProtocol.Upstream.from(network,
-            network?.let(Services.connectivity::getLinkProperties))
         private fun nextConfig(): DaemonProtocol.SessionConfig {
             val ipv6NatConfig = if (ipv6Nat) {
                 val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
@@ -403,8 +413,12 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 downstream = downstream,
                 dnsBindAddress = hostAddress.address as Inet4Address,
                 replyMark = DAEMON_REPLY_MARK,
-                primary = buildUpstream(UpstreamMonitor.currentNetwork),
-                fallback = buildUpstream(FallbackUpstreamMonitor.currentNetwork),
+                primaryNetwork = upstream.network,
+                primaryRoutes = upstream.properties?.allRoutes?.mapNotNull { route ->
+                    val destination = route.destination
+                    if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
+                } ?: emptyList(),
+                fallbackNetwork = fallbackUpstream.network,
                 ipv6Nat = ipv6NatConfig,
             )
         }
@@ -679,7 +693,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 }
                 for (next in batch) try {
                     when (next) {
-                        is RoutingUpdate.UpstreamSnapshot -> if (!stopped) next.upstream.update(next.properties)
+                        is RoutingUpdate.UpstreamSnapshot -> if (!stopped) {
+                            next.upstream.update(next.network, next.properties)
+                        }
                         is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
                     }
                 } catch (e: Exception) {

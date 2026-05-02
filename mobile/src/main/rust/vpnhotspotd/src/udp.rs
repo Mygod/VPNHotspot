@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::dns::{resolve_or_error, DNS_PORT};
 use crate::model::SessionConfig;
-use crate::upstream::{connect_udp, select_upstream};
+use crate::upstream::{connect_udp, select_network};
 
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
 const UDP_ASSOC_MAX: usize = 1024;
@@ -147,7 +147,7 @@ pub(crate) fn spawn_loop(
                                 {
                                     continue;
                                 }
-                                let upstream = match select_upstream(&snapshot, *destination.ip()) {
+                                let network = match select_network(&snapshot, *destination.ip()) {
                                     Some(network) => network,
                                     None => continue,
                                 };
@@ -166,7 +166,7 @@ pub(crate) fn spawn_loop(
                                             break;
                                         }
                                     }
-                                    let upstream = match connect_udp(upstream, destination).await {
+                                    let upstream = match connect_udp(network, destination).await {
                                         Ok(socket) => Arc::new(socket),
                                         Err(e) => {
                                             eprintln!("udp connect failed: {e}");

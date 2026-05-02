@@ -8,35 +8,24 @@ use libc::{c_int, c_void, setsockopt, socklen_t, EINPROGRESS, IPPROTO_IPV6, IPV6
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::{TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket};
 
-use crate::model::{ipv6_to_u128, Route, SessionConfig, Upstream};
+use crate::model::{ipv6_to_u128, Network, Route, SessionConfig};
 use crate::socket::await_connect;
 
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
-#[cfg_attr(target_os = "android", link(name = "android"))]
+#[cfg(target_os = "android")]
+#[link(name = "android")]
 unsafe extern "C" {
     fn android_setsocknetwork(network: u64, fd: c_int) -> c_int;
 }
 
-pub(crate) fn select_upstream(config: &SessionConfig, destination: Ipv6Addr) -> Option<&Upstream> {
+pub(crate) fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
     let destination = ipv6_to_u128(destination);
-    let mut best = None;
-    if let Some(primary) = config.primary.as_ref() {
-        if let Some(prefix_len) = longest_prefix_match(&primary.routes, destination) {
-            best = Some((prefix_len, primary));
-        }
+    if config.primary_network.is_some() && route_matches(&config.primary_routes, destination) {
+        config.primary_network
+    } else {
+        config.fallback_network
     }
-    if let Some(fallback) = config.fallback.as_ref() {
-        if let Some(prefix_len) = longest_prefix_match(&fallback.routes, destination) {
-            if best
-                .as_ref()
-                .is_none_or(|(current, _)| prefix_len > *current)
-            {
-                best = Some((prefix_len, fallback));
-            }
-        }
-    }
-    best.map(|(_, upstream)| upstream)
 }
 
 pub(crate) fn create_tproxy_tcp_listener(mark: u32) -> io::Result<TcpListener> {
@@ -86,15 +75,11 @@ pub(crate) fn create_tproxy_udp_listener(mark: u32) -> io::Result<UdpSocket> {
 }
 
 pub(crate) async fn connect_tcp(
-    upstream: &Upstream,
+    network: Network,
     destination: SocketAddrV6,
 ) -> io::Result<TokioTcpStream> {
     let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
-    if unsafe { android_setsocknetwork(upstream.network_handle, socket.as_raw_fd()) } != 0 {
-        let error = io::Error::last_os_error();
-        return Err(error);
-    }
-    bind_upstream_socket(&socket, &upstream.interface)?;
+    set_socket_network(network, socket.as_raw_fd())?;
     socket.set_nonblocking(true)?;
     if let Err(error) = socket.connect(&SockAddr::from(destination)) {
         let raw_os_error = error.raw_os_error();
@@ -107,32 +92,34 @@ pub(crate) async fn connect_tcp(
 }
 
 pub(crate) async fn connect_udp(
-    upstream: &Upstream,
+    network: Network,
     destination: SocketAddrV6,
 ) -> io::Result<TokioUdpSocket> {
     let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
-    if unsafe { android_setsocknetwork(upstream.network_handle, socket.as_raw_fd()) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    bind_upstream_socket(&socket, &upstream.interface)?;
+    set_socket_network(network, socket.as_raw_fd())?;
     socket.connect(&SockAddr::from(destination))?;
     socket.set_nonblocking(true)?;
     TokioUdpSocket::from_std(socket.into())
 }
 
-fn bind_upstream_socket(socket: &Socket, interface: &str) -> io::Result<()> {
-    if interface.is_empty() {
-        return Ok(());
+#[cfg(target_os = "android")]
+fn set_socket_network(network: Network, fd: c_int) -> io::Result<()> {
+    if unsafe { android_setsocknetwork(network, fd) } == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
     }
-    socket.bind_device(Some(interface.as_bytes()))
 }
 
-fn longest_prefix_match(routes: &[Route], destination: u128) -> Option<u8> {
+#[cfg(not(target_os = "android"))]
+fn set_socket_network(_network: Network, _fd: c_int) -> io::Result<()> {
+    Ok(())
+}
+
+fn route_matches(routes: &[Route], destination: u128) -> bool {
     routes
         .iter()
-        .filter(|route| prefix_matches(destination, route.prefix, route.prefix_len))
-        .map(|route| route.prefix_len)
-        .max()
+        .any(|route| prefix_matches(destination, route.prefix, route.prefix_len))
 }
 
 fn prefix_matches(destination: u128, prefix: u128, prefix_len: u8) -> bool {
@@ -141,5 +128,69 @@ fn prefix_matches(destination: u128, prefix: u128, prefix_len: u8) -> bool {
     } else {
         let shift = 128 - prefix_len as u32;
         destination >> shift == prefix >> shift
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+    use crate::model::SessionConfig;
+
+    #[test]
+    fn primary_route_match_selects_primary_network() {
+        let config = config(Some(123), vec![route("2001:db8::", 32)], Some(456));
+        assert_eq!(
+            select_network(&config, "2001:db8:1::1".parse().unwrap()),
+            Some(123)
+        );
+    }
+
+    #[test]
+    fn non_primary_destination_selects_fallback_network() {
+        let config = config(Some(123), vec![route("2001:db8::", 32)], Some(456));
+        assert_eq!(
+            select_network(&config, "fd00::1".parse().unwrap()),
+            Some(456)
+        );
+    }
+
+    #[test]
+    fn missing_fallback_network_returns_none() {
+        let config = config(Some(123), vec![route("2001:db8::", 32)], None);
+        assert_eq!(select_network(&config, "fd00::1".parse().unwrap()), None);
+    }
+
+    #[test]
+    fn primary_absent_selects_fallback_network() {
+        let config = config(None, vec![route("::", 0)], Some(456));
+        assert_eq!(
+            select_network(&config, "2001:db8::1".parse().unwrap()),
+            Some(456)
+        );
+    }
+
+    fn config(
+        primary_network: Option<Network>,
+        primary_routes: Vec<Route>,
+        fallback_network: Option<Network>,
+    ) -> SessionConfig {
+        SessionConfig {
+            downstream: "wlan0".to_string(),
+            dns_bind_address: Ipv4Addr::new(192, 0, 2, 1),
+            reply_mark: 0,
+            primary_network,
+            primary_routes,
+            fallback_network,
+            ipv6_nat: None,
+        }
+    }
+
+    fn route(address: &str, prefix_len: u8) -> Route {
+        Route {
+            prefix: ipv6_to_u128(address.parse::<Ipv6Addr>().unwrap()),
+            prefix_len,
+        }
     }
 }

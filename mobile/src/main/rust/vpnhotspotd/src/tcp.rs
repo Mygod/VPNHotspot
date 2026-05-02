@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::dns::{self, DNS_PORT};
 use crate::model::SessionConfig;
-use crate::upstream::{connect_tcp, select_upstream};
+use crate::upstream::{connect_tcp, select_network};
 
 pub(crate) fn spawn_loop(
     listener: TcpListener,
@@ -68,9 +68,9 @@ async fn handle_connection(
     if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
         return dns::handle_tcp_connection(inbound, snapshot).await;
     }
-    let upstream = select_upstream(&snapshot, *destination.ip())
+    let network = select_network(&snapshot, *destination.ip())
         .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no upstream route"))?;
-    let outbound = connect_tcp(upstream, destination).await?;
+    let outbound = connect_tcp(network, destination).await?;
     relay(inbound, outbound).await
 }
 

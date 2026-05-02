@@ -23,27 +23,18 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
     }.build()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) {
-            val properties = Services.connectivity.getLinkProperties(network)
-            val callbacks = synchronized(this@DefaultNetworkMonitor) {
-                currentNetwork = network
-                currentLinkProperties = properties
-                callbacks.toList()
-            }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
-        }
-
         override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
             val callbacks = synchronized(this@DefaultNetworkMonitor) {
                 currentNetwork = network
                 currentLinkProperties = properties
                 callbacks.toList()
             }
-            GlobalScope.launch { callbacks.forEach { it.onAvailable(properties) } }
+            GlobalScope.launch { callbacks.forEach { it.onAvailable(network, properties) } }
         }
 
         override fun onLost(network: Network) {
             val callbacks = synchronized(this@DefaultNetworkMonitor) {
+                if (currentNetwork != network) return
                 currentNetwork = null
                 currentLinkProperties = null
                 callbacks.toList()
@@ -56,7 +47,7 @@ object DefaultNetworkMonitor : UpstreamMonitor() {
         if (registered) {
             val currentLinkProperties = currentLinkProperties
             if (currentLinkProperties != null) GlobalScope.launch {
-                callback.onAvailable(currentLinkProperties)
+                callback.onAvailable(currentNetwork, currentLinkProperties)
             }
         } else {
             if (Build.VERSION.SDK_INT >= 31) {

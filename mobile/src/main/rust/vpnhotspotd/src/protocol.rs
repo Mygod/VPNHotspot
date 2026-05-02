@@ -1,7 +1,7 @@
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::model::{ipv6_to_u128, Ipv6NatConfig, Route, SessionConfig, SessionPorts, Upstream};
+use crate::model::{ipv6_to_u128, Ipv6NatConfig, Network, Route, SessionConfig, SessionPorts};
 
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
@@ -10,6 +10,7 @@ const CMD_START_SESSION: u32 = 1;
 const CMD_REPLACE_SESSION: u32 = 2;
 const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_SHUTDOWN: u32 = 4;
+const NETWORK_UNSPECIFIED: Network = 0;
 
 pub(crate) enum Command {
     StartSession(SessionConfig),
@@ -112,8 +113,9 @@ impl<'a> Parser<'a> {
         let downstream = self.read_utf()?;
         let dns_bind_address = self.read_ipv4()?;
         let reply_mark = self.read_u32()?;
-        let primary = self.read_upstream()?;
-        let fallback = self.read_upstream()?;
+        let primary_network = self.read_network()?;
+        let primary_routes = self.read_routes()?;
+        let fallback_network = self.read_network()?;
         let ipv6_nat = if self.read_bool()? {
             Some(Ipv6NatConfig {
                 gateway: self.read_ipv6()?,
@@ -129,23 +131,18 @@ impl<'a> Parser<'a> {
             downstream,
             dns_bind_address,
             reply_mark,
-            primary,
-            fallback,
+            primary_network,
+            primary_routes,
+            fallback_network,
             ipv6_nat,
         })
     }
 
-    fn read_upstream(&mut self) -> io::Result<Option<Upstream>> {
-        if !self.read_bool()? {
-            return Ok(None);
+    fn read_network(&mut self) -> io::Result<Option<Network>> {
+        match self.read_u64()? {
+            NETWORK_UNSPECIFIED => Ok(None),
+            network => Ok(Some(network)),
         }
-        let network_handle = self.read_u64()?;
-        let interface = self.read_utf()?;
-        Ok(Some(Upstream {
-            network_handle,
-            interface,
-            routes: self.read_routes()?,
-        }))
     }
 
     fn read_routes(&mut self) -> io::Result<Vec<Route>> {
@@ -190,5 +187,70 @@ impl<'a> Parser<'a> {
         let bytes = &self.packet[self.offset..self.offset + count];
         self.offset += count;
         Ok(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    use super::*;
+
+    #[test]
+    fn parse_session_config_reads_networks_and_primary_routes() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
+        write_utf(&mut packet, "wlan0");
+        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+        packet.extend_from_slice(&0x71d8u32.to_be_bytes());
+        packet.extend_from_slice(&123u64.to_be_bytes());
+        packet.extend_from_slice(&2i32.to_be_bytes());
+        write_route(&mut packet, "2001:db8::".parse().unwrap(), 32);
+        write_route(&mut packet, "fd00::".parse().unwrap(), 8);
+        packet.extend_from_slice(&456u64.to_be_bytes());
+        packet.push(0);
+
+        let Command::StartSession(config) = parse_command(&packet).unwrap() else {
+            panic!("expected start session");
+        };
+        assert_eq!(config.downstream, "wlan0");
+        assert_eq!(config.dns_bind_address, Ipv4Addr::new(192, 0, 2, 1));
+        assert_eq!(config.reply_mark, 0x71d8);
+        assert_eq!(config.primary_network, Some(123));
+        assert_eq!(config.primary_routes.len(), 2);
+        assert_eq!(config.primary_routes[0].prefix_len, 32);
+        assert_eq!(config.primary_routes[1].prefix_len, 8);
+        assert_eq!(config.fallback_network, Some(456));
+        assert!(config.ipv6_nat.is_none());
+    }
+
+    #[test]
+    fn parse_session_config_maps_zero_networks_to_none() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_REPLACE_SESSION.to_be_bytes());
+        write_utf(&mut packet, "wlan0");
+        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+        packet.extend_from_slice(&0x71d8u32.to_be_bytes());
+        packet.extend_from_slice(&0u64.to_be_bytes());
+        packet.extend_from_slice(&0i32.to_be_bytes());
+        packet.extend_from_slice(&0u64.to_be_bytes());
+        packet.push(0);
+
+        let Command::ReplaceSession(config) = parse_command(&packet).unwrap() else {
+            panic!("expected replace session");
+        };
+        assert_eq!(config.primary_network, None);
+        assert!(config.primary_routes.is_empty());
+        assert_eq!(config.fallback_network, None);
+    }
+
+    fn write_utf(packet: &mut Vec<u8>, value: &str) {
+        packet.extend_from_slice(&(value.len() as u32).to_be_bytes());
+        packet.extend_from_slice(value.as_bytes());
+    }
+
+    fn write_route(packet: &mut Vec<u8>, address: Ipv6Addr, prefix_len: i32) {
+        packet.extend_from_slice(&address.octets());
+        packet.extend_from_slice(&prefix_len.to_be_bytes());
     }
 }

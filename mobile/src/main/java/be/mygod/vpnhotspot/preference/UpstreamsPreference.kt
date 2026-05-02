@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Typeface
 import android.net.InetAddresses
 import android.net.LinkProperties
+import android.net.Network
 import android.text.SpannableStringBuilder
 import android.text.style.StyleSpan
 import android.util.AttributeSet
@@ -35,7 +36,7 @@ class UpstreamsPreference(context: Context, attrs: AttributeSet) : Preference(co
             } else ifname
         }.joinTo(SpannableStringBuilder()).ifEmpty { "∅" }
 
-        override fun onAvailable(properties: LinkProperties?) {
+        override fun onAvailable(network: Network?, properties: LinkProperties?) {
             val result = mutableMapOf<String, Boolean>()
             for (route in properties?.allRoutes ?: emptyList()) {
                 result.compute(route.`interface` ?: continue) { _, internet ->

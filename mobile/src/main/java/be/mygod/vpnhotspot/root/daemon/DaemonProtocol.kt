@@ -1,10 +1,7 @@
 package be.mygod.vpnhotspot.root.daemon
 
-import android.net.LinkProperties
-import android.net.Network
 import android.net.IpPrefix
-import be.mygod.vpnhotspot.util.allInterfaceNames
-import be.mygod.vpnhotspot.util.allRoutes
+import android.net.Network
 import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.Source
@@ -25,29 +22,13 @@ object DaemonProtocol {
     const val CMD_REMOVE_SESSION = 3
     const val CMD_SHUTDOWN = 4
 
-    data class Upstream(
-        val networkHandle: Long,
-        val interfaceName: String,
-        val routes: List<IpPrefix>,
-    ) {
-        companion object {
-            fun from(network: Network?, properties: LinkProperties?) = if (network == null || properties == null) {
-                null
-            } else Upstream(network.networkHandle,
-                properties.interfaceName ?: properties.allInterfaceNames.firstOrNull().orEmpty(),
-                properties.allRoutes.mapNotNull { route ->
-                    val destination = route.destination
-                    if (destination.address is Inet6Address) destination else null
-                })
-        }
-    }
-
     data class SessionConfig(
         val downstream: String,
         val dnsBindAddress: Inet4Address,
         val replyMark: Int,
-        val primary: Upstream?,
-        val fallback: Upstream?,
+        val primaryNetwork: Network?,
+        val primaryRoutes: List<IpPrefix>,
+        val fallbackNetwork: Network?,
         val ipv6Nat: Ipv6NatConfig?,
     )
 
@@ -110,8 +91,10 @@ object DaemonProtocol {
         writeUtf(config.downstream)
         writeInet4Address(config.dnsBindAddress)
         writeInt(config.replyMark)
-        writeUpstream(config.primary)
-        writeUpstream(config.fallback)
+        writeNetwork(config.primaryNetwork)
+        writeInt(config.primaryRoutes.size)
+        for (route in config.primaryRoutes) writeIpv6Prefix(route)
+        writeNetwork(config.fallbackNetwork)
         val ipv6Nat = config.ipv6Nat
         writeByte((if (ipv6Nat != null) 1 else 0).toByte())
         if (ipv6Nat == null) return
@@ -124,14 +107,7 @@ object DaemonProtocol {
         for (prefix in ipv6Nat.cleanupPrefixes) writeIpv6Prefix(prefix)
     }
 
-    private fun Sink.writeUpstream(upstream: Upstream?) {
-        writeByte((if (upstream != null) 1 else 0).toByte())
-        if (upstream == null) return
-        writeLong(upstream.networkHandle)
-        writeUtf(upstream.interfaceName)
-        writeInt(upstream.routes.size)
-        for (route in upstream.routes) writeIpv6Prefix(route)
-    }
+    private fun Sink.writeNetwork(network: Network?) = writeLong(network?.networkHandle ?: 0L)
 
     private fun readStatus(input: Source) {
         when (val status = input.readByte().toInt() and 0xFF) {
