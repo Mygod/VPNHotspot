@@ -2,10 +2,11 @@ use std::io;
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, Notify};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig, SessionPorts};
 use crate::{dns, ra, tcp, udp, upstream};
+use vpnhotspotd::shared::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig, SessionPorts};
 
 pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
@@ -13,6 +14,7 @@ pub(crate) struct Session {
     pub(crate) ports: SessionPorts,
     config_changed: Arc<Notify>,
     stop: CancellationToken,
+    ra_task: Option<JoinHandle<()>>,
 }
 
 impl Session {
@@ -30,17 +32,23 @@ impl Session {
         let dns_tcp = dns_tcp_listener.local_addr()?.port();
         let dns_udp_socket = dns::create_udp_listener(config.dns_bind_address)?;
         let dns_udp = dns_udp_socket.local_addr()?.port();
-        let ipv6_nat = if config.ipv6_nat.is_some() {
+        let (ipv6_nat, ra_task) = if config.ipv6_nat.is_some() {
             let tcp_listener = upstream::create_tproxy_tcp_listener(config.reply_mark)?;
             let tcp = tcp_listener.local_addr()?.port();
             let udp_listener = upstream::create_tproxy_udp_listener(config.reply_mark)?;
             let udp = udp_listener.local_addr()?.port();
             tcp::spawn_loop(tcp_listener, shared.clone(), stop.clone())?;
             udp::spawn_loop(udp_listener, shared.clone(), stop.clone())?;
-            ra::spawn_loop(shared.clone(), config_changed.clone(), stop.clone())?;
-            Some(Ipv6NatPorts { tcp, udp })
+            (
+                Some(Ipv6NatPorts { tcp, udp }),
+                Some(ra::spawn_loop(
+                    shared.clone(),
+                    config_changed.clone(),
+                    stop.clone(),
+                )?),
+            )
         } else {
-            None
+            (None, None)
         };
 
         dns::spawn_tcp_loop(dns_tcp_listener, shared.clone(), stop.clone())?;
@@ -51,6 +59,7 @@ impl Session {
             cleanup_prefixes,
             config_changed,
             stop,
+            ra_task,
             ports: SessionPorts {
                 dns_tcp,
                 dns_udp,
@@ -86,6 +95,12 @@ impl Session {
     }
 
     pub(crate) async fn stop(self, withdraw_cleanup: bool) {
+        self.stop.cancel();
+        if let Some(ra_task) = self.ra_task {
+            if let Err(e) = ra_task.await {
+                eprintln!("ra task join failed: {e}");
+            }
+        }
         let snapshot = self.config.lock().await.clone();
         if let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() {
             let mut prefixes = if withdraw_cleanup {
@@ -99,6 +114,5 @@ impl Session {
             });
             ra::withdraw_prefixes_once(&snapshot, &prefixes, false).await;
         }
-        self.stop.cancel();
     }
 }

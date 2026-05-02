@@ -1,52 +1,52 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
-pub(crate) struct Route {
-    pub(crate) prefix: u128,
-    pub(crate) prefix_len: u8,
+pub struct Route {
+    pub prefix: u128,
+    pub prefix_len: u8,
 }
 
-pub(crate) type Network = u64;
+pub type Network = u64;
 
 #[derive(Clone)]
-pub(crate) struct SessionConfig {
-    pub(crate) downstream: String,
-    pub(crate) dns_bind_address: Ipv4Addr,
-    pub(crate) reply_mark: u32,
-    pub(crate) primary_network: Option<Network>,
-    pub(crate) primary_routes: Vec<Route>,
-    pub(crate) fallback_network: Option<Network>,
-    pub(crate) ipv6_nat: Option<Ipv6NatConfig>,
+pub struct SessionConfig {
+    pub downstream: String,
+    pub dns_bind_address: Ipv4Addr,
+    pub reply_mark: u32,
+    pub primary_network: Option<Network>,
+    pub primary_routes: Vec<Route>,
+    pub fallback_network: Option<Network>,
+    pub ipv6_nat: Option<Ipv6NatConfig>,
 }
 
 #[derive(Clone)]
-pub(crate) struct Ipv6NatConfig {
-    pub(crate) gateway: Ipv6Addr,
-    pub(crate) prefix_len: u8,
-    pub(crate) mtu: u32,
-    pub(crate) suppressed_prefixes: Vec<Route>,
-    pub(crate) cleanup_prefixes: Vec<Route>,
+pub struct Ipv6NatConfig {
+    pub gateway: Ipv6Addr,
+    pub prefix_len: u8,
+    pub mtu: u32,
+    pub suppressed_prefixes: Vec<Route>,
+    pub cleanup_prefixes: Vec<Route>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct SessionPorts {
-    pub(crate) dns_tcp: u16,
-    pub(crate) dns_udp: u16,
-    pub(crate) ipv6_nat: Option<Ipv6NatPorts>,
+pub struct SessionPorts {
+    pub dns_tcp: u16,
+    pub dns_udp: u16,
+    pub ipv6_nat: Option<Ipv6NatPorts>,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct Ipv6NatPorts {
-    pub(crate) tcp: u16,
-    pub(crate) udp: u16,
+pub struct Ipv6NatPorts {
+    pub tcp: u16,
+    pub udp: u16,
 }
 
-pub(crate) fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {
+pub fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {
     let shift = 128u32.saturating_sub(prefix_len as u32);
     (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
 }
 
-pub(crate) fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
+pub fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
     let destination = ipv6_to_u128(destination);
     if config.primary_network.is_some() && route_matches(&config.primary_routes, destination) {
         config.primary_network
@@ -55,7 +55,7 @@ pub(crate) fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> O
     }
 }
 
-pub(crate) fn ipv6_to_u128(address: Ipv6Addr) -> u128 {
+pub fn ipv6_to_u128(address: Ipv6Addr) -> u128 {
     u128::from_be_bytes(address.octets())
 }
 

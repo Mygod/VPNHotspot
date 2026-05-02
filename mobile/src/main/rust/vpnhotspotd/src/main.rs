@@ -1,8 +1,5 @@
 mod control;
 mod dns;
-mod dns_wire;
-mod model;
-mod protocol;
 mod ra;
 mod session;
 mod socket;

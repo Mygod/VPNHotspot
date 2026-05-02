@@ -13,8 +13,8 @@ use tokio::sync::Mutex;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
-use crate::dns_wire;
-use crate::model::{Network, SessionConfig};
+use vpnhotspotd::shared::dns_wire;
+use vpnhotspotd::shared::model::{Network, SessionConfig};
 
 pub(crate) const DNS_PORT: u16 = 53;
 // android/multinetwork.h: ResNsendFlags::ANDROID_RESOLV_NO_RETRY.

@@ -7,8 +7,8 @@ use libc::{c_int, c_void, setsockopt, socklen_t, EINPROGRESS, IPPROTO_IPV6, IPV6
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::{TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket};
 
-use crate::model::Network;
 use crate::socket::await_connect;
+use vpnhotspotd::shared::model::Network;
 
 #[link(name = "android")]
 unsafe extern "C" {

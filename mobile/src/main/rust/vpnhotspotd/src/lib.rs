@@ -1,14 +1,5 @@
-#[cfg(test)]
-mod dns_wire;
-#[cfg(test)]
-#[allow(dead_code)]
-mod model;
-#[cfg(test)]
-#[allow(dead_code)]
-mod protocol;
-#[cfg(test)]
-#[allow(dead_code)]
-mod ra;
-#[cfg(test)]
-#[allow(dead_code)]
-mod socket;
+//! Platform-neutral daemon logic shared by the Android daemon binary and Rust unit tests.
+//!
+//! Android/root/socket runtime code stays in `src/*.rs`; shared modules live under `src/shared/`.
+
+pub mod shared;

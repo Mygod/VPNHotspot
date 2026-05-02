@@ -9,9 +9,11 @@ use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
 
-use crate::protocol::{error_packet, ok_packet, parse_command, ports_packet, Command};
 use crate::session::Session;
 use crate::socket::await_connect;
+use vpnhotspotd::shared::protocol::{
+    error_packet, ok_packet, parse_command, ports_packet, Command,
+};
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;

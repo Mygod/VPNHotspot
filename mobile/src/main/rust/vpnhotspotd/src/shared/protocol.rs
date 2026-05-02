@@ -1,7 +1,9 @@
 use std::io;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-use crate::model::{ipv6_to_u128, Ipv6NatConfig, Network, Route, SessionConfig, SessionPorts};
+use crate::shared::model::{
+    ipv6_to_u128, Ipv6NatConfig, Network, Route, SessionConfig, SessionPorts,
+};
 
 const STATUS_OK: u8 = 0;
 const STATUS_ERROR: u8 = 1;
@@ -12,7 +14,7 @@ const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_SHUTDOWN: u32 = 4;
 const NETWORK_UNSPECIFIED: Network = 0;
 
-pub(crate) enum Command {
+pub enum Command {
     StartSession(SessionConfig),
     ReplaceSession(SessionConfig),
     RemoveSession {
@@ -24,7 +26,7 @@ pub(crate) enum Command {
     },
 }
 
-pub(crate) fn parse_command(packet: &[u8]) -> io::Result<Command> {
+pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
     let mut parser = Parser::new(packet);
     match parser.read_u32()? {
         CMD_START_SESSION => Ok(Command::StartSession(parser.read_session_config()?)),
@@ -43,11 +45,11 @@ pub(crate) fn parse_command(packet: &[u8]) -> io::Result<Command> {
     }
 }
 
-pub(crate) fn ok_packet() -> Vec<u8> {
+pub fn ok_packet() -> Vec<u8> {
     vec![STATUS_OK]
 }
 
-pub(crate) fn ports_packet(ports: SessionPorts) -> Vec<u8> {
+pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
     let mut packet = vec![STATUS_OK];
     packet.extend_from_slice(&ports.dns_tcp.to_be_bytes());
     packet.extend_from_slice(&ports.dns_udp.to_be_bytes());
@@ -61,7 +63,7 @@ pub(crate) fn ports_packet(ports: SessionPorts) -> Vec<u8> {
     packet
 }
 
-pub(crate) fn error_packet(error: io::Error) -> Vec<u8> {
+pub fn error_packet(error: io::Error) -> Vec<u8> {
     let mut packet = vec![STATUS_ERROR];
     let message = error.to_string().into_bytes();
     packet.extend_from_slice(&(message.len() as u32).to_be_bytes());

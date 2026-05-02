@@ -20,8 +20,8 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{resolve_or_error, DNS_PORT};
-use crate::model::{select_network, SessionConfig};
 use crate::upstream::connect_udp;
+use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
 

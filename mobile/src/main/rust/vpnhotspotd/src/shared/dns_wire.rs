@@ -6,7 +6,7 @@ const FLAGS_OPCODE_MASK: u8 = 0x78;
 const FLAGS_AD_CD_MASK: u8 = 0x30;
 const RCODE_SERVFAIL: u8 = 2;
 
-pub(crate) fn servfail_response(query: &[u8]) -> Option<Vec<u8>> {
+pub fn servfail_response(query: &[u8]) -> Option<Vec<u8>> {
     if query.len() < HEADER_LEN || query[2] & FLAG_RESPONSE != 0 {
         return None;
     }
