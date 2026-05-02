@@ -20,8 +20,8 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{resolve_or_error, DNS_PORT};
-use crate::model::SessionConfig;
-use crate::upstream::{connect_udp, select_network};
+use crate::model::{select_network, SessionConfig};
+use crate::upstream::connect_udp;
 
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
 const UDP_ASSOC_MAX: usize = 1024;

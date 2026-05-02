@@ -10,8 +10,8 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{self, DNS_PORT};
-use crate::model::SessionConfig;
-use crate::upstream::{connect_tcp, select_network};
+use crate::model::{select_network, SessionConfig};
+use crate::upstream::connect_tcp;
 
 pub(crate) fn spawn_loop(
     listener: TcpListener,

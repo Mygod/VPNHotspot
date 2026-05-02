@@ -32,6 +32,7 @@ Rust daemon code should be event-driven and async-first. Prefer Tokio readiness,
 - Set file descriptors and sockets non-blocking before handing them to Tokio or `AsyncFd`. Do not call blocking `accept`, `recv`, `read`, `write`, DNS, or socket APIs from async tasks.
 - Keep raw `libc` and unsafe code at the owner module boundary that needs it. Prefer `socket2`/Tokio/std APIs when they expose the required behavior, but do not create broad `sys`/`utils` modules just to hide one call site.
 - Avoid arbitrary concurrency caps, queue sizes, or timeouts. If a limit is required for resource protection, name it by the resource being limited and justify the chosen value from behavior or platform constraints.
+- Local Rust tests are permitted only when they do not introduce non-Android scaffolding into daemon code. If a test needs fake non-Android platform behavior, remove it or refactor the logic under test so the test stays platform-neutral without production fallbacks.
 - Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines

@@ -67,7 +67,7 @@ fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-#[cfg_attr(target_os = "android", link(name = "android"))]
+#[link(name = "android")]
 unsafe extern "C" {
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
     fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
