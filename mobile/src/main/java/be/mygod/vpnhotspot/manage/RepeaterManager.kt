@@ -203,7 +203,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
 
     override val type get() = VIEW_TYPE_REPEATER
     private val data = Data()
-    internal var binder: RepeaterService.Binder? = null
+    var binder: RepeaterService.Binder? = null
     private var group: WifiP2pGroup? = null
     private val holder by parent.viewModels<ConfigHolder>()
 

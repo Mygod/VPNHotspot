@@ -18,7 +18,7 @@ import java.net.UnknownHostException
  */
 @Parcelize
 @RequiresApi(31)
-internal data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand<ParcelableBoolean> {
+data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand<ParcelableBoolean> {
     override suspend fun execute(): ParcelableBoolean {
         val dump = withContext(Dispatchers.IO) {
             // Existing tunnel/transform state is only exposed via IIpSecService.dump():
@@ -74,7 +74,7 @@ internal data class IpSecForwardPolicyCommand(private val upstream: String) : Ro
             )
         }
 
-        internal fun findTarget(upstream: String, dump: String): Pair<MatchResult, MatchResult>? {
+        fun findTarget(upstream: String, dump: String): Pair<MatchResult, MatchResult>? {
             val tunnel = tunnelRecord.findAll(dump).firstOrNull { it.groupValues[3] == upstream } ?: return null
             val ifId = tunnel.groupValues[1].toIntOrNull() ?: return null
             // Inbound tunnel transforms keep mNetwork=null; reuse their outer addresses for the FWD policy.

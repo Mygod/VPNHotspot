@@ -1,5 +1,5 @@
 use std::io;
-use std::net::Ipv6Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::model::{ipv6_to_u128, Ipv6NatConfig, Route, SessionConfig, SessionPorts, Upstream};
 
@@ -15,7 +15,7 @@ pub(crate) enum Command {
     StartSession(SessionConfig),
     ReplaceSession(SessionConfig),
     RemoveSession {
-        session_id: String,
+        downstream: String,
         withdraw_cleanup: bool,
     },
     Shutdown {
@@ -29,7 +29,7 @@ pub(crate) fn parse_command(packet: &[u8]) -> io::Result<Command> {
         CMD_START_SESSION => Ok(Command::StartSession(parser.read_session_config()?)),
         CMD_REPLACE_SESSION => Ok(Command::ReplaceSession(parser.read_session_config()?)),
         CMD_REMOVE_SESSION => Ok(Command::RemoveSession {
-            session_id: parser.read_utf()?,
+            downstream: parser.read_utf()?,
             withdraw_cleanup: parser.read_bool()?,
         }),
         CMD_SHUTDOWN => Ok(Command::Shutdown {
@@ -63,7 +63,7 @@ pub(crate) fn ports_packet(ports: SessionPorts) -> Vec<u8> {
 pub(crate) fn error_packet(error: io::Error) -> Vec<u8> {
     let mut packet = vec![STATUS_ERROR];
     let message = error.to_string().into_bytes();
-    packet.extend_from_slice(&(message.len() as u16).to_be_bytes());
+    packet.extend_from_slice(&(message.len() as u32).to_be_bytes());
     packet.extend_from_slice(&message);
     packet
 }
@@ -92,11 +92,6 @@ impl<'a> Parser<'a> {
         Ok(self.read_u32()? as i32)
     }
 
-    fn read_u16(&mut self) -> io::Result<u16> {
-        let bytes = self.read_exact(2)?;
-        Ok(u16::from_be_bytes(bytes.try_into().unwrap()))
-    }
-
     fn read_u8(&mut self) -> io::Result<u8> {
         let bytes = self.read_exact(1)?;
         Ok(bytes[0])
@@ -107,28 +102,22 @@ impl<'a> Parser<'a> {
     }
 
     fn read_utf(&mut self) -> io::Result<String> {
-        let length = self.read_u16()? as usize;
+        let length = self.read_u32()? as usize;
         let bytes = self.read_exact(length)?;
         String::from_utf8(bytes.to_vec())
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid utf-8"))
     }
 
     fn read_session_config(&mut self) -> io::Result<SessionConfig> {
-        let session_id = self.read_utf()?;
         let downstream = self.read_utf()?;
-        let dns_bind_address = self
-            .read_utf()?
-            .parse()
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid DNS bind address"))?;
+        let dns_bind_address = self.read_ipv4()?;
         let reply_mark = self.read_u32()?;
         let primary = self.read_upstream()?;
         let fallback = self.read_upstream()?;
         let ipv6_nat = if self.read_bool()? {
             Some(Ipv6NatConfig {
-                gateway: self.read_utf()?.parse().map_err(|_| {
-                    io::Error::new(io::ErrorKind::InvalidData, "invalid gateway address")
-                })?,
-                prefix_len: self.read_i32()? as u8,
+                gateway: self.read_ipv6()?,
+                prefix_len: self.read_ipv6_prefix_len()?,
                 mtu: self.read_i32()? as u32,
                 suppressed_prefixes: self.read_routes()?,
                 cleanup_prefixes: self.read_routes()?,
@@ -137,7 +126,6 @@ impl<'a> Parser<'a> {
             None
         };
         Ok(SessionConfig {
-            session_id,
             downstream,
             dns_bind_address,
             reply_mark,
@@ -164,17 +152,35 @@ impl<'a> Parser<'a> {
         let routes = self.read_i32()? as usize;
         let mut parsed = Vec::with_capacity(routes);
         for _ in 0..routes {
-            let address: Ipv6Addr = self
-                .read_utf()?
-                .parse()
-                .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid route address"))?;
-            let prefix_len = self.read_i32()? as u8;
+            let address = self.read_ipv6()?;
+            let prefix_len = self.read_ipv6_prefix_len()?;
             parsed.push(Route {
                 prefix: ipv6_to_u128(address),
                 prefix_len,
             });
         }
         Ok(parsed)
+    }
+
+    fn read_ipv4(&mut self) -> io::Result<Ipv4Addr> {
+        let bytes: [u8; 4] = self.read_exact(4)?.try_into().unwrap();
+        Ok(Ipv4Addr::from(bytes))
+    }
+
+    fn read_ipv6(&mut self) -> io::Result<Ipv6Addr> {
+        let bytes: [u8; 16] = self.read_exact(16)?.try_into().unwrap();
+        Ok(Ipv6Addr::from(bytes))
+    }
+
+    fn read_ipv6_prefix_len(&mut self) -> io::Result<u8> {
+        let prefix_len = self.read_i32()?;
+        if !(0..=128).contains(&prefix_len) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid IPv6 prefix length {prefix_len}"),
+            ));
+        }
+        Ok(prefix_len as u8)
     }
 
     fn read_exact(&mut self, count: usize) -> io::Result<&'a [u8]> {

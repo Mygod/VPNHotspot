@@ -7,6 +7,7 @@ import android.system.OsConstants
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.readAvailable
+import io.ktor.utils.io.readLine
 import java.io.FileDescriptor
 import java.io.IOException
 import java.util.Locale
@@ -14,6 +15,19 @@ import java.util.Locale
 // Stream closed caused in NullOutputStream
 val IOException.isEBADF get() = (cause as? ErrnoException)?.errno == OsConstants.EBADF ||
         message?.lowercase(Locale.ENGLISH) == "stream closed"
+
+suspend fun ByteReadChannel.forEachLineSafely(block: (String) -> Boolean) {
+    try {
+        while (true) {
+            val line = readLine() ?: break
+            if (!block(line)) break
+        }
+    } catch (e: ErrnoException) {
+        if (e.errno != OsConstants.EBADF) throw e
+    } catch (e: IOException) {
+        if (!e.isEBADF) throw e
+    }
+}
 
 var FileDescriptor.isNonblocking: Boolean
     @SuppressLint("NewApi")

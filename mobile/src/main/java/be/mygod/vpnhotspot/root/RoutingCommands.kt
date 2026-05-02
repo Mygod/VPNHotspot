@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.root
 import android.os.Parcelable
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.vpnhotspot.io.forEachLineSafely
 import be.mygod.vpnhotspot.net.Routing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async

@@ -7,8 +7,6 @@ import android.os.Parcelable
 import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
-import android.system.ErrnoException
-import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
@@ -17,14 +15,13 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.io.isEBADF
+import be.mygod.vpnhotspot.io.forEachLineSafely
 import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.net.Routing.Companion.IP
 import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
 import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.readLine
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -48,20 +45,7 @@ fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     redirectErrorStream(redirect)
 }
 
-internal suspend fun ByteReadChannel.forEachLineSafely(block: (String) -> Boolean) {
-    try {
-        while (true) {
-            val line = readLine() ?: break
-            if (!block(line)) break
-        }
-    } catch (e: ErrnoException) {
-        if (e.errno != OsConstants.EBADF) throw e
-    } catch (e: IOException) {
-        if (!e.isEBADF) throw e
-    }
-}
-
-internal suspend fun <T> ProcessBuilder.withOutputChannels(
+suspend fun <T> ProcessBuilder.withOutputChannels(
     block: suspend (Process, ByteReadChannel, ByteReadChannel) -> T,
 ): T {
     val stdoutPipe = ParcelFileDescriptor.createPipe()

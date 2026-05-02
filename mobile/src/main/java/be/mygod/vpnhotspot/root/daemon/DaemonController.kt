@@ -68,12 +68,12 @@ object DaemonController {
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
-    internal suspend fun startSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
+    suspend fun startSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
         try {
             ensureDaemonLocked()
             writePacketLocked(DaemonProtocol.startSession(config))
             DaemonProtocol.readPorts(readPacketLocked()).also {
-                activeSessions.add(config.sessionId)
+                activeSessions.add(config.downstream)
             }
         } catch (e: DaemonProtocol.StatusException) {
             throw e
@@ -84,7 +84,7 @@ object DaemonController {
         }
     }
 
-    internal suspend fun replaceSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
+    suspend fun replaceSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
         try {
             ensureDaemonLocked()
             writePacketLocked(DaemonProtocol.replaceSession(config))
@@ -98,20 +98,20 @@ object DaemonController {
         }
     }
 
-    internal suspend fun removeSession(
-        sessionId: String,
+    suspend fun removeSession(
+        downstream: String,
         removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
     ) = lock.withLock {
         if (output == null) return@withLock
         try {
-            writePacketLocked(DaemonProtocol.removeSession(sessionId, removeMode))
+            writePacketLocked(DaemonProtocol.removeSession(downstream, removeMode))
             DaemonProtocol.readAck(readPacketLocked())
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
             Timber.w(e)
         }
-        activeSessions.remove(sessionId)
+        activeSessions.remove(downstream)
         if (activeSessions.isEmpty()) {
             try {
                 if (output != null) writePacketLocked(DaemonProtocol.shutdown(

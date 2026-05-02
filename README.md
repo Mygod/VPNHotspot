@@ -35,7 +35,7 @@ now that they introduced this
 The following features in the app requires it to be installed under `/system/priv-app` since some restricted permissions are required.
 One way to do this is to use [App systemizer for Magisk](https://github.com/Magisk-Modules-Repo/terminal_systemizer).
 
-* (Android 10, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
+* (Android 8-10, since app v2.4.0) `android.permission.OVERRIDE_WIFI_CONFIG`: Read/write system Wi-Fi hotspot configuration. ([#117](https://github.com/Mygod/VPNHotspot/issues/117))
 
 Installing as system app also has the side benefit of launching root daemon less frequently due to having privileged permissions listed below.
 
@@ -81,13 +81,13 @@ Default settings are picked to suit general use cases and maximize compatibility
 ### Downstream
 
 * IPv6 mode:
-  - Block IPv6:
+  - System:
+    Leave IPv6 handling to the platform/system routing setup.
+  - Block:
     Prevent IPv6 leaks on downstream interfaces.
-  - System IPv6:
-    Disable this app's IPv6 kill switch and leave IPv6 handling to the platform/current routing setup.
-  - IPv6 NAT:
+  - NAT:
     Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
-    This mode is outbound-only, keeps IPv4 tethering unchanged, leaves platform/existing IPv6 addresses alone, withdraws app-owned prefixes on stop, cleans app-owned mirrored `/64` routes and IPv6 NAT hooks before reapplying them, and ties daemon lifetime to the app control connection. If setup fails, the error is reported; select `Block IPv6` manually if you want a strict IPv6 kill switch.
+    This mode operates in userspace thus performance might be degraded.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
@@ -169,7 +169,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/ConnectivityManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,max-target-r`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,max-target-r`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
-* `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
+* (since API 31) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 31) `Landroid/net/INetd;->ipSecUpdateSecurityPolicy(IIILjava/lang/String;Ljava/lang/String;IIII)V`
 * (since API 30) `Landroid/net/IIntResultListener$Stub;-><init>()V,blocked`
 * (since API 30) `Landroid/net/IIntResultListener;->onResult(I)V,blocked`
@@ -178,6 +178,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/TetheringManager$ConnectorConsumer;->onConnectorAvailable(Landroid/net/ITetheringConnector;)V,blocked`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
+* (since API 30) `Landroid/net/TetheringManager;->getConnector(Landroid/net/TetheringManager$ConnectorConsumer;)V,blocked`
 * `Landroid/net/TetheringManager;->TETHER_ERROR_*:I,blocked`
 * (since API 30) `Landroid/net/TetheringManager;->TETHERING_VIRTUAL:I,blocked`
 * (since API 31) `Landroid/net/IpSecManager;->DIRECTION_FWD:I,blocked`
@@ -364,8 +365,6 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
-* (on API 30) `Landroid/os/SystemProperties;->getBoolean(Ljava/lang/String;Z)Z,sdk,system-api,test-api`
-* (prior to API 31) `Landroid/os/SystemProperties;->getLong(Ljava/lang/String;J)J,sdk,system-api,test-api`
 * `Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,sdk,system-api,test-api`
 
 </details>
@@ -385,15 +384,16 @@ Nonexported system resources:
 Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
-* Requires `/apex/com.android.tethering/javalib/service-connectivity.jar`.
+* (since API 31) IPsec forwarding rule updates load `android.net.INetd*` from
+  `/apex/com.android.tethering/javalib/service-connectivity.jar`.
 * Daemon DNS forwarding depends on the NDK multinetwork DNS entry points exported from `libandroid`,
   including `ResNsendFlags::ANDROID_RESOLV_NO_RETRY = 1`.
 * Daemon DNS forwarding uses IPv4 DNAT rules to redirect client DNS to the root daemon.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
 * `IPv6 NAT` router advertisement startup waits for downstream IPv6 link-local address changes through
   Linux rtnetlink group `RTMGRP_IPV6_IFADDR`.
-* (since API 30) Relevant tethering APEX classes used here, including `android.net.INetd*`, may be
-  jarjar-relocated under the optional prefixes
+* (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`
+  and, on API 31+, `android.net.INetd*`, may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
 * (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
@@ -401,6 +401,8 @@ Other:
   `onTetherStatesChanged`.
 * `/system/bin/linker` and `/system/bin/linker64` can be invoked directly on an executable inside
   a zip/APK using `path.zip!/program` when it is stored uncompressed and page-aligned.
+* Daemon control frames are capped at 1 MiB, matching Android's documented Binder transaction buffer
+  size.
 
 For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx

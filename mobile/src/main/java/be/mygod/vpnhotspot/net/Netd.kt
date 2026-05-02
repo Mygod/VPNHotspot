@@ -6,7 +6,7 @@ import be.mygod.vpnhotspot.util.Services
 import dalvik.system.PathClassLoader
 import java.io.File
 
-internal object Netd {
+object Netd {
     private const val SERVICE_CONNECTIVITY_JAR = "/apex/com.android.tethering/javalib/service-connectivity.jar"
 
     private val classLoader by lazy {

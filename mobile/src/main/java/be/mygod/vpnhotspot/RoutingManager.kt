@@ -67,8 +67,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             forward()
             masquerade(masqueradeMode)
             when (ipv6Mode) {
-                Ipv6Mode.Block -> disableIpv6()
-                Ipv6Mode.System -> { }
+                Ipv6Mode.Block, Ipv6Mode.System -> { }
                 Ipv6Mode.Nat -> ipv6Nat()
             }
         }

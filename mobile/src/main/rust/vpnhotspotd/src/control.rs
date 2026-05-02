@@ -18,7 +18,8 @@ use crate::socket::await_connect;
 
 const LOOP_SLEEP: Duration = Duration::from_millis(50);
 const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
-const MAX_CONTROL_PACKET_SIZE: usize = 65535;
+// Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
+const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
 pub(crate) async fn run(socket_name: String, connection_file: PathBuf) -> io::Result<()> {
     let mut controller = connect_control_socket(&socket_name, &connection_file).await?;
@@ -67,7 +68,8 @@ async fn handle_packet(
 ) -> io::Result<HandleResult> {
     match parse_command(packet)? {
         Command::StartSession(config) => {
-            if sessions.contains_key(&config.session_id) {
+            let downstream = config.downstream.clone();
+            if sessions.contains_key(&downstream) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     "session already exists",
@@ -75,21 +77,21 @@ async fn handle_packet(
             }
             let session = Session::start(config).await?;
             let reply = ports_packet(session.ports);
-            sessions.insert(session.session_id().await, session);
+            sessions.insert(downstream, session);
             Ok(HandleResult::Reply(reply))
         }
         Command::ReplaceSession(config) => {
             let session = sessions
-                .get_mut(&config.session_id)
+                .get_mut(&config.downstream)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
             session.replace_config(config).await;
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::RemoveSession {
-            session_id,
+            downstream,
             withdraw_cleanup,
         } => {
-            if let Some(session) = sessions.remove(&session_id) {
+            if let Some(session) = sessions.remove(&downstream) {
                 session.stop(withdraw_cleanup).await;
             }
             Ok(HandleResult::Reply(ok_packet()))

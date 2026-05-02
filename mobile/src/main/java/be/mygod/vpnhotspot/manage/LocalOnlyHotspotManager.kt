@@ -56,7 +56,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
     private val data = Data()
-    internal var binder: LocalOnlyHotspotService.Binder? = null
+    var binder: LocalOnlyHotspotService.Binder? = null
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         viewHolder as ViewHolder

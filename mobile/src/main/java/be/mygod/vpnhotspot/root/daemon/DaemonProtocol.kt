@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.root.daemon
 
 import android.net.LinkProperties
 import android.net.Network
+import android.net.IpPrefix
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import kotlinx.io.Buffer
@@ -10,9 +11,10 @@ import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import java.io.IOException
+import java.net.Inet4Address
 import java.net.Inet6Address
 
-internal object DaemonProtocol {
+object DaemonProtocol {
     const val STATUS_OK = 0
     const val STATUS_ERROR = 1
 
@@ -23,15 +25,10 @@ internal object DaemonProtocol {
     const val CMD_REMOVE_SESSION = 3
     const val CMD_SHUTDOWN = 4
 
-    data class Route(
-        val address: String,
-        val prefixLength: Int,
-    )
-
     data class Upstream(
         val networkHandle: Long,
         val interfaceName: String,
-        val routes: List<Route>,
+        val routes: List<IpPrefix>,
     ) {
         companion object {
             fun from(network: Network?, properties: LinkProperties?) = if (network == null || properties == null) {
@@ -40,19 +37,14 @@ internal object DaemonProtocol {
                 properties.interfaceName ?: properties.allInterfaceNames.firstOrNull().orEmpty(),
                 properties.allRoutes.mapNotNull { route ->
                     val destination = route.destination
-                    val address = destination.address
-                    if (address !is Inet6Address) null else {
-                        val hostAddress = address.hostAddress ?: return@mapNotNull null
-                        Route(hostAddress, destination.prefixLength)
-                    }
+                    if (destination.address is Inet6Address) destination else null
                 })
         }
     }
 
     data class SessionConfig(
-        val sessionId: String,
         val downstream: String,
-        val dnsBindAddress: String,
+        val dnsBindAddress: Inet4Address,
         val replyMark: Int,
         val primary: Upstream?,
         val fallback: Upstream?,
@@ -60,11 +52,11 @@ internal object DaemonProtocol {
     )
 
     data class Ipv6NatConfig(
-        val gateway: String,
+        val gateway: Inet6Address,
         val prefixLength: Int,
         val mtu: Int,
-        val suppressedPrefixes: List<Route>,
-        val cleanupPrefixes: List<Route>,
+        val suppressedPrefixes: List<IpPrefix>,
+        val cleanupPrefixes: List<IpPrefix>,
     )
 
     data class SessionPorts(
@@ -85,8 +77,8 @@ internal object DaemonProtocol {
 
     fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION) { writeSession(config) }
     fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION) { writeSession(config) }
-    fun removeSession(sessionId: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION) {
-        writeUtf(sessionId)
+    fun removeSession(downstream: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION) {
+        writeUtf(downstream)
         writeByte(mode.protocolValue)
     }
     fun shutdown(mode: RemoveMode) = writePacket(CMD_SHUTDOWN) { writeByte(mode.protocolValue) }
@@ -95,10 +87,10 @@ internal object DaemonProtocol {
         val input = Buffer().apply { write(packet) }
         readStatus(input)
         return SessionPorts(
-            input.readUnsignedShortValue(),
-            input.readUnsignedShortValue(),
+            input.readShort().toUShort().toInt(),
+            input.readShort().toUShort().toInt(),
             if (input.readByte() != 0.toByte()) {
-                Ipv6NatPorts(input.readUnsignedShortValue(), input.readUnsignedShortValue())
+                Ipv6NatPorts(input.readShort().toUShort().toInt(), input.readShort().toUShort().toInt())
             } else null,
         )
     }
@@ -115,28 +107,21 @@ internal object DaemonProtocol {
     }
 
     private fun Sink.writeSession(config: SessionConfig) {
-        writeUtf(config.sessionId)
         writeUtf(config.downstream)
-        writeUtf(config.dnsBindAddress)
+        writeInet4Address(config.dnsBindAddress)
         writeInt(config.replyMark)
         writeUpstream(config.primary)
         writeUpstream(config.fallback)
         val ipv6Nat = config.ipv6Nat
         writeByte((if (ipv6Nat != null) 1 else 0).toByte())
         if (ipv6Nat == null) return
-        writeUtf(ipv6Nat.gateway)
+        writeInet6Address(ipv6Nat.gateway)
         writeInt(ipv6Nat.prefixLength)
         writeInt(ipv6Nat.mtu)
         writeInt(ipv6Nat.suppressedPrefixes.size)
-        for (prefix in ipv6Nat.suppressedPrefixes) {
-            writeUtf(prefix.address)
-            writeInt(prefix.prefixLength)
-        }
+        for (prefix in ipv6Nat.suppressedPrefixes) writeIpv6Prefix(prefix)
         writeInt(ipv6Nat.cleanupPrefixes.size)
-        for (prefix in ipv6Nat.cleanupPrefixes) {
-            writeUtf(prefix.address)
-            writeInt(prefix.prefixLength)
-        }
+        for (prefix in ipv6Nat.cleanupPrefixes) writeIpv6Prefix(prefix)
     }
 
     private fun Sink.writeUpstream(upstream: Upstream?) {
@@ -145,10 +130,7 @@ internal object DaemonProtocol {
         writeLong(upstream.networkHandle)
         writeUtf(upstream.interfaceName)
         writeInt(upstream.routes.size)
-        for (route in upstream.routes) {
-            writeUtf(route.address)
-            writeInt(route.prefixLength)
-        }
+        for (route in upstream.routes) writeIpv6Prefix(route)
     }
 
     private fun readStatus(input: Source) {
@@ -161,12 +143,24 @@ internal object DaemonProtocol {
 
     private fun Sink.writeUtf(value: String) {
         val bytes = value.encodeToByteArray()
-        require(bytes.size <= UShort.MAX_VALUE.toInt()) { "String too long" }
-        writeShort(bytes.size.toShort())
+        writeInt(bytes.size)
         write(bytes)
     }
 
-    private fun Source.readUnsignedShortValue() = readShort().toInt() and 0xFFFF
+    private fun Sink.writeInet4Address(address: Inet4Address) = write(address.address)
 
-    private fun Source.readUtf() = readString(readUnsignedShortValue().toLong())
+    private fun Sink.writeInet6Address(address: Inet6Address) = write(address.address)
+
+    private fun Sink.writeIpv6Prefix(prefix: IpPrefix) {
+        val address = prefix.address
+        require(address is Inet6Address) { "IPv6 prefix expected: $prefix" }
+        writeInet6Address(address)
+        writeInt(prefix.prefixLength)
+    }
+
+    private fun Source.readUtf(): String {
+        val length = readInt()
+        if (length < 0) throw IOException("Invalid string length $length")
+        return readString(length.toLong())
+    }
 }

@@ -15,7 +15,6 @@ pub(crate) struct Upstream {
 
 #[derive(Clone)]
 pub(crate) struct SessionConfig {
-    pub(crate) session_id: String,
     pub(crate) downstream: String,
     pub(crate) dns_bind_address: Ipv4Addr,
     pub(crate) reply_mark: u32,

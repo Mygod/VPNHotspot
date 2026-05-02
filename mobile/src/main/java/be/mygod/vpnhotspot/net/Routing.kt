@@ -386,24 +386,22 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val ipv6NatConfig = if (ipv6Nat) {
                 val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
                 DaemonProtocol.Ipv6NatConfig(
-                    gateway = checkNotNull(gateway.hostAddress),
+                    gateway = gateway,
                     prefixLength = prefix.prefixLength,
                     mtu = mtu,
                     suppressedPrefixes = interfaceAddresses.mapNotNull { address ->
                         val inet = address.address
                         if (inet !is Inet6Address || inet.isLinkLocalAddress || inet.isLoopbackAddress ||
                                 inet.isMulticastAddress || inet == gateway) null else {
-                            val hostAddress = inet.hostAddress ?: return@mapNotNull null
-                            DaemonProtocol.Route(hostAddress, address.networkPrefixLength.toInt())
+                            IpPrefix(inet, address.networkPrefixLength.toInt())
                         }
                     },
                     cleanupPrefixes = emptyList(),
                 )
             } else null
             return DaemonProtocol.SessionConfig(
-                sessionId = downstream,
                 downstream = downstream,
-                dnsBindAddress = checkNotNull(hostAddress.address.hostAddress),
+                dnsBindAddress = hostAddress.address as Inet4Address,
                 replyMark = DAEMON_REPLY_MARK,
                 primary = buildUpstream(UpstreamMonitor.currentNetwork),
                 fallback = buildUpstream(FallbackUpstreamMonitor.currentNetwork),

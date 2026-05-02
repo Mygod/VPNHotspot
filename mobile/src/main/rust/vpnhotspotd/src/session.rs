@@ -59,10 +59,6 @@ impl Session {
         })
     }
 
-    pub(crate) async fn session_id(&self) -> String {
-        self.config.lock().await.session_id.clone()
-    }
-
     pub(crate) async fn replace_config(&mut self, config: SessionConfig) {
         if let Some(ipv6_nat) = config.ipv6_nat.as_ref() {
             for prefix in ipv6_nat.cleanup_prefixes.iter().copied() {
