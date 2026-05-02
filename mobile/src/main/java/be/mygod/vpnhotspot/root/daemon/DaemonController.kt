@@ -32,7 +32,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
-import java.io.File
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -48,14 +47,11 @@ object DaemonController {
     private var socket: LocalSocket? = null
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
-    private var connectionFile: File? = null
     private var daemonStdioClosing = false
     private var daemonStdioEofReported = false
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private val stdoutLog = DaemonLog("stdout") { Timber.tag(BINARY_NAME).i(it) }
     private val stderrLog = DaemonLog("stderr") { Timber.tag(BINARY_NAME).e(it) }
-
-    private val rootDir by lazy { File(app.deviceStorage.codeCacheDir, "root").apply { mkdirs() } }
 
     /**
      * Android 10 bionic supports direct linker execution of uncompressed, page-aligned zip entries:
@@ -130,9 +126,6 @@ object DaemonController {
         daemonStdioClosing = false
         daemonStdioEofReported = false
         val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
-        val connectionFile = File(rootDir, "$socketName.connection")
-        check(connectionFile.createNewFile()) { "Failed to create ${connectionFile.absolutePath}" }
-        this.connectionFile = connectionFile
         var stdout: ParcelFileDescriptor? = null
         var stderr: ParcelFileDescriptor? = null
         try {
@@ -144,7 +137,6 @@ object DaemonController {
                         server.execute(RunDaemon(
                             daemonCommand,
                             socketName,
-                            connectionFile.absolutePath,
                             stdout!!,
                             stderr!!,
                         ))
@@ -245,8 +237,6 @@ object DaemonController {
         input = null
         output = null
         socket = null
-        connectionFile?.delete()
-        connectionFile = null
     }
 
     private class DaemonLog(private val stream: String, private val log: (String) -> Unit) {

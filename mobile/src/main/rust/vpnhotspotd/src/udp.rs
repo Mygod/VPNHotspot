@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::future::pending;
 use std::io;
 use std::mem::{size_of, zeroed};
@@ -24,7 +24,6 @@ use crate::model::{select_network, SessionConfig};
 use crate::upstream::connect_udp;
 
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
-const UDP_ASSOC_MAX: usize = 1024;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AssociationKey {
@@ -152,50 +151,34 @@ pub(crate) fn spawn_loop(
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
-                                if !associations.contains_key(&key) {
-                                    while associations.len() >= UDP_ASSOC_MAX {
-                                        let stale = associations
-                                            .iter()
-                                            .min_by_key(|(_, association)| association.last_active)
-                                            .map(|(key, _)| *key);
-                                        if let Some(stale) = stale {
-                                            if let Some(association) = associations.remove(&stale) {
-                                                association.stop.cancel();
+                                let association = match associations.entry(key) {
+                                    Entry::Occupied(entry) => entry.into_mut(),
+                                    Entry::Vacant(entry) => {
+                                        let upstream = match connect_udp(network, destination).await {
+                                            Ok(socket) => Arc::new(socket),
+                                            Err(e) => {
+                                                eprintln!("udp connect failed: {e}");
+                                                continue;
                                             }
-                                        } else {
-                                            break;
-                                        }
-                                    }
-                                    let upstream = match connect_udp(network, destination).await {
-                                        Ok(socket) => Arc::new(socket),
-                                        Err(e) => {
-                                            eprintln!("udp connect failed: {e}");
-                                            continue;
-                                        }
-                                    };
-                                    let association_stop = stop.child_token();
-                                    let association_id = next_association_id;
-                                    next_association_id = next_association_id.wrapping_add(1);
-                                    spawn(run_association(
-                                        key,
-                                        association_id,
-                                        upstream.clone(),
-                                        config.clone(),
-                                        association_stop.clone(),
-                                        association_event_tx.clone(),
-                                    ));
-                                    associations.insert(
-                                        key,
-                                        UdpAssociation {
+                                        };
+                                        let association_stop = stop.child_token();
+                                        let association_id = next_association_id;
+                                        next_association_id = next_association_id.wrapping_add(1);
+                                        spawn(run_association(
+                                            key,
+                                            association_id,
+                                            upstream.clone(),
+                                            config.clone(),
+                                            association_stop.clone(),
+                                            association_event_tx.clone(),
+                                        ));
+                                        entry.insert(UdpAssociation {
                                             id: association_id,
                                             socket: upstream,
                                             last_active: activity,
                                             stop: association_stop,
-                                        },
-                                    );
-                                }
-                                let Some(association) = associations.get_mut(&key) else {
-                                    continue;
+                                        })
+                                    }
                                 };
                                 association.last_active = activity;
                                 if let Err(e) = association.socket.send(&buffer[..size]).await {

@@ -10,7 +10,6 @@ import java.io.File
 data class RunDaemon(
     private val command: List<String>,
     private val socketName: String,
-    private val connectionFile: String,
     private val stdout: ParcelFileDescriptor,
     private val stderr: ParcelFileDescriptor,
 ) : RootCommand<Parcelable?> {
@@ -19,7 +18,6 @@ data class RunDaemon(
             stderr.use { stderr ->
                 ProcessBuilder(command + listOf(
                     "--socket-name", socketName,
-                    "--connection-file", connectionFile,
                 ))
                     .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                     // Opened before fork, then dup2'd onto the child stdio fds.

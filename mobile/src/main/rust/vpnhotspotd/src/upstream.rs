@@ -2,7 +2,6 @@ use std::io;
 use std::mem::size_of_val;
 use std::net::{Ipv6Addr, SocketAddrV6, TcpListener, UdpSocket};
 use std::os::fd::AsRawFd;
-use std::time::Duration;
 
 use libc::{c_int, c_void, setsockopt, socklen_t, EINPROGRESS, IPPROTO_IPV6, IPV6_RECVORIGDSTADDR};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
@@ -10,8 +9,6 @@ use tokio::net::{TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket};
 
 use crate::model::Network;
 use crate::socket::await_connect;
-
-const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[link(name = "android")]
 unsafe extern "C" {
@@ -76,7 +73,7 @@ pub(crate) async fn connect_tcp(
         if error.kind() != io::ErrorKind::WouldBlock && raw_os_error != Some(EINPROGRESS) {
             return Err(error);
         }
-        await_connect(&socket, TCP_CONNECT_TIMEOUT).await?;
+        await_connect(&socket).await?;
     }
     TokioTcpStream::from_std(socket.into())
 }

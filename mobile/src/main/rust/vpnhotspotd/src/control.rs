@@ -3,26 +3,21 @@ use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream as StdUnixStream;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use libc::EINPROGRESS;
 use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::time::sleep;
 
 use crate::protocol::{error_packet, ok_packet, parse_command, ports_packet, Command};
 use crate::session::Session;
 use crate::socket::await_connect;
 
-const LOOP_SLEEP: Duration = Duration::from_millis(50);
-const DAEMON_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
-pub(crate) async fn run(socket_name: String, connection_file: PathBuf) -> io::Result<()> {
-    let mut controller = connect_control_socket(&socket_name, &connection_file).await?;
+pub(crate) async fn run(socket_name: String) -> io::Result<()> {
+    let mut controller = connect_control_socket(&socket_name).await?;
     eprintln!("connected to {socket_name}");
     let mut sessions = HashMap::<String, Session>::new();
     loop {
@@ -105,60 +100,23 @@ async fn handle_packet(
     }
 }
 
-async fn connect_control_socket(
-    socket_name: &str,
-    connection_file: &Path,
-) -> io::Result<UnixStream> {
+async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
     let address = SockAddr::unix(OsStr::from_bytes(format!("\0{socket_name}").as_bytes()))?;
-    let start = Instant::now();
-    loop {
-        if !connection_file.exists() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "connection file missing",
-            ));
-        }
-        let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
-        socket.set_nonblocking(true)?;
-        match socket.connect(&address) {
-            Ok(()) => {
-                let stream: StdUnixStream = socket.into();
-                return UnixStream::from_std(stream);
-            }
-            Err(error) => {
-                let raw_os_error = error.raw_os_error();
-                if error.kind() == io::ErrorKind::WouldBlock || raw_os_error == Some(EINPROGRESS) {
-                    match await_connect(
-                        &socket,
-                        DAEMON_STARTUP_TIMEOUT.saturating_sub(start.elapsed()),
-                    )
-                    .await
-                    {
-                        Ok(()) => {
-                            let stream: StdUnixStream = socket.into();
-                            return UnixStream::from_std(stream);
-                        }
-                        Err(e) => {
-                            if e.kind() != io::ErrorKind::TimedOut
-                                && start.elapsed() < DAEMON_STARTUP_TIMEOUT
-                            {
-                                sleep(LOOP_SLEEP).await;
-                                continue;
-                            }
-                            return Err(e);
-                        }
-                    }
-                }
-                if start.elapsed() >= DAEMON_STARTUP_TIMEOUT {
-                    return Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("control socket connect timed out: {error}"),
-                    ));
-                }
+    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
+    socket.set_nonblocking(true)?;
+    match socket.connect(&address) {
+        Ok(()) => {}
+        Err(error) => {
+            let raw_os_error = error.raw_os_error();
+            if error.kind() == io::ErrorKind::WouldBlock || raw_os_error == Some(EINPROGRESS) {
+                await_connect(&socket).await?;
+            } else {
+                return Err(error);
             }
         }
-        sleep(LOOP_SLEEP).await;
     }
+    let stream: StdUnixStream = socket.into();
+    UnixStream::from_std(stream)
 }
 
 async fn recv_packet(socket: &mut UnixStream) -> io::Result<Vec<u8>> {

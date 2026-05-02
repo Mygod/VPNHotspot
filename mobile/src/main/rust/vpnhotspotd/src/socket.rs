@@ -1,21 +1,11 @@
 use std::io;
 use std::os::fd::{AsFd, BorrowedFd};
-use std::time::Duration;
 
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
-use tokio::time::timeout;
 
-pub(crate) async fn await_connect(socket: &Socket, duration: Duration) -> io::Result<()> {
-    if timeout(duration, await_writable(socket.as_fd()))
-        .await
-        .is_err()
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::TimedOut,
-            "tcp connect timed out",
-        ));
-    }
+pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {
+    await_writable(socket.as_fd()).await?;
     socket.take_error()?.map_or(Ok(()), Err)
 }
 

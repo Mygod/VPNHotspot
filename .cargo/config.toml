@@ -1,0 +1,2 @@
+[build]
+target-dir = "mobile/build/rust/vpnhotspotd"
