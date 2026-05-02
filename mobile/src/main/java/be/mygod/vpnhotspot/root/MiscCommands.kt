@@ -161,11 +161,11 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
                     |echo iptables -t nat -nvx -L vpnhotspot_masquerade
                     |$IPTABLES -t nat -nvx -L vpnhotspot_masquerade
                     |echo
-                    |echo iptables -nvx -L vpnhotspot_fwd
-                    |$IPTABLES -nvx -L vpnhotspot_fwd
-                    |echo
                     |echo iptables -nvx -L vpnhotspot_acl
                     |$IPTABLES -nvx -L vpnhotspot_acl
+                    |echo
+                    |echo iptables -nvx -L vpnhotspot_stats
+                    |$IPTABLES -nvx -L vpnhotspot_stats
                     |echo
                     |echo logcat-su
                     |logcat -d
