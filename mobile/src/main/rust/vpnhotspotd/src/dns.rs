@@ -22,6 +22,30 @@ const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
 // Maximum DNS message size carried over TCP or EDNS0 UDP.
 const DNS_MAX_PACKET: usize = 65_535;
 
+pub(crate) struct Runtime {
+    pub(crate) tcp_port: u16,
+    pub(crate) udp_port: u16,
+}
+
+impl Runtime {
+    pub(crate) fn start(
+        bind_address: Ipv4Addr,
+        config: Arc<Mutex<SessionConfig>>,
+        stop: CancellationToken,
+    ) -> io::Result<Self> {
+        let tcp_listener = create_tcp_listener(bind_address)?;
+        let tcp_port = tcp_listener.local_addr()?.port();
+        let udp_socket = create_udp_listener(bind_address)?;
+        let udp_port = udp_socket.local_addr()?.port();
+        spawn_tcp_loop(tcp_listener, config.clone(), stop.clone())?;
+        if let Err(e) = spawn_udp_loop(udp_socket, config, stop.clone()) {
+            stop.cancel();
+            return Err(e);
+        }
+        Ok(Self { tcp_port, udp_port })
+    }
+}
+
 struct ResolverQuery {
     fd: Option<RawFd>,
 }
@@ -74,19 +98,19 @@ unsafe extern "C" {
     fn android_res_cancel(nsend_fd: c_int);
 }
 
-pub(crate) fn create_tcp_listener(bind_address: Ipv4Addr) -> io::Result<TcpListener> {
+fn create_tcp_listener(bind_address: Ipv4Addr) -> io::Result<TcpListener> {
     let listener = TcpListener::bind((bind_address, 0))?;
     listener.set_nonblocking(true)?;
     Ok(listener)
 }
 
-pub(crate) fn create_udp_listener(bind_address: Ipv4Addr) -> io::Result<UdpSocket> {
+fn create_udp_listener(bind_address: Ipv4Addr) -> io::Result<UdpSocket> {
     let socket = UdpSocket::bind((bind_address, 0))?;
     socket.set_nonblocking(true)?;
     Ok(socket)
 }
 
-pub(crate) fn spawn_tcp_loop(
+fn spawn_tcp_loop(
     listener: TcpListener,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
@@ -145,7 +169,7 @@ pub(crate) async fn handle_tcp_connection(
     }
 }
 
-pub(crate) fn spawn_udp_loop(
+fn spawn_udp_loop(
     socket: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,

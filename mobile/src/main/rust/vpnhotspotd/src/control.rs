@@ -73,7 +73,7 @@ async fn handle_packet(
                 ));
             }
             let session = Session::start(config).await?;
-            let reply = ports_packet(session.ports);
+            let reply = ports_packet(session.ports());
             sessions.insert(downstream, session);
             Ok(HandleResult::Reply(reply))
         }
