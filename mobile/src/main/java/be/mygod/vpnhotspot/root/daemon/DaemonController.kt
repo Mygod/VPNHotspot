@@ -249,7 +249,7 @@ object DaemonController {
             var readEnd: ParcelFileDescriptor? = pipe[0]
             var writeEnd: ParcelFileDescriptor? = pipe[1]
             try {
-                val channel = readEnd!!.openReadChannel(Services.mainHandler.looper)
+                val channel = ParcelFileDescriptorReadChannel(readEnd!!, Services.mainHandler.looper)
                 this.channel = channel
                 readEnd = null
                 job = scope.launch {
@@ -285,11 +285,17 @@ object DaemonController {
         }
 
         suspend fun close() {
+            channel?.let {
+                try {
+                    it.drain()
+                } catch (e: ErrnoException) {
+                    if (e.errno != OsConstants.EBADF) Timber.w(e)
+                }
+            }
             job?.cancelAndJoin()
             job = null
             channel?.let {
                 try {
-                    it.drain()
                     it.drainLines(line, flushPartial = true, block = log)
                 } catch (e: ErrnoException) {
                     if (e.errno != OsConstants.EBADF) Timber.w(e)

@@ -84,8 +84,8 @@ pub(crate) async fn connect_udp(
 ) -> io::Result<TokioUdpSocket> {
     let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
     set_socket_network(network, socket.as_raw_fd())?;
-    socket.connect(&SockAddr::from(destination))?;
     socket.set_nonblocking(true)?;
+    socket.connect(&SockAddr::from(destination))?;
     TokioUdpSocket::from_std(socket.into())
 }
 
