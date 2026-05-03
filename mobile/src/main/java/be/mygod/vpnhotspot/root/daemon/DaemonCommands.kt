@@ -17,6 +17,7 @@ data class RunDaemon(
         stdout.use { stdout ->
             stderr.use { stderr ->
                 ProcessBuilder(command + socketName)
+                    .apply { environment()["RUST_BACKTRACE"] = "1" }
                     .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                     // Opened before fork, then dup2'd onto the child stdio fds.
                     .redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdout.fd}")))
