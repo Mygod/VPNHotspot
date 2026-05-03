@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.io.IOException
+import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.security.SecureRandom
@@ -49,10 +50,19 @@ class StaticIpSetter : BootReceiver.Startable {
 
         var ips: String
             get() {
-                app.pref.getString(KEY, null)?.let { return it }
+                app.pref.getString(KEY, null).let { if (!it.isNullOrBlank()) return it }
+                val random = SecureRandom.getInstanceStrong()
                 val octets = ByteArray(3)
-                SecureRandom.getInstanceStrong().nextBytes(octets)
-                return "10.${octets.joinToString(".") { it.toUByte().toString() }}".also { ips = it }
+                val globalId = ByteArray(5)
+                random.nextBytes(octets)
+                random.nextBytes(globalId)
+                return "10.${octets.joinToString(".") { it.toUByte().toString() }}\n${
+                    InetAddress.getByAddress(ByteArray(16).apply {
+                        this[0] = 0xfd.toByte()
+                        globalId.copyInto(this, 1)
+                        this[15] = 1
+                    }).hostAddress
+                }".also { ips = it }
             }
             set(value) = app.pref.edit { putString(KEY, value) }
 
