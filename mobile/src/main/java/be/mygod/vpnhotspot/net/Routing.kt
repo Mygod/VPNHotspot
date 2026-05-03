@@ -480,11 +480,11 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             try {
                 val config = nextConfig()
                 DaemonController.replaceSession(config)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is CancellationException) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
-                }
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
             }
         }
 
@@ -500,8 +500,10 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             }
             try {
                 DaemonController.removeSession(downstream, removeMode)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is CancellationException) Timber.w(e)
+                Timber.w(e)
             }
         }
     }

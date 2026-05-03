@@ -19,6 +19,7 @@ import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readLineTo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -105,6 +106,7 @@ object DaemonController {
         } catch (e: Exception) {
             closeConnectionLocked()
             activeSessions.clear()
+            if (e is CancellationException) throw e
             Timber.w(e)
         }
         activeSessions.remove(downstream)
@@ -112,10 +114,13 @@ object DaemonController {
             try {
                 if (output != null) writePacketLocked(DaemonProtocol.shutdown(
                     DaemonProtocol.RemoveMode.PreserveCleanup))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.w(e)
+            } finally {
+                closeConnectionLocked()
             }
-            closeConnectionLocked()
         }
     }
 

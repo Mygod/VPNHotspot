@@ -38,21 +38,35 @@ impl Session {
             let udp_listener = upstream::create_tproxy_udp_listener(config.reply_mark)?;
             let udp = udp_listener.local_addr()?.port();
             tcp::spawn_loop(tcp_listener, shared.clone(), stop.clone())?;
-            udp::spawn_loop(udp_listener, shared.clone(), stop.clone())?;
-            (
-                Some(Ipv6NatPorts { tcp, udp }),
-                Some(ra::spawn_loop(
-                    shared.clone(),
-                    config_changed.clone(),
-                    stop.clone(),
-                )?),
-            )
+            if let Err(e) = udp::spawn_loop(udp_listener, shared.clone(), stop.clone()) {
+                stop.cancel();
+                return Err(e);
+            }
+            let ra_task = match ra::spawn_loop(
+                shared.clone(),
+                config_changed.clone(),
+                stop.clone(),
+                &config,
+            ) {
+                Ok(task) => task,
+                Err(e) => {
+                    stop.cancel();
+                    return Err(e);
+                }
+            };
+            (Some(Ipv6NatPorts { tcp, udp }), Some(ra_task))
         } else {
             (None, None)
         };
 
-        dns::spawn_tcp_loop(dns_tcp_listener, shared.clone(), stop.clone())?;
-        dns::spawn_udp_loop(dns_udp_socket, shared.clone(), stop.clone())?;
+        if let Err(e) = dns::spawn_tcp_loop(dns_tcp_listener, shared.clone(), stop.clone()) {
+            stop.cancel();
+            return Err(e);
+        }
+        if let Err(e) = dns::spawn_udp_loop(dns_udp_socket, shared.clone(), stop.clone()) {
+            stop.cancel();
+            return Err(e);
+        }
 
         Ok(Self {
             config: shared,

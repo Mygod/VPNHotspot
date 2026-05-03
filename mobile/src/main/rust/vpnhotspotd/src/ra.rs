@@ -38,23 +38,10 @@ pub(crate) fn spawn_loop(
     config: Arc<Mutex<SessionConfig>>,
     config_changed: Arc<Notify>,
     stop: CancellationToken,
+    initial: &SessionConfig,
 ) -> io::Result<JoinHandle<()>> {
+    let socket = AsyncFd::new(create_recv_socket(&initial.downstream, initial.reply_mark)?)?;
     Ok(spawn(async move {
-        let snapshot = config.lock().await.clone();
-        let socket = match create_recv_socket(&snapshot.downstream, snapshot.reply_mark) {
-            Ok(fd) => fd,
-            Err(e) => {
-                eprintln!("ra socket failed: {e}");
-                return;
-            }
-        };
-        let socket = match AsyncFd::new(socket) {
-            Ok(socket) => socket,
-            Err(e) => {
-                eprintln!("ra async socket failed: {e}");
-                return;
-            }
-        };
         let mut address_monitor = match AddressMonitor::new() {
             Ok(monitor) => Some(monitor),
             Err(e) => {
