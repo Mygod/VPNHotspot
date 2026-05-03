@@ -3,7 +3,6 @@
 [![Test](https://github.com/Mygod/VPNHotspot/actions/workflows/test.yml/badge.svg)](https://github.com/Mygod/VPNHotspot/actions/workflows/test.yml)
 [![Releases](https://img.shields.io/github/downloads/Mygod/VPNHotspot/total.svg)](https://github.com/Mygod/VPNHotspot/releases)
 [![Language: Kotlin](https://img.shields.io/github/languages/top/Mygod/VPNHotspot.svg)](https://github.com/Mygod/VPNHotspot/search?l=kotlin)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/e70e52b1a58045819b505c09edcae816)](https://www.codacy.com/gh/Mygod/VPNHotspot/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=Mygod/VPNHotspot&amp;utm_campaign=Badge_Grade)
 [![License](https://img.shields.io/github/license/Mygod/VPNHotspot.svg)](LICENSE)
 
 [![Get it on Obtainium](https://github.com/ImranR98/Obtainium/raw/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Mygod/VPNHotspot)

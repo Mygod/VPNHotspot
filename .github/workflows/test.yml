@@ -34,6 +34,21 @@ jobs:
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Check Rust daemon
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo check --locked --all-targets
+
+      - name: Run Rust daemon clippy
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Audit Rust daemon dependencies
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo audit
+
       - name: Run build and tests
         run: ./gradlew assembleDebug check --no-daemon
 
