@@ -5,7 +5,8 @@ use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::{dns, ra, tcp, udp, upstream};
+use crate::nat66::{ra, tcp, udp};
+use crate::{dns, upstream};
 use vpnhotspotd::shared::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig, SessionPorts};
 
 pub(crate) struct Session {

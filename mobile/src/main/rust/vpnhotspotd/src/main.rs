@@ -1,10 +1,8 @@
 mod control;
 mod dns;
-mod ra;
+mod nat66;
 mod session;
 mod socket;
-mod tcp;
-mod udp;
 mod upstream;
 
 use std::env;
