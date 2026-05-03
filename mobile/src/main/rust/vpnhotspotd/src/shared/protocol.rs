@@ -13,6 +13,7 @@ const CMD_REPLACE_SESSION: u32 = 2;
 const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_SHUTDOWN: u32 = 4;
 const NETWORK_UNSPECIFIED: Network = 0;
+const ROUTE_WIRE_LEN: usize = 16 + 4;
 
 pub enum Command {
     StartSession(SessionConfig),
@@ -92,7 +93,8 @@ impl<'a> Parser<'a> {
     }
 
     fn read_i32(&mut self) -> io::Result<i32> {
-        Ok(self.read_u32()? as i32)
+        let bytes = self.read_exact(4)?;
+        Ok(i32::from_be_bytes(bytes.try_into().unwrap()))
     }
 
     fn read_u8(&mut self) -> io::Result<u8> {
@@ -148,7 +150,21 @@ impl<'a> Parser<'a> {
     }
 
     fn read_routes(&mut self) -> io::Result<Vec<Route>> {
-        let routes = self.read_i32()? as usize;
+        let routes = self.read_i32()?;
+        if routes < 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid route count {routes}"),
+            ));
+        }
+        let routes = routes as usize;
+        let remaining = self.packet.len() - self.offset;
+        if routes > remaining / ROUTE_WIRE_LEN {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("route count {routes} exceeds remaining packet length {remaining}"),
+            ));
+        }
         let mut parsed = Vec::with_capacity(routes);
         for _ in 0..routes {
             let address = self.read_ipv6()?;
@@ -244,6 +260,45 @@ mod tests {
         assert_eq!(config.primary_network, None);
         assert!(config.primary_routes.is_empty());
         assert_eq!(config.fallback_network, None);
+    }
+
+    #[test]
+    fn parse_session_config_rejects_negative_route_count() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
+        write_utf(&mut packet, "wlan0");
+        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+        packet.extend_from_slice(&0x71d8u32.to_be_bytes());
+        packet.extend_from_slice(&123u64.to_be_bytes());
+        packet.extend_from_slice(&(-1i32).to_be_bytes());
+
+        let error = match parse_command(&packet) {
+            Err(error) => error,
+            Ok(_) => panic!("expected route count failure"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "invalid route count -1");
+    }
+
+    #[test]
+    fn parse_session_config_rejects_route_count_exceeding_remaining_packet() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
+        write_utf(&mut packet, "wlan0");
+        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+        packet.extend_from_slice(&0x71d8u32.to_be_bytes());
+        packet.extend_from_slice(&123u64.to_be_bytes());
+        packet.extend_from_slice(&1i32.to_be_bytes());
+
+        let error = match parse_command(&packet) {
+            Err(error) => error,
+            Ok(_) => panic!("expected route count failure"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            error.to_string(),
+            "route count 1 exceeds remaining packet length 0"
+        );
     }
 
     fn write_utf(packet: &mut Vec<u8>, value: &str) {
