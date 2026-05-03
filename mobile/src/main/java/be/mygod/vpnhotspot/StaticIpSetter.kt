@@ -61,7 +61,7 @@ class StaticIpSetter : BootReceiver.Startable {
                 RootSession.use {
                     try {
                         if (enabled) {
-                            ips.lineSequence().forEach { ip -> it.exec("${Routing.IP} addr add $ip dev lo") }
+                            ips.lineSequence().forEach { ip -> it.exec("${Routing.IP} addr replace $ip dev lo") }
                             true
                         } else {
                             val addresses = iface?.interfaceAddresses

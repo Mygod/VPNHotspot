@@ -38,7 +38,6 @@ object RepeaterCommands {
     }
 
     @Parcelize
-    @RequiresApi(29)
     class RequestDeviceAddress : RootCommand<MacAddress?> {
         override suspend fun execute() = Services.p2p!!.run { requestDeviceAddress(obtainChannel()) }
     }
@@ -108,7 +107,7 @@ object RepeaterCommands {
                 if (target == channel) channel = null
             }
         }
-        return initialize(systemContext, Looper.getMainLooper(), uninitializer).also {
+        return initialize(Services.context, Looper.getMainLooper(), uninitializer).also {
             uninitializer.target = it
             channel = it    // cache the instance until invalidated
         }

@@ -25,8 +25,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
 import androidx.core.os.persistableBundleOf
 import androidx.core.view.isGone
-import be.mygod.librootkotlinx.toByteArray
-import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -38,6 +36,8 @@ import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
+import be.mygod.vpnhotspot.util.toByteArray
+import be.mygod.vpnhotspot.util.toParcelable
 import com.google.android.material.textfield.TextInputLayout
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -313,7 +313,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         dialogView.bssid.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode) dialogView.hiddenSsid.isGone = true
-        if (arg.p2pMode && Build.VERSION.SDK_INT >= 29) dialogView.macRandomization.isEnabled = false
+        if (arg.p2pMode) dialogView.macRandomization.isEnabled = false
         else if (arg.p2pMode || Build.VERSION.SDK_INT < 31) dialogView.macRandomizationWrapper.isGone = true
         else dialogView.macRandomization.onItemSelectedListener = this@WifiApDialogFragment
         if (arg.p2pMode || Build.VERSION.SDK_INT < 31) {

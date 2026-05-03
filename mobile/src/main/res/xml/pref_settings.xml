@@ -31,23 +31,20 @@
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_downstream">
-        <SwitchPreferenceCompat
-            app:key="service.disableIpv6"
+        <com.takisoft.preferencex.SimpleMenuPreference
+            app:key="service.ipv6Mode"
             app:icon="@drawable/ic_image_looks_6"
-            app:title="@string/settings_service_disable_ipv6"
-            app:summary="@string/settings_service_disable_ipv6_summary"
-            app:defaultValue="true"/>
+            app:title="@string/settings_service_ipv6_mode"
+            app:entries="@array/settings_service_ipv6_mode"
+            app:entryValues="@array/settings_service_ipv6_mode_values"
+            app:defaultValue="Block"
+            app:useSimpleSummaryProvider="true"/>
         <SwitchPreferenceCompat
             app:key="system.enableTetherOffload"
             app:persistent="false"
             app:icon="@drawable/ic_device_battery_charging_full"
             app:title="@string/settings_system_tether_offload"
             app:summary="@string/settings_system_tether_offload_summary"/>
-        <SwitchPreferenceCompat
-            app:key="service.dhcpWorkaround"
-            app:icon="@drawable/ic_action_build"
-            app:title="@string/settings_service_dhcp_workaround"
-            app:summary="@string/settings_service_dhcp_workaround_summary"/>
     </PreferenceCategory>
     <PreferenceCategory
         app:title="@string/settings_misc">

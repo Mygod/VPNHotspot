@@ -59,10 +59,10 @@ import java.net.SocketException
 class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClickListener {
     inner class ManagerAdapter : ListAdapter<Manager, RecyclerView.ViewHolder>(Manager),
         TetherStates.Callback {
-        internal val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
-        internal val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
+        val repeaterManager by lazy { RepeaterManager(this@TetheringFragment) }
+        val localOnlyHotspotManager by lazy { LocalOnlyHotspotManager(this@TetheringFragment) }
         private val staticIpManager by lazy { StaticIpManager(this@TetheringFragment) }
-        internal val bluetoothManager by lazy {
+        val bluetoothManager by lazy {
             requireContext().getSystemService<BluetoothManager>()?.adapter?.let {
                 TetherManager.Bluetooth(this@TetheringFragment, it)
             }
@@ -137,7 +137,6 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) = getItem(position).bindTo(holder)
     }
 
-    @RequiresApi(29)
     val startRepeater = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) app.startServiceWithLocation<RepeaterService>(requireContext()) else {
             Snackbar.make((activity as MainActivity).binding.fragmentHolder,

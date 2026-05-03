@@ -28,7 +28,7 @@ class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
         val binder = binder ?: return
         qsTile?.run {
             icon = tile
-            subtitle(null)
+            subtitle = null
             val iface = binder.iface
             if (iface.isNullOrEmpty()) {
                 state = Tile.STATE_INACTIVE

@@ -93,12 +93,9 @@
     <string name="settings_service_masquerade_none">Nessuno</string>
     <string name="settings_service_masquerade_simple">Semplice</string>
     <string name="settings_service_masquerade_netd">Servizio Android Netd</string>
-    <string name="settings_service_disable_ipv6">Disabilita tethering IPv6</string>
-    <string name="settings_service_disable_ipv6_summary">Abilitando questa funzione si preveniranno perdite della VPN via IPv6.</string>
+    <string name="settings_service_ipv6_mode">Modalita IPv6</string>
     <string name="settings_service_wifi_lock">Tieni il Wi\u2011Fi attivo</string>
     <string name="settings_service_wifi_lock_none">Default di sistema</string>
-    <string name="settings_service_wifi_lock_full">Attivo</string>
-    <string name="settings_service_wifi_lock_high_perf">Modalità prestazioni elevate</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disabilita il risparmio batteria</string>
     <string name="settings_service_wifi_lock_low_latency">Modalità latenza bassa</string>
     <string name="settings_service_ip_monitor">Modalità di monitoraggio dello stato della rete</string>
@@ -110,8 +107,6 @@
     <string name="settings_service_upstream_auto">Individua automaticamente VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaccia fallback upstream</string>
     <string name="settings_upstream_fallback_auto">Individua automaticamente la rete default del sistema</string>
-    <string name="settings_service_dhcp_workaround">Abilita DHCP alternativo</string>
-    <string name="settings_service_dhcp_workaround_summary">Usalo se i client non riescono ad ottenere gli indirizzi IP.</string>
     <string name="settings_service_clean">Pulisci/riapplica regole di routing</string>
     <string name="settings_service_clean_summary">Aggiorna le impostazioni modificate ai servizi attivi. Può anche sistemare rare
         condizioni.</string>

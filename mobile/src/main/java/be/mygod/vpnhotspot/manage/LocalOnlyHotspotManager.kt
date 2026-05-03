@@ -18,11 +18,9 @@ import java.net.NetworkInterface
 
 class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager(), ServiceConnection {
     companion object {
-        val permission = when {
-            Build.VERSION.SDK_INT >= 33 -> Manifest.permission.NEARBY_WIFI_DEVICES
-            Build.VERSION.SDK_INT >= 29 -> Manifest.permission.ACCESS_FINE_LOCATION
-            else -> Manifest.permission.ACCESS_COARSE_LOCATION
-        }
+        val permission = if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.NEARBY_WIFI_DEVICES
+        } else Manifest.permission.ACCESS_FINE_LOCATION
     }
 
     class ViewHolder(val binding: ListitemInterfaceBinding) : RecyclerView.ViewHolder(binding.root),
@@ -58,7 +56,7 @@ class LocalOnlyHotspotManager(private val parent: TetheringFragment) : Manager()
 
     override val type get() = VIEW_TYPE_LOCAL_ONLY_HOTSPOT
     private val data = Data()
-    internal var binder: LocalOnlyHotspotService.Binder? = null
+    var binder: LocalOnlyHotspotService.Binder? = null
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         viewHolder as ViewHolder

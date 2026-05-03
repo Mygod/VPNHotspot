@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.util
 
-import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -15,6 +14,7 @@ import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
 import android.text.Spannable
@@ -29,10 +29,12 @@ import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
+import androidx.core.os.ParcelCompat
 import androidx.core.view.isVisible
 import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
+import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -74,6 +76,19 @@ fun Long.toPluralInt(): Int {
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
 inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+fun Parcelable?.toByteArray(parcelableFlags: Int = 0) = useParcel { parcel ->
+    parcel.writeParcelable(this, parcelableFlags)
+    parcel.marshall()
+}
+
+fun <T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?, clazz: Class<T>) = useParcel { parcel ->
+    parcel.unmarshall(this, 0, size)
+    parcel.setDataPosition(0)
+    ParcelCompat.readParcelable(parcel, classLoader, clazz)
+}
+inline fun <reified T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?) =
+    toParcelable(classLoader, T::class.java)
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
@@ -204,15 +219,6 @@ fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
         appendLine()
     }
 }.trimEnd()
-
-private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
-    InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
-        isAccessible = true
-    }
-}
-fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
-    InetAddresses.parseNumericAddress(address)
-} else parseNumericAddress(null, address) as InetAddress
 
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")

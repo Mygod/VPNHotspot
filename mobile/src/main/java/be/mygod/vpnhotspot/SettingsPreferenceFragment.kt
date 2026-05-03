@@ -44,6 +44,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         // handle complicated default value and possible system upgrades
         WifiDoubleLock.mode = WifiDoubleLock.mode
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
+        RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
         IpMonitor.currentMode = IpMonitor.currentMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)

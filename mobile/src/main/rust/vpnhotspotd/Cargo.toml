@@ -1,0 +1,27 @@
+[package]
+name = "vpnhotspotd"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vpnhotspotd"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+libc = "0.2.186"
+linux-raw-sys = { version = "0.12.1", default-features = false, features = ["no_std", "netlink"] }
+socket2 = { version = "0.6.3", features = ["all"] }
+tokio = { version = "1.51.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7.18"
+
+[profile.release]
+panic = "abort"
+lto = "fat"
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

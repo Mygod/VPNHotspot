@@ -134,8 +134,11 @@
     <string name="settings_service_masquerade_none">None</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
-    <string name="settings_service_disable_ipv6">Disable IPv6 tethering</string>
-    <string name="settings_service_disable_ipv6_summary">Enabling this option will prevent VPN leaks via IPv6.</string>
+    <string name="settings_service_ipv6_mode">IPv6 mode</string>
+    <string name="settings_service_ipv6_mode_block">Block</string>
+    <string name="settings_service_ipv6_mode_system">System</string>
+    <string name="settings_service_ipv6_mode_nat">NAT (Userspace)</string>
+    <string name="warn_ipv6_nat_failed">NAT66 setup failed: %s</string>
     <string name="settings_service_auto_start">Auto start services</string>
     <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
         update</string>
@@ -149,8 +152,6 @@
         hotspot</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
-    <string name="settings_service_wifi_lock_full">On</string>
-    <string name="settings_service_wifi_lock_high_perf">High Performance Mode</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
     <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
     <string name="settings_service_ip_monitor">Network status monitor mode</string>
@@ -164,8 +165,6 @@
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_upstream_fallback">Fallback upstream interface</string>
     <string name="settings_upstream_fallback_auto">Auto detect system default network</string>
-    <string name="settings_service_dhcp_workaround">Enable DHCP workaround</string>
-    <string name="settings_service_dhcp_workaround_summary">Use this if clients cannot obtain IP addresses.</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions.</string>
@@ -203,9 +202,6 @@
     <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
     <string name="permission_missing">Permission missing</string>
-    <string name="warn_vpn_firewall">Warning: VPN tethering will not work with some VPN apps unless you
-        systemize this app or configure manual DNS</string>
-    <string name="error_vpn_firewall_reboot">Please restart your device for VPN tethering to work</string>
 
     <string name="configuration_view">Wi\u2011Fi configuration</string>
     <string name="configuration_invalid">Possibly invalid configuration</string>

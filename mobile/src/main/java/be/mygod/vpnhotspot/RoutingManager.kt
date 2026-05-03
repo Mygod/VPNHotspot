@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot
 
 import android.os.Build
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.Ipv6Mode
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
@@ -16,6 +17,7 @@ import androidx.core.content.edit
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val forceWifi: Boolean = false) {
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
+        private const val KEY_IPV6_MODE = "service.ipv6Mode"
         var masqueradeMode: Routing.MasqueradeMode
             get() = app.pref.run {
                 getString(KEY_MASQUERADE_MODE, null)?.let { return@run Routing.MasqueradeMode.valueOf(it) }
@@ -24,6 +26,12 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 } else Routing.MasqueradeMode.None
             }
             set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
+        var ipv6Mode: Ipv6Mode
+            get() = app.pref.run {
+                getString(KEY_IPV6_MODE, null)?.let { return@run Ipv6Mode.valueOf(it) }
+                if (getBoolean("service.disableIpv6", true)) Ipv6Mode.Block else Ipv6Mode.System
+            }
+            set(value) = app.pref.edit { putString(KEY_IPV6_MODE, value.name) }
 
         /**
          * Thread safety: needs protection by [monitor]!
@@ -33,7 +41,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
         suspend fun clean(reinit: Boolean = true) = monitor.withLock {
             if (!reinit && active.isEmpty()) return@withLock
-            for (manager in active.values) manager.routing?.stop()
+            for (manager in active.values) {
+                manager.routing?.stop(withdrawCleanupPrefixes = true)
+            }
             try {
                 Routing.clean()
             } catch (e: Exception) {
@@ -53,6 +63,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             ipForward() // local only interfaces need to enable ip_forward
             forward()
             masquerade(masqueradeMode)
+            when (ipv6Mode) {
+                Ipv6Mode.Block, Ipv6Mode.System -> { }
+                Ipv6Mode.Nat -> ipv6Nat()
+            }
         }
     }
 
@@ -92,7 +106,6 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         routing = Routing(caller, downstream).apply {
             transaction = RootSession.beginTransaction()
             try {
-                allowProtect()
                 configure()
                 commit()
             } catch (e: Exception) {

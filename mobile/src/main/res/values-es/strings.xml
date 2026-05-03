@@ -128,8 +128,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_masquerade_none">Ninguno</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Servicio Netd de Android</string>
-    <string name="settings_service_disable_ipv6">Desactivar conexión compartida IPv6</string>
-    <string name="settings_service_disable_ipv6_summary">Activar esta opción evitará fugas de VPN a través de IPv6.</string>
+    <string name="settings_service_ipv6_mode">Modo IPv6</string>
     <string name="settings_service_auto_start">Inicio automático de servicios</string>
     <string name="settings_service_auto_start_summary">Restaura servicios si estaban en ejecución antes de reiniciar el dispositivo o actualizar la aplicación</string>
     <string name="settings_service_repeater_safe_mode">Modo seguro del repetidor</string>
@@ -139,8 +138,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_temp_hotspot_use_system_summary">Entrará en conflicto con otras aplicaciones que solo usan punto de acceso local</string>
     <string name="settings_service_wifi_lock">Mantener vivo el Wi\u2011Fi</string>
     <string name="settings_service_wifi_lock_none">Sistema por defecto</string>
-    <string name="settings_service_wifi_lock_full">Activado</string>
-    <string name="settings_service_wifi_lock_high_perf">Modo de alto rendimiento</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desactivar ahorro de energía</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baja latencia</string>
     <string name="settings_service_ip_monitor">Modo de monitorización del estado de la red</string>
@@ -154,8 +151,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_upstream_auto">Detección automática de VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaz de retorno de transmisión de subida</string>
     <string name="settings_upstream_fallback_auto">Detección automática de red predeterminada del sistema</string>
-    <string name="settings_service_dhcp_workaround">Activar solución alternativa de DHCP</string>
-    <string name="settings_service_dhcp_workaround_summary">Úsalo si los clientes no pueden obtener direcciones IP.</string>
     <string name="settings_service_clean">Limpiar/volver a aplicar reglas de enrutamiento</string>
     <string name="settings_service_clean_summary">Actualiza los ajustes modificados a los servicios activos actuales. También puede corregir condiciones de carrera poco frecuentes.</string>
     <string name="settings_system_tether_offload">Aceleración por hardware para conexión compartida</string>
@@ -195,8 +190,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="exception_interface_not_found">Fatal: No se ha encontrado la interfaz de transmisión de bajada</string>
     <string name="noisy_su_failure">Algo salió mal, por favor verifica la información de depuración.</string>
     <string name="permission_missing">Permiso faltante</string>
-    <string name="warn_vpn_firewall">Advertencia: La conexión compartida de VPN no funcionará con algunas aplicaciones de VPN a menos que sistematices esta aplicación o configures el DNS manualmente</string>
-    <string name="error_vpn_firewall_reboot">Por favor, reinicia tu dispositivo para que funcione la conexión compartida de VPN</string>
 
     <string name="configuration_view">Configuración Wi\u2011Fi</string>
     <string name="configuration_invalid">Configuración posiblemente no válida</string>

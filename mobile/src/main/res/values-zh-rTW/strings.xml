@@ -127,8 +127,7 @@
     <string name="settings_service_masquerade_none">無</string>
     <string name="settings_service_masquerade_simple">簡易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服務</string>
-    <string name="settings_service_disable_ipv6">停用 IPv6 共用</string>
-    <string name="settings_service_disable_ipv6_summary">啟用後可避免 VPN 透過 IPv6 洩漏。</string>
+    <string name="settings_service_ipv6_mode">IPv6 模式</string>
     <string name="settings_service_auto_start">自動啟動服務</string>
     <string name="settings_service_auto_start_summary">裝置重新啟動或應用程式更新時，會恢復先前啟動的服務。</string>
     <string name="settings_service_repeater_safe_mode">中繼器安全模式</string>
@@ -138,8 +137,6 @@
     <string name="settings_service_temp_hotspot_use_system_summary">會與其他使用僅限本機無線基地台的應用程式衝突。</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 啟用</string>
     <string name="settings_service_wifi_lock_none">系統預設</string>
-    <string name="settings_service_wifi_lock_full">開啟</string>
-    <string name="settings_service_wifi_lock_high_perf">高效能模式</string>
     <string name="settings_service_wifi_lock_high_perf_v29">關閉省電模式</string>
     <string name="settings_service_wifi_lock_low_latency">低延遲模式</string>
     <string name="settings_service_ip_monitor">網路狀態監控模式</string>
@@ -153,8 +150,6 @@
     <string name="settings_service_upstream_auto">自動偵測系統 VPN</string>
     <string name="settings_upstream_fallback">後援上游介面</string>
     <string name="settings_upstream_fallback_auto">自動偵測系統預設網路</string>
-    <string name="settings_service_dhcp_workaround">啟用 DHCP 因應措施</string>
-    <string name="settings_service_dhcp_workaround_summary">若裝置無法取得 IP 位址，請嘗試啟用此選項。</string>
     <string name="settings_service_clean">清除/重新套用路由規則</string>
     <string name="settings_service_clean_summary">將變更套用至目前運作中的服務，也能修復偶發的競爭條件。</string>
     <string name="settings_system_tether_offload">網路共用硬體加速</string>
@@ -188,8 +183,6 @@
     <string name="exception_interface_not_found">重大錯誤：找不到下游介面</string>
     <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
-    <string name="warn_vpn_firewall">警告：有些 VPN 應用程式若未將本應用程式設為系統應用或手動設定 DNS，就無法使用 VPN 網路共用。</string>
-    <string name="error_vpn_firewall_reboot">請重新啟動裝置，才能使用 VPN 網路共用。</string>
 
     <string name="configuration_view">Wi\u2011Fi 設定</string>
     <string name="configuration_invalid">設定可能無效</string>

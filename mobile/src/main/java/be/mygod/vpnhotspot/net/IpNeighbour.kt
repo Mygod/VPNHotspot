@@ -1,13 +1,13 @@
 package be.mygod.vpnhotspot.net
 
 import android.net.MacAddress
+import android.net.InetAddresses
 import android.os.Build
 import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import be.mygod.vpnhotspot.root.ReadArp
 import be.mygod.vpnhotspot.root.RootManager
-import be.mygod.vpnhotspot.util.parseNumericAddress
 import kotlinx.coroutines.CancellationException
 import timber.log.Timber
 import java.io.File
@@ -51,7 +51,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
             return if (line.isBlank()) emptyList() else try {
                 val match = parser.matchEntire(line)!!
                 if (match.groups[2] == null) return emptyList()
-                val ip = parseNumericAddress(match.groupValues[2])
+                val ip = InetAddresses.parseNumericAddress(match.groupValues[2])
                 val devs = substituteDev(match.groupValues[3])  // by regex, dev is non-empty
                 val state = if (match.groupValues[1].isNotEmpty()) State.DELETING else when (match.groupValues[5]) {
                     "", "INCOMPLETE" -> State.INCOMPLETE
@@ -79,7 +79,10 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
                     if (ip is Inet4Address) try {
                         val list = arp()
                                 .asSequence()
-                                .filter { parseNumericAddress(it[ARP_IP_ADDRESS]) == ip && it[ARP_DEVICE] in devs }
+                                .filter {
+                                    InetAddresses.parseNumericAddress(it[ARP_IP_ADDRESS]) == ip &&
+                                            it[ARP_DEVICE] in devs
+                                }
                                 .map { MacAddress.fromString(it[ARP_HW_ADDRESS]) }
                                 .filter { it != MacAddressCompat.ALL_ZEROS_ADDRESS }
                                 .distinct()
@@ -123,8 +126,7 @@ data class IpNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddr
             if (System.nanoTime() - arpCacheTime >= ARP_CACHE_EXPIRE) try {
                 arpCache = File("/proc/net/arp").bufferedReader().useLines { it.makeArp() }
             } catch (e: IOException) {
-                if (e is FileNotFoundException && Build.VERSION.SDK_INT >= 29 &&
-                        (e.cause as? ErrnoException)?.errno == OsConstants.EACCES) try {
+                if (e is FileNotFoundException && (e.cause as? ErrnoException)?.errno == OsConstants.EACCES) try {
                     arpCache = RootManager.use { it.execute(ReadArp()) }.value.lineSequence().makeArp()
                 } catch (eRoot: Exception) {
                     eRoot.addSuppressed(e)

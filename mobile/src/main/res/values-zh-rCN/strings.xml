@@ -117,8 +117,7 @@
     <string name="settings_service_masquerade_none">无</string>
     <string name="settings_service_masquerade_simple">简易</string>
     <string name="settings_service_masquerade_netd">Android Netd 服务</string>
-    <string name="settings_service_disable_ipv6">禁用 IPv6 共享</string>
-    <string name="settings_service_disable_ipv6_summary">防止 VPN 通过 IPv6 泄漏。</string>
+    <string name="settings_service_ipv6_mode">IPv6 模式</string>
     <string name="settings_service_auto_start">自动启动服务</string>
     <string name="settings_service_auto_start_summary">设备重启或应用升级后自动恢复之前运行的服务</string>
     <string name="settings_service_repeater_safe_mode">中继安全模式</string>
@@ -128,8 +127,6 @@
     <string name="settings_service_temp_hotspot_use_system_summary">这将与其他使用本地热点的应用冲突</string>
     <string name="settings_service_wifi_lock">保持 Wi\u2011Fi 开启</string>
     <string name="settings_service_wifi_lock_none">系统默认</string>
-    <string name="settings_service_wifi_lock_full">开</string>
-    <string name="settings_service_wifi_lock_high_perf">高性能模式</string>
     <string name="settings_service_wifi_lock_high_perf_v29">禁用省电</string>
     <string name="settings_service_wifi_lock_low_latency">低延迟模式</string>
     <string name="settings_service_ip_monitor">网络状态监听模式</string>
@@ -145,8 +142,6 @@
     <string name="settings_upstream_fallback_auto">自动检测系统默认网络</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_service_clean_summary">将修改的设置应用到当前启用的服务上。也可用于修复偶尔会发生的竞态条件。</string>
-    <string name="settings_service_dhcp_workaround">尝试修复 DHCP</string>
-    <string name="settings_service_dhcp_workaround_summary">如果设备无法获取 IP 地址，尝试打开这个选项。</string>
     <string name="settings_system_tether_offload">网络共享硬件加速</string>
     <string name="settings_system_tether_offload_summary">系统“开发者选项”的快捷方式</string>
     <string name="settings_misc">杂项</string>
@@ -178,8 +173,6 @@
     <string name="exception_interface_not_found">错误：未找到下游接口</string>
     <string name="noisy_su_failure">发生异常，详情请查看调试信息。</string>
     <string name="permission_missing">权限不足</string>
-    <string name="warn_vpn_firewall">警告：共享部分 VPN 可能需要将此应用升级为系统应用或手动配置 DNS</string>
-    <string name="error_vpn_firewall_reboot">VPN 共享需要您重启您的设备</string>
 
     <string name="configuration_view">设置 WLAN</string>
     <string name="configuration_invalid">配置可能无效</string>

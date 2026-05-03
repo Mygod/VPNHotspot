@@ -113,8 +113,7 @@
     <string name="settings_service_masquerade_none">Nenhum</string>
     <string name="settings_service_masquerade_simple">Simples</string>
     <string name="settings_service_masquerade_netd">Serviço Android Netd</string>
-    <string name="settings_service_disable_ipv6">Desative Tethering IPv6</string>
-    <string name="settings_service_disable_ipv6_summary">Ativar esta opção evitará vazamentos de VPN via IPv6.</string>
+    <string name="settings_service_ipv6_mode">Modo IPv6</string>
     <string name="settings_service_auto_start">Auto inicialização de serviços</string>
     <string name="settings_service_auto_start_summary">Restaurar serviços que estavam em execução antes do aplicativo / dispositivo reiniciar ou atualizar</string>
     <string name="settings_service_repeater_safe_mode">Modo de repetidor seguro</string>
@@ -122,8 +121,6 @@
     <string name="settings_service_repeater_safe_mode_warning">Nomes curtos de rede podem exigir o desligamento do modo seguro.</string>
     <string name="settings_service_wifi_lock">Deixe o Wi\u2011Fi ativo</string>
     <string name="settings_service_wifi_lock_none">Padrão do sistema</string>
-    <string name="settings_service_wifi_lock_full">Ativo</string>
-    <string name="settings_service_wifi_lock_high_perf">Modo de alta performance</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desativar o modo de economia de energia</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baixa latência</string>
     <string name="settings_service_ip_monitor">Modo de monitoramento de rede</string>
@@ -137,8 +134,6 @@
     <string name="settings_service_upstream_auto">Detectar automaticamente VPN de sistema</string>
     <string name="settings_upstream_fallback">Interface upstream de fallback</string>
     <string name="settings_upstream_fallback_auto">Detectar automaticamente a rede padrão do sistema</string>
-    <string name="settings_service_dhcp_workaround">Ativar DHCP workaround</string>
-    <string name="settings_service_dhcp_workaround_summary">Use isso se o cliente não consegue obter endereço IP.</string>
     <string name="settings_service_clean">Limpar/re-aplicar regras de roteamento</string>
     <string name="settings_service_clean_summary">Atualize as configurações alteradas para os serviços ativos atualmente. Isso pode corrigir condições raras.</string>
     <string name="settings_system_tether_offload">Aceleração de Tethering do hardware</string>

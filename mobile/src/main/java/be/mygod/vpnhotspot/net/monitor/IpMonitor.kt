@@ -3,18 +3,25 @@ package be.mygod.vpnhotspot.net.monitor
 import android.os.Build
 import androidx.core.content.edit
 import be.mygod.librootkotlinx.RootServer
-import be.mygod.librootkotlinx.isEBADF
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.io.isEBADF
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.root.ProcessData
 import be.mygod.vpnhotspot.root.ProcessListener
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.ReceiveChannel
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.IOException
 import java.io.InterruptedIOException
@@ -87,8 +94,8 @@ abstract class IpMonitor {
         }
         Timber.d("Monitor process exited with ${process.waitFor()}")
     }
-    private suspend fun handleChannel(channel: ReceiveChannel<ProcessData>) {
-        channel.consumeEach {
+    private suspend fun handleFlow(flow: Flow<ProcessData>) {
+        flow.collect {
             when (it) {
                 is ProcessData.StdoutLine -> if (errorMatcher.containsMatchIn(it.line)) {
                     Timber.w(it.line)
@@ -113,8 +120,7 @@ abstract class IpMonitor {
                 try {
                     RootManager.use { server ->
                         // while we only need to use this server once, we need to also keep the server alive
-                        handleChannel(server.create(ProcessListener(errorMatcher,
-                            Routing.IP, "monitor", monitoredObject), this))
+                        handleFlow(server.flow(ProcessListener(errorMatcher, Routing.IP, "monitor", monitoredObject)))
                     }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {

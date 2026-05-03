@@ -3,25 +3,42 @@ package be.mygod.vpnhotspot.root
 import android.os.Parcelable
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.vpnhotspot.io.forEachLineSafely
 import be.mygod.vpnhotspot.net.Routing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object RoutingCommands {
     @Parcelize
-    class Clean : RootCommandNoResult {
+    class Clean(private val ipv6NatPrefixSeed: String) : RootCommandNoResult {
         override suspend fun execute() = withContext(Dispatchers.IO) {
-            val process = ProcessBuilder("sh").fixPath(true).start()
-            process.outputStream.bufferedWriter().use(Routing.Companion::appendCleanCommands)
-            when (val code = process.waitFor()) {
-                0 -> { }
-                else -> Timber.w("Unexpected exit code $code")
+            ProcessBuilder("sh").fixPath().withOutputChannels { process, outputChannel, errorChannel ->
+                coroutineScope {
+                    val output = async {
+                        outputChannel.forEachLineSafely {
+                            Timber.i(it)
+                            true
+                        }
+                    }
+                    val error = async {
+                        errorChannel.forEachLineSafely {
+                            Timber.w(it)
+                            true
+                        }
+                    }
+                    process.outputStream.bufferedWriter().use { Routing.appendCleanCommands(it, ipv6NatPrefixSeed) }
+                    val code = runInterruptible { process.waitFor() }
+                    output.await()
+                    error.await()
+                    if (code != 0) Timber.w("Unexpected exit code $code")
+                    check(code == 0)
+                }
             }
-            check(process.waitFor() == 0)
             null
         }
     }

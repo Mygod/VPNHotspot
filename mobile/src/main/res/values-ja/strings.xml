@@ -110,8 +110,7 @@
     <string name="settings_service_masquerade_none">なし</string>
     <string name="settings_service_masquerade_simple">シンプル</string>
     <string name="settings_service_masquerade_netd">Android Netd サービス</string>
-    <string name="settings_service_disable_ipv6">IPv6 テザリングを無効化</string>
-    <string name="settings_service_disable_ipv6_summary">このオプションを有効化すると IPv6 経由の VPN リークを防ぐことができます</string>
+    <string name="settings_service_ipv6_mode">IPv6 モード</string>
     <string name="settings_service_auto_start">サービスを自動で開始</string>
     <string name="settings_service_auto_start_summary">デバイスの再起動またはアプリの更新前に実行されていた
         サービスを復元します</string>
@@ -125,8 +124,6 @@
         他のアプリと競合します</string>
     <string name="settings_service_wifi_lock">Wi\u2011Fi 接続を維持</string>
     <string name="settings_service_wifi_lock_none">システムデフォルト</string>
-    <string name="settings_service_wifi_lock_full">ON</string>
-    <string name="settings_service_wifi_lock_high_perf">高パフォーマンスモード</string>
     <string name="settings_service_wifi_lock_high_perf_v29">パワーセーブを無効化する</string>
     <string name="settings_service_wifi_lock_low_latency">低遅延モード</string>
     <string name="settings_service_ip_monitor">ネットワークステータス監視モード</string>
@@ -140,8 +137,6 @@
     <string name="settings_service_upstream_auto">システム VPN を自動検出</string>
     <string name="settings_upstream_fallback">フォールバックアップストリームネットワークインターフェース</string>
     <string name="settings_upstream_fallback_auto">システムのデフォルトネットワークを自動検出</string>
-    <string name="settings_service_dhcp_workaround">DHCP の回避策を有効化</string>
-    <string name="settings_service_dhcp_workaround_summary">クライアントが IP アドレスを取得できない場合に使用してください</string>
     <string name="settings_service_clean">ルーティングルールを消去または再適用</string>
     <string name="settings_service_clean_summary">変更された設定をアクティブなサービスに更新します。
         まれに発生する競合状態も修正できます</string>
@@ -174,9 +169,6 @@
     <string name="exception_interface_not_found">致命的: ダウンストリームインターフェースが見つかりません</string>
     <string name="noisy_su_failure">問題が発生しました。デバッグ情報を確認してください。</string>
     <string name="permission_missing">権限がありません</string>
-    <string name="warn_vpn_firewall">警告: このアプリをシステム化するか、手動で DNS を設定しない限り
-        VPN テザリングは一部の VPN アプリでは機能しません</string>
-    <string name="error_vpn_firewall_reboot">VPN テザリングを機能させるにはデバイスを再起動してください</string>
     <string name="configuration_view">Wi\u2011Fi の構成</string>
     <string name="configuration_invalid">無効な設定の可能性があります</string>
     <string name="configuration_share">QR コードで共有</string>

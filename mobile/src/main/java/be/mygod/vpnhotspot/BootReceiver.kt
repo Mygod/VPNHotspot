@@ -6,9 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Parcelable
-import be.mygod.librootkotlinx.toByteArray
-import be.mygod.librootkotlinx.toParcelable
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.toByteArray
+import be.mygod.vpnhotspot.util.toParcelable
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.io.DataInputStream

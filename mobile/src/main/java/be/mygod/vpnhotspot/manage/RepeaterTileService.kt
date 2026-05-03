@@ -60,7 +60,7 @@ class RepeaterTileService : KillableTileService() {
 
     private fun updateTile(group: WifiP2pGroup? = binder?.group) {
         qsTile?.run {
-            subtitle(null)
+            subtitle = null
             when ((binder ?: return).service.status) {
                 RepeaterService.Status.IDLE -> {
                     state = Tile.STATE_INACTIVE
@@ -70,8 +70,8 @@ class RepeaterTileService : KillableTileService() {
                     state = Tile.STATE_ACTIVE
                     label = group?.networkName
                     val size = group?.clientList?.size ?: 0
-                    if (size > 0) subtitle(resources.getQuantityString(
-                            R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size))
+                    if (size > 0) subtitle = resources.getQuantityString(
+                            R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)
                 }
                 else -> {   // STARTING, STOPPING, or DESTROYED, which should never occur
                     state = Tile.STATE_UNAVAILABLE

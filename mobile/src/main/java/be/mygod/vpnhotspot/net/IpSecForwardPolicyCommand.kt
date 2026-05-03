@@ -18,7 +18,7 @@ import java.net.UnknownHostException
  */
 @Parcelize
 @RequiresApi(31)
-internal data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand<ParcelableBoolean> {
+data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand<ParcelableBoolean> {
     override suspend fun execute(): ParcelableBoolean {
         val dump = withContext(Dispatchers.IO) {
             // Existing tunnel/transform state is only exposed via IIpSecService.dump():
@@ -30,7 +30,7 @@ internal data class IpSecForwardPolicyCommand(private val upstream: String) : Ro
             }
         }
         val (tunnel, inbound) = findTarget(upstream, dump) ?: return ParcelableBoolean(false)
-        updateSecurityPolicy(
+        Netd.ipSecUpdateSecurityPolicy(
             Netd.service,
             tunnel.groupValues[2].toInt(),
             OsConstants.AF_INET,
@@ -55,26 +55,7 @@ internal data class IpSecForwardPolicyCommand(private val upstream: String) : Ro
             setOf(RegexOption.DOT_MATCHES_ALL),
         )
 
-        /**
-         * https://android.googlesource.com/platform/system/netd/+/android-12.0.0_r1/server/binder/android/net/INetd.aidl#397
-         * https://android.googlesource.com/platform/frameworks/base/+/android-12.0.0_r1/services/core/java/com/android/server/IpSecService.java#1883
-         */
-        private val updateSecurityPolicy by lazy {
-            Netd.getMethod(
-                "ipSecUpdateSecurityPolicy",
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                String::class.java,
-                String::class.java,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-                Int::class.javaPrimitiveType!!,
-            )
-        }
-
-        internal fun findTarget(upstream: String, dump: String): Pair<MatchResult, MatchResult>? {
+        fun findTarget(upstream: String, dump: String): Pair<MatchResult, MatchResult>? {
             val tunnel = tunnelRecord.findAll(dump).firstOrNull { it.groupValues[3] == upstream } ?: return null
             val ifId = tunnel.groupValues[1].toIntOrNull() ?: return null
             // Inbound tunnel transforms keep mNetwork=null; reuse their outer addresses for the FWD policy.

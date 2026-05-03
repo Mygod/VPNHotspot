@@ -7,6 +7,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.net.Ipv6Mode
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
@@ -48,7 +49,11 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
         override suspend fun Routing.configure() {
             forward()
             masquerade(masqueradeMode)
-            if (app.pref.getBoolean("service.disableIpv6", true)) disableIpv6()
+            when (ipv6Mode) {
+                Ipv6Mode.Block -> disableIpv6()
+                Ipv6Mode.System -> { }
+                Ipv6Mode.Nat -> ipv6Nat()
+            }
         }
     }
 

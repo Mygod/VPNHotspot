@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.net.monitor
 
 import android.net.MacAddress
+import android.net.InetAddresses
 import androidx.collection.LongSparseArray
 import androidx.collection.set
 import be.mygod.vpnhotspot.net.IpDev
@@ -9,7 +10,6 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.util.RootSession
-import be.mygod.vpnhotspot.util.parseNumericAddress
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -76,7 +76,7 @@ object TrafficRecorder {
 
     private suspend fun doUpdate(timestamp: Long) {
         val lines = RootSession.use {
-            val command = "$IPTABLES -nvx -L vpnhotspot_acl"
+            val command = "$IPTABLES -nvx -L vpnhotspot_stats"
             val result = it.execQuiet(command)
             val message = result.message(listOf(command))
             if (result.err.isNotEmpty()) Timber.i(message)
@@ -91,12 +91,14 @@ object TrafficRecorder {
                     check(columns.size >= 9)
                     when (columns[2]) {
                         "DROP" -> { }
-                        "ACCEPT" -> {
+                        "RETURN" -> {
                             val isReceive = columns[7] == ANYWHERE
                             val isSend = columns[8] == ANYWHERE
                             // this check might fail when the user performed an upgrade from 1.x
-                            check(isReceive != isSend) { "Failed to set up blocking rules, please clean routing rules" }
-                            val ip = parseNumericAddress(columns[if (isReceive) 8 else 7])
+                            check(isReceive != isSend) {
+                                "Failed to set up traffic accounting rules, please clean routing rules"
+                            }
+                            val ip = InetAddresses.parseNumericAddress(columns[if (isReceive) 8 else 7])
                             val downstream = columns[if (isReceive) 6 else 5]
                             val key = IpDev(ip, downstream)
                             val oldRecord = records[key] ?: continue@loop   // assuming they're legacy old rules

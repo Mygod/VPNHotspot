@@ -73,7 +73,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
     override fun updateTile() {
         qsTile?.run {
-            subtitle(null)
+            subtitle = null
             val interested = interested
             when {
                 interested == null -> {
@@ -189,7 +189,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
 
         override fun updateTile() {
             qsTile?.run {
-                subtitle(null)
+                subtitle = null
                 val interested = interested
                 if (interested == null) {
                     state = Tile.STATE_UNAVAILABLE
@@ -208,7 +208,7 @@ sealed class TetheringTileService : IpNeighbourMonitoringTileService(), Tetherin
                     null -> {
                         state = Tile.STATE_INACTIVE
                         icon = tileOff
-                        subtitle(tethering?.activeFailureCause?.readableMessage)
+                        subtitle = tethering?.activeFailureCause?.readableMessage
                     }
                 }
                 label = getText(labelString)

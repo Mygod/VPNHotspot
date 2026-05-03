@@ -20,7 +20,6 @@
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_COARSE_LOCATION"
         android:maxSdkVersion="32"/>
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:minSdkVersion="29"
         android:maxSdkVersion="32"/>
     <uses-permission-sdk-23 android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission-sdk-23 android:name="android.permission.BLUETOOTH"/>

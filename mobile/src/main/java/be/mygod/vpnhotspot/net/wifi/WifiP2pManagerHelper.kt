@@ -141,7 +141,6 @@ object WifiP2pManagerHelper {
     suspend fun WifiP2pManager.requestConnectionInfo(c: WifiP2pManager.Channel) =
         CompletableDeferred<WifiP2pInfo?>().apply { requestConnectionInfo(c) { complete(it) } }.await()
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
-    @RequiresApi(29)
     suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddress? {
         val future = CompletableDeferred<String?>()
         requestDeviceInfo(c) { future.complete(it?.deviceAddress) }
@@ -153,7 +152,6 @@ object WifiP2pManagerHelper {
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     suspend fun WifiP2pManager.requestGroupInfo(c: WifiP2pManager.Channel) =
         CompletableDeferred<WifiP2pGroup?>().apply { requestGroupInfo(c) { complete(it) } }.await()
-    @RequiresApi(29)
     suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =
         CompletableDeferred<Int>().apply { requestP2pState(c) { complete(it) } }.await()
 }

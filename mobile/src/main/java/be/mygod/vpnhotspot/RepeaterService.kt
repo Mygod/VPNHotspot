@@ -13,7 +13,6 @@ import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
-import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
@@ -90,16 +89,14 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
 
         var persistentSupported = false
 
-        @get:RequiresApi(29)
-        private val hasP2pValidateName by lazy {
+        val safeModeConfigurable by lazy {
+            if (Build.VERSION.SDK_INT >= 30) return@lazy true
             val array = Build.VERSION.SECURITY_PATCH.split('-', limit = 3)
             val y = array.getOrNull(0)?.toIntOrNull()
             val m = array.getOrNull(1)?.toIntOrNull()
             y == null || y > 2020 || y == 2020 && (m == null || m >= 3)
         }
-        val safeModeConfigurable get() = Build.VERSION.SDK_INT >= 29 && hasP2pValidateName
-        val safeMode get() = Build.VERSION.SDK_INT >= 29 &&
-                (!hasP2pValidateName || app.pref.getBoolean(KEY_SAFE_MODE, true))
+        val safeMode get() = !safeModeConfigurable || app.pref.getBoolean(KEY_SAFE_MODE, true)
 
         var networkName: WifiSsidCompat?
             get() = app.pref.getString(KEY_NETWORK_NAME, null).let { legacy ->
@@ -189,12 +186,12 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         val groupChanged = StickyEvent1 { group }
 
         suspend fun obtainDeviceAddress(): MacAddress? {
-            return if (Build.VERSION.SDK_INT >= 29) p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
+            return p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
                 RootManager.use { it.execute(RepeaterCommands.RequestDeviceAddress()) }
             } catch (e: Exception) {
                 Timber.d(e)
                 null
-            } else lastMac?.let { MacAddress.fromString(it) }
+            }
         }
 
         @SuppressLint("NewApi") // networkId is available since Android 4.2
@@ -212,7 +209,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                         return@filter true  // assuming it was changed due to privacy
                     }
                     // WifiP2pServiceImpl only removes self address
-                    Build.VERSION.SDK_INT >= 29 && address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
+                    address == MacAddressCompat.ANY_ADDRESS || address == ownerAddress
                 }
                 val main = ownedGroups.minByOrNull { it.networkId }
                 // do not replace current group if it's better
@@ -296,11 +293,6 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             }
         }
     }
-    private val deviceListener = broadcastReceiver { _, intent ->
-        val addr = intent.getParcelableExtra<WifiP2pDevice>(WifiP2pManager.EXTRA_WIFI_P2P_DEVICE)?.deviceAddress
-        if (!addr.isNullOrEmpty()) lastMac = addr
-    }
-    private var lastMac: String? = null
     /**
      * Writes and critical reads to routingManager should be protected with this context.
      */
@@ -333,9 +325,6 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     override fun onCreate() {
         super.onCreate()
         initializeChannel()
-        if (Build.VERSION.SDK_INT < 29) {
-            registerReceiver(deviceListener, intentFilter(WifiP2pManager.WIFI_P2P_THIS_DEVICE_CHANGED_ACTION))
-        }
         app.pref.registerOnSharedPreferenceChangeListener(this)
     }
 
@@ -458,7 +447,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         lifecycleGeneration.incrementAndGet()
         status = Status.STARTING
-        // bump self to foreground location service (API 29+) to use location later, also to avoid getting killed
+        // bump self to foreground location service to use location later, also to avoid getting killed
         showNotification()
         launch {
             val filter = intentFilter(WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION,
@@ -588,9 +577,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         dismissIfApplicable()
         SmartSnackbar.make(msg).apply {
             if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
-                if (Build.VERSION.SDK_INT < 29) @Suppress("DEPRECATION") {
-                    Services.wifi.isWifiEnabled = true
-                } else it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
+                it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
             }
         }.show()
         if (group != null) removeGroup() else clean()
@@ -646,7 +633,6 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             cancel()
         }
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
-        if (Build.VERSION.SDK_INT < 29) unregisterReceiver(deviceListener)
         status = Status.DESTROYED
         channel?.close()
         super.onDestroy()
