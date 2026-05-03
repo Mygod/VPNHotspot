@@ -4,7 +4,7 @@ use std::io;
 use std::mem::{size_of, take, MaybeUninit};
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
-use std::ptr;
+use std::ptr::{self, NonNull};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -264,31 +264,36 @@ fn link_local_router(interface: &str) -> io::Result<Option<Ipv6Addr>> {
     if unsafe { libc::getifaddrs(&mut addresses) } != 0 {
         return Err(io::Error::last_os_error());
     }
+    let addresses = NonNull::new(addresses);
     let _addresses = IfAddrs(addresses);
     let mut current = addresses;
-    while !current.is_null() {
-        let ifaddr = unsafe { &*current };
-        if !ifaddr.ifa_name.is_null() && !ifaddr.ifa_addr.is_null() {
-            let name = unsafe { CStr::from_ptr(ifaddr.ifa_name) };
-            let address = unsafe { &*ifaddr.ifa_addr };
+    while let Some(ifaddr) = current {
+        let ifaddr = unsafe { ifaddr.as_ref() };
+        if let (Some(name), Some(address)) =
+            (NonNull::new(ifaddr.ifa_name), NonNull::new(ifaddr.ifa_addr))
+        {
+            let name = unsafe { CStr::from_ptr(name.as_ptr()) };
+            let address = unsafe { address.as_ref() };
             if name == interface.as_c_str() && address.sa_family as i32 == libc::AF_INET6 {
-                let address = unsafe { &*(ifaddr.ifa_addr as *const libc::sockaddr_in6) };
+                let address = unsafe { &*(address as *const _ as *const libc::sockaddr_in6) };
                 let address = Ipv6Addr::from(address.sin6_addr.s6_addr);
                 if is_router_link_local(address) {
                     return Ok(Some(address));
                 }
             }
         }
-        current = unsafe { (*current).ifa_next };
+        current = NonNull::new(ifaddr.ifa_next);
     }
     Ok(None)
 }
 
-struct IfAddrs(*mut libc::ifaddrs);
+struct IfAddrs(Option<NonNull<libc::ifaddrs>>);
 
 impl Drop for IfAddrs {
     fn drop(&mut self) {
-        unsafe { libc::freeifaddrs(self.0) };
+        if let Some(addresses) = self.0 {
+            unsafe { libc::freeifaddrs(addresses.as_ptr()) };
+        }
     }
 }
 
