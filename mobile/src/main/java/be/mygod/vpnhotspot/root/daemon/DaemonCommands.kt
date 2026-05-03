@@ -16,9 +16,7 @@ data class RunDaemon(
     override suspend fun execute() = null.also {
         stdout.use { stdout ->
             stderr.use { stderr ->
-                ProcessBuilder(command + listOf(
-                    "--socket-name", socketName,
-                ))
+                ProcessBuilder(command + socketName)
                     .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                     // Opened before fork, then dup2'd onto the child stdio fds.
                     .redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdout.fd}")))

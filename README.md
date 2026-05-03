@@ -384,14 +384,7 @@ Nonexported system resources:
 Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
-* (since API 31) IPsec forwarding rule updates load `android.net.INetd*` from
-  `/apex/com.android.tethering/javalib/service-connectivity.jar`.
-* Daemon DNS forwarding depends on the NDK multinetwork DNS entry points exported from `libandroid`,
-  including `ResNsendFlags::ANDROID_RESOLV_NO_RETRY = 1`.
-* Daemon DNS forwarding uses IPv4 DNAT rules to redirect client DNS to the root daemon.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
-* `IPv6 NAT` router advertisement startup waits for downstream IPv6 link-local address changes through
-  Linux rtnetlink group `RTMGRP_IPV6_IFADDR`.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`
   and, on API 31+, `android.net.INetd*`, may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
@@ -399,12 +392,7 @@ Other:
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in
   `onTetherStatesChanged`.
-* `/system/bin/linker` and `/system/bin/linker64` can be invoked directly on an executable inside
-  a zip/APK using `path.zip!/program` when it is stored uncompressed and page-aligned.
-* Daemon control frames are capped at 1 MiB, matching Android's documented Binder transaction buffer
-  size.
-
-For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
+* For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
 gap between them.
 For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`

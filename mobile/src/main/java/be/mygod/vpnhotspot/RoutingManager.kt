@@ -31,10 +31,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 getString(KEY_IPV6_MODE, null)?.let { return@run Ipv6Mode.valueOf(it) }
                 if (getBoolean("service.disableIpv6", true)) Ipv6Mode.Block else Ipv6Mode.System
             }
-            set(value) = app.pref.edit {
-                putString(KEY_IPV6_MODE, value.name)
-                remove("service.disableIpv6")
-            }
+            set(value) = app.pref.edit { putString(KEY_IPV6_MODE, value.name) }
 
         /**
          * Thread safety: needs protection by [monitor]!
