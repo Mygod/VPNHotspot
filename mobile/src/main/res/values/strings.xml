@@ -154,11 +154,6 @@
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
     <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
-    <string name="settings_service_ip_monitor">Network status monitor mode</string>
-    <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
-    <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll with root</string>
     <string name="settings_service_upstream_monitor">Current upstreams</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; fallback: %2$s</string>
     <string name="settings_service_upstream">Upstream network interface</string>
@@ -178,8 +173,6 @@
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
-    <string name="settings_restart_required">Restart this app to apply this setting.</string>
-    <string name="settings_exit_app">Exit</string>
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>

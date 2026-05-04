@@ -98,11 +98,6 @@
     <string name="settings_service_wifi_lock_none">Default di sistema</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disabilita il risparmio batteria</string>
     <string name="settings_service_wifi_lock_low_latency">Modalità latenza bassa</string>
-    <string name="settings_service_ip_monitor">Modalità di monitoraggio dello stato della rete</string>
-    <string name="settings_service_ip_monitor_monitor">Monitoraggio Netlink</string>
-    <string name="settings_service_ip_monitor_monitor_root">Monitoraggio Netlink con root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll con root</string>
     <string name="settings_service_upstream">Interfaccia di rete upstream</string>
     <string name="settings_service_upstream_auto">Individua automaticamente VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaccia fallback upstream</string>
@@ -120,8 +115,6 @@
     <string name="settings_misc_source_summary">Leggi il manuale, metti tra i preferiti, segnala problemi e contribuisci</string>
     <string name="settings_misc_donate">Dona</string>
     <string name="settings_misc_donate_summary">Amo i soldi</string>
-    <string name="settings_restart_required">Riavvia l\'applicazione per applicare questa impostazione.</string>
-    <string name="settings_exit_app">Esci</string>
 
     <string name="notification_tethering_title">Tethering VPN attivo</string>
     <string name="notification_channel_tethering">Servizio Tethering VPN</string>

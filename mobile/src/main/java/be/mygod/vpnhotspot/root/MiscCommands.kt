@@ -10,33 +10,23 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
-import be.mygod.librootkotlinx.ParcelableString
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
-import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.io.forEachLineSafely
 import be.mygod.vpnhotspot.io.openReadChannel
-import be.mygod.vpnhotspot.net.Routing.Companion.IP
-import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
 import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+
+private const val IP = "ip"
+private const val IPTABLES = "iptables -w"
 
 fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     environment().compute("PATH") { _, value ->
@@ -162,73 +152,6 @@ data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCac
             }
         }
         null
-    }
-}
-
-sealed class ProcessData : Parcelable {
-    @Parcelize
-    data class StdoutLine(val line: String) : ProcessData()
-    @Parcelize
-    data class StderrLine(val line: String) : ProcessData()
-    @Parcelize
-    data class Exit(val code: Int) : ProcessData()
-}
-
-@Parcelize
-class ProcessListener(private val terminateRegex: Regex,
-                      private vararg val command: String) : RootFlow<ProcessData> {
-    override fun flow() = channelFlow {
-        ProcessBuilder(*command).withOutputChannels { process, stdoutChannel, stderrChannel ->
-            // we need to destroy process before waiting for the readers during cleanup, so we cannot use coroutineScope
-            val stdout = launch(Dispatchers.IO) {
-                stdoutChannel.forEachLineSafely { line ->
-                    var keepGoing = true
-                    trySend(ProcessData.StdoutLine(line)).onFailure {
-                        if (it != null) throw it
-                        keepGoing = false
-                    }
-                    if (!keepGoing) return@forEachLineSafely false
-                    if (terminateRegex.containsMatchIn(line)) process.destroy()
-                    true
-                }
-            }
-            val stderr = launch(Dispatchers.IO) {
-                stderrChannel.forEachLineSafely { line ->
-                    var keepGoing = true
-                    trySend(ProcessData.StderrLine(line)).onFailure {
-                        if (it != null) throw it
-                        keepGoing = false
-                    }
-                    keepGoing
-                }
-            }
-            val exit = launch(Dispatchers.IO) {
-                trySend(ProcessData.Exit(runInterruptible {
-                    process.waitFor()
-                })).onFailure {
-                    if (it != null) throw it
-                    return@launch
-                }
-            }
-            try {
-                joinAll(stdout, stderr, exit)
-            } finally {
-                withContext(NonCancellable) {
-                    if (process.isAlive) process.destroyForcibly()
-                    stdout.cancel()
-                    stderr.cancel()
-                    exit.cancel()
-                    joinAll(stdout, stderr, exit)
-                }
-            }
-        }
-    }.buffer(Channel.UNLIMITED)
-}
-
-@Parcelize
-class ReadArp : RootCommand<ParcelableString> {
-    override suspend fun execute() = withContext(Dispatchers.IO) {
-        ParcelableString(File("/proc/net/arp").readText())
     }
 }
 

@@ -19,6 +19,7 @@ import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readLineTo
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -48,6 +51,11 @@ object DaemonController {
     private var socket: LocalSocket? = null
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
+    private var readerJob: Job? = null
+    private val pendingReplies = ArrayDeque<CompletableDeferred<ByteArray>>()
+    private var pendingRequests = 0
+    private var neighbourMonitorActive = false
+    private var neighbourListener: (suspend (DaemonProtocol.NeighbourUpdate) -> Unit)? = null
     private var daemonStdioClosing = false
     private var daemonStdioEofReported = false
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -65,32 +73,42 @@ object DaemonController {
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
-    suspend fun startSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
+    suspend fun startSession(config: DaemonProtocol.SessionConfig): DaemonProtocol.SessionPorts {
+        var leaseAdded = false
+        lock.withLock {
+            leaseAdded = activeSessions.add(config.downstream)
+        }
         try {
-            ensureDaemonLocked()
-            writePacketLocked(DaemonProtocol.startSession(config))
-            DaemonProtocol.readPorts(readPacketLocked()).also {
-                activeSessions.add(config.downstream)
-            }
+            return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
         } catch (e: DaemonProtocol.StatusException) {
+            if (leaseAdded) lock.withLock {
+                activeSessions.remove(config.downstream)
+                maybeShutdownLocked()
+            }
             throw e
         } catch (e: Exception) {
-            closeConnectionLocked()
-            activeSessions.clear()
+            lock.withLock {
+                closeConnectionLocked()
+                activeSessions.clear()
+                neighbourMonitorActive = false
+                neighbourListener = null
+            }
             throw e
         }
     }
 
-    suspend fun replaceSession(config: DaemonProtocol.SessionConfig) = lock.withLock {
+    suspend fun replaceSession(config: DaemonProtocol.SessionConfig) {
         try {
-            ensureDaemonLocked()
-            writePacketLocked(DaemonProtocol.replaceSession(config))
-            DaemonProtocol.readAck(readPacketLocked())
+            DaemonProtocol.readAck(request(DaemonProtocol.replaceSession(config)))
         } catch (e: DaemonProtocol.StatusException) {
             throw e
         } catch (e: Exception) {
-            closeConnectionLocked()
-            activeSessions.clear()
+            lock.withLock {
+                closeConnectionLocked()
+                activeSessions.clear()
+                neighbourMonitorActive = false
+                neighbourListener = null
+            }
             throw e
         }
     }
@@ -98,30 +116,92 @@ object DaemonController {
     suspend fun removeSession(
         downstream: String,
         removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
-    ) = lock.withLock {
-        if (output == null) return@withLock
+    ) {
+        if (lock.withLock { output == null }) return
         try {
-            writePacketLocked(DaemonProtocol.removeSession(downstream, removeMode))
-            DaemonProtocol.readAck(readPacketLocked())
+            DaemonProtocol.readAck(request(DaemonProtocol.removeSession(downstream, removeMode)))
         } catch (e: Exception) {
-            closeConnectionLocked()
-            activeSessions.clear()
+            lock.withLock {
+                closeConnectionLocked()
+                activeSessions.clear()
+                neighbourMonitorActive = false
+                neighbourListener = null
+            }
             if (e is CancellationException) throw e
             Timber.w(e)
         }
-        activeSessions.remove(downstream)
-        if (activeSessions.isEmpty()) {
-            try {
-                if (output != null) writePacketLocked(DaemonProtocol.shutdown(
-                    DaemonProtocol.RemoveMode.PreserveCleanup))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Timber.w(e)
-            } finally {
-                closeConnectionLocked()
-            }
+        lock.withLock {
+            activeSessions.remove(downstream)
+            maybeShutdownLocked()
         }
+    }
+
+    suspend fun readTrafficCounterLines() = try {
+        DaemonProtocol.readTrafficCounterLines(request(DaemonProtocol.readTrafficCounters()))
+    } catch (e: DaemonProtocol.StatusException) {
+        throw e
+    } catch (e: Exception) {
+        lock.withLock {
+            closeConnectionLocked()
+            activeSessions.clear()
+            neighbourMonitorActive = false
+            neighbourListener = null
+        }
+        throw e
+    }
+
+    suspend fun startNeighbourMonitor(listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit) {
+        lock.withLock {
+            neighbourMonitorActive = true
+            neighbourListener = listener
+        }
+        try {
+            DaemonProtocol.readAck(request(DaemonProtocol.startNeighbourMonitor()))
+        } catch (e: Exception) {
+            lock.withLock {
+                neighbourMonitorActive = false
+                if (neighbourListener === listener) neighbourListener = null
+                if (e !is DaemonProtocol.StatusException) {
+                    closeConnectionLocked()
+                    activeSessions.clear()
+                }
+                maybeShutdownLocked()
+            }
+            throw e
+        }
+    }
+
+    suspend fun stopNeighbourMonitor() {
+        val shouldSend = lock.withLock {
+            if (!neighbourMonitorActive) return
+            neighbourMonitorActive = false
+            neighbourListener = null
+            output != null
+        }
+        if (shouldSend) try {
+            DaemonProtocol.readAck(request(DaemonProtocol.stopNeighbourMonitor()))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+        }
+        lock.withLock { maybeShutdownLocked() }
+    }
+
+    suspend fun dumpNeighbours() = DaemonProtocol.readNeighbours(request(DaemonProtocol.dumpNeighbours()))
+
+    suspend fun replaceStaticAddress(address: java.net.InetAddress, prefixLength: Int, dev: String) {
+        DaemonProtocol.readAck(request(DaemonProtocol.staticAddress(
+            DaemonProtocol.IpOperation.Replace, address, prefixLength, dev)))
+    }
+
+    suspend fun deleteStaticAddress(address: java.net.InetAddress, prefixLength: Int, dev: String) {
+        DaemonProtocol.readAck(request(DaemonProtocol.staticAddress(
+            DaemonProtocol.IpOperation.Delete, address, prefixLength, dev)))
+    }
+
+    suspend fun cleanRouting(cleanups: List<DaemonProtocol.Ipv6Cleanup>) {
+        DaemonProtocol.readAck(request(DaemonProtocol.cleanRouting(cleanups)))
     }
 
     private class DaemonStdioEofException(message: String) : IOException(message)
@@ -160,6 +240,7 @@ object DaemonController {
                     socket = it
                     input = ParcelFileDescriptor.dup(it.fileDescriptor).openReadChannel(Services.mainHandler.looper)
                     output = ParcelFileDescriptor.dup(it.fileDescriptor).openWriteChannel(Services.mainHandler.looper)
+                    startReaderLocked(input!!)
                 }
             }
         } catch (e: Exception) {
@@ -222,14 +303,94 @@ object DaemonController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
+    private suspend fun request(packet: ByteArray): ByteArray {
+        val reply = CompletableDeferred<ByteArray>()
+        lock.withLock {
+            var pending = false
+            try {
+                ensureDaemonLocked()
+                pendingReplies.addLast(reply)
+                ++pendingRequests
+                pending = true
+                writePacketLocked(packet)
+            } catch (e: Exception) {
+                pendingReplies.remove(reply)
+                if (pending) --pendingRequests
+                closeConnectionLocked()
+                throw e
+            }
+        }
+        return reply.await()
+    }
+
+    private fun startReaderLocked(input: ByteReadChannel) {
+        readerJob = logScope.launch {
+            try {
+                while (currentCoroutineContext().isActive) when (val frame = DaemonProtocol.readFrame(
+                    DaemonIpc.readFrame(input))) {
+                    is DaemonProtocol.Frame.Reply -> lock.withLock {
+                        val reply = if (pendingReplies.isEmpty()) null else pendingReplies.removeFirst()
+                        if (reply == null) {
+                            Timber.w("Unexpected $BINARY_NAME reply")
+                        } else {
+                            --pendingRequests
+                            reply.complete(frame.packet)
+                            maybeShutdownLocked()
+                        }
+                    }
+                    is DaemonProtocol.Frame.Neighbours -> {
+                        val listener = lock.withLock { neighbourListener }
+                        if (listener == null) {
+                            Timber.d("Dropping neighbour update without listener")
+                        } else try {
+                            listener(frame.update)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                        }
+                    }
+                }
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                lock.withLock {
+                    if (!daemonStdioClosing) Timber.w(e)
+                    completePendingRepliesLocked(e)
+                    activeSessions.clear()
+                    neighbourMonitorActive = false
+                    neighbourListener = null
+                    closeConnectionLocked(cancelReader = false)
+                }
+            }
+        }
+    }
+
+    private fun completePendingRepliesLocked(e: Throwable) {
+        while (pendingReplies.isNotEmpty()) pendingReplies.removeFirst().completeExceptionally(e)
+        pendingRequests = 0
+    }
+
+    private suspend fun maybeShutdownLocked() {
+        if (output == null || pendingRequests > 0 || activeSessions.isNotEmpty() || neighbourMonitorActive) return
+        try {
+            writePacketLocked(DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+        } finally {
+            closeConnectionLocked()
+        }
+    }
+
     private suspend fun writePacketLocked(packet: ByteArray) {
         DaemonIpc.writeFrame(output!!, packet)
     }
 
-    private suspend fun readPacketLocked() = DaemonIpc.readFrame(input!!)
-
-    private suspend fun closeConnectionLocked() = withContext(NonCancellable) {
+    private suspend fun closeConnectionLocked(cancelReader: Boolean = true) = withContext(NonCancellable) {
         daemonStdioClosing = true
+        if (cancelReader) readerJob?.cancel()
+        readerJob = null
         input?.cancel(null)
         output?.cancel(null)
         try {
@@ -268,10 +429,13 @@ object DaemonController {
                             line.clear()
                         }
                         lock.withLock {
-                            val sessions = activeSessions.size
-                            if (!daemonStdioClosing && sessions > 0 && !daemonStdioEofReported) {
+                            if (!daemonStdioClosing &&
+                                    (activeSessions.isNotEmpty() || neighbourMonitorActive || pendingRequests > 0) &&
+                                    !daemonStdioEofReported) {
                                 daemonStdioEofReported = true
-                                Timber.w(DaemonStdioEofException("$BINARY_NAME $stream EOF activeSessions=$sessions"))
+                                Timber.w(DaemonStdioEofException("$BINARY_NAME $stream EOF " +
+                                        "activeSessions=${activeSessions.size} " +
+                                        "neighbourMonitor=$neighbourMonitorActive pendingRequests=$pendingRequests"))
                             }
                         }
                     } catch (e: ErrnoException) {

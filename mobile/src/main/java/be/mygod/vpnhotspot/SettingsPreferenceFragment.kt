@@ -12,7 +12,6 @@ import androidx.preference.TwoStatePreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetherOffloadManager
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
-import be.mygod.vpnhotspot.net.monitor.IpMonitor
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.preference.AutoCompleteNetworkPreferenceDialogFragment
@@ -26,7 +25,6 @@ import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -36,7 +34,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.PrintWriter
-import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     private fun Preference.remove() = parent!!.removePreference(this)
@@ -45,7 +42,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         WifiDoubleLock.mode = WifiDoubleLock.mode
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
-        IpMonitor.currentMode = IpMonitor.currentMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
         findPreference<UpstreamsPreference>("service.upstream.monitor")!!.attachListener(lifecycle)
@@ -80,17 +76,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         if (Build.VERSION.SDK_INT < 30) findPreference<Preference>(LocalOnlyHotspotService.KEY_USE_SYSTEM)!!.remove()
         findPreference<Preference>("service.clean")!!.setOnPreferenceClickListener {
             GlobalScope.launch { RoutingManager.clean() }
-            true
-        }
-        findPreference<Preference>(IpMonitor.KEY)!!.setOnPreferenceChangeListener { _, _ ->
-            Snackbar.make(requireView(), R.string.settings_restart_required, Snackbar.LENGTH_LONG).apply {
-                setAction(R.string.settings_exit_app) {
-                    GlobalScope.launch {
-                        RoutingManager.clean(false)
-                        exitProcess(0)
-                    }
-                }
-            }.show()
             true
         }
         findPreference<Preference>("misc.logcat")!!.setOnPreferenceClickListener {

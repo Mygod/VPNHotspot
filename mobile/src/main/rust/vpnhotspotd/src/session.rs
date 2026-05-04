@@ -4,13 +4,14 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::{dns, nat66};
+use crate::{dns, nat66, routing};
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 
 pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
     dns: dns::Runtime,
     nat66: Option<nat66::Runtime>,
+    routing: routing::Runtime,
     stop: CancellationToken,
 }
 
@@ -32,10 +33,26 @@ impl Session {
                 return Err(e);
             }
         };
+        let ports = SessionPorts {
+            dns_tcp: dns.tcp_port,
+            dns_udp: dns.udp_port,
+            ipv6_nat: nat66.as_ref().map(|runtime| runtime.ports),
+        };
+        let routing = match routing::Runtime::start(&config, ports).await {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                stop.cancel();
+                if let Some(nat66) = nat66 {
+                    nat66.stop(&config, false).await;
+                }
+                return Err(e);
+            }
+        };
         Ok(Self {
             config: shared,
             dns,
             nat66,
+            routing,
             stop,
         })
     }
@@ -48,9 +65,10 @@ impl Session {
         }
     }
 
-    pub(crate) async fn replace_config(&mut self, config: SessionConfig) {
+    pub(crate) async fn replace_config(&mut self, config: SessionConfig) -> io::Result<()> {
         {
             let mut current = self.config.lock().await;
+            self.routing.replace(&current, &config).await?;
             if let Some(nat66) = self.nat66.as_mut() {
                 nat66.record_config_replacement(&current, &config);
             }
@@ -59,11 +77,13 @@ impl Session {
         if let Some(nat66) = self.nat66.as_ref() {
             nat66.notify_config_changed();
         }
+        Ok(())
     }
 
     pub(crate) async fn stop(self, withdraw_cleanup: bool) {
-        self.stop.cancel();
         let snapshot = self.config.lock().await.clone();
+        self.routing.stop(&snapshot).await;
+        self.stop.cancel();
         if let Some(nat66) = self.nat66 {
             nat66.stop(&snapshot, withdraw_cleanup).await;
         }

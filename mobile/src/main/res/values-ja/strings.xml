@@ -126,11 +126,6 @@
     <string name="settings_service_wifi_lock_none">システムデフォルト</string>
     <string name="settings_service_wifi_lock_high_perf_v29">パワーセーブを無効化する</string>
     <string name="settings_service_wifi_lock_low_latency">低遅延モード</string>
-    <string name="settings_service_ip_monitor">ネットワークステータス監視モード</string>
-    <string name="settings_service_ip_monitor_monitor">Netlink の監視</string>
-    <string name="settings_service_ip_monitor_monitor_root">Netlink の監視 (root を使用)</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll (root を使用)</string>
     <string name="settings_service_upstream_monitor">現在のアップストリーム</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; フォールバック: %2$s</string>
     <string name="settings_service_upstream">アップストリームネットワークインターフェース</string>
@@ -150,8 +145,6 @@
     <string name="settings_misc_source_summary">マニュアルの確認、Star、問題の報告と貢献</string>
     <string name="settings_misc_donate">寄付</string>
     <string name="settings_misc_donate_summary">お金大好きです</string>
-    <string name="settings_restart_required">この設定を適用するには、このアプリを再起動してください。</string>
-    <string name="settings_exit_app">終了</string>
     <string name="notification_tethering_title">VPN テザリング</string>
     <string name="notification_channel_tethering">VPN テザリングサービス</string>
     <string name="notification_channel_monitor">非アクティブなインターフェースの監視</string>

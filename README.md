@@ -396,10 +396,14 @@ For route-table numbers, Android interface tables are assumed to start at ifinde
 TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
 deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
-and only deletes VPNHotspot prefixes reconstructed from current interface names. Clean batches
-one-shot deterministic `ip` cleanup commands with `/system/bin/ip -force -batch -` and one-shot
-iptables cleanup with `iptables-restore -w --noflush` and `ip6tables-restore -w --noflush`, which
-are assumed to be supported by Android's bundled iproute2 and iptables on API 29+.
+and only deletes VPNHotspot prefixes reconstructed from current interface names. Background routing
+state is owned by the Rust root daemon: address, route, rule, and neighbour work uses rtnetlink
+instead of `/system/bin/ip`; firewall work runs through Android's bundled iptables/ip6tables tools;
+and netd forwarding/NAT requests run through native `ndc`. Clean batches one-shot iptables cleanup
+with `iptables-restore -w --noflush` and `ip6tables-restore -w --noflush`, which are assumed to be
+supported by Android's bundled iptables on API 29+. Traffic counters are read through
+`iptables-restore -w --noflush -v`, assuming verbose read-only list commands echo their output and
+following comments without flushing tables.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
 TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sockets use the
 AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
@@ -408,9 +412,9 @@ AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99
 Undocumented system binaries are all bundled and executable:
 
 * `iptables-save`, `ip6tables-save`;
-* `iptables-restore`, `ip6tables-restore` (`-w --noflush`);
+* `iptables-restore`, `ip6tables-restore` (`-w --noflush`, `iptables-restore -v`);
 * `echo`;
-* `/system/bin/ip` (`address link monitor neigh rule unreachable`);
+* `/system/bin/ip` (`rule`, `route show table all`, `-s link`, for explicit diagnostic dumps);
 * `ndc` (`ipfwd nat network`);
 * `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
 * `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`);

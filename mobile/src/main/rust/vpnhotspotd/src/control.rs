@@ -6,24 +6,36 @@ use std::os::unix::net::UnixStream as StdUnixStream;
 
 use libc::EINPROGRESS;
 use socket2::{Domain, SockAddr, Socket, Type};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::task::JoinHandle;
 
+use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
+use crate::traffic::TrafficCounters;
 use vpnhotspotd::shared::protocol::{
-    error_packet, ok_packet, parse_command, ports_packet, Command,
+    error_packet, neighbours_frame, neighbours_packet, ok_packet, parse_command, ports_packet,
+    reply_frame, should_suppress_static_address_error, traffic_counter_lines_packet, Command,
+    IpAddressCommand,
 };
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
 pub(crate) async fn run(socket_name: String) -> io::Result<()> {
-    let mut controller = connect_control_socket(&socket_name).await?;
+    let controller = connect_control_socket(&socket_name).await?;
     eprintln!("connected to {socket_name}");
-    let mut sessions = HashMap::<String, Session>::new();
+    let (mut controller_read, controller_write) = controller.into_split();
+    let (sender, writer) = spawn_writer(controller_write);
+    let mut state = State {
+        sessions: HashMap::new(),
+        neighbour_monitor: None,
+        traffic_counters: None,
+    };
     loop {
-        let packet = match recv_packet(&mut controller).await {
+        let packet = match recv_packet(&mut controller_read).await {
             Ok(packet) => packet,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
             Err(e) => {
@@ -31,27 +43,41 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                 break;
             }
         };
-        let response = match handle_packet(&packet, &mut sessions).await {
+        let response = match handle_packet(&packet, &mut state, &sender).await {
             Ok(HandleResult::Reply(reply)) => Some(reply),
             Ok(HandleResult::Shutdown(reply)) => {
-                if let Err(e) = send_packet(&mut controller, &reply).await {
-                    eprintln!("controller send failed: {e}");
+                if sender.send(reply_frame(reply)).is_err() {
+                    eprintln!("controller send failed");
                 }
                 break;
             }
             Err(e) => Some(error_packet(e)),
         };
         if let Some(response) = response {
-            if let Err(e) = send_packet(&mut controller, &response).await {
-                eprintln!("controller send failed: {e}");
+            if sender.send(reply_frame(response)).is_err() {
+                eprintln!("controller send failed");
                 break;
             }
         }
     }
-    for (_, session) in sessions {
+    drop(sender);
+    if let Some(monitor) = state.neighbour_monitor.take() {
+        monitor.stop().await;
+    }
+    if let Some(traffic_counters) = state.traffic_counters.take() {
+        traffic_counters.stop().await;
+    }
+    for (_, session) in state.sessions {
         session.stop(false).await;
     }
+    let _ = writer.await;
     Ok(())
+}
+
+struct State {
+    sessions: HashMap<String, Session>,
+    neighbour_monitor: Option<Monitor>,
+    traffic_counters: Option<TrafficCounters>,
 }
 
 enum HandleResult {
@@ -61,12 +87,13 @@ enum HandleResult {
 
 async fn handle_packet(
     packet: &[u8],
-    sessions: &mut HashMap<String, Session>,
+    state: &mut State,
+    sender: &UnboundedSender<Vec<u8>>,
 ) -> io::Result<HandleResult> {
     match parse_command(packet)? {
         Command::StartSession(config) => {
             let downstream = config.downstream.clone();
-            if sessions.contains_key(&downstream) {
+            if state.sessions.contains_key(&downstream) {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
                     "session already exists",
@@ -74,32 +101,115 @@ async fn handle_packet(
             }
             let session = Session::start(config).await?;
             let reply = ports_packet(session.ports());
-            sessions.insert(downstream, session);
+            state.sessions.insert(downstream, session);
             Ok(HandleResult::Reply(reply))
         }
         Command::ReplaceSession(config) => {
-            let session = sessions
+            let session = state
+                .sessions
                 .get_mut(&config.downstream)
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
-            session.replace_config(config).await;
+            session.replace_config(config).await?;
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::RemoveSession {
             downstream,
             withdraw_cleanup,
         } => {
-            if let Some(session) = sessions.remove(&downstream) {
+            if let Some(session) = state.sessions.remove(&downstream) {
                 session.stop(withdraw_cleanup).await;
             }
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::Shutdown { withdraw_cleanup } => {
-            for (_, session) in sessions.drain() {
+            if let Some(monitor) = state.neighbour_monitor.take() {
+                monitor.stop().await;
+            }
+            if let Some(traffic_counters) = state.traffic_counters.take() {
+                traffic_counters.stop().await;
+            }
+            for (_, session) in state.sessions.drain() {
                 session.stop(withdraw_cleanup).await;
             }
             Ok(HandleResult::Shutdown(ok_packet()))
         }
+        Command::ReadTrafficCounters => {
+            if state.traffic_counters.is_none() {
+                state.traffic_counters = Some(TrafficCounters::start()?);
+            }
+            let result = state
+                .traffic_counters
+                .as_mut()
+                .unwrap()
+                .read_counter_lines()
+                .await;
+            match result {
+                Ok(lines) => Ok(HandleResult::Reply(traffic_counter_lines_packet(&lines))),
+                Err(e) => {
+                    if let Some(traffic_counters) = state.traffic_counters.take() {
+                        traffic_counters.stop().await;
+                    }
+                    Err(e)
+                }
+            }
+        }
+        Command::StartNeighbourMonitor => {
+            if state.neighbour_monitor.is_none() {
+                let monitor = Monitor::spawn(sender.clone())?;
+                let neighbours = crate::neighbour::dump().await?;
+                if sender.send(neighbours_frame(true, &neighbours)).is_err() {
+                    monitor.stop().await;
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "controller disconnected",
+                    ));
+                }
+                state.neighbour_monitor = Some(monitor);
+            }
+            Ok(HandleResult::Reply(ok_packet()))
+        }
+        Command::StopNeighbourMonitor => {
+            if let Some(monitor) = state.neighbour_monitor.take() {
+                monitor.stop().await;
+            }
+            Ok(HandleResult::Reply(ok_packet()))
+        }
+        Command::DumpNeighbours => Ok(HandleResult::Reply(neighbours_packet(
+            &crate::neighbour::dump().await?,
+        ))),
+        Command::StaticAddress(command) => {
+            apply_static_address(&command).await?;
+            Ok(HandleResult::Reply(ok_packet()))
+        }
+        Command::CleanRouting(command) => {
+            crate::routing::clean(&command).await?;
+            Ok(HandleResult::Reply(ok_packet()))
+        }
     }
+}
+
+async fn apply_static_address(command: &IpAddressCommand) -> io::Result<()> {
+    match crate::rtnetlink::apply_address(command).await {
+        Ok(()) => Ok(()),
+        Err(e) if should_suppress_static_address_error(&e, command.operation) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn spawn_writer<W>(mut writer: W) -> (UnboundedSender<Vec<u8>>, JoinHandle<()>)
+where
+    W: AsyncWrite + Unpin + Send + 'static,
+{
+    let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
+    let task = tokio::spawn(async move {
+        while let Some(packet) = receiver.recv().await {
+            if let Err(e) = send_packet(&mut writer, &packet).await {
+                eprintln!("controller send failed: {e}");
+                break;
+            }
+        }
+    });
+    (sender, task)
 }
 
 async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
@@ -121,7 +231,10 @@ async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
     UnixStream::from_std(stream)
 }
 
-async fn recv_packet(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
+async fn recv_packet<R>(socket: &mut R) -> io::Result<Vec<u8>>
+where
+    R: AsyncRead + Unpin,
+{
     let mut header = [0u8; 4];
     socket.read_exact(&mut header).await?;
     let length = u32::from_be_bytes(header) as usize;
@@ -136,7 +249,10 @@ async fn recv_packet(socket: &mut UnixStream) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-async fn send_packet(socket: &mut UnixStream, packet: &[u8]) -> io::Result<()> {
+async fn send_packet<W>(socket: &mut W, packet: &[u8]) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
     if packet.is_empty() || packet.len() > MAX_CONTROL_PACKET_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,

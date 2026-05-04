@@ -5,9 +5,9 @@ import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.Ipv6Mode
 import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle

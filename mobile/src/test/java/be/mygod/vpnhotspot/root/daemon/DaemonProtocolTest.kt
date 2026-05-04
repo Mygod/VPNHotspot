@@ -15,20 +15,36 @@ class DaemonProtocolTest {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
             dnsBindAddress = InetAddress.getByName("192.0.2.1") as Inet4Address,
-            replyMark = 0x71d8,
+            downstreamPrefixLength = 24,
+            ipForward = true,
+            forward = true,
+            masquerade = DaemonProtocol.MasqueradeMode.Simple,
+            ipv6Block = false,
             primaryNetwork = null,
             primaryRoutes = emptyList(),
             fallbackNetwork = null,
+            upstreams = listOf(DaemonProtocol.UpstreamConfig(
+                DaemonProtocol.UpstreamRole.Primary, "rmnet_data0", 1234)),
+            clients = emptyList(),
             ipv6Nat = null,
         ))
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
             assertEquals("192.0.2.1", input.readIpv4Address())
-            assertEquals(0x71d8, input.readInt())
+            assertEquals(24, input.readInt())
+            assertEquals(true, input.readBoolean())
+            assertEquals(true, input.readBoolean())
+            assertEquals(DaemonProtocol.MasqueradeMode.Simple.protocolValue, input.readByte())
+            assertEquals(false, input.readBoolean())
             assertEquals(0L, input.readLong())
             assertEquals(0, input.readInt())
             assertEquals(0L, input.readLong())
+            assertEquals(1, input.readInt())
+            assertEquals(DaemonProtocol.UpstreamRole.Primary.protocolValue, input.readByte())
+            assertEquals("rmnet_data0", input.readUtf())
+            assertEquals(1234, input.readInt())
+            assertEquals(0, input.readInt())
             assertEquals(false, input.readBoolean())
         }
     }

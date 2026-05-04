@@ -1,8 +1,12 @@
 mod control;
 mod dns;
 mod nat66;
+mod neighbour;
+mod routing;
+mod rtnetlink;
 mod session;
 mod socket;
+mod traffic;
 mod upstream;
 
 use std::env;

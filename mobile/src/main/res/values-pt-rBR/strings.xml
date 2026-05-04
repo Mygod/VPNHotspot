@@ -123,11 +123,6 @@
     <string name="settings_service_wifi_lock_none">Padrão do sistema</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desativar o modo de economia de energia</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baixa latência</string>
-    <string name="settings_service_ip_monitor">Modo de monitoramento de rede</string>
-    <string name="settings_service_ip_monitor_monitor">Monitor netlink</string>
-    <string name="settings_service_ip_monitor_monitor_root">Monitor netlink com root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll com root</string>
     <string name="settings_service_upstream_monitor">Upstreams atuais</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; fallback: %2$s</string>
     <string name="settings_service_upstream">Interface de upstream de rede</string>
@@ -146,8 +141,6 @@
     <string name="settings_misc_source_summary">Leia o manual, marque com estrela, envie problemas e contribua (Tipo o Konny :D)</string>
     <string name="settings_misc_donate">Doe</string>
     <string name="settings_misc_donate_summary">Eu amo dinheiro!</string>
-    <string name="settings_restart_required">Reinicie o aplicativo para aplicar essa função.</string>
-    <string name="settings_exit_app">Sair</string>
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">Serviço de Tethering de VPN</string>

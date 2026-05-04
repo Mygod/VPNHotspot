@@ -5,11 +5,10 @@ import android.net.InetAddresses
 import androidx.collection.LongSparseArray
 import androidx.collection.set
 import be.mygod.vpnhotspot.net.IpDev
-import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
+import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.util.Event2
-import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -75,13 +74,7 @@ object TrafficRecorder {
     }
 
     private suspend fun doUpdate(timestamp: Long) {
-        val lines = RootSession.use {
-            val command = "$IPTABLES -nvx -L vpnhotspot_stats"
-            val result = it.execQuiet(command)
-            val message = result.message(listOf(command))
-            if (result.err.isNotEmpty()) Timber.i(message)
-            result.out.lineSequence().drop(2).toList()
-        }
+        val lines = DaemonController.readTrafficCounterLines()
         synchronized(this) {
             val oldRecords = LongSparseArray<TrafficRecord>()
             loop@ for (line in lines) {

@@ -1,18 +1,24 @@
 package be.mygod.vpnhotspot.net.monitor
 
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.IpDev
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.root.daemon.DaemonController
+import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.actor
 import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.trySendBlocking
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
-class IpNeighbourMonitor private constructor() : IpMonitor() {
+class IpNeighbourMonitor private constructor() {
     companion object {
         private val callbacks = mutableMapOf<Callback, Boolean>()
         var instance: IpNeighbourMonitor? = null
@@ -20,7 +26,6 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
 
         /**
          * @param full Whether the invalid entries should also be parsed.
-         *  In this case it is more likely to trigger a root request.
          *  However, even in light mode, caller should still filter out invalid entries in
          *  [Callback.onIpNeighbourAvailable] in case the full mode was requested by other callers.
          */
@@ -59,28 +64,68 @@ class IpNeighbourMonitor private constructor() : IpMonitor() {
         }
     }
     private var neighbours = persistentMapOf<IpDev, IpNeighbour>()
+    private val worker: Job
 
     init {
-        init()
-    }
-
-    override val monitoredObject: String get() = "neigh"
-
-    override suspend fun processLine(line: String) {
-        val old = neighbours
-        for (neighbour in IpNeighbour.parse(line, fullMode)) neighbours = when (neighbour.state) {
-            IpNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
-            else -> neighbours.put(IpDev(neighbour), neighbour)
-        }
-        if (neighbours != old) aggregator.trySendBlocking(neighbours).onFailure { throw it!! }
-    }
-
-    override suspend fun processLines(lines: Sequence<String>) {
-        neighbours = mutableMapOf<IpDev, IpNeighbour>().apply {
-            for (line in lines) for (neigh in IpNeighbour.parse(line, fullMode)) {
-                if (neigh.state != IpNeighbour.State.DELETING) this[IpDev(neigh)] = neigh
+        worker = GlobalScope.launch {
+            try {
+                DaemonController.startNeighbourMonitor { processUpdate(it) }
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                app.logEvent("ip_monitor_failure")
+                Timber.w(e)
             }
-        }.toPersistentMap()
-        aggregator.trySendBlocking(neighbours).onFailure { throw it!! }
+        }
+        flushAsync()
+    }
+
+    private fun DaemonProtocol.NeighbourRow.toIpNeighbour(): IpNeighbour? {
+        val state = if (!fullMode && state != IpNeighbour.State.VALID) IpNeighbour.State.DELETING else state
+        val lladdr = lladdr ?: MacAddressCompat.ALL_ZEROS_ADDRESS
+        if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != IpNeighbour.State.INCOMPLETE &&
+                state != IpNeighbour.State.DELETING) {
+            Timber.d("Missing neighbour lladdr for $ip dev $dev state $state")
+            return null
+        }
+        return IpNeighbour(ip, dev, lladdr, state)
+    }
+
+    private fun processUpdate(update: DaemonProtocol.NeighbourUpdate) {
+        if (update.replace) {
+            neighbours = mutableMapOf<IpDev, IpNeighbour>().apply {
+                for (row in update.neighbours) {
+                    val neighbour = row.toIpNeighbour() ?: continue
+                    if (neighbour.state != IpNeighbour.State.DELETING) this[IpDev(neighbour)] = neighbour
+                }
+            }.toPersistentMap()
+            aggregator.trySend(neighbours).onFailure { throw it!! }
+            return
+        }
+        val old = neighbours
+        for (row in update.neighbours) {
+            val neighbour = row.toIpNeighbour() ?: continue
+            neighbours = when (neighbour.state) {
+                IpNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
+                else -> neighbours.put(IpDev(neighbour), neighbour)
+            }
+        }
+        if (neighbours != old) aggregator.trySend(neighbours).onFailure { throw it!! }
+    }
+
+    suspend fun flush() {
+        processUpdate(DaemonProtocol.NeighbourUpdate(true, DaemonController.dumpNeighbours()))
+    }
+    fun flushAsync() = GlobalScope.launch { flush() }
+
+    fun destroy() {
+        worker.cancel()
+        GlobalScope.launch {
+            try {
+                DaemonController.stopNeighbourMonitor()
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
+        }
     }
 }

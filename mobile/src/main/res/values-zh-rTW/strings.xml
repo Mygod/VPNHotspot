@@ -139,11 +139,6 @@
     <string name="settings_service_wifi_lock_none">系統預設</string>
     <string name="settings_service_wifi_lock_high_perf_v29">關閉省電模式</string>
     <string name="settings_service_wifi_lock_low_latency">低延遲模式</string>
-    <string name="settings_service_ip_monitor">網路狀態監控模式</string>
-    <string name="settings_service_ip_monitor_monitor">Netlink 監控</string>
-    <string name="settings_service_ip_monitor_monitor_root">Netlink 監控 (root)</string>
-    <string name="settings_service_ip_monitor_poll">輪詢</string>
-    <string name="settings_service_ip_monitor_poll_root">輪詢 (root)</string>
     <string name="settings_service_upstream_monitor">目前上游介面</string>
     <string name="settings_service_upstream_monitor_summary">%1$s；後援：%2$s</string>
     <string name="settings_service_upstream">上游網路介面</string>
@@ -162,8 +157,6 @@
     <string name="settings_misc_source_summary">閱讀使用說明、替 GitHub repo 打星、提交問題並參與開發</string>
     <string name="settings_misc_donate">贊助</string>
     <string name="settings_misc_donate_summary">請我喝杯咖啡，開發更有力</string>
-    <string name="settings_restart_required">重新啟動應用程式即可套用此設定。</string>
-    <string name="settings_exit_app">離開</string>
 
     <string name="notification_tethering_title">VPN 網路共用</string>
     <string name="notification_channel_tethering">VPN 網路共用服務</string>

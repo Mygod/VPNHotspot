@@ -140,11 +140,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_wifi_lock_none">Sistema por defecto</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desactivar ahorro de energía</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baja latencia</string>
-    <string name="settings_service_ip_monitor">Modo de monitorización del estado de la red</string>
-    <string name="settings_service_ip_monitor_monitor">Monitorización Netlink</string>
-    <string name="settings_service_ip_monitor_monitor_root">Monitorización Netlink con root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll con root</string>
     <string name="settings_service_upstream_monitor">Transmisiones de subida actuales</string>
     <string name="settings_service_upstream_monitor_summary">%1$s; retorno: %2$s</string>
     <string name="settings_service_upstream">Interfaz de red de transmisión de subida</string>
@@ -163,8 +158,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_misc_source_summary">Leer el manual, dar estrella, enviar problemas y contribuir</string>
     <string name="settings_misc_donate">Donar</string>
     <string name="settings_misc_donate_summary">Me gusta el dinero</string>
-    <string name="settings_restart_required">Reinicia esta app para aplicar esta configuración.</string>
-    <string name="settings_exit_app">Salir</string>
 
     <string name="notification_tethering_title">Conexión compartida VPN</string>
     <string name="notification_channel_tethering">Servicio de conexión compartida VPN</string>

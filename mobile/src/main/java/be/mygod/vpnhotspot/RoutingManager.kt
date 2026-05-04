@@ -1,18 +1,17 @@
 package be.mygod.vpnhotspot
 
 import android.os.Build
+import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Ipv6Mode
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.util.RootSession
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
-import androidx.core.content.edit
 
 abstract class RoutingManager(private val caller: Any, val downstream: String, private val forceWifi: Boolean = false) {
     companion object {
@@ -104,7 +103,6 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     private suspend fun initRoutingLocked(fromMonitor: Boolean = false) = try {
         routing = Routing(caller, downstream).apply {
-            transaction = RootSession.beginTransaction()
             try {
                 configure()
                 commit()

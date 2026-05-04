@@ -1,21 +1,19 @@
 package be.mygod.vpnhotspot
 
 import android.content.Context
+import android.net.InetAddresses
 import android.text.SpannableStringBuilder
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.makeIpSpan
-import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import java.io.IOException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -68,25 +66,24 @@ class StaticIpSetter : BootReceiver.Startable {
 
         fun enable(enabled: Boolean) = GlobalScope.launch {
             val success = try {
-                RootSession.use {
-                    try {
-                        if (enabled) {
-                            ips.lineSequence().forEach { ip -> it.exec("${Routing.IP} addr replace $ip dev lo") }
-                            true
-                        } else {
-                            val addresses = iface?.interfaceAddresses
-                            if (addresses != null) for (address in addresses) if (!address.address.isLoopbackAddress) {
-                                it.exec("${Routing.IP} addr del ${address.address.hostAddress}/${
-                                    address.networkPrefixLength} dev lo")
-                            }
-                            false
-                        }
-                    } catch (e: RoutingCommands.UnexpectedOutputException) {
-                        if (Routing.shouldSuppressIpError(e, enabled)) return@use null
-                        Timber.w(IOException("Failed to modify link", e))
-                        SmartSnackbar.make(e).show()
-                        null
+                if (enabled) {
+                    for (line in ips.lineSequence()) {
+                        val value = line.trim()
+                        if (value.isBlank()) continue
+                        val address = parseAddress(value)
+                        DaemonController.replaceStaticAddress(address.first, address.second, "lo")
                     }
+                    true
+                } else {
+                    val addresses = iface?.interfaceAddresses
+                    if (addresses != null) for (address in addresses) if (!address.address.isLoopbackAddress) {
+                        DaemonController.deleteStaticAddress(
+                            address.address,
+                            address.networkPrefixLength.toInt(),
+                            "lo",
+                        )
+                    }
+                    false
                 }
             } catch (_: CancellationException) {
                 null
@@ -101,6 +98,11 @@ class StaticIpSetter : BootReceiver.Startable {
                 null -> { }
             }
             ifaceEvent()
+        }
+
+        private fun parseAddress(value: String) = value.split('/', limit = 2).let {
+            val address = InetAddresses.parseNumericAddress(it[0])
+            address to if (it.size == 1) address.address.size * 8 else it[1].toInt()
         }
     }
 

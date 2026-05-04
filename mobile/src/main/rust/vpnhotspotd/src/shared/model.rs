@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Route {
     pub prefix: u128,
     pub prefix_len: u8,
@@ -8,18 +8,58 @@ pub struct Route {
 
 pub type Network = u64;
 
-#[derive(Clone)]
+pub const DAEMON_REPLY_MARK: u32 = 0x0003_0063;
+pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
+pub const DAEMON_INTERCEPT_FWMARK_VALUE: u32 = 0x1000_0000;
+pub const DAEMON_INTERCEPT_FWMARK_MASK: u32 = 0x1000_0000;
+pub const DAEMON_TABLE: u32 = 900;
+pub const LOCAL_NETWORK_TABLE: u32 = 99;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionConfig {
     pub downstream: String,
     pub dns_bind_address: Ipv4Addr,
+    pub downstream_prefix_len: u8,
     pub reply_mark: u32,
+    pub ip_forward: bool,
+    pub forward: bool,
+    pub masquerade: MasqueradeMode,
+    pub ipv6_block: bool,
     pub primary_network: Option<Network>,
     pub primary_routes: Vec<Route>,
     pub fallback_network: Option<Network>,
+    pub upstreams: Vec<UpstreamConfig>,
+    pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MasqueradeMode {
+    None,
+    Simple,
+    Netd,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UpstreamRole {
+    Primary,
+    Fallback,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct UpstreamConfig {
+    pub ifname: String,
+    pub ifindex: u32,
+    pub role: UpstreamRole,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ClientConfig {
+    pub mac: [u8; 6],
+    pub ipv4: Vec<Ipv4Addr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ipv6NatConfig {
     pub gateway: Ipv6Addr,
     pub prefix_len: u8,
@@ -119,10 +159,17 @@ mod tests {
         SessionConfig {
             downstream: "wlan0".to_string(),
             dns_bind_address: Ipv4Addr::new(192, 0, 2, 1),
+            downstream_prefix_len: 24,
             reply_mark: 0,
+            ip_forward: false,
+            forward: false,
+            masquerade: MasqueradeMode::None,
+            ipv6_block: false,
             primary_network,
             primary_routes,
             fallback_network,
+            upstreams: Vec::new(),
+            clients: Vec::new(),
             ipv6_nat: None,
         }
     }
