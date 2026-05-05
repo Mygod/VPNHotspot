@@ -87,12 +87,7 @@ object DaemonController {
             }
             throw e
         } catch (e: Exception) {
-            lock.withLock {
-                closeConnectionLocked()
-                activeSessions.clear()
-                neighbourMonitorActive = false
-                neighbourListener = null
-            }
+            lock.withLock { closeAndClearStateLocked() }
             throw e
         }
     }
@@ -103,12 +98,7 @@ object DaemonController {
         } catch (e: DaemonProtocol.StatusException) {
             throw e
         } catch (e: Exception) {
-            lock.withLock {
-                closeConnectionLocked()
-                activeSessions.clear()
-                neighbourMonitorActive = false
-                neighbourListener = null
-            }
+            lock.withLock { closeAndClearStateLocked() }
             throw e
         }
     }
@@ -121,12 +111,7 @@ object DaemonController {
         try {
             DaemonProtocol.readAck(request(DaemonProtocol.removeSession(downstream, removeMode)))
         } catch (e: Exception) {
-            lock.withLock {
-                closeConnectionLocked()
-                activeSessions.clear()
-                neighbourMonitorActive = false
-                neighbourListener = null
-            }
+            lock.withLock { closeAndClearStateLocked() }
             if (e is CancellationException) throw e
             Timber.w(e)
         }
@@ -141,12 +126,7 @@ object DaemonController {
     } catch (e: DaemonProtocol.StatusException) {
         throw e
     } catch (e: Exception) {
-        lock.withLock {
-            closeConnectionLocked()
-            activeSessions.clear()
-            neighbourMonitorActive = false
-            neighbourListener = null
-        }
+        lock.withLock { closeAndClearStateLocked() }
         throw e
     }
 
@@ -162,10 +142,10 @@ object DaemonController {
                 neighbourMonitorActive = false
                 if (neighbourListener === listener) neighbourListener = null
                 if (e !is DaemonProtocol.StatusException) {
-                    closeConnectionLocked()
-                    activeSessions.clear()
+                    closeAndClearStateLocked()
+                } else {
+                    maybeShutdownLocked()
                 }
-                maybeShutdownLocked()
             }
             throw e
         }
@@ -355,11 +335,7 @@ object DaemonController {
             } catch (e: Exception) {
                 lock.withLock {
                     if (!daemonStdioClosing) Timber.w(e)
-                    completePendingRepliesLocked(e)
-                    activeSessions.clear()
-                    neighbourMonitorActive = false
-                    neighbourListener = null
-                    closeConnectionLocked(cancelReader = false)
+                    closeAndClearStateLocked(cancelReader = false, cause = e)
                 }
             }
         }
@@ -381,6 +357,17 @@ object DaemonController {
         } finally {
             closeConnectionLocked()
         }
+    }
+
+    private suspend fun closeAndClearStateLocked(
+        cancelReader: Boolean = true,
+        cause: Throwable? = null,
+    ) {
+        if (cause != null) completePendingRepliesLocked(cause)
+        closeConnectionLocked(cancelReader)
+        activeSessions.clear()
+        neighbourMonitorActive = false
+        neighbourListener = null
     }
 
     private suspend fun writePacketLocked(packet: ByteArray) {

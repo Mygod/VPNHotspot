@@ -79,22 +79,21 @@ class IpNeighbourMonitor private constructor() {
         flushAsync()
     }
 
-    private fun DaemonProtocol.NeighbourRow.toIpNeighbour(): IpNeighbour? {
+    private fun IpNeighbour.toMonitorMode(): IpNeighbour? {
         val state = if (!fullMode && state != IpNeighbour.State.VALID) IpNeighbour.State.DELETING else state
-        val lladdr = lladdr ?: MacAddressCompat.ALL_ZEROS_ADDRESS
         if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != IpNeighbour.State.INCOMPLETE &&
                 state != IpNeighbour.State.DELETING) {
             Timber.d("Missing neighbour lladdr for $ip dev $dev state $state")
             return null
         }
-        return IpNeighbour(ip, dev, lladdr, state)
+        return if (state == this.state) this else copy(state = state)
     }
 
     private fun processUpdate(update: DaemonProtocol.NeighbourUpdate) {
         if (update.replace) {
             neighbours = mutableMapOf<IpDev, IpNeighbour>().apply {
-                for (row in update.neighbours) {
-                    val neighbour = row.toIpNeighbour() ?: continue
+                for (candidate in update.neighbours) {
+                    val neighbour = candidate.toMonitorMode() ?: continue
                     if (neighbour.state != IpNeighbour.State.DELETING) this[IpDev(neighbour)] = neighbour
                 }
             }.toPersistentMap()
@@ -102,8 +101,8 @@ class IpNeighbourMonitor private constructor() {
             return
         }
         val old = neighbours
-        for (row in update.neighbours) {
-            val neighbour = row.toIpNeighbour() ?: continue
+        for (candidate in update.neighbours) {
+            val neighbour = candidate.toMonitorMode() ?: continue
             neighbours = when (neighbour.state) {
                 IpNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
                 else -> neighbours.put(IpDev(neighbour), neighbour)

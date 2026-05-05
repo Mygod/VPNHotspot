@@ -4,6 +4,7 @@ import android.net.IpPrefix
 import android.net.MacAddress
 import android.net.Network
 import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.MacAddressCompat
 import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.Source
@@ -90,16 +91,9 @@ object DaemonProtocol {
         val udp: Int,
     )
 
-    data class NeighbourRow(
-        val ip: InetAddress,
-        val dev: String,
-        val lladdr: MacAddress?,
-        val state: IpNeighbour.State,
-    )
-
     data class NeighbourUpdate(
         val replace: Boolean,
-        val neighbours: List<NeighbourRow>,
+        val neighbours: List<IpNeighbour>,
     )
 
     sealed class Frame {
@@ -170,7 +164,7 @@ object DaemonProtocol {
         return List(input.readCount("traffic counter line")) { input.readUtf() }
     }
 
-    fun readNeighbours(packet: ByteArray): List<NeighbourRow> {
+    fun readNeighbours(packet: ByteArray): List<IpNeighbour> {
         val input = Buffer().apply { write(packet) }
         readStatus(input)
         return readNeighbours(input)
@@ -256,7 +250,7 @@ object DaemonProtocol {
     private fun readNeighbourUpdate(input: Source) =
             NeighbourUpdate(input.readByte() != 0.toByte(), readNeighbours(input))
 
-    private fun readNeighbours(input: Source): List<NeighbourRow> {
+    private fun readNeighbours(input: Source): List<IpNeighbour> {
         val states = IpNeighbour.State.values()
         return List(input.readCount("neighbour")) {
             val state = input.readByte().toInt() and 0xFF
@@ -264,9 +258,9 @@ object DaemonProtocol {
             val ip = InetAddress.getByAddress(input.readByteArray(input.readCount("address byte")))
             val dev = input.readUtf()
             val lladdr = input.readByteArray(input.readCount("link-layer address byte")).let {
-                if (it.size == 6) MacAddress.fromBytes(it) else null
+                if (it.size == 6) MacAddress.fromBytes(it) else MacAddressCompat.ALL_ZEROS_ADDRESS
             }
-            NeighbourRow(ip, dev, lladdr, states[state])
+            IpNeighbour(ip, dev, lladdr, states[state])
         }
     }
 
