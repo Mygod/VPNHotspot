@@ -130,35 +130,59 @@ object DaemonController {
     }
 
     suspend fun startNeighbourMonitor(listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit) {
-        lock.withLock {
-            neighbourMonitorActive = true
-            neighbourListener = listener
+        val reply = try {
+            lock.withLock {
+                neighbourMonitorActive = true
+                neighbourListener = listener
+                requestLocked(DaemonProtocol.startNeighbourMonitor())
+            }
+        } catch (e: Exception) {
+            handleStartNeighbourMonitorFailure(listener, e)
+            throw e
         }
         try {
-            DaemonProtocol.readAck(request(DaemonProtocol.startNeighbourMonitor()))
+            DaemonProtocol.readAck(reply.await())
         } catch (e: Exception) {
-            lock.withLock {
-                neighbourMonitorActive = false
-                if (neighbourListener === listener) neighbourListener = null
-                if (e !is DaemonProtocol.StatusException) {
-                    closeAndClearStateLocked()
-                } else {
-                    maybeShutdownLocked()
-                }
-            }
+            handleStartNeighbourMonitorFailure(listener, e)
             throw e
         }
     }
 
-    suspend fun stopNeighbourMonitor() {
-        val shouldSend = lock.withLock {
-            if (!neighbourMonitorActive) return
+    private suspend fun handleStartNeighbourMonitorFailure(
+        listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit,
+        e: Exception,
+    ) = lock.withLock {
+        if (e !is DaemonProtocol.StatusException && e !is CancellationException) {
+            closeAndClearStateLocked()
+        } else if (neighbourListener === listener) {
             neighbourMonitorActive = false
             neighbourListener = null
-            output != null
+            maybeShutdownLocked()
         }
-        if (shouldSend) try {
-            DaemonProtocol.readAck(request(DaemonProtocol.stopNeighbourMonitor()))
+    }
+
+    suspend fun stopNeighbourMonitor(listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit) {
+        val reply = try {
+            lock.withLock {
+                if (!neighbourMonitorActive || neighbourListener !== listener) return
+                if (output == null) {
+                    neighbourMonitorActive = false
+                    neighbourListener = null
+                    null
+                } else {
+                    neighbourMonitorActive = false
+                    neighbourListener = null
+                    requestLocked(DaemonProtocol.stopNeighbourMonitor())
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+            null
+        }
+        if (reply != null) try {
+            DaemonProtocol.readAck(reply.await())
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -283,19 +307,22 @@ object DaemonController {
     }
 
     private suspend fun request(packet: ByteArray): ByteArray {
-        val reply = CompletableDeferred<ByteArray>()
-        lock.withLock {
-            try {
-                ensureDaemonLocked()
-                pendingReplies.addLast(reply)
-                writePacketLocked(packet)
-            } catch (e: Exception) {
-                pendingReplies.remove(reply)
-                closeConnectionLocked()
-                throw e
-            }
-        }
+        val reply = lock.withLock { requestLocked(packet) }
         return reply.await()
+    }
+
+    private suspend fun requestLocked(packet: ByteArray): CompletableDeferred<ByteArray> {
+        val reply = CompletableDeferred<ByteArray>()
+        try {
+            ensureDaemonLocked()
+            pendingReplies.addLast(reply)
+            writePacketLocked(packet)
+        } catch (e: Exception) {
+            pendingReplies.remove(reply)
+            closeConnectionLocked()
+            throw e
+        }
+        return reply
     }
 
     private fun startReaderLocked(input: ByteReadChannel) {

@@ -64,12 +64,13 @@ class IpNeighbourMonitor private constructor() {
         }
     }
     private var neighbours = persistentMapOf<IpDev, IpNeighbour>()
+    private val listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit = { processUpdate(it) }
     private val worker: Job
 
     init {
         worker = GlobalScope.launch {
             try {
-                DaemonController.startNeighbourMonitor { processUpdate(it) }
+                DaemonController.startNeighbourMonitor(listener)
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 app.logEvent("ip_monitor_failure")
@@ -117,10 +118,10 @@ class IpNeighbourMonitor private constructor() {
     fun flushAsync() = GlobalScope.launch { flush() }
 
     fun destroy() {
-        worker.cancel()
         GlobalScope.launch {
             try {
-                DaemonController.stopNeighbourMonitor()
+                worker.join()
+                DaemonController.stopNeighbourMonitor(listener)
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Timber.w(e)
