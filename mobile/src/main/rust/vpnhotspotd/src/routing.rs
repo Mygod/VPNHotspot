@@ -18,8 +18,8 @@ use tokio::process::Command;
 
 use crate::netlink;
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, MasqueradeMode, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, Ipv6NatPorts, MasqueradeMode,
+    SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
     DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
     LOCAL_NETWORK_TABLE,
 };
@@ -37,6 +37,53 @@ const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
 const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;
+
+struct IptablesRule {
+    binary: &'static str,
+    table: &'static str,
+    chain: &'static str,
+    args: Vec<String>,
+}
+
+impl IptablesRule {
+    fn new(
+        binary: &'static str,
+        table: &'static str,
+        chain: &'static str,
+        args: Vec<String>,
+    ) -> Self {
+        Self {
+            binary,
+            table,
+            chain,
+            args,
+        }
+    }
+
+    async fn insert(&self) -> io::Result<()> {
+        let mut command_args = vec![
+            "-w".to_string(),
+            "-t".to_string(),
+            self.table.to_string(),
+            "-I".to_string(),
+            self.chain.to_string(),
+        ];
+        command_args.extend(self.args.iter().cloned());
+        run_command(self.binary, &command_args).await
+    }
+
+    async fn delete(&self) {
+        let mut command_args = vec![
+            "-w".to_string(),
+            "-t".to_string(),
+            self.table.to_string(),
+            "-D".to_string(),
+            self.chain.to_string(),
+        ];
+        command_args.extend(self.args.iter().cloned());
+        let _ = run_command_status_owned(self.binary, &command_args).await;
+    }
+}
 
 pub(crate) struct Runtime {
     ports: SessionPorts,
@@ -312,89 +359,38 @@ impl Runtime {
     }
 
     async fn add_dns(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_insert(
-            IPTABLES,
-            "nat",
-            "PREROUTING",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "tcp".into(),
-                "-d".into(),
-                config.dns_bind_address.to_string(),
-                "--dport".into(),
-                "53".into(),
-                "-j".into(),
-                "DNAT".into(),
-                "--to-destination".into(),
-                format!(":{}", self.ports.dns_tcp),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "nat",
-            "PREROUTING",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "udp".into(),
-                "-d".into(),
-                config.dns_bind_address.to_string(),
-                "--dport".into(),
-                "53".into(),
-                "-j".into(),
-                "DNAT".into(),
-                "--to-destination".into(),
-                format!(":{}", self.ports.dns_udp),
-            ],
-        )
-        .await
+        self.iptables_insert_rules(self.dns_rules(config)).await
     }
 
     async fn remove_dns(&self, config: &SessionConfig) {
-        self.iptables_delete(
-            IPTABLES,
-            "nat",
-            "PREROUTING",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "tcp".into(),
-                "-d".into(),
-                config.dns_bind_address.to_string(),
-                "--dport".into(),
-                "53".into(),
-                "-j".into(),
-                "DNAT".into(),
-                "--to-destination".into(),
-                format!(":{}", self.ports.dns_tcp),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "nat",
-            "PREROUTING",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "udp".into(),
-                "-d".into(),
-                config.dns_bind_address.to_string(),
-                "--dport".into(),
-                "53".into(),
-                "-j".into(),
-                "DNAT".into(),
-                "--to-destination".into(),
-                format!(":{}", self.ports.dns_udp),
-            ],
-        )
-        .await;
+        self.iptables_delete_rules(self.dns_rules(config)).await;
+    }
+
+    fn dns_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
+        [("tcp", self.ports.dns_tcp), ("udp", self.ports.dns_udp)]
+            .into_iter()
+            .map(|(protocol, port)| {
+                IptablesRule::new(
+                    IPTABLES,
+                    "nat",
+                    "PREROUTING",
+                    vec![
+                        "-i".into(),
+                        config.downstream.clone(),
+                        "-p".into(),
+                        protocol.into(),
+                        "-d".into(),
+                        config.dns_bind_address.to_string(),
+                        "--dport".into(),
+                        "53".into(),
+                        "-j".into(),
+                        "DNAT".into(),
+                        "--to-destination".into(),
+                        format!(":{port}"),
+                    ],
+                )
+            })
+            .collect()
     }
 
     async fn add_ip_forward(&self, config: &SessionConfig) -> io::Result<()> {
@@ -463,139 +459,87 @@ impl Runtime {
             .await;
         self.iptables_new_chain(IPTABLES, "filter", "vpnhotspot_stats")
             .await;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "FORWARD",
-            &["-j".into(), "vpnhotspot_acl".into()],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "!".into(),
-                "-o".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "state".into(),
-                "--state".into(),
-                "ESTABLISHED,RELATED".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "state".into(),
-                "--state".into(),
-                "ESTABLISHED,RELATED".into(),
-                "-j".into(),
-                "vpnhotspot_stats".into(),
-            ],
-        )
-        .await
+        self.iptables_insert_rules(self.forward_rules(config)).await
     }
 
     async fn remove_forward(&self, config: &SessionConfig) {
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "FORWARD",
-            &["-j".into(), "vpnhotspot_acl".into()],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "!".into(),
-                "-o".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "state".into(),
-                "--state".into(),
-                "ESTABLISHED,RELATED".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "state".into(),
-                "--state".into(),
-                "ESTABLISHED,RELATED".into(),
-                "-j".into(),
-                "vpnhotspot_stats".into(),
-            ],
-        )
-        .await;
+        self.iptables_delete_rules(self.forward_rules(config)).await;
+    }
+
+    fn forward_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
+        vec![
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "FORWARD",
+                vec!["-j".into(), "vpnhotspot_acl".into()],
+            ),
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_acl",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "!".into(),
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-j".into(),
+                    "REJECT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_acl",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-m".into(),
+                    "state".into(),
+                    "--state".into(),
+                    "ESTABLISHED,RELATED".into(),
+                    "-j".into(),
+                    "ACCEPT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_acl",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-m".into(),
+                    "state".into(),
+                    "--state".into(),
+                    "ESTABLISHED,RELATED".into(),
+                    "-j".into(),
+                    "vpnhotspot_stats".into(),
+                ],
+            ),
+        ]
     }
 
     async fn add_masquerade_chain(&self, _config: &SessionConfig) -> io::Result<()> {
         self.iptables_new_chain(IPTABLES, "nat", "vpnhotspot_masquerade")
             .await;
-        self.iptables_insert(
-            IPTABLES,
-            "nat",
-            "POSTROUTING",
-            &["-j".into(), "vpnhotspot_masquerade".into()],
-        )
-        .await
+        self.iptables_insert_rules([Self::masquerade_chain_rule()])
+            .await
     }
 
     async fn remove_masquerade_chain(&self, _config: &SessionConfig) {
-        self.iptables_delete(
+        self.iptables_delete_rules([Self::masquerade_chain_rule()])
+            .await;
+    }
+
+    fn masquerade_chain_rule() -> IptablesRule {
+        IptablesRule::new(
             IPTABLES,
             "nat",
             "POSTROUTING",
-            &["-j".into(), "vpnhotspot_masquerade".into()],
+            vec!["-j".into(), "vpnhotspot_masquerade".into()],
         )
-        .await;
     }
 
     async fn add_upstream(
@@ -650,20 +594,8 @@ impl Runtime {
         match config.masquerade {
             MasqueradeMode::None => Ok(()),
             MasqueradeMode::Simple => {
-                self.iptables_insert(
-                    IPTABLES,
-                    "nat",
-                    "vpnhotspot_masquerade",
-                    &[
-                        "-s".into(),
-                        host_subnet(config),
-                        "-o".into(),
-                        upstream.ifname.clone(),
-                        "-j".into(),
-                        "MASQUERADE".into(),
-                    ],
-                )
-                .await
+                self.iptables_insert_rules([Self::upstream_masquerade_rule(config, upstream)])
+                    .await
             }
             MasqueradeMode::Netd => {
                 run_ndc(
@@ -679,24 +611,28 @@ impl Runtime {
         match config.masquerade {
             MasqueradeMode::None => {}
             MasqueradeMode::Simple => {
-                self.iptables_delete(
-                    IPTABLES,
-                    "nat",
-                    "vpnhotspot_masquerade",
-                    &[
-                        "-s".into(),
-                        host_subnet(config),
-                        "-o".into(),
-                        upstream.ifname.clone(),
-                        "-j".into(),
-                        "MASQUERADE".into(),
-                    ],
-                )
-                .await;
+                self.iptables_delete_rules([Self::upstream_masquerade_rule(config, upstream)])
+                    .await;
             }
             // netd NAT is shared by interface pair, not owned by this session.
             MasqueradeMode::Netd => {}
         }
+    }
+
+    fn upstream_masquerade_rule(config: &SessionConfig, upstream: &UpstreamConfig) -> IptablesRule {
+        IptablesRule::new(
+            IPTABLES,
+            "nat",
+            "vpnhotspot_masquerade",
+            vec![
+                "-s".into(),
+                host_subnet(config),
+                "-o".into(),
+                upstream.ifname.clone(),
+                "-j".into(),
+                "MASQUERADE".into(),
+            ],
+        )
     }
 
     async fn add_client(&self, config: &SessionConfig, client: &ClientConfig) -> io::Result<()> {
@@ -738,75 +674,51 @@ impl Runtime {
         config: &SessionConfig,
         client: &ClientConfig,
     ) -> io::Result<()> {
-        let mac = mac_string(&client.mac);
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "mac".into(),
-                "--mac-source".into(),
-                mac.clone(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "mac".into(),
-                "--mac-source".into(),
-                mac,
-                "-j".into(),
-                "vpnhotspot_stats".into(),
-            ],
-        )
-        .await
+        self.iptables_insert_rules(Self::client_mac_v4_rules(config, client))
+            .await
     }
 
     async fn remove_client_mac_v4(&self, config: &SessionConfig, client: &ClientConfig) {
+        let rules = Self::client_mac_v4_rules(config, client);
+        for rule in rules.iter().rev() {
+            rule.delete().await;
+        }
+    }
+
+    fn client_mac_v4_rules(config: &SessionConfig, client: &ClientConfig) -> Vec<IptablesRule> {
         let mac = mac_string(&client.mac);
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "mac".into(),
-                "--mac-source".into(),
-                mac.clone(),
-                "-j".into(),
-                "vpnhotspot_stats".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_acl",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "mac".into(),
-                "--mac-source".into(),
-                mac,
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await;
+        vec![
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_acl",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-m".into(),
+                    "mac".into(),
+                    "--mac-source".into(),
+                    mac.clone(),
+                    "-j".into(),
+                    "ACCEPT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_acl",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-m".into(),
+                    "mac".into(),
+                    "--mac-source".into(),
+                    mac,
+                    "-j".into(),
+                    "vpnhotspot_stats".into(),
+                ],
+            ),
+        ]
     }
 
     async fn add_client_ip_stats(
@@ -814,90 +726,63 @@ impl Runtime {
         config: &SessionConfig,
         address: Ipv4Addr,
     ) -> io::Result<()> {
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_stats",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-s".into(),
-                address.to_string(),
-                "-j".into(),
-                "RETURN".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_stats",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-d".into(),
-                address.to_string(),
-                "-j".into(),
-                "RETURN".into(),
-            ],
-        )
-        .await
+        self.iptables_insert_rules(Self::client_ip_stats_rules(config, address))
+            .await
     }
 
     async fn remove_client_ip_stats(&self, config: &SessionConfig, address: Ipv4Addr) {
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_stats",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-s".into(),
-                address.to_string(),
-                "-j".into(),
-                "RETURN".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IPTABLES,
-            "filter",
-            "vpnhotspot_stats",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-d".into(),
-                address.to_string(),
-                "-j".into(),
-                "RETURN".into(),
-            ],
-        )
-        .await;
+        self.iptables_delete_rules(Self::client_ip_stats_rules(config, address))
+            .await;
+    }
+
+    fn client_ip_stats_rules(config: &SessionConfig, address: Ipv4Addr) -> Vec<IptablesRule> {
+        let address = address.to_string();
+        vec![
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_stats",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-s".into(),
+                    address.clone(),
+                    "-j".into(),
+                    "RETURN".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IPTABLES,
+                "filter",
+                "vpnhotspot_stats",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-d".into(),
+                    address,
+                    "-j".into(),
+                    "RETURN".into(),
+                ],
+            ),
+        ]
     }
 
     async fn add_client_mac_v6(&self, client: &ClientConfig) -> io::Result<()> {
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_acl",
-            &[
-                "-m".into(),
-                "mac".into(),
-                "--mac-source".into(),
-                mac_string(&client.mac),
-                "-j".into(),
-                "RETURN".into(),
-            ],
-        )
-        .await
+        self.iptables_insert_rules([Self::client_mac_v6_rule(client)])
+            .await
     }
 
     async fn remove_client_mac_v6(&self, client: &ClientConfig) {
-        self.iptables_delete(
+        self.iptables_delete_rules([Self::client_mac_v6_rule(client)])
+            .await;
+    }
+
+    fn client_mac_v6_rule(client: &ClientConfig) -> IptablesRule {
+        IptablesRule::new(
             IP6TABLES,
             "mangle",
             "vpnhotspot_acl",
-            &[
+            vec![
                 "-m".into(),
                 "mac".into(),
                 "--mac-source".into(),
@@ -906,81 +791,53 @@ impl Runtime {
                 "RETURN".into(),
             ],
         )
-        .await;
     }
 
     async fn add_ipv6_block(&self, config: &SessionConfig) -> io::Result<()> {
         self.iptables_new_chain(IP6TABLES, "filter", "vpnhotspot_filter")
             .await;
-        for chain in ["INPUT", "FORWARD", "OUTPUT"] {
-            self.iptables_insert(
-                IP6TABLES,
-                "filter",
-                chain,
-                &["-j".into(), "vpnhotspot_filter".into()],
-            )
-            .await?;
-        }
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_filter",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_filter",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await
+        self.iptables_insert_rules(Self::ipv6_block_rules(config))
+            .await
     }
 
     async fn remove_ipv6_block(&self, config: &SessionConfig) {
+        self.iptables_delete_rules(Self::ipv6_block_rules(config))
+            .await;
+    }
+
+    fn ipv6_block_rules(config: &SessionConfig) -> Vec<IptablesRule> {
+        let mut rules = Vec::new();
         for chain in ["INPUT", "FORWARD", "OUTPUT"] {
-            self.iptables_delete(
+            rules.push(IptablesRule::new(
                 IP6TABLES,
                 "filter",
                 chain,
-                &["-j".into(), "vpnhotspot_filter".into()],
-            )
-            .await;
+                vec!["-j".into(), "vpnhotspot_filter".into()],
+            ));
         }
-        self.iptables_delete(
+        rules.push(IptablesRule::new(
             IP6TABLES,
             "filter",
             "vpnhotspot_filter",
-            &[
+            vec![
                 "-i".into(),
                 config.downstream.clone(),
                 "-j".into(),
                 "REJECT".into(),
             ],
-        )
-        .await;
-        self.iptables_delete(
+        ));
+        rules.push(IptablesRule::new(
             IP6TABLES,
             "filter",
             "vpnhotspot_filter",
-            &[
+            vec![
                 "-o".into(),
                 config.downstream.clone(),
                 "-j".into(),
                 "REJECT".into(),
             ],
-        )
-        .await;
+        ));
+        rules
     }
 
     async fn add_ipv6_nat(
@@ -1050,355 +907,35 @@ impl Runtime {
             .await;
         self.iptables_new_chain(IP6TABLES, "mangle", "vpnhotspot_v6_tproxy")
             .await;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "socket".into(),
-                "--transparent".into(),
-                "--nowildcard".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_forward",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_forward",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_output",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "--icmpv6-type".into(),
-                "134".into(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_output",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "--icmpv6-type".into(),
-                "134".into(),
-                "-m".into(),
-                "mark".into(),
-                "--mark".into(),
-                format!("{DAEMON_REPLY_MARK}/{DAEMON_REPLY_MARK_MASK}"),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_acl",
-            &["-j".into(), "DROP".into()],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_v6_tproxy",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "tcp".into(),
-                "-j".into(),
-                "TPROXY".into(),
-                "--on-port".into(),
-                ports.tcp.to_string(),
-                "--tproxy-mark".into(),
-                "0x10000000/0x10000000".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_v6_tproxy",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "udp".into(),
-                "-j".into(),
-                "TPROXY".into(),
-                "--on-port".into(),
-                ports.udp.to_string(),
-                "--tproxy-mark".into(),
-                "0x10000000/0x10000000".into(),
-            ],
-        )
-        .await?;
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_v6_tproxy",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "vpnhotspot_acl".into(),
-            ],
-        )
-        .await?;
-        for (chain, target) in [
-            ("INPUT", "vpnhotspot_v6_input"),
-            ("FORWARD", "vpnhotspot_v6_forward"),
-            ("OUTPUT", "vpnhotspot_v6_output"),
-        ] {
-            self.iptables_insert(IP6TABLES, "filter", chain, &["-j".into(), target.into()])
-                .await?;
-        }
-        self.iptables_insert(
-            IP6TABLES,
-            "mangle",
-            "PREROUTING",
-            &["-j".into(), "vpnhotspot_v6_tproxy".into()],
-        )
-        .await
+        self.iptables_insert_rules(Self::ipv6_nat_filter_rules(config))
+            .await?;
+        self.iptables_insert_rules([Self::ipv6_nat_acl_drop_rule()])
+            .await?;
+        self.iptables_insert_rules(Self::ipv6_nat_tproxy_port_rules(config, ports))
+            .await?;
+        self.iptables_insert_rules([Self::ipv6_nat_tproxy_acl_rule(config)])
+            .await?;
+        self.iptables_insert_rules(Self::ipv6_nat_filter_jump_rules())
+            .await?;
+        self.iptables_insert_rules([Self::ipv6_nat_prerouting_rule()])
+            .await
     }
 
     async fn remove_ipv6_nat(&self, config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) {
         if let Some(ports) = self.ports.ipv6_nat {
-            self.iptables_delete(
-                IP6TABLES,
-                "mangle",
-                "vpnhotspot_v6_tproxy",
-                &[
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-p".into(),
-                    "tcp".into(),
-                    "-j".into(),
-                    "TPROXY".into(),
-                    "--on-port".into(),
-                    ports.tcp.to_string(),
-                    "--tproxy-mark".into(),
-                    "0x10000000/0x10000000".into(),
-                ],
-            )
-            .await;
-            self.iptables_delete(
-                IP6TABLES,
-                "mangle",
-                "vpnhotspot_v6_tproxy",
-                &[
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-p".into(),
-                    "udp".into(),
-                    "-j".into(),
-                    "TPROXY".into(),
-                    "--on-port".into(),
-                    ports.udp.to_string(),
-                    "--tproxy-mark".into(),
-                    "0x10000000/0x10000000".into(),
-                ],
-            )
-            .await;
-        }
-        self.iptables_delete(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_v6_tproxy",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "vpnhotspot_acl".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "mangle",
-            "vpnhotspot_acl",
-            &["-j".into(), "DROP".into()],
-        )
-        .await;
-        for (chain, target) in [
-            ("INPUT", "vpnhotspot_v6_input"),
-            ("FORWARD", "vpnhotspot_v6_forward"),
-            ("OUTPUT", "vpnhotspot_v6_output"),
-        ] {
-            self.iptables_delete(IP6TABLES, "filter", chain, &["-j".into(), target.into()])
+            self.iptables_delete_rules(Self::ipv6_nat_tproxy_port_rules(config, ports))
                 .await;
         }
-        self.iptables_delete(
-            IP6TABLES,
-            "mangle",
-            "PREROUTING",
-            &["-j".into(), "vpnhotspot_v6_tproxy".into()],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-m".into(),
-                "socket".into(),
-                "--transparent".into(),
-                "--nowildcard".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_input",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_forward",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_forward",
-            &[
-                "-i".into(),
-                config.downstream.clone(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_output",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "--icmpv6-type".into(),
-                "134".into(),
-                "-j".into(),
-                "REJECT".into(),
-            ],
-        )
-        .await;
-        self.iptables_delete(
-            IP6TABLES,
-            "filter",
-            "vpnhotspot_v6_output",
-            &[
-                "-o".into(),
-                config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "--icmpv6-type".into(),
-                "134".into(),
-                "-m".into(),
-                "mark".into(),
-                "--mark".into(),
-                format!("{DAEMON_REPLY_MARK}/{DAEMON_REPLY_MARK_MASK}"),
-                "-j".into(),
-                "ACCEPT".into(),
-            ],
-        )
-        .await;
+        self.iptables_delete_rules([Self::ipv6_nat_tproxy_acl_rule(config)])
+            .await;
+        self.iptables_delete_rules([Self::ipv6_nat_acl_drop_rule()])
+            .await;
+        self.iptables_delete_rules(Self::ipv6_nat_filter_jump_rules())
+            .await;
+        self.iptables_delete_rules([Self::ipv6_nat_prerouting_rule()])
+            .await;
+        self.iptables_delete_rules(Self::ipv6_nat_filter_rules(config))
+            .await;
         delete_rule(
             &self.netlink,
             IpRuleCommand {
@@ -1448,38 +985,200 @@ impl Runtime {
         .await;
     }
 
+    fn ipv6_nat_filter_rules(config: &SessionConfig) -> Vec<IptablesRule> {
+        vec![
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_input",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-j".into(),
+                    "REJECT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_input",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-m".into(),
+                    "socket".into(),
+                    "--transparent".into(),
+                    "--nowildcard".into(),
+                    "-j".into(),
+                    "ACCEPT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_input",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-p".into(),
+                    "icmpv6".into(),
+                    "-j".into(),
+                    "ACCEPT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_forward",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-j".into(),
+                    "REJECT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_forward",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-j".into(),
+                    "REJECT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_output",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-p".into(),
+                    "icmpv6".into(),
+                    "--icmpv6-type".into(),
+                    "134".into(),
+                    "-j".into(),
+                    "REJECT".into(),
+                ],
+            ),
+            IptablesRule::new(
+                IP6TABLES,
+                "filter",
+                "vpnhotspot_v6_output",
+                vec![
+                    "-o".into(),
+                    config.downstream.clone(),
+                    "-p".into(),
+                    "icmpv6".into(),
+                    "--icmpv6-type".into(),
+                    "134".into(),
+                    "-m".into(),
+                    "mark".into(),
+                    "--mark".into(),
+                    format!("{DAEMON_REPLY_MARK}/{DAEMON_REPLY_MARK_MASK}"),
+                    "-j".into(),
+                    "ACCEPT".into(),
+                ],
+            ),
+        ]
+    }
+
+    fn ipv6_nat_acl_drop_rule() -> IptablesRule {
+        IptablesRule::new(
+            IP6TABLES,
+            "mangle",
+            "vpnhotspot_acl",
+            vec!["-j".into(), "DROP".into()],
+        )
+    }
+
+    fn ipv6_nat_tproxy_port_rules(
+        config: &SessionConfig,
+        ports: Ipv6NatPorts,
+    ) -> Vec<IptablesRule> {
+        [("tcp", ports.tcp), ("udp", ports.udp)]
+            .into_iter()
+            .map(|(protocol, port)| {
+                IptablesRule::new(
+                    IP6TABLES,
+                    "mangle",
+                    "vpnhotspot_v6_tproxy",
+                    vec![
+                        "-i".into(),
+                        config.downstream.clone(),
+                        "-p".into(),
+                        protocol.into(),
+                        "-j".into(),
+                        "TPROXY".into(),
+                        "--on-port".into(),
+                        port.to_string(),
+                        "--tproxy-mark".into(),
+                        "0x10000000/0x10000000".into(),
+                    ],
+                )
+            })
+            .collect()
+    }
+
+    fn ipv6_nat_tproxy_acl_rule(config: &SessionConfig) -> IptablesRule {
+        IptablesRule::new(
+            IP6TABLES,
+            "mangle",
+            "vpnhotspot_v6_tproxy",
+            vec![
+                "-i".into(),
+                config.downstream.clone(),
+                "-j".into(),
+                "vpnhotspot_acl".into(),
+            ],
+        )
+    }
+
+    fn ipv6_nat_filter_jump_rules() -> Vec<IptablesRule> {
+        [
+            ("INPUT", "vpnhotspot_v6_input"),
+            ("FORWARD", "vpnhotspot_v6_forward"),
+            ("OUTPUT", "vpnhotspot_v6_output"),
+        ]
+        .into_iter()
+        .map(|(chain, target)| {
+            IptablesRule::new(IP6TABLES, "filter", chain, vec!["-j".into(), target.into()])
+        })
+        .collect()
+    }
+
+    fn ipv6_nat_prerouting_rule() -> IptablesRule {
+        IptablesRule::new(
+            IP6TABLES,
+            "mangle",
+            "PREROUTING",
+            vec!["-j".into(), "vpnhotspot_v6_tproxy".into()],
+        )
+    }
+
     async fn iptables_new_chain(&self, binary: &str, table: &str, chain: &str) {
         let _ = run_command_status(binary, &["-w", "-t", table, "-N", chain]).await;
     }
 
-    async fn iptables_insert(
-        &self,
-        binary: &str,
-        table: &str,
-        chain: &str,
-        args: &[String],
-    ) -> io::Result<()> {
-        let mut command_args = vec![
-            "-w".to_string(),
-            "-t".to_string(),
-            table.to_string(),
-            "-I".to_string(),
-            chain.to_string(),
-        ];
-        command_args.extend(args.iter().cloned());
-        run_command(binary, &command_args).await
+    async fn iptables_insert_rules<I>(&self, rules: I) -> io::Result<()>
+    where
+        I: IntoIterator<Item = IptablesRule>,
+    {
+        for rule in rules {
+            rule.insert().await?;
+        }
+        Ok(())
     }
 
-    async fn iptables_delete(&self, binary: &str, table: &str, chain: &str, args: &[String]) {
-        let mut command_args = vec![
-            "-w".to_string(),
-            "-t".to_string(),
-            table.to_string(),
-            "-D".to_string(),
-            chain.to_string(),
-        ];
-        command_args.extend(args.iter().cloned());
-        let _ = run_command_status_owned(binary, &command_args).await;
+    async fn iptables_delete_rules<I>(&self, rules: I)
+    where
+        I: IntoIterator<Item = IptablesRule>,
+    {
+        for rule in rules {
+            rule.delete().await;
+        }
     }
 }
 

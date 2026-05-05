@@ -53,7 +53,6 @@ object DaemonController {
     private var output: ByteWriteChannel? = null
     private var readerJob: Job? = null
     private val pendingReplies = ArrayDeque<CompletableDeferred<ByteArray>>()
-    private var pendingRequests = 0
     private var neighbourMonitorActive = false
     private var neighbourListener: (suspend (DaemonProtocol.NeighbourUpdate) -> Unit)? = null
     private var daemonStdioClosing = false
@@ -286,16 +285,12 @@ object DaemonController {
     private suspend fun request(packet: ByteArray): ByteArray {
         val reply = CompletableDeferred<ByteArray>()
         lock.withLock {
-            var pending = false
             try {
                 ensureDaemonLocked()
                 pendingReplies.addLast(reply)
-                ++pendingRequests
-                pending = true
                 writePacketLocked(packet)
             } catch (e: Exception) {
                 pendingReplies.remove(reply)
-                if (pending) --pendingRequests
                 closeConnectionLocked()
                 throw e
             }
@@ -313,7 +308,6 @@ object DaemonController {
                         if (reply == null) {
                             Timber.w("Unexpected $BINARY_NAME reply")
                         } else {
-                            --pendingRequests
                             reply.complete(frame.packet)
                             maybeShutdownLocked()
                         }
@@ -343,11 +337,11 @@ object DaemonController {
 
     private fun completePendingRepliesLocked(e: Throwable) {
         while (pendingReplies.isNotEmpty()) pendingReplies.removeFirst().completeExceptionally(e)
-        pendingRequests = 0
     }
 
     private suspend fun maybeShutdownLocked() {
-        if (output == null || pendingRequests > 0 || activeSessions.isNotEmpty() || neighbourMonitorActive) return
+        if (output == null || pendingReplies.isNotEmpty() || activeSessions.isNotEmpty() ||
+                neighbourMonitorActive) return
         try {
             writePacketLocked(DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup))
         } catch (e: CancellationException) {
@@ -418,12 +412,14 @@ object DaemonController {
                         }
                         lock.withLock {
                             if (!daemonStdioClosing &&
-                                    (activeSessions.isNotEmpty() || neighbourMonitorActive || pendingRequests > 0) &&
+                                    (activeSessions.isNotEmpty() || neighbourMonitorActive ||
+                                            pendingReplies.isNotEmpty()) &&
                                     !daemonStdioEofReported) {
                                 daemonStdioEofReported = true
                                 Timber.w(DaemonStdioEofException("$BINARY_NAME $stream EOF " +
                                         "activeSessions=${activeSessions.size} " +
-                                        "neighbourMonitor=$neighbourMonitorActive pendingRequests=$pendingRequests"))
+                                        "neighbourMonitor=$neighbourMonitorActive " +
+                                        "pendingReplies=${pendingReplies.size}"))
                             }
                         }
                     } catch (e: ErrnoException) {
