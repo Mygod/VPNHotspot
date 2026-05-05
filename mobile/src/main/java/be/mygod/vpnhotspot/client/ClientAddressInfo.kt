@@ -1,9 +1,9 @@
 package be.mygod.vpnhotspot.client
 
 import android.net.LinkAddress
-import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 
-data class ClientAddressInfo(var state: IpNeighbour.State = IpNeighbour.State.UNSET,
+data class ClientAddressInfo(var state: NetlinkNeighbour.State = NetlinkNeighbour.State.UNSET,
                              val address: LinkAddress? = null, val hostname: String? = null) {
     companion object {
         private val getDeprecationTime by lazy { LinkAddress::class.java.getDeclaredMethod("getDeprecationTime") }

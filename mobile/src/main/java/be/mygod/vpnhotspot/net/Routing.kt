@@ -12,7 +12,7 @@ import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -45,7 +45,7 @@ import java.net.SocketException
 /**
  * Builds and updates a root routing session for one downstream interface.
  */
-class Routing(private val caller: Any, private val downstream: String) : IpNeighbourMonitor.Callback {
+class Routing(private val caller: Any, private val downstream: String) : NetlinkNeighbourMonitor.Callback {
     companion object {
         private val ipv6NatPrefixSeed: String
             @SuppressLint("HardwareIds")
@@ -103,7 +103,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
             val network: Network?,
             val properties: LinkProperties?,
         ) : RoutingUpdate()
-        class NeighboursSnapshot(val neighbours: Collection<IpNeighbour>) : RoutingUpdate()
+        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate()
     }
     private val updateLock = Any()
     private val neighbourUpdateKey = Any()
@@ -262,14 +262,14 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
     private val clients = linkedMapOf<Inet4Address, MacAddress>()
     private val allowedMacs = linkedSetOf<MacAddress>()
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
         enqueue(RoutingUpdate.NeighboursSnapshot(neighbours))
     }
-    private suspend fun updateNeighbours(neighbours: Collection<IpNeighbour>) {
+    private suspend fun updateNeighbours(neighbours: Collection<NetlinkNeighbour>) {
         val nextClients = linkedMapOf<Inet4Address, MacAddress>()
         val nextAllowedMacs = linkedSetOf<MacAddress>()
         for (neighbour in neighbours) {
-            if (neighbour.dev != downstream || neighbour.state != IpNeighbour.State.VALID ||
+            if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
                     AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr).blocked) continue
             nextAllowedMacs.add(neighbour.lladdr)
             val ip = neighbour.ip
@@ -333,7 +333,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
             } else null
         }
-        IpNeighbourMonitor.unregisterCallback(this)
+        NetlinkNeighbourMonitor.unregisterCallback(this)
         FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
         UpstreamMonitor.unregisterCallback(upstream)
         if (done != null) {
@@ -401,7 +401,7 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         }
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
-        IpNeighbourMonitor.registerCallback(this, true)
+        NetlinkNeighbourMonitor.registerCallback(this, true)
     }
     suspend fun revert() = withContext(NonCancellable) {
         stop()

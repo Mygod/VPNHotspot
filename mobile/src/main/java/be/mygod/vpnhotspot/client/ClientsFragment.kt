@@ -33,7 +33,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
@@ -153,7 +153,7 @@ class ClientsFragment : Fragment() {
                             AppDatabase.instance.clientRecordDao.update(this@apply)
                         }
                     }
-                    IpNeighbourMonitor.instance?.flushAsync()
+                    NetlinkNeighbourMonitor.instance?.flushAsync()
                     if (!wasWorking && item.itemId == R.id.block) {
                         SmartSnackbar.make(R.string.clients_popup_block_service_inactive).show()
                     }
@@ -231,7 +231,7 @@ class ClientsFragment : Fragment() {
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
         binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
-        binding.swipeRefresher.setOnRefreshListener { IpNeighbourMonitor.instance?.flushAsync() }
+        binding.swipeRefresher.setOnRefreshListener { NetlinkNeighbourMonitor.instance?.flushAsync() }
         activityViewModels<ClientViewModel>().value.apply {
             lifecycle.addObserver(fullMode)
             clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }

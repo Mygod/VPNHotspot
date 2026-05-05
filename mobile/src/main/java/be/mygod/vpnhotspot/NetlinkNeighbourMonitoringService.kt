@@ -1,24 +1,24 @@
 package be.mygod.vpnhotspot
 
 import android.app.Service
-import be.mygod.vpnhotspot.net.IpNeighbour
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import java.net.Inet4Address
 
-abstract class IpNeighbourMonitoringService : Service(), IpNeighbourMonitor.Callback {
-    private var neighbours: Collection<IpNeighbour> = emptyList()
+abstract class NetlinkNeighbourMonitoringService : Service(), NetlinkNeighbourMonitor.Callback {
+    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
 
     protected abstract val activeIfaces: List<String>
     protected open val inactiveIfaces get() = emptyList<String>()
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
         this.neighbours = neighbours
         updateNotification()
     }
     protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .filter { it.ip is Inet4Address && it.state == IpNeighbour.State.VALID }
+                    .filter { it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID }
                     .distinctBy { it.lladdr }
                     .size
         }

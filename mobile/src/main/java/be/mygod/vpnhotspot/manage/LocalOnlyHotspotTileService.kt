@@ -9,7 +9,7 @@ import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.stopAndUnbind
 
-class LocalOnlyHotspotTileService : IpNeighbourMonitoringTileService() {
+class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
 
     private var binder: LocalOnlyHotspotService.Binder? = null

@@ -19,10 +19,10 @@ import androidx.lifecycle.lifecycleScope
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
-import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
@@ -36,7 +36,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callback, DefaultLifecycleObserver,
+class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.Callback, DefaultLifecycleObserver,
     WifiApManager.SoftApCallbackCompat, TetherStates.Callback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
@@ -60,13 +60,13 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
     private var repeater: RepeaterService.Binder? = null
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var wifiAp = emptyList<Pair<String, MacAddress>>()
-    private var neighbours: Collection<IpNeighbour> = emptyList()
+    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
     private var tetheringClients = emptyMap<MacAddress, TetheredClient>()
     val clients = MutableLiveData<List<Client>>()
     private var rootCallbackJob: Job? = null
     val fullMode = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-            IpNeighbourMonitor.registerCallback(this@ClientViewModel, true)
+            NetlinkNeighbourMonitor.registerCallback(this@ClientViewModel, true)
             if (Build.VERSION.SDK_INT >= 30) rootCallbackJob = owner.lifecycleScope.launch {
                 try {
                     RootManager.use {
@@ -80,7 +80,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             }
         }
         override fun onStop(owner: LifecycleOwner) {
-            IpNeighbourMonitor.registerCallback(this@ClientViewModel, false)
+            NetlinkNeighbourMonitor.registerCallback(this@ClientViewModel, false)
         }
     }
 
@@ -91,7 +91,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
             getMacAddress(client) as MacAddress to TetheredClient(
                 TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {
                     val address = getAddress(it) as LinkAddress
-                    ClientAddressInfo(IpNeighbour.State.UNSET, address, getHostname(it) as String?).also { info ->
+                    ClientAddressInfo(NetlinkNeighbour.State.UNSET, address, getHostname(it) as String?).also { info ->
                         // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/android/net/ip/IpServer.java;l=516;drc=efb735f4d5a2f04550e33e8aa9485f906018fe4e
                         if (address.flags != 0 || address.scope != OsConstants.RT_SCOPE_UNIVERSE ||
                             info.deprecationTime != info.expirationTime) {
@@ -161,12 +161,12 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
 
     override fun onStart(owner: LifecycleOwner) {
         TetherStates.registerCallback(this)
-        IpNeighbourMonitor.registerCallback(this, false)
+        NetlinkNeighbourMonitor.registerCallback(this, false)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
-        IpNeighbourMonitor.unregisterCallback(this)
+        NetlinkNeighbourMonitor.unregisterCallback(this)
         TetherStates.unregisterCallback(this)
     }
 
@@ -184,7 +184,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, IpNeighbourMonitor.Callb
         binder.groupChanged -= this
     }
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
+    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
         this.neighbours = neighbours
         populateClients()
     }
