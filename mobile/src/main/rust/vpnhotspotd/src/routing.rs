@@ -694,13 +694,8 @@ impl Runtime {
                 )
                 .await;
             }
-            MasqueradeMode::Netd => {
-                let _ = run_ndc(
-                    "Nat",
-                    &["nat", "disable", &config.downstream, &upstream.ifname, "0"],
-                )
-                .await;
-            }
+            // netd NAT is shared by interface pair, not owned by this session.
+            MasqueradeMode::Netd => {}
         }
     }
 

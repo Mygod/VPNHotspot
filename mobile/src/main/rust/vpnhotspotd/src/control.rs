@@ -14,7 +14,6 @@ use tokio::task::JoinHandle;
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
-use crate::traffic::TrafficCounters;
 use crate::{netlink, routing};
 use vpnhotspotd::shared::protocol::{
     error_packet, neighbours_frame, neighbours_packet, ok_packet, parse_command, ports_packet,
@@ -34,7 +33,6 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         netlink: netlink::Runtime::new()?,
         sessions: HashMap::new(),
         neighbour_monitor: None,
-        traffic_counters: None,
     };
     loop {
         let packet = match recv_packet(&mut controller_read).await {
@@ -66,9 +64,6 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     if let Some(monitor) = state.neighbour_monitor.take() {
         monitor.stop().await;
     }
-    if let Some(traffic_counters) = state.traffic_counters.take() {
-        traffic_counters.stop().await;
-    }
     for (_, session) in state.sessions {
         session.stop(false).await;
     }
@@ -80,7 +75,6 @@ struct State {
     netlink: netlink::Runtime,
     sessions: HashMap<String, Session>,
     neighbour_monitor: Option<Monitor>,
-    traffic_counters: Option<TrafficCounters>,
 }
 
 enum HandleResult {
@@ -128,33 +122,14 @@ async fn handle_packet(
             if let Some(monitor) = state.neighbour_monitor.take() {
                 monitor.stop().await;
             }
-            if let Some(traffic_counters) = state.traffic_counters.take() {
-                traffic_counters.stop().await;
-            }
             for (_, session) in state.sessions.drain() {
                 session.stop(withdraw_cleanup).await;
             }
             Ok(HandleResult::Shutdown(ok_packet()))
         }
         Command::ReadTrafficCounters => {
-            if state.traffic_counters.is_none() {
-                state.traffic_counters = Some(TrafficCounters::start()?);
-            }
-            let result = state
-                .traffic_counters
-                .as_mut()
-                .unwrap()
-                .read_counter_lines()
-                .await;
-            match result {
-                Ok(lines) => Ok(HandleResult::Reply(traffic_counter_lines_packet(&lines))),
-                Err(e) => {
-                    if let Some(traffic_counters) = state.traffic_counters.take() {
-                        traffic_counters.stop().await;
-                    }
-                    Err(e)
-                }
-            }
+            let lines = crate::traffic::read_counter_lines().await?;
+            Ok(HandleResult::Reply(traffic_counter_lines_packet(&lines)))
         }
         Command::StartNeighbourMonitor => {
             if state.neighbour_monitor.is_none() {

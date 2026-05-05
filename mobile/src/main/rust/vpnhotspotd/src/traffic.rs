@@ -4,15 +4,14 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
-pub(crate) struct TrafficCounters {
+struct TrafficCounters {
     child: Child,
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
-    marker: u64,
 }
 
 impl TrafficCounters {
-    pub(crate) fn start() -> io::Result<Self> {
+    fn start() -> io::Result<Self> {
         let mut child = Command::new("iptables-restore")
             .args(["-w", "--noflush", "-v"])
             .stdin(Stdio::piped())
@@ -32,13 +31,11 @@ impl TrafficCounters {
             child,
             stdin,
             stdout: BufReader::new(stdout),
-            marker: 0,
         })
     }
 
-    pub(crate) async fn read_counter_lines(&mut self) -> io::Result<Vec<String>> {
-        self.marker += 1;
-        let marker = format!("# vpnhotspotd traffic counters {}\n", self.marker);
+    async fn read_counter_lines(&mut self) -> io::Result<Vec<String>> {
+        let marker = "# vpnhotspotd traffic counters\n";
         self.stdin
             .write_all(format!("*filter\n-nvx -L vpnhotspot_stats\nCOMMIT\n{marker}").as_bytes())
             .await?;
@@ -67,11 +64,18 @@ impl TrafficCounters {
         }
     }
 
-    pub(crate) async fn stop(mut self) {
+    async fn stop(mut self) {
         drop(self.stdin);
         if self.child.wait().await.is_err() {
             let _ = self.child.start_kill();
             let _ = self.child.wait().await;
         }
     }
+}
+
+pub(crate) async fn read_counter_lines() -> io::Result<Vec<String>> {
+    let mut counters = TrafficCounters::start()?;
+    let result = counters.read_counter_lines().await;
+    counters.stop().await;
+    result
 }
