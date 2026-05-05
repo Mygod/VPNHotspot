@@ -173,7 +173,7 @@ async fn handle_packet(
 }
 
 async fn apply_static_address(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     command: &IpAddressCommand,
 ) -> io::Result<()> {
     match routing::apply_static_address(handle, command).await {

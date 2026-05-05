@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::io;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::{pin_mut, StreamExt, TryStreamExt};
 use rtnetlink::{
@@ -13,13 +13,36 @@ use rtnetlink::{
 };
 use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::Notify;
+use tokio::sync::{Mutex, MutexGuard, Notify};
 use tokio::task::JoinHandle;
 
+#[derive(Clone)]
+pub(crate) struct Handle {
+    inner: rtnetlink::Handle,
+    dump_lock: Arc<Mutex<()>>,
+}
+
+impl Handle {
+    fn new(inner: rtnetlink::Handle) -> Self {
+        Self {
+            inner,
+            dump_lock: Arc::new(Mutex::new(())),
+        }
+    }
+
+    pub(crate) fn raw(&self) -> &rtnetlink::Handle {
+        &self.inner
+    }
+
+    pub(crate) async fn lock_dump(&self) -> MutexGuard<'_, ()> {
+        self.dump_lock.lock().await
+    }
+}
+
 pub(crate) struct Runtime {
-    handle: rtnetlink::Handle,
+    handle: Handle,
     ipv6_address_changed: Arc<Notify>,
-    neighbour_events: Arc<Mutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
+    neighbour_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
     task: JoinHandle<()>,
 }
 
@@ -30,7 +53,8 @@ impl Runtime {
             MulticastGroup::Ipv6Ifaddr,
         ])?;
         let ipv6_address_changed = Arc::new(Notify::new());
-        let neighbour_events = Arc::new(Mutex::new(None::<UnboundedSender<RouteNetlinkMessage>>));
+        let neighbour_events =
+            Arc::new(StdMutex::new(None::<UnboundedSender<RouteNetlinkMessage>>));
         let task_ipv6_address_changed = ipv6_address_changed.clone();
         let task_neighbour_events = neighbour_events.clone();
         let task = tokio::spawn(async move {
@@ -50,14 +74,14 @@ impl Runtime {
             }
         });
         Ok(Self {
-            handle,
+            handle: Handle::new(handle),
             ipv6_address_changed,
             neighbour_events,
             task,
         })
     }
 
-    pub(crate) fn handle(&self) -> rtnetlink::Handle {
+    pub(crate) fn handle(&self) -> Handle {
         self.handle.clone()
     }
 
@@ -99,7 +123,7 @@ impl Drop for Runtime {
 }
 
 pub(crate) struct NeighbourRegistration {
-    neighbour_events: Arc<Mutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
+    neighbour_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
 }
 
 impl Drop for NeighbourRegistration {
@@ -110,9 +134,14 @@ impl Drop for NeighbourRegistration {
     }
 }
 
-pub(crate) async fn link_index(handle: &rtnetlink::Handle, name: &str) -> io::Result<u32> {
+pub(crate) async fn link_index(handle: &Handle, name: &str) -> io::Result<u32> {
     validate_interface_name(name)?;
-    let links = handle.link().get().match_name(name.to_owned()).execute();
+    let links = handle
+        .raw()
+        .link()
+        .get()
+        .match_name(name.to_owned())
+        .execute();
     pin_mut!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         Ok(link.header.index)
@@ -124,8 +153,8 @@ pub(crate) async fn link_index(handle: &rtnetlink::Handle, name: &str) -> io::Re
     }
 }
 
-pub(crate) async fn link_name(handle: &rtnetlink::Handle, index: u32) -> io::Result<String> {
-    let links = handle.link().get().match_index(index).execute();
+pub(crate) async fn link_name(handle: &Handle, index: u32) -> io::Result<String> {
+    let links = handle.raw().link().get().match_index(index).execute();
     pin_mut!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         link_name_from_message(link).ok_or_else(|| {
@@ -142,8 +171,9 @@ pub(crate) async fn link_name(handle: &rtnetlink::Handle, index: u32) -> io::Res
     }
 }
 
-pub(crate) async fn link_names(handle: &rtnetlink::Handle) -> io::Result<HashMap<u32, String>> {
-    let links = handle.link().get().execute();
+pub(crate) async fn link_names(handle: &Handle) -> io::Result<HashMap<u32, String>> {
+    let _dump = handle.lock_dump().await;
+    let links = handle.raw().link().get().execute();
     pin_mut!(links);
     let mut names = HashMap::new();
     while let Some(link) = links.try_next().await.map_err(to_io_error)? {
@@ -176,7 +206,7 @@ pub(crate) fn to_io_error(error: rtnetlink::Error) -> io::Error {
 fn dispatch_message(
     payload: NetlinkPayload<RouteNetlinkMessage>,
     ipv6_address_changed: &Notify,
-    neighbour_events: &Mutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
+    neighbour_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
 ) {
     match payload {
         NetlinkPayload::InnerMessage(
@@ -190,7 +220,7 @@ fn dispatch_message(
 }
 
 fn send_neighbour_event(
-    neighbour_events: &Mutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
+    neighbour_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
     message: RouteNetlinkMessage,
 ) {
     let mut disconnected = false;

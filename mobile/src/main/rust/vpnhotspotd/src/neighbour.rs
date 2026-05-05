@@ -16,9 +16,10 @@ use tokio::{spawn, task::JoinHandle};
 use crate::netlink;
 use vpnhotspotd::shared::protocol::{neighbours_frame, Neighbour, NeighbourState};
 
-pub(crate) async fn dump(handle: &rtnetlink::Handle) -> io::Result<Vec<Neighbour>> {
+pub(crate) async fn dump(handle: &netlink::Handle) -> io::Result<Vec<Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
-    let mut messages = handle.neighbours().get().execute();
+    let _dump = handle.lock_dump().await;
+    let mut messages = handle.raw().neighbours().get().execute();
     let mut neighbours = Vec::new();
     while let Some(message) = messages.try_next().await.map_err(netlink::to_io_error)? {
         let interface = interface_name_from_map(&interfaces, message.header.ifindex);
@@ -63,7 +64,7 @@ impl Monitor {
 }
 
 async fn neighbour_from_event(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     message: RouteNetlinkMessage,
 ) -> Option<Neighbour> {
     let (deleting, message) = match message {
@@ -94,6 +95,9 @@ fn neighbour_from_message(
     {
         return None;
     }
+    if !deleting && message.header.state == NetlinkNeighbourState::None {
+        return None;
+    }
     let mut address = None;
     let mut lladdr = Vec::new();
     for attribute in message.attributes {
@@ -122,9 +126,7 @@ fn neighbour_from_message(
             NeighbourState::Valid
         } else if has_state(state, NetlinkNeighbourState::Failed) {
             NeighbourState::Failed
-        } else if has_state(state, NetlinkNeighbourState::Incomplete)
-            || state == NetlinkNeighbourState::None
-        {
+        } else if has_state(state, NetlinkNeighbourState::Incomplete) {
             NeighbourState::Incomplete
         } else {
             NeighbourState::Unset

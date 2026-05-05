@@ -5,6 +5,7 @@ use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::netlink;
 use vpnhotspotd::shared::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig};
 
 mod ra;
@@ -15,7 +16,7 @@ mod udp;
 pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,
     cleanup_prefixes: Vec<Route>,
-    netlink: rtnetlink::Handle,
+    netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: JoinHandle<()>,
 }
@@ -25,7 +26,7 @@ impl Runtime {
         config: &SessionConfig,
         shared: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
-        netlink: rtnetlink::Handle,
+        netlink: netlink::Handle,
         ipv6_address_changed: Arc<Notify>,
     ) -> io::Result<Option<Self>> {
         let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {

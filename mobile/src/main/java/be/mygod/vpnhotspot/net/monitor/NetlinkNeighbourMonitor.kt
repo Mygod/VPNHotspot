@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.toPersistentMap
@@ -17,12 +18,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.IOException
 
-class NetlinkNeighbourMonitor private constructor() {
+class NetlinkNeighbourMonitor private constructor(private val previousDestroy: Job?) {
     companion object {
         private val callbacks = mutableMapOf<Callback, Boolean>()
+        private val lifecycleLock = Mutex()
+        private var pendingDestroy: Job? = null
         var instance: NetlinkNeighbourMonitor? = null
         var fullMode = false
 
@@ -36,7 +42,7 @@ class NetlinkNeighbourMonitor private constructor() {
             fullMode = full || callbacks.any { it.value }
             var monitor = instance
             if (monitor == null) {
-                monitor = NetlinkNeighbourMonitor()
+                monitor = NetlinkNeighbourMonitor(pendingDestroy)
                 instance = monitor
                 null
             } else {
@@ -48,7 +54,24 @@ class NetlinkNeighbourMonitor private constructor() {
             if (callbacks.remove(callback) == null) return@synchronized
             fullMode = callbacks.any { it.value }
             if (callbacks.isNotEmpty()) return@synchronized
-            instance?.destroy()
+            val monitor = instance
+            val destroyJob = monitor?.scope?.launch {
+                try {
+                    monitor.worker.join()
+                    lifecycleLock.withLock { DaemonController.stopNeighbourMonitor(monitor.listener) }
+                } catch (_: CancellationException) {
+                } catch (e: Exception) {
+                    Timber.w(e)
+                } finally {
+                    monitor.scope.cancel()
+                }
+            }
+            pendingDestroy = destroyJob
+            destroyJob?.invokeOnCompletion {
+                synchronized(callbacks) {
+                    if (pendingDestroy === destroyJob) pendingDestroy = null
+                }
+            }
             instance = null
         }
     }
@@ -76,12 +99,14 @@ class NetlinkNeighbourMonitor private constructor() {
     }
     private val worker: Job = scope.launch {
         try {
-            DaemonController.startNeighbourMonitor(listener)
-        } catch (_: CancellationException) {
+            previousDestroy?.join()
+            lifecycleLock.withLock { DaemonController.startNeighbourMonitor(listener) }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.w(e)
+            SmartSnackbar.make(e).show()
         }
-        flush()
     }
 
     private fun NetlinkNeighbour.toMonitorMode(full: Boolean): NetlinkNeighbour? {
@@ -117,20 +142,17 @@ class NetlinkNeighbourMonitor private constructor() {
         if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
     }
 
-    private suspend fun flush() = updateLocked(DaemonProtocol.NeighbourUpdate(true, DaemonController.dumpNeighbours()))
-    fun flushAsync() = scope.launch { flush() }
-
-    fun destroy() {
-        scope.launch {
-            try {
-                worker.join()
-                DaemonController.stopNeighbourMonitor(listener)
-            } catch (_: CancellationException) {
-            } catch (e: Exception) {
-                Timber.w(e)
-            } finally {
-                scope.cancel()
-            }
+    private suspend fun flush() {
+        val neighbours = try {
+            DaemonController.dumpNeighbours()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IOException) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+            return
         }
+        updateLocked(DaemonProtocol.NeighbourUpdate(true, neighbours))
     }
+    fun flushAsync() = scope.launch { flush() }
 }

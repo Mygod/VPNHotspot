@@ -47,7 +47,7 @@ pub(crate) fn spawn_loop(
     config: Arc<Mutex<SessionConfig>>,
     config_changed: Arc<Notify>,
     ipv6_address_changed: Arc<Notify>,
-    netlink: rtnetlink::Handle,
+    netlink: netlink::Handle,
     stop: CancellationToken,
     initial: &SessionConfig,
 ) -> io::Result<JoinHandle<()>> {
@@ -169,7 +169,7 @@ pub(crate) fn spawn_loop(
 }
 
 pub(crate) async fn withdraw_prefixes_once(
-    netlink: &rtnetlink::Handle,
+    netlink: &netlink::Handle,
     config: &SessionConfig,
     prefixes: &[Route],
     keep_router: bool,
@@ -247,27 +247,30 @@ fn create_send_socket(interface: &str, mark: u32, router: Router) -> io::Result<
 }
 
 async fn link_local_router(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     interface: &str,
 ) -> io::Result<Option<Router>> {
     let interface_index = netlink::link_index(handle, interface).await?;
+    let _dump = handle.lock_dump().await;
     let addresses = handle
+        .raw()
         .address()
         .get()
         .set_link_index_filter(interface_index)
         .execute();
     pin_mut!(addresses);
+    let mut router = None;
     while let Some(address) = addresses.try_next().await.map_err(netlink::to_io_error)? {
-        if address.header.family == AddressFamily::Inet6 {
+        if router.is_none() && address.header.family == AddressFamily::Inet6 {
             if let Some(address) = router_address(&address) {
-                return Ok(Some(Router {
+                router = Some(Router {
                     address,
                     interface_index,
-                }));
+                });
             }
         }
     }
-    Ok(None)
+    Ok(router)
 }
 
 fn router_address(message: &AddressMessage) -> Option<Ipv6Addr> {

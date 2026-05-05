@@ -87,14 +87,14 @@ impl IptablesRule {
 
 pub(crate) struct Runtime {
     ports: SessionPorts,
-    netlink: rtnetlink::Handle,
+    netlink: netlink::Handle,
 }
 
 impl Runtime {
     pub(crate) async fn start(
         config: &SessionConfig,
         ports: SessionPorts,
-        netlink: rtnetlink::Handle,
+        netlink: netlink::Handle,
     ) -> io::Result<Self> {
         let runtime = Self { ports, netlink };
         if let Err(e) = runtime.setup(config).await {
@@ -1182,7 +1182,7 @@ impl Runtime {
     }
 }
 
-pub(crate) async fn clean(handle: &rtnetlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
+pub(crate) async fn clean(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
     delete_rule_repeated(
         handle,
         IpFamily::Ipv6,
@@ -1289,13 +1289,13 @@ COMMIT
 }
 
 pub(crate) async fn apply_static_address(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     command: &IpAddressCommand,
 ) -> io::Result<()> {
     apply_address_command(handle, command).await
 }
 
-async fn clean_ip(handle: &rtnetlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
+async fn clean_ip(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
     flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
     for interface in netlink::link_names(handle).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
@@ -1325,14 +1325,14 @@ async fn clean_ip(handle: &rtnetlink::Handle, command: &CleanIpCommand) -> io::R
     Ok(())
 }
 
-async fn add_rule(handle: &rtnetlink::Handle, command: IpRuleCommand) -> io::Result<()> {
+async fn add_rule(handle: &netlink::Handle, command: IpRuleCommand) -> io::Result<()> {
     match apply_rule_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_rule(handle: &rtnetlink::Handle, command: IpRuleCommand) {
+async fn delete_rule(handle: &netlink::Handle, command: IpRuleCommand) {
     if let Err(e) = apply_rule_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete rule failed: {e}");
@@ -1341,7 +1341,7 @@ async fn delete_rule(handle: &rtnetlink::Handle, command: IpRuleCommand) {
 }
 
 async fn delete_rule_repeated(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     family: IpFamily,
     priority: u32,
 ) -> io::Result<()> {
@@ -1367,14 +1367,14 @@ async fn delete_rule_repeated(
     }
 }
 
-async fn apply_route(handle: &rtnetlink::Handle, command: IpRouteCommand) -> io::Result<()> {
+async fn apply_route(handle: &netlink::Handle, command: IpRouteCommand) -> io::Result<()> {
     match apply_route_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_route(handle: &rtnetlink::Handle, command: IpRouteCommand) {
+async fn delete_route(handle: &netlink::Handle, command: IpRouteCommand) {
     if let Err(e) = apply_route_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete route failed: {e}");
@@ -1382,14 +1382,14 @@ async fn delete_route(handle: &rtnetlink::Handle, command: IpRouteCommand) {
     }
 }
 
-async fn apply_address(handle: &rtnetlink::Handle, command: IpAddressCommand) -> io::Result<()> {
+async fn apply_address(handle: &netlink::Handle, command: IpAddressCommand) -> io::Result<()> {
     match apply_address_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_address(handle: &rtnetlink::Handle, command: IpAddressCommand) {
+async fn delete_address(handle: &netlink::Handle, command: IpAddressCommand) {
     if let Err(e) = apply_address_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete address failed: {e}");
@@ -1398,13 +1398,14 @@ async fn delete_address(handle: &rtnetlink::Handle, command: IpAddressCommand) {
 }
 
 async fn apply_address_command(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     command: &IpAddressCommand,
 ) -> io::Result<()> {
     let index = netlink::link_index(handle, &command.interface).await?;
     match command.operation {
         IpOperation::Replace => {
             let mut request = handle
+                .raw()
                 .address()
                 .add(index, command.address, command.prefix_len)
                 .replace();
@@ -1413,6 +1414,7 @@ async fn apply_address_command(
         }
         IpOperation::Delete => {
             handle
+                .raw()
                 .address()
                 .del(address_message(index, command.address, command.prefix_len))
                 .execute()
@@ -1422,46 +1424,52 @@ async fn apply_address_command(
     .map_err(netlink::to_io_error)
 }
 
-async fn apply_route_command(
-    handle: &rtnetlink::Handle,
-    command: &IpRouteCommand,
-) -> io::Result<()> {
+async fn apply_route_command(handle: &netlink::Handle, command: &IpRouteCommand) -> io::Result<()> {
     let message = route_message(
         command,
         netlink::link_index(handle, &command.interface).await?,
     );
     match command.operation {
-        IpOperation::Replace => handle.route().add(message).replace().execute().await,
-        IpOperation::Delete => handle.route().del(message).execute().await,
+        IpOperation::Replace => handle.raw().route().add(message).replace().execute().await,
+        IpOperation::Delete => handle.raw().route().del(message).execute().await,
     }
     .map_err(netlink::to_io_error)
 }
 
-async fn apply_rule_command(handle: &rtnetlink::Handle, command: &IpRuleCommand) -> io::Result<()> {
+async fn apply_rule_command(handle: &netlink::Handle, command: &IpRuleCommand) -> io::Result<()> {
     match command.operation {
         IpOperation::Replace => {
-            let mut request = handle.rule().add();
+            let mut request = handle.raw().rule().add();
             fill_rule_message(request.message_mut(), command)?;
             request.execute().await
         }
-        IpOperation::Delete => handle.rule().del(rule_message(command)?).execute().await,
+        IpOperation::Delete => {
+            handle
+                .raw()
+                .rule()
+                .del(rule_message(command)?)
+                .execute()
+                .await
+        }
     }
     .map_err(netlink::to_io_error)
 }
 
 async fn flush_routes(
-    handle: &rtnetlink::Handle,
+    handle: &netlink::Handle,
     family: AddressFamily,
     table: u32,
 ) -> io::Result<()> {
+    let _dump = handle.lock_dump().await;
     let routes = handle
+        .raw()
         .route()
         .get(route_dump_message(family, table))
         .execute();
     pin_mut!(routes);
     while let Some(route) = routes.try_next().await.map_err(netlink::to_io_error)? {
         if route_table(&route) == Some(table) {
-            let _ = handle.route().del(route).execute().await;
+            let _ = handle.raw().route().del(route).execute().await;
         }
     }
     Ok(())
