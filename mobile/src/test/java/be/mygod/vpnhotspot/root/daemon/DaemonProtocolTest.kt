@@ -50,6 +50,36 @@ class DaemonProtocolTest {
     }
 
     @Test
+    fun startSessionEncodesIpv6NatPrefixSeed() {
+        val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
+            downstream = "wlan0",
+            dnsBindAddress = InetAddress.getByName("192.0.2.1") as Inet4Address,
+            downstreamPrefixLength = 24,
+            ipForward = false,
+            forward = false,
+            masquerade = DaemonProtocol.MasqueradeMode.None,
+            ipv6Block = false,
+            primaryNetwork = null,
+            primaryRoutes = emptyList(),
+            fallbackNetwork = null,
+            upstreams = emptyList(),
+            clients = emptyList(),
+            ipv6Nat = DaemonProtocol.Ipv6NatConfig("be.mygod.vpnhotspot\u0000android-id", 1280,
+                emptyList(), emptyList()),
+        ))
+        Buffer().apply { write(packet) }.let { input ->
+            assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
+            assertEquals("wlan0", input.readUtf())
+            input.skip((4 + 4 + 1 + 1 + 1 + 1 + 8 + 4 + 8 + 4 + 4).toLong())
+            assertEquals(true, input.readBoolean())
+            assertEquals("be.mygod.vpnhotspot\u0000android-id", input.readUtf())
+            assertEquals(1280, input.readInt())
+            assertEquals(0, input.readInt())
+            assertEquals(0, input.readInt())
+        }
+    }
+
+    @Test
     fun readPortsDecodesResponse() {
         val packet = byteArrayOf(
             DaemonProtocol.STATUS_OK.toByte(),
@@ -81,6 +111,16 @@ class DaemonProtocolTest {
         }.let { input ->
             assertEquals(DaemonProtocol.CMD_SHUTDOWN, input.readInt())
             assertEquals(DaemonProtocol.RemoveMode.PreserveCleanup.protocolValue, input.readByte())
+        }
+    }
+
+    @Test
+    fun cleanRoutingEncodesPrefixSeed() {
+        Buffer().apply {
+            write(DaemonProtocol.cleanRouting("be.mygod.vpnhotspot\u0000android-id"))
+        }.let { input ->
+            assertEquals(DaemonProtocol.CMD_CLEAN_ROUTING, input.readInt())
+            assertEquals("be.mygod.vpnhotspot\u0000android-id", input.readUtf())
         }
     }
 

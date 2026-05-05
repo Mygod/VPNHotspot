@@ -15,6 +15,7 @@ use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
 use crate::traffic::TrafficCounters;
+use crate::{netlink, routing};
 use vpnhotspotd::shared::protocol::{
     error_packet, neighbours_frame, neighbours_packet, ok_packet, parse_command, ports_packet,
     reply_frame, should_suppress_static_address_error, traffic_counter_lines_packet, Command,
@@ -30,6 +31,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let (mut controller_read, controller_write) = controller.into_split();
     let (sender, writer) = spawn_writer(controller_write);
     let mut state = State {
+        netlink: netlink::Runtime::new()?,
         sessions: HashMap::new(),
         neighbour_monitor: None,
         traffic_counters: None,
@@ -75,6 +77,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 }
 
 struct State {
+    netlink: netlink::Runtime,
     sessions: HashMap<String, Session>,
     neighbour_monitor: Option<Monitor>,
     traffic_counters: Option<TrafficCounters>,
@@ -99,7 +102,7 @@ async fn handle_packet(
                     "session already exists",
                 ));
             }
-            let session = Session::start(config).await?;
+            let session = Session::start(config, &state.netlink).await?;
             let reply = ports_packet(session.ports());
             state.sessions.insert(downstream, session);
             Ok(HandleResult::Reply(reply))
@@ -155,8 +158,9 @@ async fn handle_packet(
         }
         Command::StartNeighbourMonitor => {
             if state.neighbour_monitor.is_none() {
-                let monitor = Monitor::spawn(sender.clone())?;
-                let neighbours = crate::neighbour::dump().await?;
+                let monitor = Monitor::spawn(&state.netlink, sender.clone())?;
+                let handle = state.netlink.handle();
+                let neighbours = crate::neighbour::dump(&handle).await?;
                 if sender.send(neighbours_frame(true, &neighbours)).is_err() {
                     monitor.stop().await;
                     return Err(io::Error::new(
@@ -174,22 +178,30 @@ async fn handle_packet(
             }
             Ok(HandleResult::Reply(ok_packet()))
         }
-        Command::DumpNeighbours => Ok(HandleResult::Reply(neighbours_packet(
-            &crate::neighbour::dump().await?,
-        ))),
+        Command::DumpNeighbours => {
+            let handle = state.netlink.handle();
+            Ok(HandleResult::Reply(neighbours_packet(
+                &crate::neighbour::dump(&handle).await?,
+            )))
+        }
         Command::StaticAddress(command) => {
-            apply_static_address(&command).await?;
+            let handle = state.netlink.handle();
+            apply_static_address(&handle, &command).await?;
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::CleanRouting(command) => {
-            crate::routing::clean(&command).await?;
+            let handle = state.netlink.handle();
+            routing::clean(&handle, &command).await?;
             Ok(HandleResult::Reply(ok_packet()))
         }
     }
 }
 
-async fn apply_static_address(command: &IpAddressCommand) -> io::Result<()> {
-    match crate::rtnetlink::apply_address(command).await {
+async fn apply_static_address(
+    handle: &rtnetlink::Handle,
+    command: &IpAddressCommand,
+) -> io::Result<()> {
+    match routing::apply_static_address(handle, command).await {
         Ok(()) => Ok(()),
         Err(e) if should_suppress_static_address_error(&e, command.operation) => Ok(()),
         Err(e) => Err(e),

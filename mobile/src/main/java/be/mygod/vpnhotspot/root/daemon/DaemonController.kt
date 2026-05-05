@@ -200,8 +200,8 @@ object DaemonController {
             DaemonProtocol.IpOperation.Delete, address, prefixLength, dev)))
     }
 
-    suspend fun cleanRouting(cleanups: List<DaemonProtocol.Ipv6Cleanup>) {
-        DaemonProtocol.readAck(request(DaemonProtocol.cleanRouting(cleanups)))
+    suspend fun cleanRouting(ipv6NatPrefixSeed: String) {
+        DaemonProtocol.readAck(request(DaemonProtocol.cleanRouting(ipv6NatPrefixSeed)))
     }
 
     private class DaemonStdioEofException(message: String) : IOException(message)
@@ -389,6 +389,7 @@ object DaemonController {
 
     private suspend fun closeConnectionLocked(cancelReader: Boolean = true) = withContext(NonCancellable) {
         daemonStdioClosing = true
+        completePendingRepliesLocked(IOException("$BINARY_NAME connection closed"))
         if (cancelReader) readerJob?.cancel()
         readerJob = null
         input?.cancel(null)

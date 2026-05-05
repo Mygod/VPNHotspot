@@ -15,6 +15,7 @@ mod udp;
 pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,
     cleanup_prefixes: Vec<Route>,
+    netlink: rtnetlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: JoinHandle<()>,
 }
@@ -24,6 +25,8 @@ impl Runtime {
         config: &SessionConfig,
         shared: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
+        netlink: rtnetlink::Handle,
+        ipv6_address_changed: Arc<Notify>,
     ) -> io::Result<Option<Self>> {
         let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
             return Ok(None);
@@ -38,7 +41,14 @@ impl Runtime {
             stop.cancel();
             return Err(e);
         }
-        let ra_task = match ra::spawn_loop(shared, config_changed.clone(), stop.clone(), config) {
+        let ra_task = match ra::spawn_loop(
+            shared,
+            config_changed.clone(),
+            ipv6_address_changed,
+            netlink.clone(),
+            stop.clone(),
+            config,
+        ) {
             Ok(task) => task,
             Err(e) => {
                 stop.cancel();
@@ -48,6 +58,7 @@ impl Runtime {
         Ok(Some(Self {
             ports: Ipv6NatPorts { tcp, udp },
             cleanup_prefixes: ipv6_nat.cleanup_prefixes.clone(),
+            netlink,
             config_changed,
             ra_task,
         }))
@@ -99,6 +110,6 @@ impl Runtime {
             prefix: ipv6_to_u128(ipv6_nat.gateway),
             prefix_len: ipv6_nat.prefix_len,
         });
-        ra::withdraw_prefixes_once(snapshot, &prefixes, false).await;
+        ra::withdraw_prefixes_once(&self.netlink, snapshot, &prefixes, false).await;
     }
 }

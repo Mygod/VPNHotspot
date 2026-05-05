@@ -2,8 +2,8 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use crate::shared::model::{
-    ipv6_to_u128, ClientConfig, Ipv6NatConfig, MasqueradeMode, Network, Route, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
+    ipv6_nat_gateway, ipv6_nat_prefix, ipv6_to_u128, ClientConfig, Ipv6NatConfig, MasqueradeMode,
+    Network, Route, SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
 };
 
 const STATUS_OK: u8 = 0;
@@ -115,15 +115,8 @@ pub struct IpRuleCommand {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Ipv6Cleanup {
-    pub interface: String,
-    pub gateway: Ipv6Addr,
-    pub prefix: Route,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CleanIpCommand {
-    pub ipv6: Vec<Ipv6Cleanup>,
+    pub ipv6_nat_prefix_seed: String,
 }
 
 pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
@@ -300,11 +293,21 @@ impl<'a> Parser<'a> {
         let upstreams = self.read_upstreams()?;
         let clients = self.read_clients()?;
         let ipv6_nat = if self.read_bool()? {
+            let prefix = ipv6_nat_prefix(&self.read_utf()?, &downstream);
+            let gateway = ipv6_nat_gateway(prefix);
+            let mtu = self.read_i32()? as u32;
+            let suppressed_prefixes = self
+                .read_routes()?
+                .into_iter()
+                .filter(|route| {
+                    route.prefix != prefix.prefix || route.prefix_len != prefix.prefix_len
+                })
+                .collect();
             Some(Ipv6NatConfig {
-                gateway: self.read_ipv6()?,
-                prefix_len: self.read_ipv6_prefix_len()?,
-                mtu: self.read_i32()? as u32,
-                suppressed_prefixes: self.read_routes()?,
+                gateway,
+                prefix_len: prefix.prefix_len,
+                mtu,
+                suppressed_prefixes,
                 cleanup_prefixes: self.read_routes()?,
             })
         } else {
@@ -394,22 +397,9 @@ impl<'a> Parser<'a> {
     }
 
     fn read_clean_ip_command(&mut self) -> io::Result<CleanIpCommand> {
-        let count = self.read_i32()?;
-        if count < 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid IPv6 cleanup count {count}"),
-            ));
-        }
-        let mut ipv6 = Vec::with_capacity(count as usize);
-        for _ in 0..count {
-            ipv6.push(Ipv6Cleanup {
-                interface: self.read_utf()?,
-                gateway: self.read_ipv6()?,
-                prefix: self.read_route()?,
-            });
-        }
-        Ok(CleanIpCommand { ipv6 })
+        Ok(CleanIpCommand {
+            ipv6_nat_prefix_seed: self.read_utf()?,
+        })
     }
 
     fn read_ip_operation(&mut self) -> io::Result<IpOperation> {
@@ -616,6 +606,39 @@ mod tests {
     }
 
     #[test]
+    fn parse_session_config_derives_ipv6_nat_prefix() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
+        write_utf(&mut packet, "wlan0");
+        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
+        write_session_flags(&mut packet);
+        packet.extend_from_slice(&0u64.to_be_bytes());
+        packet.extend_from_slice(&0i32.to_be_bytes());
+        packet.extend_from_slice(&0u64.to_be_bytes());
+        packet.extend_from_slice(&0i32.to_be_bytes());
+        packet.extend_from_slice(&0i32.to_be_bytes());
+        packet.push(1);
+        write_utf(&mut packet, "be.mygod.vpnhotspot\0android-id");
+        packet.extend_from_slice(&1280i32.to_be_bytes());
+        packet.extend_from_slice(&2i32.to_be_bytes());
+        write_route(&mut packet, "fd8d:32f9:31e3:b417::".parse().unwrap(), 64);
+        write_route(&mut packet, "2001:db8::".parse().unwrap(), 32);
+        packet.extend_from_slice(&0i32.to_be_bytes());
+
+        let Command::StartSession(config) = parse_command(&packet).unwrap() else {
+            panic!("expected start session");
+        };
+        let ipv6_nat = config.ipv6_nat.unwrap();
+        assert_eq!(
+            ipv6_nat.gateway,
+            "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(ipv6_nat.prefix_len, 64);
+        assert_eq!(ipv6_nat.mtu, 1280);
+        assert_eq!(ipv6_nat.suppressed_prefixes, vec![route("2001:db8::", 32)]);
+    }
+
+    #[test]
     fn parse_session_config_rejects_negative_route_count() {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
@@ -678,6 +701,21 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn parse_clean_routing_reads_prefix_seed() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_CLEAN_ROUTING.to_be_bytes());
+        write_utf(&mut packet, "be.mygod.vpnhotspot\0android-id");
+
+        let Command::CleanRouting(command) = parse_command(&packet).unwrap() else {
+            panic!("expected clean routing");
+        };
+        assert_eq!(
+            command.ipv6_nat_prefix_seed,
+            "be.mygod.vpnhotspot\0android-id"
+        );
+    }
+
     fn write_utf(packet: &mut Vec<u8>, value: &str) {
         packet.extend_from_slice(&(value.len() as u32).to_be_bytes());
         packet.extend_from_slice(value.as_bytes());
@@ -694,5 +732,12 @@ mod tests {
     fn write_route(packet: &mut Vec<u8>, address: Ipv6Addr, prefix_len: i32) {
         packet.extend_from_slice(&address.octets());
         packet.extend_from_slice(&prefix_len.to_be_bytes());
+    }
+
+    fn route(address: &str, prefix_len: u8) -> Route {
+        Route {
+            prefix: ipv6_to_u128(address.parse::<Ipv6Addr>().unwrap()),
+            prefix_len,
+        }
     }
 }

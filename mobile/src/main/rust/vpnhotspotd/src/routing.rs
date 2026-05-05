@@ -3,14 +3,25 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::process::Stdio;
 
+use futures_util::{pin_mut, TryStreamExt};
+use rtnetlink::packet_route::{
+    address::{AddressAttribute, AddressMessage},
+    route::{
+        RouteAttribute, RouteHeader, RouteMessage, RouteProtocol, RouteScope,
+        RouteType as NetlinkRouteType,
+    },
+    rule::{RuleAction as NetlinkRuleAction, RuleAttribute, RuleMessage},
+    AddressFamily,
+};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::rtnetlink;
+use crate::netlink;
 use vpnhotspotd::shared::model::{
-    ClientConfig, Ipv6NatConfig, MasqueradeMode, SessionConfig, SessionPorts, UpstreamConfig,
-    UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK,
-    DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, MasqueradeMode, SessionConfig,
+    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
+    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
+    LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
     CleanIpCommand, IpAddressCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand,
@@ -29,11 +40,16 @@ const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;
 
 pub(crate) struct Runtime {
     ports: SessionPorts,
+    netlink: rtnetlink::Handle,
 }
 
 impl Runtime {
-    pub(crate) async fn start(config: &SessionConfig, ports: SessionPorts) -> io::Result<Self> {
-        let runtime = Self { ports };
+    pub(crate) async fn start(
+        config: &SessionConfig,
+        ports: SessionPorts,
+        netlink: rtnetlink::Handle,
+    ) -> io::Result<Self> {
+        let runtime = Self { ports, netlink };
         if let Err(e) = runtime.setup(config).await {
             runtime.remove(config).await;
             return Err(e);
@@ -411,28 +427,34 @@ impl Runtime {
     }
 
     async fn add_disable_system_rule(&self, config: &SessionConfig) -> io::Result<()> {
-        add_rule(IpRuleCommand {
-            operation: IpOperation::Replace,
-            family: IpFamily::Ipv4,
-            iif: config.downstream.clone(),
-            priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
-            action: RuleAction::Unreachable,
-            table: 0,
-            fwmark: None,
-        })
+        add_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Replace,
+                family: IpFamily::Ipv4,
+                iif: config.downstream.clone(),
+                priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
+                action: RuleAction::Unreachable,
+                table: 0,
+                fwmark: None,
+            },
+        )
         .await
     }
 
     async fn remove_disable_system_rule(&self, config: &SessionConfig) {
-        delete_rule(IpRuleCommand {
-            operation: IpOperation::Delete,
-            family: IpFamily::Ipv4,
-            iif: config.downstream.clone(),
-            priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
-            action: RuleAction::Unreachable,
-            table: 0,
-            fwmark: None,
-        })
+        delete_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Delete,
+                family: IpFamily::Ipv4,
+                iif: config.downstream.clone(),
+                priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
+                action: RuleAction::Unreachable,
+                table: 0,
+                fwmark: None,
+            },
+        )
         .await;
     }
 
@@ -581,36 +603,42 @@ impl Runtime {
         config: &SessionConfig,
         upstream: &UpstreamConfig,
     ) -> io::Result<()> {
-        add_rule(IpRuleCommand {
-            operation: IpOperation::Replace,
-            family: IpFamily::Ipv4,
-            iif: config.downstream.clone(),
-            priority: rule_priority(match upstream.role {
-                UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
-            }),
-            action: RuleAction::Lookup,
-            table: 1000 + upstream.ifindex,
-            fwmark: None,
-        })
+        add_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Replace,
+                family: IpFamily::Ipv4,
+                iif: config.downstream.clone(),
+                priority: rule_priority(match upstream.role {
+                    UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
+                    UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                }),
+                action: RuleAction::Lookup,
+                table: 1000 + upstream.ifindex,
+                fwmark: None,
+            },
+        )
         .await?;
         self.add_upstream_masquerade(config, upstream).await
     }
 
     async fn remove_upstream(&self, config: &SessionConfig, upstream: &UpstreamConfig) {
         self.remove_upstream_masquerade(config, upstream).await;
-        delete_rule(IpRuleCommand {
-            operation: IpOperation::Delete,
-            family: IpFamily::Ipv4,
-            iif: config.downstream.clone(),
-            priority: rule_priority(match upstream.role {
-                UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
-            }),
-            action: RuleAction::Lookup,
-            table: 1000 + upstream.ifindex,
-            fwmark: None,
-        })
+        delete_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Delete,
+                family: IpFamily::Ipv4,
+                iif: config.downstream.clone(),
+                priority: rule_priority(match upstream.role {
+                    UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
+                    UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                }),
+                action: RuleAction::Lookup,
+                table: 1000 + upstream.ifindex,
+                fwmark: None,
+            },
+        )
         .await;
     }
 
@@ -969,40 +997,52 @@ impl Runtime {
             .ports
             .ipv6_nat
             .ok_or_else(|| io::Error::other("missing IPv6 NAT ports"))?;
-        apply_route(IpRouteCommand {
-            operation: IpOperation::Replace,
-            route_type: RouteType::Unicast,
-            destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
-            prefix_len: ipv6_nat.prefix_len,
-            interface: config.downstream.clone(),
-            table: LOCAL_NETWORK_TABLE,
-        })
+        apply_route(
+            &self.netlink,
+            IpRouteCommand {
+                operation: IpOperation::Replace,
+                route_type: RouteType::Unicast,
+                destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
+                prefix_len: ipv6_nat.prefix_len,
+                interface: config.downstream.clone(),
+                table: LOCAL_NETWORK_TABLE,
+            },
+        )
         .await?;
-        apply_address(IpAddressCommand {
-            operation: IpOperation::Replace,
-            address: IpAddr::V6(ipv6_nat.gateway),
-            prefix_len: ipv6_nat.prefix_len,
-            interface: config.downstream.clone(),
-        })
+        apply_address(
+            &self.netlink,
+            IpAddressCommand {
+                operation: IpOperation::Replace,
+                address: IpAddr::V6(ipv6_nat.gateway),
+                prefix_len: ipv6_nat.prefix_len,
+                interface: config.downstream.clone(),
+            },
+        )
         .await?;
-        apply_route(IpRouteCommand {
-            operation: IpOperation::Replace,
-            route_type: RouteType::Local,
-            destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-            prefix_len: 0,
-            interface: "lo".to_string(),
-            table: DAEMON_TABLE,
-        })
+        apply_route(
+            &self.netlink,
+            IpRouteCommand {
+                operation: IpOperation::Replace,
+                route_type: RouteType::Local,
+                destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                prefix_len: 0,
+                interface: "lo".to_string(),
+                table: DAEMON_TABLE,
+            },
+        )
         .await?;
-        add_rule(IpRuleCommand {
-            operation: IpOperation::Replace,
-            family: IpFamily::Ipv6,
-            iif: config.downstream.clone(),
-            priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
-            action: RuleAction::Lookup,
-            table: DAEMON_TABLE,
-            fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-        })
+        add_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Replace,
+                family: IpFamily::Ipv6,
+                iif: config.downstream.clone(),
+                priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
+                action: RuleAction::Lookup,
+                table: DAEMON_TABLE,
+                fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
+            },
+        )
         .await?;
         for chain in [
             "vpnhotspot_v6_input",
@@ -1364,40 +1404,52 @@ impl Runtime {
             ],
         )
         .await;
-        delete_rule(IpRuleCommand {
-            operation: IpOperation::Delete,
-            family: IpFamily::Ipv6,
-            iif: config.downstream.clone(),
-            priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
-            action: RuleAction::Lookup,
-            table: DAEMON_TABLE,
-            fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-        })
+        delete_rule(
+            &self.netlink,
+            IpRuleCommand {
+                operation: IpOperation::Delete,
+                family: IpFamily::Ipv6,
+                iif: config.downstream.clone(),
+                priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
+                action: RuleAction::Lookup,
+                table: DAEMON_TABLE,
+                fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
+            },
+        )
         .await;
-        delete_route(IpRouteCommand {
-            operation: IpOperation::Delete,
-            route_type: RouteType::Local,
-            destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-            prefix_len: 0,
-            interface: "lo".to_string(),
-            table: DAEMON_TABLE,
-        })
+        delete_route(
+            &self.netlink,
+            IpRouteCommand {
+                operation: IpOperation::Delete,
+                route_type: RouteType::Local,
+                destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                prefix_len: 0,
+                interface: "lo".to_string(),
+                table: DAEMON_TABLE,
+            },
+        )
         .await;
-        delete_route(IpRouteCommand {
-            operation: IpOperation::Delete,
-            route_type: RouteType::Unicast,
-            destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
-            prefix_len: ipv6_nat.prefix_len,
-            interface: config.downstream.clone(),
-            table: LOCAL_NETWORK_TABLE,
-        })
+        delete_route(
+            &self.netlink,
+            IpRouteCommand {
+                operation: IpOperation::Delete,
+                route_type: RouteType::Unicast,
+                destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
+                prefix_len: ipv6_nat.prefix_len,
+                interface: config.downstream.clone(),
+                table: LOCAL_NETWORK_TABLE,
+            },
+        )
         .await;
-        delete_address(IpAddressCommand {
-            operation: IpOperation::Delete,
-            address: IpAddr::V6(ipv6_nat.gateway),
-            prefix_len: ipv6_nat.prefix_len,
-            interface: config.downstream.clone(),
-        })
+        delete_address(
+            &self.netlink,
+            IpAddressCommand {
+                operation: IpOperation::Delete,
+                address: IpAddr::V6(ipv6_nat.gateway),
+                prefix_len: ipv6_nat.prefix_len,
+                interface: config.downstream.clone(),
+            },
+        )
         .await;
     }
 
@@ -1436,20 +1488,32 @@ impl Runtime {
     }
 }
 
-pub(crate) async fn clean(command: &CleanIpCommand) -> io::Result<()> {
-    delete_rule_repeated(IpFamily::Ipv6, rule_priority(RULE_PRIORITY_DAEMON_BASE)).await?;
-    delete_rule_repeated(IpFamily::Ipv4, rule_priority(RULE_PRIORITY_UPSTREAM_BASE)).await?;
+pub(crate) async fn clean(handle: &rtnetlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
     delete_rule_repeated(
+        handle,
+        IpFamily::Ipv6,
+        rule_priority(RULE_PRIORITY_DAEMON_BASE),
+    )
+    .await?;
+    delete_rule_repeated(
+        handle,
+        IpFamily::Ipv4,
+        rule_priority(RULE_PRIORITY_UPSTREAM_BASE),
+    )
+    .await?;
+    delete_rule_repeated(
+        handle,
         IpFamily::Ipv4,
         rule_priority(RULE_PRIORITY_UPSTREAM_FALLBACK_BASE),
     )
     .await?;
     delete_rule_repeated(
+        handle,
         IpFamily::Ipv4,
         rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
     )
     .await?;
-    rtnetlink::clean_ip(command).await?;
+    clean_ip(handle, command).await?;
     clean_firewall().await;
     Ok(())
 }
@@ -1530,32 +1594,76 @@ COMMIT
     .await;
 }
 
-async fn add_rule(command: IpRuleCommand) -> io::Result<()> {
-    match rtnetlink::apply_rule(&command).await {
+pub(crate) async fn apply_static_address(
+    handle: &rtnetlink::Handle,
+    command: &IpAddressCommand,
+) -> io::Result<()> {
+    apply_address_command(handle, command).await
+}
+
+async fn clean_ip(handle: &rtnetlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
+    flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
+    for interface in netlink::link_names(handle).await?.into_values() {
+        let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
+        let _ = apply_address_command(
+            handle,
+            &IpAddressCommand {
+                operation: IpOperation::Delete,
+                address: IpAddr::V6(ipv6_nat_gateway(prefix)),
+                prefix_len: prefix.prefix_len,
+                interface: interface.clone(),
+            },
+        )
+        .await;
+        let _ = apply_route_command(
+            handle,
+            &IpRouteCommand {
+                operation: IpOperation::Delete,
+                route_type: RouteType::Unicast,
+                destination: IpAddr::V6(Ipv6Addr::from(prefix.prefix.to_be_bytes())),
+                prefix_len: prefix.prefix_len,
+                interface,
+                table: LOCAL_NETWORK_TABLE,
+            },
+        )
+        .await;
+    }
+    Ok(())
+}
+
+async fn add_rule(handle: &rtnetlink::Handle, command: IpRuleCommand) -> io::Result<()> {
+    match apply_rule_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_rule(command: IpRuleCommand) {
-    if let Err(e) = rtnetlink::apply_rule(&command).await {
+async fn delete_rule(handle: &rtnetlink::Handle, command: IpRuleCommand) {
+    if let Err(e) = apply_rule_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete rule failed: {e}");
         }
     }
 }
 
-async fn delete_rule_repeated(family: IpFamily, priority: u32) -> io::Result<()> {
+async fn delete_rule_repeated(
+    handle: &rtnetlink::Handle,
+    family: IpFamily,
+    priority: u32,
+) -> io::Result<()> {
     loop {
-        let result = rtnetlink::apply_rule(&IpRuleCommand {
-            operation: IpOperation::Delete,
-            family,
-            iif: String::new(),
-            priority,
-            action: RuleAction::Any,
-            table: 0,
-            fwmark: None,
-        })
+        let result = apply_rule_command(
+            handle,
+            &IpRuleCommand {
+                operation: IpOperation::Delete,
+                family,
+                iif: String::new(),
+                priority,
+                action: RuleAction::Any,
+                table: 0,
+                fwmark: None,
+            },
+        )
         .await;
         match result {
             Ok(()) => {}
@@ -1565,33 +1673,225 @@ async fn delete_rule_repeated(family: IpFamily, priority: u32) -> io::Result<()>
     }
 }
 
-async fn apply_route(command: IpRouteCommand) -> io::Result<()> {
-    match rtnetlink::apply_route(&command).await {
+async fn apply_route(handle: &rtnetlink::Handle, command: IpRouteCommand) -> io::Result<()> {
+    match apply_route_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_route(command: IpRouteCommand) {
-    if let Err(e) = rtnetlink::apply_route(&command).await {
+async fn delete_route(handle: &rtnetlink::Handle, command: IpRouteCommand) {
+    if let Err(e) = apply_route_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete route failed: {e}");
         }
     }
 }
 
-async fn apply_address(command: IpAddressCommand) -> io::Result<()> {
-    match rtnetlink::apply_address(&command).await {
+async fn apply_address(handle: &rtnetlink::Handle, command: IpAddressCommand) -> io::Result<()> {
+    match apply_address_command(handle, &command).await {
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
 
-async fn delete_address(command: IpAddressCommand) {
-    if let Err(e) = rtnetlink::apply_address(&command).await {
+async fn delete_address(handle: &rtnetlink::Handle, command: IpAddressCommand) {
+    if let Err(e) = apply_address_command(handle, &command).await {
         if !is_missing(&e) {
             eprintln!("delete address failed: {e}");
         }
+    }
+}
+
+async fn apply_address_command(
+    handle: &rtnetlink::Handle,
+    command: &IpAddressCommand,
+) -> io::Result<()> {
+    let index = netlink::link_index(handle, &command.interface).await?;
+    match command.operation {
+        IpOperation::Replace => {
+            let mut request = handle
+                .address()
+                .add(index, command.address, command.prefix_len)
+                .replace();
+            *request.message_mut() = address_message(index, command.address, command.prefix_len);
+            request.execute().await
+        }
+        IpOperation::Delete => {
+            handle
+                .address()
+                .del(address_message(index, command.address, command.prefix_len))
+                .execute()
+                .await
+        }
+    }
+    .map_err(netlink::to_io_error)
+}
+
+async fn apply_route_command(
+    handle: &rtnetlink::Handle,
+    command: &IpRouteCommand,
+) -> io::Result<()> {
+    let message = route_message(
+        command,
+        netlink::link_index(handle, &command.interface).await?,
+    );
+    match command.operation {
+        IpOperation::Replace => handle.route().add(message).replace().execute().await,
+        IpOperation::Delete => handle.route().del(message).execute().await,
+    }
+    .map_err(netlink::to_io_error)
+}
+
+async fn apply_rule_command(handle: &rtnetlink::Handle, command: &IpRuleCommand) -> io::Result<()> {
+    match command.operation {
+        IpOperation::Replace => {
+            let mut request = handle.rule().add();
+            fill_rule_message(request.message_mut(), command)?;
+            request.execute().await
+        }
+        IpOperation::Delete => handle.rule().del(rule_message(command)?).execute().await,
+    }
+    .map_err(netlink::to_io_error)
+}
+
+async fn flush_routes(
+    handle: &rtnetlink::Handle,
+    family: AddressFamily,
+    table: u32,
+) -> io::Result<()> {
+    let routes = handle
+        .route()
+        .get(route_dump_message(family, table))
+        .execute();
+    pin_mut!(routes);
+    while let Some(route) = routes.try_next().await.map_err(netlink::to_io_error)? {
+        if route_table(&route) == Some(table) {
+            let _ = handle.route().del(route).execute().await;
+        }
+    }
+    Ok(())
+}
+
+fn address_message(index: u32, address: IpAddr, prefix_len: u8) -> AddressMessage {
+    let mut message = AddressMessage::default();
+    message.header.family = address_family(&address);
+    message.header.prefix_len = prefix_len;
+    message.header.index = index;
+    message.attributes.push(AddressAttribute::Local(address));
+    message.attributes.push(AddressAttribute::Address(address));
+    message
+}
+
+fn route_message(command: &IpRouteCommand, interface: u32) -> RouteMessage {
+    let mut message = route_dump_message(address_family(&command.destination), command.table);
+    message.header.destination_prefix_length = command.prefix_len;
+    message.header.protocol = RouteProtocol::Static;
+    match command.route_type {
+        RouteType::Unicast => {
+            message.header.kind = NetlinkRouteType::Unicast;
+            message.header.scope = RouteScope::Link;
+        }
+        RouteType::Local => {
+            message.header.kind = NetlinkRouteType::Local;
+            message.header.scope = RouteScope::Host;
+        }
+    }
+    if command.prefix_len > 0 {
+        message
+            .attributes
+            .push(RouteAttribute::Destination(command.destination.into()));
+    }
+    message.attributes.push(RouteAttribute::Oif(interface));
+    message
+}
+
+fn route_dump_message(family: AddressFamily, table: u32) -> RouteMessage {
+    let mut message = RouteMessage::default();
+    message.header.address_family = family;
+    message.header.table = if table < 256 {
+        table as u8
+    } else {
+        RouteHeader::RT_TABLE_UNSPEC
+    };
+    message.attributes.push(RouteAttribute::Table(table));
+    message
+}
+
+fn rule_message(command: &IpRuleCommand) -> io::Result<RuleMessage> {
+    let mut message = RuleMessage::default();
+    fill_rule_message(&mut message, command)?;
+    Ok(message)
+}
+
+fn fill_rule_message(message: &mut RuleMessage, command: &IpRuleCommand) -> io::Result<()> {
+    if !command.iif.is_empty() {
+        netlink::validate_interface_name(&command.iif)?;
+    }
+    message.header.family = family_value(command.family);
+    message.header.dst_len = 0;
+    message.header.src_len = 0;
+    message.header.tos = 0;
+    message.header.table = if command.table < 256 {
+        command.table as u8
+    } else {
+        RouteHeader::RT_TABLE_UNSPEC
+    };
+    message.header.action = match command.action {
+        RuleAction::Lookup => NetlinkRuleAction::ToTable,
+        RuleAction::Unreachable => NetlinkRuleAction::Unreachable,
+        RuleAction::Any => NetlinkRuleAction::Unspec,
+    };
+    message.attributes.clear();
+    if !command.iif.is_empty() {
+        message
+            .attributes
+            .push(RuleAttribute::Iifname(command.iif.clone()));
+    }
+    message
+        .attributes
+        .push(RuleAttribute::Priority(command.priority));
+    if command.action == RuleAction::Lookup {
+        message.attributes.push(RuleAttribute::Table(command.table));
+    }
+    if let Some((mark, mask)) = command.fwmark {
+        message.attributes.push(RuleAttribute::FwMark(mark));
+        message.attributes.push(RuleAttribute::FwMask(mask));
+    }
+    Ok(())
+}
+
+fn route_table(route: &RouteMessage) -> Option<u32> {
+    route
+        .attributes
+        .iter()
+        .find_map(|attribute| {
+            if let RouteAttribute::Table(table) = attribute {
+                Some(*table)
+            } else {
+                None
+            }
+        })
+        .or({
+            if route.header.table == RouteHeader::RT_TABLE_UNSPEC {
+                None
+            } else {
+                Some(route.header.table as u32)
+            }
+        })
+}
+
+fn address_family(address: &IpAddr) -> AddressFamily {
+    match address {
+        IpAddr::V4(_) => AddressFamily::Inet,
+        IpAddr::V6(_) => AddressFamily::Inet6,
+    }
+}
+
+fn family_value(family: IpFamily) -> AddressFamily {
+    match family {
+        IpFamily::Ipv4 => AddressFamily::Inet,
+        IpFamily::Ipv6 => AddressFamily::Inet6,
     }
 }
 
@@ -1727,20 +2027,18 @@ fn client_ips(config: &SessionConfig) -> HashSet<Ipv4Addr> {
 }
 
 fn rule_priority(base: u32) -> u32 {
-    (base as i32 + if android_api_level() < 31 { -3000 } else { 0 }) as u32
+    rule_priority_for_api(base, android_api_level())
 }
 
-#[cfg(target_os = "android")]
+fn rule_priority_for_api(base: u32, api_level: i32) -> u32 {
+    (base as i32 + if api_level < 31 { -3000 } else { 0 }) as u32
+}
+
 fn android_api_level() -> i32 {
     extern "C" {
         fn android_get_device_api_level() -> libc::c_int;
     }
     unsafe { android_get_device_api_level() as i32 }
-}
-
-#[cfg(not(target_os = "android"))]
-fn android_api_level() -> i32 {
-    31
 }
 
 #[cfg(test)]
@@ -1774,5 +2072,11 @@ mod tests {
             mac_string(&[0x02, 0xab, 0, 0x7f, 0x80, 0xff]),
             "02:ab:00:7f:80:ff"
         );
+    }
+
+    #[test]
+    fn rule_priority_uses_android_routing_gap() {
+        assert_eq!(rule_priority_for_api(RULE_PRIORITY_DAEMON_BASE, 30), 17600);
+        assert_eq!(rule_priority_for_api(RULE_PRIORITY_DAEMON_BASE, 31), 20600);
     }
 }

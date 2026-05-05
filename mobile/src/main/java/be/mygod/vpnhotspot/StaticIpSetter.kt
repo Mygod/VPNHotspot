@@ -70,7 +70,10 @@ class StaticIpSetter : BootReceiver.Startable {
                     for (line in ips.lineSequence()) {
                         val value = line.trim()
                         if (value.isBlank()) continue
-                        val address = parseAddress(value)
+                        val address = value.split('/', limit = 2).let {
+                            val parsed = InetAddresses.parseNumericAddress(it[0])
+                            parsed to if (it.size == 1) parsed.address.size * 8 else it[1].toInt()
+                        }
                         DaemonController.replaceStaticAddress(address.first, address.second, "lo")
                     }
                     true
@@ -98,11 +101,6 @@ class StaticIpSetter : BootReceiver.Startable {
                 null -> { }
             }
             ifaceEvent()
-        }
-
-        private fun parseAddress(value: String) = value.split('/', limit = 2).let {
-            val address = InetAddresses.parseNumericAddress(it[0])
-            address to if (it.size == 1) address.address.size * 8 else it[1].toInt()
         }
     }
 

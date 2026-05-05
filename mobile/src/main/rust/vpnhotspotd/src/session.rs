@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::{dns, nat66, routing};
+use crate::{dns, nat66, netlink, routing};
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 
 pub(crate) struct Session {
@@ -16,7 +16,10 @@ pub(crate) struct Session {
 }
 
 impl Session {
-    pub(crate) async fn start(config: SessionConfig) -> io::Result<Self> {
+    pub(crate) async fn start(
+        config: SessionConfig,
+        netlink: &netlink::Runtime,
+    ) -> io::Result<Self> {
         let stop = CancellationToken::new();
         let shared = Arc::new(Mutex::new(config.clone()));
         let dns = match dns::Runtime::start(config.dns_bind_address, shared.clone(), stop.clone()) {
@@ -26,7 +29,13 @@ impl Session {
                 return Err(e);
             }
         };
-        let nat66 = match nat66::Runtime::start(&config, shared.clone(), stop.clone()) {
+        let nat66 = match nat66::Runtime::start(
+            &config,
+            shared.clone(),
+            stop.clone(),
+            netlink.handle(),
+            netlink.ipv6_address_changed(),
+        ) {
             Ok(runtime) => runtime,
             Err(e) => {
                 stop.cancel();
@@ -38,7 +47,7 @@ impl Session {
             dns_udp: dns.udp_port,
             ipv6_nat: nat66.as_ref().map(|runtime| runtime.ports),
         };
-        let routing = match routing::Runtime::start(&config, ports).await {
+        let routing = match routing::Runtime::start(&config, ports, netlink.handle()).await {
             Ok(runtime) => runtime,
             Err(e) => {
                 stop.cancel();

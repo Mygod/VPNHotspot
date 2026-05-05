@@ -73,8 +73,7 @@ object DaemonProtocol {
     )
 
     data class Ipv6NatConfig(
-        val gateway: Inet6Address,
-        val prefixLength: Int,
+        val prefixSeed: String,
         val mtu: Int,
         val suppressedPrefixes: List<IpPrefix>,
         val cleanupPrefixes: List<IpPrefix>,
@@ -101,12 +100,6 @@ object DaemonProtocol {
     data class NeighbourUpdate(
         val replace: Boolean,
         val neighbours: List<NeighbourRow>,
-    )
-
-    data class Ipv6Cleanup(
-        val dev: String,
-        val gateway: Inet6Address,
-        val prefix: IpPrefix,
     )
 
     sealed class Frame {
@@ -142,13 +135,8 @@ object DaemonProtocol {
                 writeInt(prefixLength)
                 writeUtf(dev)
             }
-    fun cleanRouting(cleanups: List<Ipv6Cleanup>) = writePacket(CMD_CLEAN_ROUTING) {
-        writeInt(cleanups.size)
-        for (cleanup in cleanups) {
-            writeUtf(cleanup.dev)
-            writeInet6Address(cleanup.gateway)
-            writeIpv6Prefix(cleanup.prefix)
-        }
+    fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING) {
+        writeUtf(ipv6NatPrefixSeed)
     }
 
     fun readFrame(packet: ByteArray): Frame {
@@ -222,8 +210,7 @@ object DaemonProtocol {
         val ipv6Nat = config.ipv6Nat
         writeByte((if (ipv6Nat != null) 1 else 0).toByte())
         if (ipv6Nat == null) return
-        writeInet6Address(ipv6Nat.gateway)
-        writeInt(ipv6Nat.prefixLength)
+        writeUtf(ipv6Nat.prefixSeed)
         writeInt(ipv6Nat.mtu)
         writeInt(ipv6Nat.suppressedPrefixes.size)
         for (prefix in ipv6Nat.suppressedPrefixes) writeIpv6Prefix(prefix)

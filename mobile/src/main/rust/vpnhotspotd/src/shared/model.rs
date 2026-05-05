@@ -86,6 +86,38 @@ pub fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {
     (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
 }
 
+pub fn ipv6_nat_prefix(seed: &str, interface: &str) -> Route {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    // This only needs stable local address selection, not cryptographic unpredictability.
+    fn update(mut hash: u64, bytes: &[u8]) -> u64 {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+        hash
+    }
+
+    let hash = update(
+        update(update(FNV_OFFSET_BASIS, seed.as_bytes()), b"\0"),
+        interface.as_bytes(),
+    );
+    let mut raw = [0u8; 16];
+    raw[0] = 0xfd;
+    raw[1..8].copy_from_slice(&hash.to_be_bytes()[..7]);
+    Route {
+        prefix: u128::from_be_bytes(raw),
+        prefix_len: 64,
+    }
+}
+
+pub fn ipv6_nat_gateway(prefix: Route) -> Ipv6Addr {
+    let mut raw = prefix.prefix.to_be_bytes();
+    raw[15] = 1;
+    Ipv6Addr::from(raw)
+}
+
 pub fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
     let destination = ipv6_to_u128(destination);
     if config.primary_network.is_some() && route_matches(&config.primary_routes, destination) {
@@ -148,6 +180,20 @@ mod tests {
         assert_eq!(
             select_network(&config, "2001:db8::1".parse().unwrap()),
             Some(456)
+        );
+    }
+
+    #[test]
+    fn ipv6_nat_prefix_matches_ula_shape() {
+        let prefix = ipv6_nat_prefix("be.mygod.vpnhotspot\0android-id", "wlan0");
+        assert_eq!(prefix.prefix_len, 64);
+        assert_eq!(
+            Ipv6Addr::from(prefix.prefix.to_be_bytes()),
+            "fd8d:32f9:31e3:b417::".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(
+            ipv6_nat_gateway(prefix),
+            "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
         );
     }
 

@@ -39,11 +39,8 @@ import timber.log.Timber
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
-import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
-import java.security.MessageDigest
-import java.util.Collections
 
 /**
  * Builds and updates a root routing session for one downstream interface.
@@ -56,24 +53,9 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                 Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
             }"
 
-        private fun ipv6NatPrefix(seed: String, downstream: String): IpPrefix {
-            val raw = ByteArray(16)
-            MessageDigest.getInstance("SHA-256").digest("$seed\u0000$downstream".encodeToByteArray())
-                .copyInto(raw, 1, endIndex = 7)
-            raw[0] = 0xfd.toByte()
-            return IpPrefix(InetAddress.getByAddress(raw), 64)
-        }
-
-        private fun ipv6NatGateway(prefix: IpPrefix) =
-                InetAddress.getByAddress(prefix.rawAddress.apply { this[15] = 1 }) as Inet6Address
-
         suspend fun clean() {
             TrafficRecorder.clean()
-            val cleanups = Collections.list(NetworkInterface.getNetworkInterfaces()).map { networkInterface ->
-                val prefix = ipv6NatPrefix(ipv6NatPrefixSeed, networkInterface.name)
-                DaemonProtocol.Ipv6Cleanup(networkInterface.name, ipv6NatGateway(prefix), prefix)
-            }
-            DaemonController.cleanRouting(cleanups)
+            DaemonController.cleanRouting(ipv6NatPrefixSeed)
         }
     }
 
@@ -195,21 +177,21 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
     private var daemonSession: DaemonSession? = null
 
     private inner class DaemonSession {
-        private val prefix by lazy { ipv6NatPrefix(ipv6NatPrefixSeed, downstream) }
-        private val gateway by lazy { ipv6NatGateway(prefix) }
         private val mtu by lazy { NetworkInterface.getByName(downstream)?.mtu ?: 1500 }
 
-        private fun nextConfig(): DaemonProtocol.SessionConfig {
+        private fun nextConfig(
+            clientSnapshot: Map<Inet4Address, MacAddress> = clients,
+            allowedMacSnapshot: Set<MacAddress> = allowedMacs,
+        ): DaemonProtocol.SessionConfig {
             val ipv6NatConfig = if (ipv6Nat) {
                 val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
                 DaemonProtocol.Ipv6NatConfig(
-                    gateway = gateway,
-                    prefixLength = prefix.prefixLength,
+                    prefixSeed = ipv6NatPrefixSeed,
                     mtu = mtu,
                     suppressedPrefixes = interfaceAddresses.mapNotNull { address ->
                         val inet = address.address
                         if (inet !is Inet6Address || inet.isLinkLocalAddress || inet.isLoopbackAddress ||
-                                inet.isMulticastAddress || inet == gateway) null else {
+                                inet.isMulticastAddress) null else {
                             IpPrefix(inet, address.networkPrefixLength.toInt())
                         }
                     },
@@ -240,8 +222,8 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
                     fallbackUpstream.appendConfig(this, seen)
                 },
                 clients = buildList {
-                    for (mac in allowedMacs) add(DaemonProtocol.ClientConfig(mac,
-                        clients.filterValues { it == mac }.keys.toList()))
+                    for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
+                        clientSnapshot.filterValues { it == mac }.keys.toList()))
                 },
                 ipv6Nat = ipv6NatConfig,
             )
@@ -249,15 +231,20 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
 
         suspend fun prepare() = DaemonController.startSession(nextConfig())
 
-        suspend fun update() {
+        suspend fun update(
+            clientSnapshot: Map<Inet4Address, MacAddress> = clients,
+            allowedMacSnapshot: Set<MacAddress> = allowedMacs,
+        ): Boolean {
             try {
-                DaemonController.replaceSession(nextConfig())
+                DaemonController.replaceSession(nextConfig(clientSnapshot, allowedMacSnapshot))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
+                return false
             }
+            return true
         }
 
         suspend fun close(
@@ -291,25 +278,22 @@ class Routing(private val caller: Any, private val downstream: String) : IpNeigh
         val removed = clients.keys - nextClients.keys
         if (removed.isNotEmpty()) TrafficRecorder.update()
         val added = nextClients.filterKeys { !clients.containsKey(it) }
+        if (daemonSession?.update(nextClients, nextAllowedMacs) == false) return
+        val registered = ArrayList<Inet4Address>()
+        for ((ip, mac) in added) try {
+            TrafficRecorder.register(ip, downstream, mac)
+            registered += ip
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+            for (rollback in registered) TrafficRecorder.unregister(rollback, downstream)
+            return
+        }
+        for (ip in removed) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         clients.putAll(nextClients)
         allowedMacs.clear()
         allowedMacs.addAll(nextAllowedMacs)
-        try {
-            daemonSession?.update()
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-            return
-        }
-        for ((ip, mac) in added) try {
-            TrafficRecorder.register(ip, downstream, mac)
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-        }
-        for (ip in removed) TrafficRecorder.unregister(ip, downstream)
     }
 
     /**
