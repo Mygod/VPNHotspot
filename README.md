@@ -398,12 +398,12 @@ Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT`
 deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
 and only deletes VPNHotspot prefixes reconstructed from current interface names. Background routing
 state is owned by the Rust root daemon: address, route, rule, and neighbour work uses rtnetlink
-instead of `/system/bin/ip`; firewall work runs through Android's bundled iptables/ip6tables tools;
-and netd forwarding/NAT requests run through native `ndc`. Clean batches one-shot iptables cleanup
-with `iptables-restore -w --noflush` and `ip6tables-restore -w --noflush`, which are assumed to be
-supported by Android's bundled iptables on API 29+. Traffic counters are read through
-`iptables-restore -w --noflush -v`, assuming verbose read-only list commands echo their output and
-following comments without flushing tables.
+instead of `/system/bin/ip`; firewall work runs through Android's bundled `/system/bin/iptables-restore`
+and `/system/bin/ip6tables-restore`; and netd forwarding/NAT requests run through native
+`/system/bin/ndc`. Clean batches one-shot iptables cleanup with `iptables-restore -w --noflush` and
+`ip6tables-restore -w --noflush`, which are assumed to be supported by Android's bundled iptables on
+API 29+. Traffic counters are read through `iptables-restore -w --noflush` with a read-only
+`*filter`/`-nvx -L <chain>` restore command.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
 TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sockets use the
 AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
@@ -412,11 +412,12 @@ AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99
 Undocumented system binaries are all bundled and executable:
 
 * `iptables-save`, `ip6tables-save`;
-* `iptables-restore`, `ip6tables-restore` (`-w --noflush`, `iptables-restore -v`);
+* `/system/bin/iptables-restore`, `/system/bin/ip6tables-restore` (`-w --noflush`, restore input
+  commands including `-I`, `-D`, `-N`, `-nvx -L <chain>`);
 * `echo`;
 * `/system/bin/ip` (`rule`, `route show table all`, `-s link`, for explicit diagnostic dumps);
-* `ndc` (`ipfwd nat network`);
-* `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
+* `/system/bin/ndc` (`ipfwd nat network`);
+* `iptables`, `ip6tables` (diagnostic dump list/save commands);
 * `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`);
 * `sh`;
 * `su`.

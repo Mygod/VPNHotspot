@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::process::Stdio;
 
 use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::packet_route::{
@@ -13,10 +12,12 @@ use rtnetlink::packet_route::{
     rule::{RuleAction as NetlinkRuleAction, RuleAttribute, RuleMessage},
     AddressFamily,
 };
-use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::{netlink, report};
+use crate::{
+    firewall::{self, IptablesTarget},
+    netlink, report,
+};
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, Ipv6NatPorts, MasqueradeMode,
     SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
@@ -24,14 +25,9 @@ use vpnhotspotd::shared::model::{
     LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
-    error_errno, CleanIpCommand, IoErrorReportExt, IoResultReportExt, IpAddressCommand, IpFamily,
-    IpOperation, IpRouteCommand, IpRuleCommand, RouteType, RuleAction,
+    error_errno, CleanIpCommand, IoResultReportExt, IpAddressCommand, IpFamily, IpOperation,
+    IpRouteCommand, IpRuleCommand, RouteType, RuleAction,
 };
-
-const IPTABLES: &str = "iptables";
-const IP6TABLES: &str = "ip6tables";
-const IPTABLES_RESTORE: &str = "iptables-restore";
-const IP6TABLES_RESTORE: &str = "ip6tables-restore";
 
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
@@ -39,7 +35,7 @@ const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
 const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;
 
 struct IptablesRule {
-    binary: &'static str,
+    target: IptablesTarget,
     table: &'static str,
     chain: &'static str,
     args: Vec<String>,
@@ -47,47 +43,48 @@ struct IptablesRule {
 
 impl IptablesRule {
     fn new(
-        binary: &'static str,
+        target: IptablesTarget,
         table: &'static str,
         chain: &'static str,
         args: Vec<String>,
     ) -> Self {
         Self {
-            binary,
+            target,
             table,
             chain,
             args,
         }
     }
 
-    async fn insert(&self) -> io::Result<()> {
-        let mut command_args = vec![
-            "-w".to_string(),
-            "-t".to_string(),
-            self.table.to_string(),
-            "-I".to_string(),
-            self.chain.to_string(),
-        ];
-        command_args.extend(self.args.iter().cloned());
-        run_command(self.binary, &command_args).await
+    fn insert_line(&self) -> io::Result<String> {
+        firewall::restore_line("-I", self.chain, &self.args)
     }
 
     async fn delete(&self) {
-        let mut command_args = vec![
-            "-w".to_string(),
-            "-t".to_string(),
-            self.table.to_string(),
-            "-D".to_string(),
-            self.chain.to_string(),
-        ];
-        command_args.extend(self.args.iter().cloned());
-        if let Err(e) = run_command_status_owned(self.binary, &command_args).await {
-            report::io_with_details(
-                "routing.iptables_delete",
-                e,
-                command_details(self.binary, command_args.iter().map(String::as_str)),
-            );
+        match self.delete_input() {
+            Ok(input) => {
+                if let Err(e) = firewall::restore_status(self.target, &input).await {
+                    report::io_with_details("routing.iptables_delete", e, self.details());
+                }
+            }
+            Err(e) => report::io_with_details("routing.iptables_delete", e, self.details()),
         }
+    }
+
+    fn delete_input(&self) -> io::Result<String> {
+        Ok(firewall::restore_input(
+            self.table,
+            &[firewall::restore_line("-D", self.chain, &self.args)?],
+        ))
+    }
+
+    fn details(&self) -> Vec<(String, String)> {
+        vec![
+            ("binary".to_owned(), self.target.restore_binary().to_owned()),
+            ("table".to_owned(), self.table.to_owned()),
+            ("chain".to_owned(), self.chain.to_owned()),
+            ("args".to_owned(), self.args.join(" ")),
+        ]
     }
 }
 
@@ -384,7 +381,7 @@ impl Runtime {
             .into_iter()
             .map(|(protocol, port)| {
                 IptablesRule::new(
-                    IPTABLES,
+                    IptablesTarget::Ipv4,
                     "nat",
                     "PREROUTING",
                     vec![
@@ -475,9 +472,9 @@ impl Runtime {
     }
 
     async fn add_forward(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IPTABLES, "filter", "vpnhotspot_acl")
+        self.iptables_new_chain(IptablesTarget::Ipv4, "filter", "vpnhotspot_acl")
             .await;
-        self.iptables_new_chain(IPTABLES, "filter", "vpnhotspot_stats")
+        self.iptables_new_chain(IptablesTarget::Ipv4, "filter", "vpnhotspot_stats")
             .await;
         self.iptables_insert_rules(self.forward_rules(config)).await
     }
@@ -489,13 +486,13 @@ impl Runtime {
     fn forward_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
         vec![
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "FORWARD",
                 vec!["-j".into(), "vpnhotspot_acl".into()],
             ),
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
                 vec![
@@ -509,7 +506,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
                 vec![
@@ -524,7 +521,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
                 vec![
@@ -542,7 +539,7 @@ impl Runtime {
     }
 
     async fn add_masquerade_chain(&self, _config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IPTABLES, "nat", "vpnhotspot_masquerade")
+        self.iptables_new_chain(IptablesTarget::Ipv4, "nat", "vpnhotspot_masquerade")
             .await;
         self.iptables_insert_rules([Self::masquerade_chain_rule()])
             .await
@@ -555,7 +552,7 @@ impl Runtime {
 
     fn masquerade_chain_rule() -> IptablesRule {
         IptablesRule::new(
-            IPTABLES,
+            IptablesTarget::Ipv4,
             "nat",
             "POSTROUTING",
             vec!["-j".into(), "vpnhotspot_masquerade".into()],
@@ -641,7 +638,7 @@ impl Runtime {
 
     fn upstream_masquerade_rule(config: &SessionConfig, upstream: &UpstreamConfig) -> IptablesRule {
         IptablesRule::new(
-            IPTABLES,
+            IptablesTarget::Ipv4,
             "nat",
             "vpnhotspot_masquerade",
             vec![
@@ -709,7 +706,7 @@ impl Runtime {
         let mac = mac_string(&client.mac);
         vec![
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
                 vec![
@@ -724,7 +721,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
                 vec![
@@ -759,7 +756,7 @@ impl Runtime {
         let address = address.to_string();
         vec![
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_stats",
                 vec![
@@ -772,7 +769,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IPTABLES,
+                IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_stats",
                 vec![
@@ -799,7 +796,7 @@ impl Runtime {
 
     fn client_mac_v6_rule(client: &ClientConfig) -> IptablesRule {
         IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "mangle",
             "vpnhotspot_acl",
             vec![
@@ -814,7 +811,7 @@ impl Runtime {
     }
 
     async fn add_ipv6_block(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IP6TABLES, "filter", "vpnhotspot_filter")
+        self.iptables_new_chain(IptablesTarget::Ipv6, "filter", "vpnhotspot_filter")
             .await;
         self.iptables_insert_rules(Self::ipv6_block_rules(config))
             .await
@@ -829,14 +826,14 @@ impl Runtime {
         let mut rules = Vec::new();
         for chain in ["INPUT", "FORWARD", "OUTPUT"] {
             rules.push(IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 chain,
                 vec!["-j".into(), "vpnhotspot_filter".into()],
             ));
         }
         rules.push(IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "filter",
             "vpnhotspot_filter",
             vec![
@@ -847,7 +844,7 @@ impl Runtime {
             ],
         ));
         rules.push(IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "filter",
             "vpnhotspot_filter",
             vec![
@@ -921,11 +918,12 @@ impl Runtime {
             "vpnhotspot_v6_forward",
             "vpnhotspot_v6_output",
         ] {
-            self.iptables_new_chain(IP6TABLES, "filter", chain).await;
+            self.iptables_new_chain(IptablesTarget::Ipv6, "filter", chain)
+                .await;
         }
-        self.iptables_new_chain(IP6TABLES, "mangle", "vpnhotspot_acl")
+        self.iptables_new_chain(IptablesTarget::Ipv6, "mangle", "vpnhotspot_acl")
             .await;
-        self.iptables_new_chain(IP6TABLES, "mangle", "vpnhotspot_v6_tproxy")
+        self.iptables_new_chain(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy")
             .await;
         self.iptables_insert_rules(Self::ipv6_nat_filter_rules(config))
             .await?;
@@ -1008,7 +1006,7 @@ impl Runtime {
     fn ipv6_nat_filter_rules(config: &SessionConfig) -> Vec<IptablesRule> {
         vec![
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_input",
                 vec![
@@ -1019,7 +1017,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_input",
                 vec![
@@ -1034,7 +1032,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_input",
                 vec![
@@ -1047,7 +1045,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_forward",
                 vec![
@@ -1058,7 +1056,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_forward",
                 vec![
@@ -1069,7 +1067,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_output",
                 vec![
@@ -1084,7 +1082,7 @@ impl Runtime {
                 ],
             ),
             IptablesRule::new(
-                IP6TABLES,
+                IptablesTarget::Ipv6,
                 "filter",
                 "vpnhotspot_v6_output",
                 vec![
@@ -1107,7 +1105,7 @@ impl Runtime {
 
     fn ipv6_nat_acl_drop_rule() -> IptablesRule {
         IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "mangle",
             "vpnhotspot_acl",
             vec!["-j".into(), "DROP".into()],
@@ -1122,7 +1120,7 @@ impl Runtime {
             .into_iter()
             .map(|(protocol, port)| {
                 IptablesRule::new(
-                    IP6TABLES,
+                    IptablesTarget::Ipv6,
                     "mangle",
                     "vpnhotspot_v6_tproxy",
                     vec![
@@ -1144,7 +1142,7 @@ impl Runtime {
 
     fn ipv6_nat_tproxy_acl_rule(config: &SessionConfig) -> IptablesRule {
         IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "mangle",
             "vpnhotspot_v6_tproxy",
             vec![
@@ -1164,28 +1162,46 @@ impl Runtime {
         ]
         .into_iter()
         .map(|(chain, target)| {
-            IptablesRule::new(IP6TABLES, "filter", chain, vec!["-j".into(), target.into()])
+            IptablesRule::new(
+                IptablesTarget::Ipv6,
+                "filter",
+                chain,
+                vec!["-j".into(), target.into()],
+            )
         })
         .collect()
     }
 
     fn ipv6_nat_prerouting_rule() -> IptablesRule {
         IptablesRule::new(
-            IP6TABLES,
+            IptablesTarget::Ipv6,
             "mangle",
             "PREROUTING",
             vec!["-j".into(), "vpnhotspot_v6_tproxy".into()],
         )
     }
 
-    async fn iptables_new_chain(&self, binary: &str, table: &str, chain: &str) {
-        let args = ["-w", "-t", table, "-N", chain];
-        if let Err(e) = run_command_status(binary, &args).await {
-            report::io_with_details(
+    async fn iptables_new_chain(&self, target: IptablesTarget, table: &str, chain: &str) {
+        match firewall::restore_line("-N", chain, &[]) {
+            Ok(line) => {
+                let input = firewall::restore_input(table, &[line]);
+                if let Err(e) = firewall::restore_status(target, &input).await {
+                    report::io_with_details(
+                        "routing.iptables_new_chain",
+                        e,
+                        firewall::restore_details(target, &input),
+                    );
+                }
+            }
+            Err(e) => report::io_with_details(
                 "routing.iptables_new_chain",
                 e,
-                command_details(binary, args),
-            );
+                [
+                    ("binary", target.restore_binary().to_owned()),
+                    ("table", table.to_owned()),
+                    ("chain", chain.to_owned()),
+                ],
+            ),
         }
     }
 
@@ -1193,8 +1209,20 @@ impl Runtime {
     where
         I: IntoIterator<Item = IptablesRule>,
     {
+        let mut current = None;
+        let mut lines = Vec::new();
         for rule in rules {
-            rule.insert().await?;
+            let key = (rule.target, rule.table);
+            if current.is_some_and(|previous| previous != key) {
+                let (target, table) = current.unwrap();
+                firewall::restore(target, &firewall::restore_input(table, &lines)).await?;
+                lines.clear();
+            }
+            current = Some(key);
+            lines.push(rule.insert_line()?);
+        }
+        if let Some((target, table)) = current {
+            firewall::restore(target, &firewall::restore_input(table, &lines)).await?;
         }
         Ok(())
     }
@@ -1241,22 +1269,28 @@ pub(crate) async fn clean(handle: &netlink::Handle, command: &CleanIpCommand) ->
 
 async fn clean_firewall() {
     delete_iptables_repeated(
-        IPTABLES,
+        IptablesTarget::Ipv4,
         "mangle",
         "PREROUTING",
         &["-j", "vpnhotspot_dns_tproxy"],
     )
     .await;
-    delete_iptables_repeated(IPTABLES, "filter", "FORWARD", &["-j", "vpnhotspot_acl"]).await;
     delete_iptables_repeated(
-        IPTABLES,
+        IptablesTarget::Ipv4,
+        "filter",
+        "FORWARD",
+        &["-j", "vpnhotspot_acl"],
+    )
+    .await;
+    delete_iptables_repeated(
+        IptablesTarget::Ipv4,
         "nat",
         "POSTROUTING",
         &["-j", "vpnhotspot_masquerade"],
     )
     .await;
-    if let Err(e) = run_restore(
-        IPTABLES_RESTORE,
+    if let Err(e) = firewall::restore(
+        IptablesTarget::Ipv4,
         "*mangle
 :vpnhotspot_dns_tproxy - [0:0]
 -X vpnhotspot_dns_tproxy
@@ -1279,24 +1313,30 @@ COMMIT
         report::io("routing.clean_firewall.iptables_restore", e);
     }
     for chain in ["INPUT", "FORWARD", "OUTPUT"] {
-        delete_iptables_repeated(IP6TABLES, "filter", chain, &["-j", "vpnhotspot_filter"]).await;
+        delete_iptables_repeated(
+            IptablesTarget::Ipv6,
+            "filter",
+            chain,
+            &["-j", "vpnhotspot_filter"],
+        )
+        .await;
     }
     for (chain, target) in [
         ("INPUT", "vpnhotspot_v6_input"),
         ("FORWARD", "vpnhotspot_v6_forward"),
         ("OUTPUT", "vpnhotspot_v6_output"),
     ] {
-        delete_iptables_repeated(IP6TABLES, "filter", chain, &["-j", target]).await;
+        delete_iptables_repeated(IptablesTarget::Ipv6, "filter", chain, &["-j", target]).await;
     }
     delete_iptables_repeated(
-        IP6TABLES,
+        IptablesTarget::Ipv6,
         "mangle",
         "PREROUTING",
         &["-j", "vpnhotspot_v6_tproxy"],
     )
     .await;
-    if let Err(e) = run_restore(
-        IP6TABLES_RESTORE,
+    if let Err(e) = firewall::restore(
+        IptablesTarget::Ipv6,
         "*filter
 :vpnhotspot_filter - [0:0]
 :vpnhotspot_v6_input - [0:0]
@@ -1662,24 +1702,6 @@ fn is_missing(error: &io::Error) -> bool {
     )
 }
 
-fn command_details<'a>(
-    binary: &str,
-    args: impl IntoIterator<Item = &'a str>,
-) -> Vec<(String, String)> {
-    let args = args.into_iter().collect::<Vec<_>>().join(" ");
-    vec![
-        ("binary".to_owned(), binary.to_owned()),
-        ("args".to_owned(), args),
-    ]
-}
-
-fn restore_details(binary: &str, input: &str) -> Vec<(String, String)> {
-    vec![
-        ("binary".to_owned(), binary.to_owned()),
-        ("stdin".to_owned(), input.to_owned()),
-    ]
-}
-
 fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
     vec![
         ("operation".to_owned(), format!("{:?}", command.operation)),
@@ -1718,18 +1740,33 @@ fn address_details(command: &IpAddressCommand) -> Vec<(String, String)> {
     ]
 }
 
-async fn delete_iptables_repeated(binary: &str, table: &str, chain: &str, args: &[&str]) {
-    let mut command_args = vec!["-w", "-t", table, "-D", chain];
-    command_args.extend_from_slice(args);
+async fn delete_iptables_repeated(target: IptablesTarget, table: &str, chain: &str, args: &[&str]) {
+    let args = args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>();
+    let input = match firewall::restore_line("-D", chain, &args) {
+        Ok(line) => firewall::restore_input(table, &[line]),
+        Err(e) => {
+            report::io_with_details(
+                "routing.delete_iptables_repeated",
+                e,
+                [
+                    ("binary", target.restore_binary().to_owned()),
+                    ("table", table.to_owned()),
+                    ("chain", chain.to_owned()),
+                    ("args", args.join(" ")),
+                ],
+            );
+            return;
+        }
+    };
     loop {
-        match run_command_status(binary, &command_args).await {
+        match firewall::restore_status(target, &input).await {
             Ok(true) => {}
             Ok(false) => break,
             Err(e) => {
                 report::io_with_details(
                     "routing.delete_iptables_repeated",
                     e,
-                    command_details(binary, command_args.iter().copied()),
+                    firewall::restore_details(target, &input),
                 );
                 break;
             }
@@ -1738,14 +1775,15 @@ async fn delete_iptables_repeated(binary: &str, table: &str, chain: &str, args: 
 }
 
 async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
-    let output = Command::new("ndc")
+    let details = vec![
+        ("binary".to_owned(), firewall::NDC.to_owned()),
+        ("args".to_owned(), args.join(" ")),
+    ];
+    let output = Command::new(firewall::NDC)
         .args(args)
         .output()
         .await
-        .with_report_context_details(
-            "routing.ndc.spawn",
-            command_details("ndc", args.iter().copied()),
-        )?;
+        .with_report_context_details("routing.ndc.spawn", details.clone())?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let suffix = format!("200 0 {name} operation succeeded\n");
     if output.status.success() && stdout.ends_with(&suffix) {
@@ -1761,98 +1799,8 @@ async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
             stdout.trim_end(),
             String::from_utf8_lossy(&output.stderr).trim_end()
         )))
-        .with_report_context_details(
-            "routing.ndc.status",
-            command_details("ndc", args.iter().copied()),
-        )
+        .with_report_context_details("routing.ndc.status", details)
     }
-}
-
-async fn run_restore(binary: &str, input: &str) -> io::Result<()> {
-    let mut child = Command::new(binary)
-        .args(["-w", "--noflush"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .with_report_context_details("routing.restore.spawn", restore_details(binary, input))?;
-    child
-        .stdin
-        .take()
-        .ok_or_else(|| {
-            io::Error::other("missing restore stdin").with_report_context_details(
-                "routing.restore.stdin",
-                restore_details(binary, input),
-            )
-        })?
-        .write_all(input.as_bytes())
-        .await
-        .with_report_context_details("routing.restore.write", restore_details(binary, input))?;
-    let status = child
-        .wait()
-        .await
-        .with_report_context_details("routing.restore.wait", restore_details(binary, input))?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!("{binary} exited with {status}")))
-            .with_report_context_details("routing.restore.status", restore_details(binary, input))
-    }
-}
-
-async fn run_command(binary: &str, args: &[String]) -> io::Result<()> {
-    let output = Command::new(binary)
-        .args(args)
-        .output()
-        .await
-        .with_report_context_details(
-            "routing.command.spawn",
-            command_details(binary, args.iter().map(String::as_str)),
-        )?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(io::Error::other(format!(
-            "{} {} exited with {} stdout={} stderr={}",
-            binary,
-            args.join(" "),
-            output.status,
-            String::from_utf8_lossy(&output.stdout).trim_end(),
-            String::from_utf8_lossy(&output.stderr).trim_end()
-        )))
-        .with_report_context_details(
-            "routing.command.status",
-            command_details(binary, args.iter().map(String::as_str)),
-        )
-    }
-}
-
-async fn run_command_status(binary: &str, args: &[&str]) -> io::Result<bool> {
-    Ok(Command::new(binary)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-        .with_report_context_details(
-            "routing.command_status.spawn",
-            command_details(binary, args.iter().copied()),
-        )?
-        .success())
-}
-
-async fn run_command_status_owned(binary: &str, args: &[String]) -> io::Result<bool> {
-    Ok(Command::new(binary)
-        .args(args)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .await
-        .with_report_context_details(
-            "routing.command_status.spawn",
-            command_details(binary, args.iter().map(String::as_str)),
-        )?
-        .success())
 }
 
 fn host_subnet(config: &SessionConfig) -> String {
