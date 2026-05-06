@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -19,8 +18,8 @@ use crate::{
     netlink, report,
 };
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, Ipv6NatPorts, MasqueradeMode,
-    SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, MasqueradeMode, SessionConfig,
+    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
     DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
     LOCAL_NETWORK_TABLE,
 };
@@ -34,6 +33,7 @@ const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
 const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct IptablesRule {
     target: IptablesTarget,
     table: &'static str,
@@ -60,14 +60,20 @@ impl IptablesRule {
         firewall::restore_line("-I", self.chain, &self.args)
     }
 
-    async fn delete(&self) {
+    async fn delete(&self) -> bool {
         match self.delete_input() {
             Ok(input) => {
                 if let Err(e) = firewall::restore_status(self.target, &input).await {
                     report::io_with_details("routing.iptables_delete", e, self.details());
+                    false
+                } else {
+                    true
                 }
             }
-            Err(e) => report::io_with_details("routing.iptables_delete", e, self.details()),
+            Err(e) => {
+                report::io_with_details("routing.iptables_delete", e, self.details());
+                false
+            }
         }
     }
 
@@ -88,9 +94,69 @@ impl IptablesRule {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum RoutingMutation {
+    EnsureIptablesChain {
+        target: IptablesTarget,
+        table: &'static str,
+        chain: &'static str,
+    },
+    Iptables(IptablesRule),
+    IpForward {
+        downstream: String,
+    },
+    IpRule(IpRuleCommand),
+    IpRoute(IpRouteCommand),
+    IpAddress(IpAddressCommand),
+    NetdNat {
+        downstream: String,
+        upstream: String,
+    },
+}
+
+impl RoutingMutation {
+    async fn apply(&self, handle: &netlink::Handle) -> io::Result<()> {
+        match self {
+            Self::EnsureIptablesChain {
+                target,
+                table,
+                chain,
+            } => {
+                ensure_iptables_chain(*target, table, chain).await;
+                Ok(())
+            }
+            Self::Iptables(rule) => {
+                apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule)).await
+            }
+            Self::IpForward { downstream } => add_ip_forward(downstream).await,
+            Self::IpRule(command) => add_rule(handle, command.clone()).await,
+            Self::IpRoute(command) => apply_route(handle, command.clone()).await,
+            Self::IpAddress(command) => apply_address(handle, command.clone()).await,
+            Self::NetdNat {
+                downstream,
+                upstream,
+            } => run_ndc("Nat", &["nat", "enable", downstream, upstream, "0"]).await,
+        }
+    }
+
+    async fn delete(&self, handle: &netlink::Handle) -> bool {
+        match self {
+            Self::EnsureIptablesChain { .. } => true,
+            Self::Iptables(rule) => rule.delete().await,
+            Self::IpForward { downstream } => remove_ip_forward(downstream).await,
+            Self::IpRule(command) => delete_rule_result(handle, command.clone()).await,
+            Self::IpRoute(command) => delete_route_result(handle, command.clone()).await,
+            Self::IpAddress(command) => delete_address_result(handle, command.clone()).await,
+            // netd NAT is shared by interface pair, not owned by this session.
+            Self::NetdNat { .. } => true,
+        }
+    }
+}
+
 pub(crate) struct Runtime {
     ports: SessionPorts,
     netlink: netlink::Handle,
+    applied: Vec<RoutingMutation>,
 }
 
 impl Runtime {
@@ -99,9 +165,13 @@ impl Runtime {
         ports: SessionPorts,
         netlink: netlink::Handle,
     ) -> io::Result<Self> {
-        let runtime = Self { ports, netlink };
+        let mut runtime = Self {
+            ports,
+            netlink,
+            applied: Vec::new(),
+        };
         if let Err(e) = runtime.setup(config).await {
-            runtime.remove(config).await;
+            runtime.stop().await;
             return Err(e);
         }
         Ok(runtime)
@@ -118,262 +188,297 @@ impl Runtime {
                 "routing session downstream cannot change",
             ));
         }
-        let ipv6_nat_routing_changed = match (&previous.ipv6_nat, &next.ipv6_nat) {
-            (Some(previous), Some(next)) => {
-                previous.gateway != next.gateway || previous.prefix_len != next.prefix_len
-            }
-            (None, None) => false,
-            _ => true,
-        };
-        if previous.dns_bind_address != next.dns_bind_address {
-            self.remove_dns(previous).await;
-            self.add_dns(next).await?;
-        }
-        if previous.ip_forward != next.ip_forward {
-            if previous.ip_forward {
-                self.remove_ip_forward(previous).await;
-            }
-            if next.ip_forward {
-                self.add_ip_forward(next).await?;
-            }
-        }
-        if previous.forward != next.forward {
-            if previous.forward {
-                self.remove_forward(previous).await;
-            }
-            if next.forward {
-                self.add_forward(next).await?;
+        let desired = self.desired_mutations(next)?;
+        self.reconcile(desired).await
+    }
+
+    pub(crate) async fn stop(mut self) {
+        self.drain_applied().await;
+    }
+
+    async fn setup(&mut self, config: &SessionConfig) -> io::Result<()> {
+        let desired = self.desired_mutations(config)?;
+        self.reconcile(desired).await
+    }
+
+    async fn reconcile(&mut self, desired: Vec<RoutingMutation>) -> io::Result<()> {
+        let mut index = self.applied.len();
+        while index > 0 {
+            index -= 1;
+            if !desired.contains(&self.applied[index]) {
+                let mutation = self.applied[index].clone();
+                if mutation.delete(&self.netlink).await {
+                    self.applied.remove(index);
+                }
             }
         }
-        if !(previous.ipv6_nat.is_none() && next.ipv6_nat.is_some()) {
-            self.replace_clients(previous, next).await?;
-        }
-        if previous.masquerade != next.masquerade && next.masquerade == MasqueradeMode::Simple {
-            self.add_masquerade_chain(next).await?;
-        }
-        self.replace_upstreams(previous, next).await?;
-        if previous.masquerade != next.masquerade && previous.masquerade == MasqueradeMode::Simple {
-            self.remove_masquerade_chain(previous).await;
-        }
-        if previous.ipv6_block != next.ipv6_block {
-            if previous.ipv6_block {
-                self.remove_ipv6_block(previous).await;
+        let mut index = 0;
+        while index < desired.len() {
+            let mutation = &desired[index];
+            if self.applied.contains(mutation) {
+                index += 1;
+            } else if let RoutingMutation::Iptables(rule) = mutation {
+                let target = rule.target;
+                let table = rule.table;
+                let mut rules = Vec::new();
+                while let Some(RoutingMutation::Iptables(rule)) = desired.get(index) {
+                    if self.applied.contains(&desired[index])
+                        || rule.target != target
+                        || rule.table != table
+                    {
+                        break;
+                    }
+                    rules.push(rule.clone());
+                    index += 1;
+                }
+                apply_iptables_batch(target, table, &rules).await?;
+                self.applied
+                    .extend(rules.into_iter().map(RoutingMutation::Iptables));
+            } else {
+                mutation.apply(&self.netlink).await?;
+                if !matches!(mutation, RoutingMutation::EnsureIptablesChain { .. }) {
+                    self.applied.push(mutation.clone());
+                }
+                index += 1;
             }
-            if next.ipv6_block {
-                self.add_ipv6_block(next).await?;
-            }
-        }
-        if ipv6_nat_routing_changed {
-            if let Some(ipv6_nat) = &previous.ipv6_nat {
-                self.remove_ipv6_nat(previous, ipv6_nat).await;
-            }
-            if let Some(ipv6_nat) = &next.ipv6_nat {
-                self.add_ipv6_nat(next, ipv6_nat).await?;
-            }
-        }
-        if previous.ipv6_nat.is_none() && next.ipv6_nat.is_some() {
-            self.replace_clients(previous, next).await?;
         }
         Ok(())
     }
 
-    pub(crate) async fn stop(self, config: &SessionConfig) {
-        self.remove(config).await;
+    async fn drain_applied(&mut self) {
+        while let Some(mutation) = self.applied.pop() {
+            mutation.delete(&self.netlink).await;
+        }
     }
 
-    async fn setup(&self, config: &SessionConfig) -> io::Result<()> {
+    fn desired_mutations(&self, config: &SessionConfig) -> io::Result<Vec<RoutingMutation>> {
+        let mut mutations = Vec::new();
         if config.ip_forward {
-            self.add_ip_forward(config).await?;
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpForward {
+                    downstream: config.downstream.clone(),
+                },
+            );
         }
-        self.add_dns(config).await?;
-        self.add_disable_system_rule(config).await?;
+        for rule in self.dns_rules(config) {
+            push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+        }
+        push_unique(
+            &mut mutations,
+            RoutingMutation::IpRule(IpRuleCommand {
+                operation: IpOperation::Replace,
+                family: IpFamily::Ipv4,
+                iif: config.downstream.clone(),
+                priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
+                action: RuleAction::Unreachable,
+                table: 0,
+                fwmark: None,
+            }),
+        );
         if config.forward {
-            self.add_forward(config).await?;
+            for chain in ["vpnhotspot_acl", "vpnhotspot_stats"] {
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::EnsureIptablesChain {
+                        target: IptablesTarget::Ipv4,
+                        table: "filter",
+                        chain,
+                    },
+                );
+            }
+            for rule in self.forward_rules(config) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
         }
         if config.masquerade == MasqueradeMode::Simple {
-            self.add_masquerade_chain(config).await?;
+            push_unique(
+                &mut mutations,
+                RoutingMutation::EnsureIptablesChain {
+                    target: IptablesTarget::Ipv4,
+                    table: "nat",
+                    chain: "vpnhotspot_masquerade",
+                },
+            );
+            push_unique(
+                &mut mutations,
+                RoutingMutation::Iptables(Self::masquerade_chain_rule()),
+            );
         }
+        let mut upstreams = Vec::new();
         for upstream in &config.upstreams {
-            self.add_upstream(config, upstream).await?;
+            if upstreams.contains(upstream) {
+                continue;
+            }
+            upstreams.push(upstream.clone());
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpRule(IpRuleCommand {
+                    operation: IpOperation::Replace,
+                    family: IpFamily::Ipv4,
+                    iif: config.downstream.clone(),
+                    priority: rule_priority(match upstream.role {
+                        UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
+                        UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                    }),
+                    action: RuleAction::Lookup,
+                    table: 1000 + upstream.ifindex,
+                    fwmark: None,
+                }),
+            );
+            match config.masquerade {
+                MasqueradeMode::None => {}
+                MasqueradeMode::Simple => push_unique(
+                    &mut mutations,
+                    RoutingMutation::Iptables(Self::upstream_masquerade_rule(config, upstream)),
+                ),
+                MasqueradeMode::Netd => push_unique(
+                    &mut mutations,
+                    RoutingMutation::NetdNat {
+                        downstream: config.downstream.clone(),
+                        upstream: upstream.ifname.clone(),
+                    },
+                ),
+            }
         }
         if config.ipv6_block {
-            self.add_ipv6_block(config).await?;
+            push_unique(
+                &mut mutations,
+                RoutingMutation::EnsureIptablesChain {
+                    target: IptablesTarget::Ipv6,
+                    table: "filter",
+                    chain: "vpnhotspot_filter",
+                },
+            );
+            for rule in Self::ipv6_block_rules(config) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
         }
         if let Some(ipv6_nat) = &config.ipv6_nat {
-            self.add_ipv6_nat(config, ipv6_nat).await?;
-        }
-        for client in &config.clients {
-            self.add_client(config, client).await?;
-        }
-        Ok(())
-    }
-
-    async fn remove(&self, config: &SessionConfig) {
-        for client in &config.clients {
-            self.remove_client(config, client).await;
-        }
-        if let Some(ipv6_nat) = &config.ipv6_nat {
-            self.remove_ipv6_nat(config, ipv6_nat).await;
-        }
-        if config.ipv6_block {
-            self.remove_ipv6_block(config).await;
-        }
-        for upstream in &config.upstreams {
-            self.remove_upstream(config, upstream).await;
-        }
-        if config.masquerade == MasqueradeMode::Simple {
-            self.remove_masquerade_chain(config).await;
-        }
-        if config.forward {
-            self.remove_forward(config).await;
-        }
-        self.remove_disable_system_rule(config).await;
-        self.remove_dns(config).await;
-        if config.ip_forward {
-            self.remove_ip_forward(config).await;
-        }
-    }
-
-    async fn replace_clients(
-        &self,
-        previous: &SessionConfig,
-        next: &SessionConfig,
-    ) -> io::Result<()> {
-        let previous_macs = client_macs(previous);
-        let next_macs = client_macs(next);
-        let previous_ips = client_ips(previous);
-        let next_ips = client_ips(next);
-        if previous.forward {
-            for mac in previous_macs.difference(&next_macs) {
-                self.remove_client_mac_v4(
-                    previous,
-                    &ClientConfig {
-                        mac: *mac,
-                        ipv4: Vec::new(),
+            let ports = self
+                .ports
+                .ipv6_nat
+                .ok_or_else(|| io::Error::other("missing IPv6 NAT ports"))?;
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpRoute(IpRouteCommand {
+                    operation: IpOperation::Replace,
+                    route_type: RouteType::Unicast,
+                    destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
+                    prefix_len: ipv6_nat.prefix_len,
+                    interface: config.downstream.clone(),
+                    table: LOCAL_NETWORK_TABLE,
+                }),
+            );
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpAddress(IpAddressCommand {
+                    operation: IpOperation::Replace,
+                    address: IpAddr::V6(ipv6_nat.gateway),
+                    prefix_len: ipv6_nat.prefix_len,
+                    interface: config.downstream.clone(),
+                }),
+            );
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpRoute(IpRouteCommand {
+                    operation: IpOperation::Replace,
+                    route_type: RouteType::Local,
+                    destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                    prefix_len: 0,
+                    interface: "lo".to_string(),
+                    table: DAEMON_TABLE,
+                }),
+            );
+            push_unique(
+                &mut mutations,
+                RoutingMutation::IpRule(IpRuleCommand {
+                    operation: IpOperation::Replace,
+                    family: IpFamily::Ipv6,
+                    iif: config.downstream.clone(),
+                    priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
+                    action: RuleAction::Lookup,
+                    table: DAEMON_TABLE,
+                    fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
+                }),
+            );
+            for (target, table, chain) in [
+                (IptablesTarget::Ipv6, "filter", "vpnhotspot_v6_input"),
+                (IptablesTarget::Ipv6, "filter", "vpnhotspot_v6_forward"),
+                (IptablesTarget::Ipv6, "filter", "vpnhotspot_v6_output"),
+                (IptablesTarget::Ipv6, "mangle", "vpnhotspot_acl"),
+                (IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy"),
+            ] {
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::EnsureIptablesChain {
+                        target,
+                        table,
+                        chain,
                     },
-                )
-                .await;
+                );
             }
-            for address in previous_ips.difference(&next_ips) {
-                self.remove_client_ip_stats(previous, *address).await;
+            for rule in Self::ipv6_nat_filter_rules(config) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
-            if !next.forward {
-                for mac in previous_macs.intersection(&next_macs) {
-                    self.remove_client_mac_v4(
-                        previous,
+            push_unique(
+                &mut mutations,
+                RoutingMutation::Iptables(Self::ipv6_nat_acl_drop_rule()),
+            );
+            for rule in Self::ipv6_nat_tproxy_port_rules(config, ports) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
+            push_unique(
+                &mut mutations,
+                RoutingMutation::Iptables(Self::ipv6_nat_tproxy_acl_rule(config)),
+            );
+            for rule in Self::ipv6_nat_filter_jump_rules() {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
+            push_unique(
+                &mut mutations,
+                RoutingMutation::Iptables(Self::ipv6_nat_prerouting_rule()),
+            );
+        }
+        let mut client_macs_v4 = Vec::new();
+        let mut client_ips = Vec::new();
+        let mut client_macs_v6 = Vec::new();
+        for client in &config.clients {
+            if config.forward {
+                if !client_macs_v4.contains(&client.mac) {
+                    client_macs_v4.push(client.mac);
+                    for rule in Self::client_mac_v4_rules(
+                        config,
                         &ClientConfig {
-                            mac: *mac,
+                            mac: client.mac,
                             ipv4: Vec::new(),
                         },
-                    )
-                    .await;
+                    ) {
+                        push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+                    }
                 }
-                for address in previous_ips.intersection(&next_ips) {
-                    self.remove_client_ip_stats(previous, *address).await;
+                for address in &client.ipv4 {
+                    if client_ips.contains(address) {
+                        continue;
+                    }
+                    client_ips.push(*address);
+                    for rule in Self::client_ip_stats_rules(config, *address) {
+                        push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+                    }
                 }
             }
-        }
-        if next.forward {
-            for mac in next_macs.difference(&previous_macs) {
-                self.add_client_mac_v4(
-                    next,
-                    &ClientConfig {
-                        mac: *mac,
+            if config.ipv6_nat.is_some() && !client_macs_v6.contains(&client.mac) {
+                client_macs_v6.push(client.mac);
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::Iptables(Self::client_mac_v6_rule(&ClientConfig {
+                        mac: client.mac,
                         ipv4: Vec::new(),
-                    },
-                )
-                .await?;
-            }
-            for address in next_ips.difference(&previous_ips) {
-                self.add_client_ip_stats(next, *address).await?;
-            }
-            if !previous.forward {
-                for mac in previous_macs.intersection(&next_macs) {
-                    self.add_client_mac_v4(
-                        next,
-                        &ClientConfig {
-                            mac: *mac,
-                            ipv4: Vec::new(),
-                        },
-                    )
-                    .await?;
-                }
-                for address in previous_ips.intersection(&next_ips) {
-                    self.add_client_ip_stats(next, *address).await?;
-                }
+                    })),
+                );
             }
         }
-        if previous.ipv6_nat.is_some() {
-            for mac in previous_macs.difference(&next_macs) {
-                self.remove_client_mac_v6(&ClientConfig {
-                    mac: *mac,
-                    ipv4: Vec::new(),
-                })
-                .await;
-            }
-            if next.ipv6_nat.is_none() {
-                for mac in previous_macs.intersection(&next_macs) {
-                    self.remove_client_mac_v6(&ClientConfig {
-                        mac: *mac,
-                        ipv4: Vec::new(),
-                    })
-                    .await;
-                }
-            }
-        }
-        if next.ipv6_nat.is_some() {
-            for mac in next_macs.difference(&previous_macs) {
-                self.add_client_mac_v6(&ClientConfig {
-                    mac: *mac,
-                    ipv4: Vec::new(),
-                })
-                .await?;
-            }
-            if previous.ipv6_nat.is_none() {
-                for mac in previous_macs.intersection(&next_macs) {
-                    self.add_client_mac_v6(&ClientConfig {
-                        mac: *mac,
-                        ipv4: Vec::new(),
-                    })
-                    .await?;
-                }
-            }
-        }
-        Ok(())
-    }
-
-    async fn replace_upstreams(
-        &self,
-        previous: &SessionConfig,
-        next: &SessionConfig,
-    ) -> io::Result<()> {
-        let previous_upstreams: HashSet<_> = previous.upstreams.iter().collect();
-        let next_upstreams: HashSet<_> = next.upstreams.iter().collect();
-        for upstream in previous_upstreams.difference(&next_upstreams) {
-            self.remove_upstream(previous, upstream).await;
-        }
-        if previous.masquerade != next.masquerade {
-            for upstream in previous_upstreams.intersection(&next_upstreams) {
-                self.remove_upstream_masquerade(previous, upstream).await;
-            }
-        }
-        for upstream in next_upstreams.difference(&previous_upstreams) {
-            self.add_upstream(next, upstream).await?;
-        }
-        if previous.masquerade != next.masquerade {
-            for upstream in previous_upstreams.intersection(&next_upstreams) {
-                self.add_upstream_masquerade(next, upstream).await?;
-            }
-        }
-        Ok(())
-    }
-
-    async fn add_dns(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_insert_rules(self.dns_rules(config)).await
-    }
-
-    async fn remove_dns(&self, config: &SessionConfig) {
-        self.iptables_delete_rules(self.dns_rules(config)).await;
+        Ok(mutations)
     }
 
     fn dns_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
@@ -401,86 +506,6 @@ impl Runtime {
                 )
             })
             .collect()
-    }
-
-    async fn add_ip_forward(&self, config: &SessionConfig) -> io::Result<()> {
-        if let Err(e) = run_ndc(
-            "ipfwd",
-            &[
-                "ipfwd",
-                "enable",
-                &format!("vpnhotspot_{}", config.downstream),
-            ],
-        )
-        .await
-        {
-            eprintln!("ndc ipfwd enable failed: {e}");
-            tokio::fs::write("/proc/sys/net/ipv4/ip_forward", b"1").await?;
-        }
-        Ok(())
-    }
-
-    async fn remove_ip_forward(&self, config: &SessionConfig) {
-        if let Err(e) = run_ndc(
-            "ipfwd",
-            &[
-                "ipfwd",
-                "disable",
-                &format!("vpnhotspot_{}", config.downstream),
-            ],
-        )
-        .await
-        {
-            report::io_with_details(
-                "routing.remove_ip_forward",
-                e,
-                [("downstream", config.downstream.clone())],
-            );
-        }
-    }
-
-    async fn add_disable_system_rule(&self, config: &SessionConfig) -> io::Result<()> {
-        add_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Replace,
-                family: IpFamily::Ipv4,
-                iif: config.downstream.clone(),
-                priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
-                action: RuleAction::Unreachable,
-                table: 0,
-                fwmark: None,
-            },
-        )
-        .await
-    }
-
-    async fn remove_disable_system_rule(&self, config: &SessionConfig) {
-        delete_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Delete,
-                family: IpFamily::Ipv4,
-                iif: config.downstream.clone(),
-                priority: rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
-                action: RuleAction::Unreachable,
-                table: 0,
-                fwmark: None,
-            },
-        )
-        .await;
-    }
-
-    async fn add_forward(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IptablesTarget::Ipv4, "filter", "vpnhotspot_acl")
-            .await;
-        self.iptables_new_chain(IptablesTarget::Ipv4, "filter", "vpnhotspot_stats")
-            .await;
-        self.iptables_insert_rules(self.forward_rules(config)).await
-    }
-
-    async fn remove_forward(&self, config: &SessionConfig) {
-        self.iptables_delete_rules(self.forward_rules(config)).await;
     }
 
     fn forward_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
@@ -538,18 +563,6 @@ impl Runtime {
         ]
     }
 
-    async fn add_masquerade_chain(&self, _config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IptablesTarget::Ipv4, "nat", "vpnhotspot_masquerade")
-            .await;
-        self.iptables_insert_rules([Self::masquerade_chain_rule()])
-            .await
-    }
-
-    async fn remove_masquerade_chain(&self, _config: &SessionConfig) {
-        self.iptables_delete_rules([Self::masquerade_chain_rule()])
-            .await;
-    }
-
     fn masquerade_chain_rule() -> IptablesRule {
         IptablesRule::new(
             IptablesTarget::Ipv4,
@@ -557,83 +570,6 @@ impl Runtime {
             "POSTROUTING",
             vec!["-j".into(), "vpnhotspot_masquerade".into()],
         )
-    }
-
-    async fn add_upstream(
-        &self,
-        config: &SessionConfig,
-        upstream: &UpstreamConfig,
-    ) -> io::Result<()> {
-        add_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Replace,
-                family: IpFamily::Ipv4,
-                iif: config.downstream.clone(),
-                priority: rule_priority(match upstream.role {
-                    UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                    UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
-                }),
-                action: RuleAction::Lookup,
-                table: 1000 + upstream.ifindex,
-                fwmark: None,
-            },
-        )
-        .await?;
-        self.add_upstream_masquerade(config, upstream).await
-    }
-
-    async fn remove_upstream(&self, config: &SessionConfig, upstream: &UpstreamConfig) {
-        self.remove_upstream_masquerade(config, upstream).await;
-        delete_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Delete,
-                family: IpFamily::Ipv4,
-                iif: config.downstream.clone(),
-                priority: rule_priority(match upstream.role {
-                    UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                    UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
-                }),
-                action: RuleAction::Lookup,
-                table: 1000 + upstream.ifindex,
-                fwmark: None,
-            },
-        )
-        .await;
-    }
-
-    async fn add_upstream_masquerade(
-        &self,
-        config: &SessionConfig,
-        upstream: &UpstreamConfig,
-    ) -> io::Result<()> {
-        match config.masquerade {
-            MasqueradeMode::None => Ok(()),
-            MasqueradeMode::Simple => {
-                self.iptables_insert_rules([Self::upstream_masquerade_rule(config, upstream)])
-                    .await
-            }
-            MasqueradeMode::Netd => {
-                run_ndc(
-                    "Nat",
-                    &["nat", "enable", &config.downstream, &upstream.ifname, "0"],
-                )
-                .await
-            }
-        }
-    }
-
-    async fn remove_upstream_masquerade(&self, config: &SessionConfig, upstream: &UpstreamConfig) {
-        match config.masquerade {
-            MasqueradeMode::None => {}
-            MasqueradeMode::Simple => {
-                self.iptables_delete_rules([Self::upstream_masquerade_rule(config, upstream)])
-                    .await;
-            }
-            // netd NAT is shared by interface pair, not owned by this session.
-            MasqueradeMode::Netd => {}
-        }
     }
 
     fn upstream_masquerade_rule(config: &SessionConfig, upstream: &UpstreamConfig) -> IptablesRule {
@@ -650,56 +586,6 @@ impl Runtime {
                 "MASQUERADE".into(),
             ],
         )
-    }
-
-    async fn add_client(&self, config: &SessionConfig, client: &ClientConfig) -> io::Result<()> {
-        if config.forward {
-            self.add_client_v4(config, client).await?;
-        }
-        if config.ipv6_nat.is_some() {
-            self.add_client_mac_v6(client).await?;
-        }
-        Ok(())
-    }
-
-    async fn remove_client(&self, config: &SessionConfig, client: &ClientConfig) {
-        if config.ipv6_nat.is_some() {
-            self.remove_client_mac_v6(client).await;
-        }
-        if config.forward {
-            self.remove_client_v4(config, client).await;
-        }
-    }
-
-    async fn add_client_v4(&self, config: &SessionConfig, client: &ClientConfig) -> io::Result<()> {
-        self.add_client_mac_v4(config, client).await?;
-        for address in &client.ipv4 {
-            self.add_client_ip_stats(config, *address).await?;
-        }
-        Ok(())
-    }
-
-    async fn remove_client_v4(&self, config: &SessionConfig, client: &ClientConfig) {
-        for address in &client.ipv4 {
-            self.remove_client_ip_stats(config, *address).await;
-        }
-        self.remove_client_mac_v4(config, client).await;
-    }
-
-    async fn add_client_mac_v4(
-        &self,
-        config: &SessionConfig,
-        client: &ClientConfig,
-    ) -> io::Result<()> {
-        self.iptables_insert_rules(Self::client_mac_v4_rules(config, client))
-            .await
-    }
-
-    async fn remove_client_mac_v4(&self, config: &SessionConfig, client: &ClientConfig) {
-        let rules = Self::client_mac_v4_rules(config, client);
-        for rule in rules.iter().rev() {
-            rule.delete().await;
-        }
     }
 
     fn client_mac_v4_rules(config: &SessionConfig, client: &ClientConfig) -> Vec<IptablesRule> {
@@ -738,20 +624,6 @@ impl Runtime {
         ]
     }
 
-    async fn add_client_ip_stats(
-        &self,
-        config: &SessionConfig,
-        address: Ipv4Addr,
-    ) -> io::Result<()> {
-        self.iptables_insert_rules(Self::client_ip_stats_rules(config, address))
-            .await
-    }
-
-    async fn remove_client_ip_stats(&self, config: &SessionConfig, address: Ipv4Addr) {
-        self.iptables_delete_rules(Self::client_ip_stats_rules(config, address))
-            .await;
-    }
-
     fn client_ip_stats_rules(config: &SessionConfig, address: Ipv4Addr) -> Vec<IptablesRule> {
         let address = address.to_string();
         vec![
@@ -784,16 +656,6 @@ impl Runtime {
         ]
     }
 
-    async fn add_client_mac_v6(&self, client: &ClientConfig) -> io::Result<()> {
-        self.iptables_insert_rules([Self::client_mac_v6_rule(client)])
-            .await
-    }
-
-    async fn remove_client_mac_v6(&self, client: &ClientConfig) {
-        self.iptables_delete_rules([Self::client_mac_v6_rule(client)])
-            .await;
-    }
-
     fn client_mac_v6_rule(client: &ClientConfig) -> IptablesRule {
         IptablesRule::new(
             IptablesTarget::Ipv6,
@@ -808,18 +670,6 @@ impl Runtime {
                 "RETURN".into(),
             ],
         )
-    }
-
-    async fn add_ipv6_block(&self, config: &SessionConfig) -> io::Result<()> {
-        self.iptables_new_chain(IptablesTarget::Ipv6, "filter", "vpnhotspot_filter")
-            .await;
-        self.iptables_insert_rules(Self::ipv6_block_rules(config))
-            .await
-    }
-
-    async fn remove_ipv6_block(&self, config: &SessionConfig) {
-        self.iptables_delete_rules(Self::ipv6_block_rules(config))
-            .await;
     }
 
     fn ipv6_block_rules(config: &SessionConfig) -> Vec<IptablesRule> {
@@ -855,152 +705,6 @@ impl Runtime {
             ],
         ));
         rules
-    }
-
-    async fn add_ipv6_nat(
-        &self,
-        config: &SessionConfig,
-        ipv6_nat: &Ipv6NatConfig,
-    ) -> io::Result<()> {
-        let ports = self
-            .ports
-            .ipv6_nat
-            .ok_or_else(|| io::Error::other("missing IPv6 NAT ports"))?;
-        apply_route(
-            &self.netlink,
-            IpRouteCommand {
-                operation: IpOperation::Replace,
-                route_type: RouteType::Unicast,
-                destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
-                prefix_len: ipv6_nat.prefix_len,
-                interface: config.downstream.clone(),
-                table: LOCAL_NETWORK_TABLE,
-            },
-        )
-        .await?;
-        apply_address(
-            &self.netlink,
-            IpAddressCommand {
-                operation: IpOperation::Replace,
-                address: IpAddr::V6(ipv6_nat.gateway),
-                prefix_len: ipv6_nat.prefix_len,
-                interface: config.downstream.clone(),
-            },
-        )
-        .await?;
-        apply_route(
-            &self.netlink,
-            IpRouteCommand {
-                operation: IpOperation::Replace,
-                route_type: RouteType::Local,
-                destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-                prefix_len: 0,
-                interface: "lo".to_string(),
-                table: DAEMON_TABLE,
-            },
-        )
-        .await?;
-        add_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Replace,
-                family: IpFamily::Ipv6,
-                iif: config.downstream.clone(),
-                priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
-                action: RuleAction::Lookup,
-                table: DAEMON_TABLE,
-                fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-            },
-        )
-        .await?;
-        for chain in [
-            "vpnhotspot_v6_input",
-            "vpnhotspot_v6_forward",
-            "vpnhotspot_v6_output",
-        ] {
-            self.iptables_new_chain(IptablesTarget::Ipv6, "filter", chain)
-                .await;
-        }
-        self.iptables_new_chain(IptablesTarget::Ipv6, "mangle", "vpnhotspot_acl")
-            .await;
-        self.iptables_new_chain(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy")
-            .await;
-        self.iptables_insert_rules(Self::ipv6_nat_filter_rules(config))
-            .await?;
-        self.iptables_insert_rules([Self::ipv6_nat_acl_drop_rule()])
-            .await?;
-        self.iptables_insert_rules(Self::ipv6_nat_tproxy_port_rules(config, ports))
-            .await?;
-        self.iptables_insert_rules([Self::ipv6_nat_tproxy_acl_rule(config)])
-            .await?;
-        self.iptables_insert_rules(Self::ipv6_nat_filter_jump_rules())
-            .await?;
-        self.iptables_insert_rules([Self::ipv6_nat_prerouting_rule()])
-            .await
-    }
-
-    async fn remove_ipv6_nat(&self, config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) {
-        if let Some(ports) = self.ports.ipv6_nat {
-            self.iptables_delete_rules(Self::ipv6_nat_tproxy_port_rules(config, ports))
-                .await;
-        }
-        self.iptables_delete_rules([Self::ipv6_nat_tproxy_acl_rule(config)])
-            .await;
-        self.iptables_delete_rules([Self::ipv6_nat_acl_drop_rule()])
-            .await;
-        self.iptables_delete_rules(Self::ipv6_nat_filter_jump_rules())
-            .await;
-        self.iptables_delete_rules([Self::ipv6_nat_prerouting_rule()])
-            .await;
-        self.iptables_delete_rules(Self::ipv6_nat_filter_rules(config))
-            .await;
-        delete_rule(
-            &self.netlink,
-            IpRuleCommand {
-                operation: IpOperation::Delete,
-                family: IpFamily::Ipv6,
-                iif: config.downstream.clone(),
-                priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
-                action: RuleAction::Lookup,
-                table: DAEMON_TABLE,
-                fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-            },
-        )
-        .await;
-        delete_route(
-            &self.netlink,
-            IpRouteCommand {
-                operation: IpOperation::Delete,
-                route_type: RouteType::Local,
-                destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
-                prefix_len: 0,
-                interface: "lo".to_string(),
-                table: DAEMON_TABLE,
-            },
-        )
-        .await;
-        delete_route(
-            &self.netlink,
-            IpRouteCommand {
-                operation: IpOperation::Delete,
-                route_type: RouteType::Unicast,
-                destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
-                prefix_len: ipv6_nat.prefix_len,
-                interface: config.downstream.clone(),
-                table: LOCAL_NETWORK_TABLE,
-            },
-        )
-        .await;
-        delete_address(
-            &self.netlink,
-            IpAddressCommand {
-                operation: IpOperation::Delete,
-                address: IpAddr::V6(ipv6_nat.gateway),
-                prefix_len: ipv6_nat.prefix_len,
-                interface: config.downstream.clone(),
-            },
-        )
-        .await;
     }
 
     fn ipv6_nat_filter_rules(config: &SessionConfig) -> Vec<IptablesRule> {
@@ -1180,61 +884,6 @@ impl Runtime {
             vec!["-j".into(), "vpnhotspot_v6_tproxy".into()],
         )
     }
-
-    async fn iptables_new_chain(&self, target: IptablesTarget, table: &str, chain: &str) {
-        match firewall::restore_line("-N", chain, &[]) {
-            Ok(line) => {
-                let input = firewall::restore_input(table, &[line]);
-                if let Err(e) = firewall::restore_status(target, &input).await {
-                    report::io_with_details(
-                        "routing.iptables_new_chain",
-                        e,
-                        firewall::restore_details(target, &input),
-                    );
-                }
-            }
-            Err(e) => report::io_with_details(
-                "routing.iptables_new_chain",
-                e,
-                [
-                    ("binary", target.restore_binary().to_owned()),
-                    ("table", table.to_owned()),
-                    ("chain", chain.to_owned()),
-                ],
-            ),
-        }
-    }
-
-    async fn iptables_insert_rules<I>(&self, rules: I) -> io::Result<()>
-    where
-        I: IntoIterator<Item = IptablesRule>,
-    {
-        let mut current = None;
-        let mut lines = Vec::new();
-        for rule in rules {
-            let key = (rule.target, rule.table);
-            if current.is_some_and(|previous| previous != key) {
-                let (target, table) = current.unwrap();
-                firewall::restore(target, &firewall::restore_input(table, &lines)).await?;
-                lines.clear();
-            }
-            current = Some(key);
-            lines.push(rule.insert_line()?);
-        }
-        if let Some((target, table)) = current {
-            firewall::restore(target, &firewall::restore_input(table, &lines)).await?;
-        }
-        Ok(())
-    }
-
-    async fn iptables_delete_rules<I>(&self, rules: I)
-    where
-        I: IntoIterator<Item = IptablesRule>,
-    {
-        for rule in rules {
-            rule.delete().await;
-        }
-    }
 }
 
 pub(crate) async fn clean(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
@@ -1361,6 +1010,82 @@ COMMIT
     }
 }
 
+fn push_unique(mutations: &mut Vec<RoutingMutation>, mutation: RoutingMutation) {
+    if !mutations.contains(&mutation) {
+        mutations.push(mutation);
+    }
+}
+
+async fn apply_iptables_batch(
+    target: IptablesTarget,
+    table: &str,
+    rules: &[IptablesRule],
+) -> io::Result<()> {
+    let mut lines = Vec::with_capacity(rules.len());
+    for rule in rules {
+        lines.push(
+            rule.insert_line()
+                .with_report_context_details("routing.iptables_insert.line", rule.details())?,
+        );
+    }
+    firewall::restore(target, &firewall::restore_input(table, &lines)).await
+}
+
+async fn ensure_iptables_chain(target: IptablesTarget, table: &str, chain: &str) {
+    match firewall::restore_line("-N", chain, &[]) {
+        Ok(line) => {
+            let input = firewall::restore_input(table, &[line]);
+            if let Err(e) = firewall::restore_status(target, &input).await {
+                report::io_with_details(
+                    "routing.iptables_new_chain",
+                    e,
+                    firewall::restore_details(target, &input),
+                );
+            }
+        }
+        Err(e) => report::io_with_details(
+            "routing.iptables_new_chain",
+            e,
+            [
+                ("binary", target.restore_binary().to_owned()),
+                ("table", table.to_owned()),
+                ("chain", chain.to_owned()),
+            ],
+        ),
+    }
+}
+
+async fn add_ip_forward(downstream: &str) -> io::Result<()> {
+    if let Err(e) = run_ndc(
+        "ipfwd",
+        &["ipfwd", "enable", &format!("vpnhotspot_{downstream}")],
+    )
+    .await
+    {
+        eprintln!("ndc ipfwd enable failed: {e}");
+        tokio::fs::write("/proc/sys/net/ipv4/ip_forward", b"1").await?;
+    }
+    Ok(())
+}
+
+async fn remove_ip_forward(downstream: &str) -> bool {
+    if let Err(e) = run_ndc(
+        "ipfwd",
+        &["ipfwd", "disable", &format!("vpnhotspot_{downstream}")],
+    )
+    .await
+    {
+        report::io_with_details(
+            "routing.remove_ip_forward",
+            e,
+            [("downstream", downstream.to_owned())],
+        );
+        false
+    } else {
+        true
+    }
+}
+
 pub(crate) async fn apply_static_address(
     handle: &netlink::Handle,
     command: &IpAddressCommand,
@@ -1379,7 +1104,7 @@ async fn clean_ip(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Res
             interface: interface.clone(),
         };
         if let Err(e) = apply_address_command(handle, &address).await {
-            if !is_missing(&e) {
+            if !is_missing_address(&e) {
                 report::io_with_details("routing.clean_ip.address", e, address_details(&address));
             }
         }
@@ -1407,10 +1132,14 @@ async fn add_rule(handle: &netlink::Handle, command: IpRuleCommand) -> io::Resul
     }
 }
 
-async fn delete_rule(handle: &netlink::Handle, command: IpRuleCommand) {
-    if let Err(e) = apply_rule_command(handle, &command).await {
-        if !is_missing(&e) {
+async fn delete_rule_result(handle: &netlink::Handle, mut command: IpRuleCommand) -> bool {
+    command.operation = IpOperation::Delete;
+    match apply_rule_command(handle, &command).await {
+        Ok(()) => true,
+        Err(e) if is_missing(&e) => true,
+        Err(e) => {
             report::io_with_details("routing.delete_rule", e, rule_details(&command));
+            false
         }
     }
 }
@@ -1449,10 +1178,14 @@ async fn apply_route(handle: &netlink::Handle, command: IpRouteCommand) -> io::R
     }
 }
 
-async fn delete_route(handle: &netlink::Handle, command: IpRouteCommand) {
-    if let Err(e) = apply_route_command(handle, &command).await {
-        if !is_missing(&e) {
+async fn delete_route_result(handle: &netlink::Handle, mut command: IpRouteCommand) -> bool {
+    command.operation = IpOperation::Delete;
+    match apply_route_command(handle, &command).await {
+        Ok(()) => true,
+        Err(e) if is_missing(&e) => true,
+        Err(e) => {
             report::io_with_details("routing.delete_route", e, route_details(&command));
+            false
         }
     }
 }
@@ -1464,10 +1197,14 @@ async fn apply_address(handle: &netlink::Handle, command: IpAddressCommand) -> i
     }
 }
 
-async fn delete_address(handle: &netlink::Handle, command: IpAddressCommand) {
-    if let Err(e) = apply_address_command(handle, &command).await {
-        if !is_missing(&e) {
+async fn delete_address_result(handle: &netlink::Handle, mut command: IpAddressCommand) -> bool {
+    command.operation = IpOperation::Delete;
+    match apply_address_command(handle, &command).await {
+        Ok(()) => true,
+        Err(e) if is_missing_address(&e) => true,
+        Err(e) => {
             report::io_with_details("routing.delete_address", e, address_details(&command));
+            false
         }
     }
 }
@@ -1702,6 +1439,10 @@ fn is_missing(error: &io::Error) -> bool {
     )
 }
 
+fn is_missing_address(error: &io::Error) -> bool {
+    is_missing(error) || error_errno(error) == Some(libc::EADDRNOTAVAIL)
+}
+
 fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
     vec![
         ("operation".to_owned(), format!("{:?}", command.operation)),
@@ -1827,18 +1568,6 @@ fn mac_string(mac: &[u8; 6]) -> String {
         "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
     )
-}
-
-fn client_macs(config: &SessionConfig) -> HashSet<[u8; 6]> {
-    config.clients.iter().map(|client| client.mac).collect()
-}
-
-fn client_ips(config: &SessionConfig) -> HashSet<Ipv4Addr> {
-    config
-        .clients
-        .iter()
-        .flat_map(|client| client.ipv4.iter().copied())
-        .collect()
 }
 
 fn rule_priority(base: u32) -> u32 {
