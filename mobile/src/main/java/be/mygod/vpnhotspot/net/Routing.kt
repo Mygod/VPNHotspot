@@ -401,7 +401,7 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         }
         FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
         UpstreamMonitor.registerCallback(upstream)
-        NetlinkNeighbourMonitor.registerCallback(this, true)
+        NetlinkNeighbourMonitor.registerCallback(this)
     }
     suspend fun revert() = withContext(NonCancellable) {
         stop()

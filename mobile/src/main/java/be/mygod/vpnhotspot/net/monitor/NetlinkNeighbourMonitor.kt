@@ -2,13 +2,12 @@ package be.mygod.vpnhotspot.net.monitor
 
 import be.mygod.vpnhotspot.net.IpDev
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
-import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,20 +25,13 @@ import java.io.IOException
 
 class NetlinkNeighbourMonitor private constructor(private val previousDestroy: Job?) {
     companion object {
-        private val callbacks = mutableMapOf<Callback, Boolean>()
+        private val callbacks = mutableSetOf<Callback>()
         private val lifecycleLock = Mutex()
         private var pendingDestroy: Job? = null
         var instance: NetlinkNeighbourMonitor? = null
-        var fullMode = false
 
-        /**
-         * @param full Whether the invalid entries should also be parsed.
-         *  However, even in light mode, caller should still filter out invalid entries in
-         *  [Callback.onNetlinkNeighbourAvailable] in case the full mode was requested by other callers.
-         */
-        fun registerCallback(callback: Callback, full: Boolean = false) = synchronized(callbacks) {
-            if (callbacks.put(callback, full) == full) return@synchronized null
-            fullMode = full || callbacks.any { it.value }
+        fun registerCallback(callback: Callback) = synchronized(callbacks) {
+            if (!callbacks.add(callback)) return@synchronized null
             var monitor = instance
             if (monitor == null) {
                 monitor = NetlinkNeighbourMonitor(pendingDestroy)
@@ -51,8 +43,7 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
             }
         }?.let { monitor -> monitor.scope.launch { callback.onNetlinkNeighbourAvailable(monitor.neighbours.values) } }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
-            if (callbacks.remove(callback) == null) return@synchronized
-            fullMode = callbacks.any { it.value }
+            if (!callbacks.remove(callback)) return@synchronized
             if (callbacks.isNotEmpty()) return@synchronized
             val monitor = instance
             val destroyJob = monitor?.scope?.launch {
@@ -87,7 +78,7 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         scope.launch {
             for (value in aggregateChannel) {
                 val neighbours = value.values
-                for (callback in synchronized(callbacks) { callbacks.keys.toList() }) {
+                for (callback in synchronized(callbacks) { callbacks.toList() }) {
                     callback.onNetlinkNeighbourAvailable(neighbours)
                 }
             }
@@ -109,34 +100,19 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         }
     }
 
-    private fun NetlinkNeighbour.toMonitorMode(full: Boolean): NetlinkNeighbour? {
-        val state = if (!full && state != NetlinkNeighbour.State.VALID) NetlinkNeighbour.State.DELETING else state
-        if (lladdr == MacAddressCompat.ALL_ZEROS_ADDRESS && state != NetlinkNeighbour.State.INCOMPLETE &&
-                state != NetlinkNeighbour.State.DELETING) {
-            Timber.d("Missing neighbour lladdr for $ip dev $dev state $state")
-            return null
-        }
-        return if (state == this.state) this else copy(state = state)
-    }
-
     private fun updateLocked(update: DaemonProtocol.NeighbourUpdate) {
-        val full = synchronized(callbacks) { fullMode }
         if (update.replace) {
-            neighbours = mutableMapOf<IpDev, NetlinkNeighbour>().apply {
-                for (candidate in update.neighbours) {
-                    val neighbour = candidate.toMonitorMode(full) ?: continue
-                    if (neighbour.state != NetlinkNeighbour.State.DELETING) this[IpDev(neighbour)] = neighbour
-                }
-            }.toPersistentMap()
+            neighbours = persistentMapOf<IpDev, NetlinkNeighbour>().mutate {
+                for (candidate in update.neighbours) it[IpDev(candidate)] = candidate
+            }
             aggregateChannel.trySend(neighbours).onFailure { throw it!! }
             return
         }
         val old = neighbours
-        for (candidate in update.neighbours) {
-            val neighbour = candidate.toMonitorMode(full) ?: continue
-            neighbours = when (neighbour.state) {
-                NetlinkNeighbour.State.DELETING -> neighbours.remove(IpDev(neighbour))
-                else -> neighbours.put(IpDev(neighbour), neighbour)
+        neighbours = old.mutate {
+            for (candidate in update.neighbours) when (candidate.state) {
+                NetlinkNeighbour.State.DELETING -> it.remove(IpDev(candidate))
+                else -> it[IpDev(candidate)] = candidate
             }
         }
         if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }

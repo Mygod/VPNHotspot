@@ -233,7 +233,7 @@ class ClientsFragment : Fragment() {
         binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
         binding.swipeRefresher.setOnRefreshListener { NetlinkNeighbourMonitor.instance?.flushAsync() }
         activityViewModels<ClientViewModel>().value.apply {
-            lifecycle.addObserver(fullMode)
+            lifecycle.addObserver(clientsFragmentObserver)
             clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }
         }
         return binding.root

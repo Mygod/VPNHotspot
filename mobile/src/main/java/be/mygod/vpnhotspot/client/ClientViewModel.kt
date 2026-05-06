@@ -30,7 +30,6 @@ import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -63,11 +62,9 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
     private var neighbours: Collection<NetlinkNeighbour> = emptyList()
     private var tetheringClients = emptyMap<MacAddress, TetheredClient>()
     val clients = MutableLiveData<List<Client>>()
-    private var rootCallbackJob: Job? = null
-    val fullMode = object : DefaultLifecycleObserver {
+    val clientsFragmentObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-            NetlinkNeighbourMonitor.registerCallback(this@ClientViewModel, true)
-            if (Build.VERSION.SDK_INT >= 30) rootCallbackJob = owner.lifecycleScope.launch {
+            if (Build.VERSION.SDK_INT >= 30) owner.lifecycleScope.launch {
                 try {
                     RootManager.use {
                         handleClientsChanged(it.flow(TetheringCommands.RegisterTetheringEventCallback()))
@@ -78,9 +75,6 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
                     SmartSnackbar.make(e).show()
                 }
             }
-        }
-        override fun onStop(owner: LifecycleOwner) {
-            NetlinkNeighbourMonitor.registerCallback(this@ClientViewModel, false)
         }
     }
 
@@ -161,7 +155,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
 
     override fun onStart(owner: LifecycleOwner) {
         TetherStates.registerCallback(this)
-        NetlinkNeighbourMonitor.registerCallback(this, false)
+        NetlinkNeighbourMonitor.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
