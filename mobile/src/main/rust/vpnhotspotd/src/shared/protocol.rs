@@ -21,6 +21,8 @@ const CMD_READ_TRAFFIC_COUNTERS: u32 = 5;
 const CMD_START_NEIGHBOUR_MONITOR: u32 = 6;
 const CMD_STATIC_ADDRESS: u32 = 9;
 const CMD_CLEAN_ROUTING: u32 = 12;
+const CMD_REPLACE_STATIC_ADDRESSES: u32 = 13;
+const CMD_DELETE_STATIC_ADDRESSES: u32 = 14;
 const NETWORK_UNSPECIFIED: Network = 0;
 const ROUTE_WIRE_LEN: usize = 16 + 4;
 
@@ -38,6 +40,10 @@ pub enum Command {
     StartNeighbourMonitor,
     StaticAddress(IpAddressCommand),
     CleanRouting(CleanIpCommand),
+    ReplaceStaticAddresses(StaticAddressesCommand),
+    DeleteStaticAddresses {
+        interface: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,6 +100,18 @@ pub struct IpAddressCommand {
     pub address: IpAddr,
     pub prefix_len: u8,
     pub interface: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct IpAddressEntry {
+    pub address: IpAddr,
+    pub prefix_len: u8,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StaticAddressesCommand {
+    pub interface: String,
+    pub addresses: Vec<IpAddressEntry>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -338,6 +356,12 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
         CMD_STATIC_ADDRESS => Ok(Command::StaticAddress(parser.read_ip_address_command()?)),
         CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_ip_command()?)),
+        CMD_REPLACE_STATIC_ADDRESSES => Ok(Command::ReplaceStaticAddresses(
+            parser.read_static_addresses_command()?,
+        )),
+        CMD_DELETE_STATIC_ADDRESSES => Ok(Command::DeleteStaticAddresses {
+            interface: parser.read_utf()?,
+        }),
         command => Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("unknown command {command}"),
@@ -602,6 +626,24 @@ impl<'a> Parser<'a> {
     fn read_clean_ip_command(&mut self) -> io::Result<CleanIpCommand> {
         Ok(CleanIpCommand {
             ipv6_nat_prefix_seed: self.read_utf()?,
+        })
+    }
+
+    fn read_static_addresses_command(&mut self) -> io::Result<StaticAddressesCommand> {
+        let interface = self.read_utf()?;
+        let count = self.read_count("static address")?;
+        let mut addresses = Vec::new();
+        for _ in 0..count {
+            let address = self.read_ip_address()?;
+            let prefix_len = self.read_prefix_len(&address)?;
+            addresses.push(IpAddressEntry {
+                address,
+                prefix_len,
+            });
+        }
+        Ok(StaticAddressesCommand {
+            interface,
+            addresses,
         })
     }
 
@@ -936,6 +978,63 @@ mod tests {
             command.ipv6_nat_prefix_seed,
             "be.mygod.vpnhotspot\0android-id"
         );
+    }
+
+    #[test]
+    fn parse_replace_static_addresses_reads_batch() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_REPLACE_STATIC_ADDRESSES.to_be_bytes());
+        write_utf(&mut packet, "lo");
+        packet.extend_from_slice(&2i32.to_be_bytes());
+        write_ip_address(&mut packet, "192.0.2.1".parse().unwrap());
+        packet.extend_from_slice(&32i32.to_be_bytes());
+        write_ip_address(&mut packet, "2001:db8::1".parse().unwrap());
+        packet.extend_from_slice(&128i32.to_be_bytes());
+
+        let Command::ReplaceStaticAddresses(command) = parse_command(&packet).unwrap() else {
+            panic!("expected replace static addresses");
+        };
+        assert_eq!(command.interface, "lo");
+        assert_eq!(
+            command.addresses,
+            vec![
+                IpAddressEntry {
+                    address: "192.0.2.1".parse().unwrap(),
+                    prefix_len: 32,
+                },
+                IpAddressEntry {
+                    address: "2001:db8::1".parse().unwrap(),
+                    prefix_len: 128,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_replace_static_addresses_rejects_negative_count() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_REPLACE_STATIC_ADDRESSES.to_be_bytes());
+        write_utf(&mut packet, "lo");
+        packet.extend_from_slice(&(-1i32).to_be_bytes());
+
+        let error = match parse_command(&packet) {
+            Err(error) => error,
+            Ok(_) => panic!("expected static address count failure"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "invalid static address count -1");
+    }
+
+    #[test]
+    fn parse_delete_static_addresses_reads_interface() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_DELETE_STATIC_ADDRESSES.to_be_bytes());
+        write_utf(&mut packet, "lo");
+
+        let Command::DeleteStaticAddresses { interface } = parse_command(&packet).unwrap() else {
+            panic!("expected delete static addresses");
+        };
+        assert_eq!(interface, "lo");
     }
 
     #[test]

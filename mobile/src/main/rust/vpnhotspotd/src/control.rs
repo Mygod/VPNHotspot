@@ -244,6 +244,29 @@ async fn handle_command(
                 )?;
             Ok(CallOutput::Reply(ok_packet()))
         }
+        Command::ReplaceStaticAddresses(command) => {
+            let handle = state.netlink.handle();
+            routing::replace_static_addresses(&handle, &command)
+                .await
+                .with_report_context_details(
+                    "control.replace_static_addresses",
+                    [
+                        ("interface", command.interface.clone()),
+                        ("count", command.addresses.len().to_string()),
+                    ],
+                )?;
+            Ok(CallOutput::Reply(ok_packet()))
+        }
+        Command::DeleteStaticAddresses { interface } => {
+            let handle = state.netlink.handle();
+            routing::delete_static_addresses(&handle, &interface)
+                .await
+                .with_report_context_details(
+                    "control.delete_static_addresses",
+                    [("interface", interface)],
+                )?;
+            Ok(CallOutput::Reply(ok_packet()))
+        }
         Command::CleanRouting(command) => {
             let handle = state.netlink.handle();
             routing::clean(&handle, &command)

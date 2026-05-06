@@ -84,25 +84,19 @@ class StaticIpSetter : BootReceiver.Startable {
                         pendingEnabled = null
                         val success = try {
                             if (next) {
+                                val addresses = ArrayList<Pair<InetAddress, Int>>()
                                 for (line in ips.lineSequence()) {
                                     val value = line.trim()
                                     if (value.isBlank()) continue
-                                    val address = value.split('/', limit = 2).let {
+                                    addresses += value.split('/', limit = 2).let {
                                         val parsed = InetAddresses.parseNumericAddress(it[0])
                                         parsed to if (it.size == 1) parsed.address.size * 8 else it[1].toInt()
                                     }
-                                    DaemonController.replaceStaticAddress(address.first, address.second, "lo")
                                 }
+                                DaemonController.replaceStaticAddresses("lo", addresses)
                                 true
                             } else {
-                                val addresses = iface?.interfaceAddresses
-                                if (addresses != null) for (address in addresses) if (!address.address.isLoopbackAddress) {
-                                    DaemonController.deleteStaticAddress(
-                                        address.address,
-                                        address.networkPrefixLength.toInt(),
-                                        "lo",
-                                    )
-                                }
+                                DaemonController.deleteStaticAddresses("lo")
                                 false
                             }
                         } catch (e: CancellationException) {

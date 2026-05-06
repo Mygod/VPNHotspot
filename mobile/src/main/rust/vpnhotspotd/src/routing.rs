@@ -25,7 +25,7 @@ use vpnhotspotd::shared::model::{
 };
 use vpnhotspotd::shared::protocol::{
     error_errno, CleanIpCommand, IoResultReportExt, IpAddressCommand, IpFamily, IpOperation,
-    IpRouteCommand, IpRuleCommand, RouteType, RuleAction,
+    IpRouteCommand, IpRuleCommand, RouteType, RuleAction, StaticAddressesCommand,
 };
 
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
@@ -1093,6 +1093,95 @@ pub(crate) async fn apply_static_address(
     apply_address_command(handle, command).await
 }
 
+pub(crate) async fn replace_static_addresses(
+    handle: &netlink::Handle,
+    command: &StaticAddressesCommand,
+) -> io::Result<()> {
+    let index = netlink::link_index(handle, &command.interface)
+        .await
+        .with_report_context_details(
+            "routing.static_addresses.link_index",
+            [("interface", command.interface.clone())],
+        )?;
+    for address in &command.addresses {
+        let command = IpAddressCommand {
+            operation: IpOperation::Replace,
+            address: address.address,
+            prefix_len: address.prefix_len,
+            interface: command.interface.clone(),
+        };
+        match apply_address_command_with_index(handle, &command, index).await {
+            Ok(()) => {}
+            Err(e) if error_errno(&e) == Some(libc::EEXIST) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn delete_static_addresses(
+    handle: &netlink::Handle,
+    interface: &str,
+) -> io::Result<()> {
+    let index = netlink::link_index(handle, interface)
+        .await
+        .with_report_context_details(
+            "routing.static_addresses.link_index",
+            [("interface", interface.to_owned())],
+        )?;
+    let _dump = handle.lock_dump().await;
+    let addresses = handle
+        .raw()
+        .address()
+        .get()
+        .set_link_index_filter(index)
+        .execute();
+    pin_mut!(addresses);
+    while let Some(message) = addresses
+        .try_next()
+        .await
+        .map_err(netlink::to_io_error)
+        .with_report_context_details(
+            "routing.static_addresses.dump",
+            [("interface", interface.to_owned())],
+        )?
+    {
+        let mut address = None;
+        for attribute in &message.attributes {
+            match attribute {
+                AddressAttribute::Local(value) => {
+                    address = Some(*value);
+                    break;
+                }
+                AddressAttribute::Address(value) => {
+                    if address.is_none() {
+                        address = Some(*value);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let Some(address) = address else {
+            continue;
+        };
+        if address.is_loopback() {
+            continue;
+        }
+        let command = IpAddressCommand {
+            operation: IpOperation::Delete,
+            address,
+            prefix_len: message.header.prefix_len,
+            interface: interface.to_owned(),
+        };
+        match apply_address_command_with_index(handle, &command, index).await {
+            Ok(()) => {}
+            Err(e) if is_missing_address(&e) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
 async fn clean_ip(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
     flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
     for interface in netlink::link_names(handle).await?.into_values() {
@@ -1216,6 +1305,14 @@ async fn apply_address_command(
     let index = netlink::link_index(handle, &command.interface)
         .await
         .with_report_context_details("routing.address.link_index", address_details(command))?;
+    apply_address_command_with_index(handle, command, index).await
+}
+
+async fn apply_address_command_with_index(
+    handle: &netlink::Handle,
+    command: &IpAddressCommand,
+    index: u32,
+) -> io::Result<()> {
     match command.operation {
         IpOperation::Replace => {
             let mut request = handle

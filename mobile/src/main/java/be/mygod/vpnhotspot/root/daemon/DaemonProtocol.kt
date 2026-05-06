@@ -23,6 +23,8 @@ object DaemonProtocol {
     const val CMD_START_NEIGHBOUR_MONITOR = 6
     const val CMD_STATIC_ADDRESS = 9
     const val CMD_CLEAN_ROUTING = 12
+    const val CMD_REPLACE_STATIC_ADDRESSES = 13
+    const val CMD_DELETE_STATIC_ADDRESSES = 14
 
     private const val NEIGHBOUR_DELTA_UPSERT = 0
     private const val NEIGHBOUR_DELTA_DELETE = 1
@@ -114,6 +116,16 @@ object DaemonProtocol {
                 writeInt(prefixLength)
                 writeUtf(dev)
             }
+    fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) =
+            writePacket(CMD_REPLACE_STATIC_ADDRESSES) {
+                writeUtf(dev)
+                writeInt(addresses.size)
+                for ((address, prefixLength) in addresses) {
+                    writeInetAddress(address)
+                    writeInt(prefixLength)
+                }
+            }
+    fun deleteStaticAddresses(dev: String) = writePacket(CMD_DELETE_STATIC_ADDRESSES) { writeUtf(dev) }
     fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING) {
         writeUtf(ipv6NatPrefixSeed)
     }

@@ -146,6 +146,14 @@ object DaemonController {
             DaemonProtocol.IpOperation.Delete, address, prefixLength, dev)))
     }
 
+    suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<java.net.InetAddress, Int>>) {
+        DaemonProtocol.readAck(request(DaemonProtocol.replaceStaticAddresses(dev, addresses)))
+    }
+
+    suspend fun deleteStaticAddresses(dev: String) {
+        DaemonProtocol.readAck(request(DaemonProtocol.deleteStaticAddresses(dev)))
+    }
+
     suspend fun cleanRouting(ipv6NatPrefixSeed: String) {
         DaemonProtocol.readAck(request(DaemonProtocol.cleanRouting(ipv6NatPrefixSeed)))
     }
