@@ -30,10 +30,12 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     inner class Data : BaseObservable() {
         val active: Boolean @Bindable get() = StaticIpSetter.active
         val addresses: CharSequence @Bindable get() = StaticIpSetter.addresses
+        val applying: Boolean @Bindable get() = StaticIpSetter.applying
 
         fun onChanged() {
             notifyPropertyChanged(BR.active)
             notifyPropertyChanged(BR.addresses)
+            notifyPropertyChanged(BR.applying)
         }
 
         fun configure() = ConfigureDialogFragment().apply {

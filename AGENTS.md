@@ -24,6 +24,15 @@ Follow existing Kotlin style: 4-space indentation, concise expression bodies onl
 - Do not suppress unexpected exceptions. Best-effort cleanup should catch only the expected failure mode and rethrow the rest.
 - Preserve existing comments; do not casually shorten or rewrite them.
 
+## Kotlin Concurrency Design
+Prefer resource-owner concurrency over broad locks or global serialization.
+
+- For UI-backed state and lightweight suspending operations, prefer a Main-confined owner using `Dispatchers.Main.immediate`, with explicit in-flight and pending state when operations must run to completion.
+- For ordered command or state transitions, prefer a single owner worker, channel, or pending-state loop over launching independent jobs that can interleave.
+- Use `Dispatchers.Default.limitedParallelism(1, "...")` for non-UI owner-local mutable state confinement when multiple coroutine entry points need a shared lane, but do not rely on it for run-to-completion ordering across suspensions.
+- Use `Mutex` for narrow, local critical sections where the protected invariant is clear. Do not use a daemon/global mutex to hide caller-owned lifecycle races.
+- Do not run blocking work on Main. Main-confined owners may call suspending/nonblocking APIs, but blocking I/O, sleeps, or CPU-heavy work must stay off Main.
+
 ## Rust Daemon Code Hygiene
 Rust daemon code should be event-driven and async-first. Prefer Tokio readiness, cancellation tokens, notifications, channels, and deadline timers over polling loops, fixed sleeps, or manually managed worker threads.
 

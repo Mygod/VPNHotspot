@@ -58,6 +58,7 @@
             android:layout_gravity="center_vertical"
             android:checked="@{data.active}"
             android:ellipsize="end"
+            android:enabled="@{!data.applying}"
             android:gravity="center_vertical"
             android:onClick="@{_ -> data.toggle()}"/>
 
