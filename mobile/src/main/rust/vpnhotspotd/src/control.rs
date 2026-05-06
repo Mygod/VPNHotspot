@@ -287,13 +287,7 @@ async fn start_session(
         }
         Err(e) => {
             drop(guard);
-            let mut sessions = state.sessions.lock().await;
-            if sessions
-                .get(&downstream)
-                .is_some_and(|current| Arc::ptr_eq(current, &slot))
-            {
-                sessions.remove(&downstream);
-            }
+            remove_session_slot(state, &downstream, &slot).await;
             Err(e)
         }
     }
@@ -330,11 +324,24 @@ async fn replace_session(
 }
 
 async fn remove_session(state: &State, downstream: String, withdraw_cleanup: bool) {
-    let session = state.sessions.lock().await.remove(&downstream);
-    if let Some(session) = session {
-        if let Some(session) = session.lock().await.take() {
+    let slot = state.sessions.lock().await.get(&downstream).cloned();
+    if let Some(slot) = slot {
+        let mut guard = slot.lock().await;
+        if let Some(session) = guard.take() {
             session.stop(withdraw_cleanup).await;
         }
+        drop(guard);
+        remove_session_slot(state, &downstream, &slot).await;
+    }
+}
+
+async fn remove_session_slot(state: &State, downstream: &str, slot: &Arc<Mutex<Option<Session>>>) {
+    let mut sessions = state.sessions.lock().await;
+    if sessions
+        .get(downstream)
+        .is_some_and(|current| Arc::ptr_eq(current, slot))
+    {
+        sessions.remove(downstream);
     }
 }
 
