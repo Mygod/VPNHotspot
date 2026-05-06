@@ -323,7 +323,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), CoroutineSc
     override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
         super.onNetlinkNeighbourAvailable(neighbours)
         timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
+            it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
         })
     }
 
