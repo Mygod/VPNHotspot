@@ -20,6 +20,7 @@ use tokio::{select, spawn, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::netlink;
+use crate::report;
 use crate::socket::await_writable;
 use vpnhotspotd::shared::model::{Route, SessionConfig};
 use vpnhotspotd::shared::ra_wire::{
@@ -78,7 +79,11 @@ pub(crate) fn spawn_loop(
             let router = match link_local_router(&netlink, &current.downstream).await {
                 Ok(router) => router,
                 Err(e) => {
-                    eprintln!("ra link-local lookup failed on {}: {e}", current.downstream);
+                    report::io_with_details(
+                        "nat66.ra_link_local_lookup",
+                        e,
+                        [("interface", current.downstream.clone())],
+                    );
                     None
                 }
             };
@@ -124,7 +129,13 @@ pub(crate) fn spawn_loop(
                     next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
                 }
                 if send_current || router_changed || send_address_changed || next_ra <= now {
-                    let _ = send_ra(&current, router, None).await;
+                    if let Err(e) = send_ra(&current, router, None).await {
+                        report::io_with_details(
+                            "nat66.ra_send_current",
+                            e,
+                            [("interface", current.downstream.clone())],
+                        );
+                    }
                     next_ra = now + RA_PERIOD;
                 }
             }
@@ -140,14 +151,27 @@ pub(crate) fn spawn_loop(
                 _ = sleep_until(TokioInstant::from_std(next_deadline)) => {}
                 _ = ipv6_address_changed.notified() => address_changed = true,
                 ready = socket.readable() => {
-                    let Ok(mut ready) = ready else {
-                        break;
+                    let mut ready = match ready {
+                        Ok(ready) => ready,
+                        Err(e) => {
+                            report::io("nat66.ra_readable", e);
+                            break;
+                        }
                     };
                     loop {
                         match recv_request(socket.get_ref(), &mut buffer) {
                             Ok(RaRequest::RouterSolicitation(source)) => {
                                 if let Some(router) = router {
-                                    let _ = send_ra(&current, router, Some(source)).await;
+                                    if let Err(e) = send_ra(&current, router, Some(source)).await {
+                                        report::io_with_details(
+                                            "nat66.ra_send_solicited",
+                                            e,
+                                            [
+                                                ("interface", current.downstream.clone()),
+                                                ("target", source.to_string()),
+                                            ],
+                                        );
+                                    }
                                 }
                             }
                             Ok(RaRequest::Ignored) => continue,
@@ -157,7 +181,7 @@ pub(crate) fn spawn_loop(
                             }
                             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                             Err(e) => {
-                                eprintln!("ra recv failed: {e}");
+                                report::io("nat66.ra_recv", e);
                                 break;
                             }
                         }
@@ -187,7 +211,11 @@ pub(crate) async fn withdraw_prefixes_once(
             return;
         }
         Err(e) => {
-            eprintln!("ra link-local lookup failed on {}: {e}", config.downstream);
+            report::io_with_details(
+                "nat66.ra_withdraw_link_local_lookup",
+                e,
+                [("interface", config.downstream.clone())],
+            );
             return;
         }
     };
@@ -206,12 +234,28 @@ async fn withdraw_prefixes_once_with_router(
     let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
         Ok(fd) => fd,
         Err(e) => {
-            eprintln!("ra send socket failed: {e}");
+            report::io_with_details(
+                "nat66.ra_withdraw_socket",
+                e,
+                [("interface", config.downstream.clone())],
+            );
             return;
         }
     };
     for prefix in prefixes.iter().cloned() {
-        let _ = send_zero_lifetime_ra(&fd, config, router, prefix, keep_router).await;
+        if let Err(e) = send_zero_lifetime_ra(&fd, config, router, prefix, keep_router).await {
+            report::io_with_details(
+                "nat66.ra_withdraw_send",
+                e,
+                [
+                    ("interface", config.downstream.clone()),
+                    (
+                        "prefix",
+                        format!("{:x}/{}", prefix.prefix, prefix.prefix_len),
+                    ),
+                ],
+            );
+        }
     }
 }
 

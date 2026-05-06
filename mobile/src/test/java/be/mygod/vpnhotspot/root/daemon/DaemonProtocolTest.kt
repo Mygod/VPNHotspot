@@ -5,6 +5,8 @@ import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -94,6 +96,39 @@ class DaemonProtocolTest {
     }
 
     @Test
+    fun readAckDecodesStructuredStatusError() {
+        val report = daemonErrorReport()
+        val packet = Buffer().apply {
+            writeByte(DaemonProtocol.STATUS_ERROR.toByte())
+            writeErrorReport(report)
+        }.readByteArray()
+        try {
+            DaemonProtocol.readAck(packet)
+            fail("Expected daemon status exception")
+        } catch (e: DaemonProtocol.DaemonException) {
+            assertEquals(16, e.report.errno)
+            assertEquals(report, e.report)
+            assertEquals("vpnhotspotd", e.stackTrace.single().className)
+            assertEquals("routing.command", e.stackTrace.single().methodName)
+            assertEquals("routing.rs", e.stackTrace.single().fileName)
+            assertEquals(123, e.stackTrace.single().lineNumber)
+            assertEquals("routing.command", e.report.crashlyticsKeyValues["daemon.context"])
+            assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
+        }
+    }
+
+    @Test
+    fun readFrameDecodesNonFatalError() {
+        val report = daemonErrorReport()
+        val frame = DaemonProtocol.readFrame(Buffer().apply {
+            writeByte(DaemonProtocol.FRAME_NON_FATAL.toByte())
+            writeErrorReport(report)
+        }.readByteArray())
+        assertTrue(frame is DaemonProtocol.Frame.NonFatal)
+        assertEquals(report, (frame as DaemonProtocol.Frame.NonFatal).exception.report)
+    }
+
+    @Test
     fun removeSessionEncodesRemoveMode() {
         Buffer().apply {
             write(DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup))
@@ -129,4 +164,38 @@ class DaemonProtocolTest {
     private fun Source.readIpv4Address() = InetAddress.getByAddress(readByteArray(4)).hostAddress
 
     private fun Source.readUtf() = readString(readInt().toLong())
+
+    private fun daemonErrorReport() = DaemonProtocol.DaemonErrorReport(
+        context = "routing.command",
+        message = "Device or resource busy",
+        errno = 16,
+        kind = "ResourceBusy",
+        file = "routing.rs",
+        line = 123,
+        column = 45,
+        pid = 2345,
+        details = mapOf("command" to "iptables-restore"),
+    )
+
+    private fun Buffer.writeErrorReport(report: DaemonProtocol.DaemonErrorReport) {
+        writeUtf(report.context)
+        writeUtf(report.message)
+        writeInt(report.errno ?: -1)
+        writeUtf(report.kind)
+        writeUtf(report.file)
+        writeInt(report.line)
+        writeInt(report.column)
+        writeInt(report.pid)
+        writeInt(report.details.size)
+        for ((key, value) in report.details) {
+            writeUtf(key)
+            writeUtf(value)
+        }
+    }
+
+    private fun Buffer.writeUtf(value: String) {
+        val bytes = value.encodeToByteArray()
+        writeInt(bytes.size)
+        write(bytes)
+    }
 }

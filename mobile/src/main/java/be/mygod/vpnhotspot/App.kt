@@ -24,6 +24,7 @@ import androidx.core.content.getSystemService
 import androidx.preference.PreferenceManager
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.privateLookup
@@ -100,7 +101,9 @@ class App : Application() {
                         Log.w(tag, message, t)
                     }
                     if (priority >= Log.INFO && t !is NoShellException) {
-                        FirebaseCrashlytics.getInstance().recordException(t)
+                        val crashlyticsKeys = (t as? CrashlyticsKeyProvider)?.crashlyticsKeys
+                        if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(t)
+                        else FirebaseCrashlytics.getInstance().recordException(t, crashlyticsKeys)
                     }
                 }
             }

@@ -79,7 +79,7 @@ object DaemonController {
         }
         try {
             return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
-        } catch (e: DaemonProtocol.StatusException) {
+        } catch (e: DaemonProtocol.DaemonException) {
             if (leaseAdded) lock.withLock {
                 activeSessions.remove(config.downstream)
                 maybeShutdownLocked()
@@ -94,7 +94,7 @@ object DaemonController {
     suspend fun replaceSession(config: DaemonProtocol.SessionConfig) {
         try {
             DaemonProtocol.readAck(request(DaemonProtocol.replaceSession(config)))
-        } catch (e: DaemonProtocol.StatusException) {
+        } catch (e: DaemonProtocol.DaemonException) {
             throw e
         } catch (e: Exception) {
             lock.withLock { closeAndClearStateLocked() }
@@ -122,7 +122,7 @@ object DaemonController {
 
     suspend fun readTrafficCounterLines() = try {
         DaemonProtocol.readTrafficCounterLines(request(DaemonProtocol.readTrafficCounters()))
-    } catch (e: DaemonProtocol.StatusException) {
+    } catch (e: DaemonProtocol.DaemonException) {
         throw e
     } catch (e: Exception) {
         lock.withLock { closeAndClearStateLocked() }
@@ -152,7 +152,7 @@ object DaemonController {
         listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit,
         e: Exception,
     ) = lock.withLock {
-        if (e !is DaemonProtocol.StatusException && e !is CancellationException) {
+        if (e !is DaemonProtocol.DaemonException && e !is CancellationException) {
             closeAndClearStateLocked()
         } else if (neighbourListener === listener) {
             neighbourMonitorActive = false
@@ -351,6 +351,7 @@ object DaemonController {
                             Timber.w(e)
                         }
                     }
+                    is DaemonProtocol.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception)
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {

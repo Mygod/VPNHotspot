@@ -13,7 +13,7 @@ use rtnetlink::packet_route::{
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::{spawn, task::JoinHandle};
 
-use crate::netlink;
+use crate::{netlink, report};
 use vpnhotspotd::shared::protocol::{neighbours_frame, Neighbour, NeighbourState};
 
 pub(crate) async fn dump(handle: &netlink::Handle) -> io::Result<Vec<Neighbour>> {
@@ -48,6 +48,9 @@ impl Monitor {
                 while let Some(message) = events.recv().await {
                     if let Some(neighbour) = neighbour_from_event(&handle, message).await {
                         if sender.send(neighbours_frame(false, &[neighbour])).is_err() {
+                            eprintln!(
+                                "neighbour monitor frame send failed: controller disconnected"
+                            );
                             break;
                         }
                     }
@@ -59,7 +62,9 @@ impl Monitor {
     pub(crate) async fn stop(self) {
         let Self { registration, task } = self;
         drop(registration);
-        let _ = task.await;
+        if let Err(e) = task.await {
+            report::message("neighbour.monitor_join", e.to_string(), "JoinError");
+        }
     }
 }
 
@@ -74,7 +79,15 @@ async fn neighbour_from_event(
     };
     let interface = match netlink::link_name(handle, message.header.ifindex).await {
         Ok(name) => name,
-        Err(_) => format!("if{}", message.header.ifindex),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => format!("if{}", message.header.ifindex),
+        Err(e) => {
+            report::io_with_details(
+                "neighbour.link_name",
+                e,
+                [("ifindex", message.header.ifindex.to_string())],
+            );
+            format!("if{}", message.header.ifindex)
+        }
     };
     neighbour_from_message(deleting, message, interface)
 }

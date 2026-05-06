@@ -3,6 +3,7 @@ mod dns;
 mod nat66;
 mod neighbour;
 mod netlink;
+mod report;
 mod routing;
 mod session;
 mod socket;

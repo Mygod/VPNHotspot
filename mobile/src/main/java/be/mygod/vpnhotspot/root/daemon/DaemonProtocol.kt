@@ -3,8 +3,10 @@ package be.mygod.vpnhotspot.root.daemon
 import android.net.IpPrefix
 import android.net.MacAddress
 import android.net.Network
+import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.MacAddressCompat
+import com.google.firebase.crashlytics.CustomKeysAndValues
 import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.Source
@@ -18,11 +20,51 @@ import java.net.InetAddress
 object DaemonProtocol {
     const val FRAME_REPLY = 0
     const val FRAME_NEIGHBOURS = 1
+    const val FRAME_NON_FATAL = 2
 
     const val STATUS_OK = 0
     const val STATUS_ERROR = 1
 
-    class StatusException(val errno: Int?, message: String) : IOException(message)
+    private val INVALID_CRASHLYTICS_KEY_CHAR = Regex("[^A-Za-z0-9_.-]")
+
+    private fun sanitizeCrashlyticsKey(key: String) =
+        INVALID_CRASHLYTICS_KEY_CHAR.replace(key, "_").ifEmpty { "detail" }.take(64)
+
+    data class DaemonErrorReport(
+        val context: String,
+        val message: String,
+        val errno: Int?,
+        val kind: String,
+        val file: String,
+        val line: Int,
+        val column: Int,
+        val pid: Int,
+        val details: Map<String, String>,
+    ) {
+        val crashlyticsKeyValues get() = buildMap {
+            put("daemon.context", context)
+            put("daemon.message", message)
+            if (errno != null) put("daemon.errno", errno.toString())
+            put("daemon.kind", kind)
+            put("daemon.file", file)
+            put("daemon.line", line.toString())
+            put("daemon.column", column.toString())
+            put("daemon.pid", pid.toString())
+            for ((key, value) in details) put("daemon.${sanitizeCrashlyticsKey(key)}", value)
+        }
+    }
+
+    class DaemonException(
+        val report: DaemonErrorReport,
+    ) : IOException(report.toExceptionMessage()), CrashlyticsKeyProvider {
+        init {
+            stackTrace = arrayOf(StackTraceElement("vpnhotspotd", report.context, report.file, report.line))
+        }
+
+        override val crashlyticsKeys get() = CustomKeysAndValues.Builder().apply {
+            for ((key, value) in report.crashlyticsKeyValues) putString(key, value)
+        }.build()
+    }
 
     const val CMD_START_SESSION = 1
     const val CMD_REPLACE_SESSION = 2
@@ -99,6 +141,7 @@ object DaemonProtocol {
     sealed class Frame {
         data class Reply(val packet: ByteArray) : Frame()
         data class Neighbours(val update: NeighbourUpdate) : Frame()
+        data class NonFatal(val exception: DaemonException) : Frame()
     }
 
     enum class RemoveMode(val protocolValue: Byte) {
@@ -138,6 +181,7 @@ object DaemonProtocol {
         return when (val type = input.readByte().toInt() and 0xFF) {
             FRAME_REPLY -> Frame.Reply(input.readByteArray())
             FRAME_NEIGHBOURS -> Frame.Neighbours(readNeighbourUpdate(input))
+            FRAME_NON_FATAL -> Frame.NonFatal(DaemonException(readErrorReport(input)))
             else -> throw IOException("Unknown daemon frame type $type")
         }
     }
@@ -217,12 +261,31 @@ object DaemonProtocol {
     private fun readStatus(input: Source) {
         when (val status = input.readByte().toInt() and 0xFF) {
             STATUS_OK -> { }
-            STATUS_ERROR -> {
-                val errno = input.readInt().let { if (it < 0) null else it }
-                throw StatusException(errno, input.readUtf())
-            }
+            STATUS_ERROR -> throw DaemonException(readErrorReport(input))
             else -> throw IOException("Unknown daemon status $status")
         }
+    }
+
+    private fun readErrorReport(input: Source): DaemonErrorReport {
+        val context = input.readUtf()
+        val message = input.readUtf()
+        val errno = input.readInt().let { if (it < 0) null else it }
+        val kind = input.readUtf()
+        val file = input.readUtf()
+        val line = input.readInt()
+        val column = input.readInt()
+        val pid = input.readInt()
+        val detailCount = input.readCount("error detail")
+        return DaemonErrorReport(context, message, errno, kind, file, line, column, pid, buildMap {
+            repeat(detailCount) { put(input.readUtf(), input.readUtf()) }
+        })
+    }
+
+    private fun DaemonErrorReport.toExceptionMessage() = buildString {
+        append(context).append(": ").append(message)
+        if (errno != null) append(" (errno=").append(errno).append(')')
+        append(" [").append(kind).append(" at ").append(file).append(':').append(line).append(':')
+            .append(column).append(", pid=").append(pid).append(']')
     }
 
     private fun Sink.writeUtf(value: String) {

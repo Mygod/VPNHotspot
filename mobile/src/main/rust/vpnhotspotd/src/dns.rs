@@ -14,6 +14,8 @@ use tokio::sync::Mutex;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
+use crate::report;
+use crate::socket::is_connection_closed;
 use vpnhotspotd::shared::dns_wire;
 use vpnhotspotd::shared::model::{Network, SessionConfig};
 
@@ -135,12 +137,16 @@ fn spawn_tcp_loop(
                                     let snapshot = config.lock().await.clone();
                                     handle_tcp_connection(socket, snapshot).await
                                 } => if let Err(e) = result {
-                                    eprintln!("dns tcp failed: {e}");
+                                    if is_connection_closed(&e) {
+                                        eprintln!("dns tcp connection closed: {e}");
+                                    } else {
+                                        report::io("dns.tcp_connection", e);
+                                    }
                                 }
                             }
                         });
                     }
-                    Err(e) => eprintln!("dns tcp accept failed: {e}"),
+                    Err(e) => report::io("dns.tcp_accept", e),
                 }
             }
         }
@@ -196,14 +202,18 @@ fn spawn_udp_loop(
                                 response = resolve_or_error(&snapshot, &query) => {
                                     if let Some(response) = response {
                                         if let Err(e) = socket.send_to(&response, source).await {
-                                            eprintln!("dns udp response failed: {e}");
+                                            report::io_with_details(
+                                                "dns.udp_response",
+                                                e,
+                                                [("source", source.to_string())],
+                                            );
                                         }
                                     }
                                 }
                             }
                         });
                     },
-                    Err(e) => eprintln!("dns udp recv failed: {e}"),
+                    Err(e) => report::io("dns.udp_recv", e),
                 }
             };
         }
@@ -249,7 +259,7 @@ async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
     let fd = ResolverQuery { fd: Some(fd) };
     set_nonblocking(fd.as_raw_fd())?;
     let fd = AsyncFd::new(fd)?;
-    let _ = fd.readable().await?;
+    drop(fd.readable().await?);
     let mut response = vec![0u8; DNS_MAX_PACKET];
     let mut rcode = 0;
     let size = fd.into_inner().finish(&mut rcode, &mut response);

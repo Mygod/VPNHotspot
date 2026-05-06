@@ -16,6 +16,8 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::{Mutex, MutexGuard, Notify};
 use tokio::task::JoinHandle;
 
+use crate::report;
+
 #[derive(Clone)]
 pub(crate) struct Handle {
     inner: rtnetlink::Handle,
@@ -64,10 +66,10 @@ impl Runtime {
                     _ = &mut connection => break,
                     message = messages.next() => match message {
                         Some((message, _)) => dispatch_message(
-                            message.payload,
-                            &task_ipv6_address_changed,
-                            &task_neighbour_events,
-                        ),
+                                message.payload,
+                                &task_ipv6_address_changed,
+                                &task_neighbour_events,
+                            ),
                         None => break,
                     },
                 }
@@ -128,8 +130,14 @@ pub(crate) struct NeighbourRegistration {
 
 impl Drop for NeighbourRegistration {
     fn drop(&mut self) {
-        if let Ok(mut neighbour_events) = self.neighbour_events.lock() {
-            neighbour_events.take();
+        match self.neighbour_events.lock() {
+            Ok(mut neighbour_events) => {
+                neighbour_events.take();
+            }
+            Err(_) => report::io(
+                "netlink.neighbour_registration.drop",
+                io::Error::other("neighbour monitor state poisoned"),
+            ),
         }
     }
 }
@@ -231,7 +239,10 @@ fn send_neighbour_event(
             }
         }
         Err(_) => {
-            eprintln!("neighbour monitor state poisoned");
+            report::io(
+                "netlink.send_neighbour_event",
+                io::Error::other("neighbour monitor state poisoned"),
+            );
             return;
         }
     }

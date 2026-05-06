@@ -14,11 +14,11 @@ use tokio::task::JoinHandle;
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
-use crate::{netlink, routing};
+use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
     error_packet, neighbours_frame, neighbours_packet, ok_packet, parse_command, ports_packet,
     reply_frame, should_suppress_static_address_error, traffic_counter_lines_packet, Command,
-    IpAddressCommand,
+    DaemonErrorReport, IoErrorReportExt, IoResultReportExt, IpAddressCommand,
 };
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
@@ -29,6 +29,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     eprintln!("connected to {socket_name}");
     let (mut controller_read, controller_write) = controller.into_split();
     let (sender, writer) = spawn_writer(controller_write);
+    report::init(sender.clone())?;
     let mut state = State {
         netlink: netlink::Runtime::new()?,
         sessions: HashMap::new(),
@@ -39,7 +40,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
             Ok(packet) => packet,
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
             Err(e) => {
-                eprintln!("controller recv failed: {e}");
+                report::io("control.recv_packet", e);
                 break;
             }
         };
@@ -51,7 +52,10 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                 }
                 break;
             }
-            Err(e) => Some(error_packet(e)),
+            Err(e) => Some(error_packet(DaemonErrorReport::from_io_error(
+                "control.handle_packet",
+                e,
+            ))),
         };
         if let Some(response) = response {
             if sender.send(reply_frame(response)).is_err() {
@@ -67,7 +71,9 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     for (_, session) in state.sessions {
         session.stop(false).await;
     }
-    let _ = writer.await;
+    if let Err(e) = writer.await {
+        eprintln!("controller writer task failed: {e}");
+    }
     Ok(())
 }
 
@@ -87,26 +93,40 @@ async fn handle_packet(
     state: &mut State,
     sender: &UnboundedSender<Vec<u8>>,
 ) -> io::Result<HandleResult> {
-    match parse_command(packet)? {
+    match parse_command(packet).with_report_context("control.parse_command")? {
         Command::StartSession(config) => {
             let downstream = config.downstream.clone();
             if state.sessions.contains_key(&downstream) {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "session already exists",
-                ));
+                return Err(
+                    io::Error::new(io::ErrorKind::AlreadyExists, "session already exists")
+                        .with_report_context_details(
+                            "control.start_session",
+                            [("downstream", downstream)],
+                        ),
+                );
             }
-            let session = Session::start(config, &state.netlink).await?;
+            let session = Session::start(config, &state.netlink)
+                .await
+                .with_report_context_details(
+                    "control.start_session",
+                    [("downstream", downstream.as_str())],
+                )?;
             let reply = ports_packet(session.ports());
             state.sessions.insert(downstream, session);
             Ok(HandleResult::Reply(reply))
         }
         Command::ReplaceSession(config) => {
-            let session = state
-                .sessions
-                .get_mut(&config.downstream)
-                .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "session not found"))?;
-            session.replace_config(config).await?;
+            let session = state.sessions.get_mut(&config.downstream).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::NotFound, "session not found")
+                    .with_report_context_details(
+                        "control.replace_session",
+                        [("downstream", config.downstream.as_str())],
+                    )
+            })?;
+            session
+                .replace_config(config)
+                .await
+                .with_report_context("control.replace_session")?;
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::RemoveSession {
@@ -128,20 +148,25 @@ async fn handle_packet(
             Ok(HandleResult::Shutdown(ok_packet()))
         }
         Command::ReadTrafficCounters => {
-            let lines = crate::traffic::read_counter_lines().await?;
+            let lines = crate::traffic::read_counter_lines()
+                .await
+                .with_report_context("control.read_traffic_counters")?;
             Ok(HandleResult::Reply(traffic_counter_lines_packet(&lines)))
         }
         Command::StartNeighbourMonitor => {
             if state.neighbour_monitor.is_none() {
                 let monitor = Monitor::spawn(&state.netlink, sender.clone())?;
                 let handle = state.netlink.handle();
-                let neighbours = crate::neighbour::dump(&handle).await?;
+                let neighbours = crate::neighbour::dump(&handle)
+                    .await
+                    .with_report_context("control.start_neighbour_monitor.dump")?;
                 if sender.send(neighbours_frame(true, &neighbours)).is_err() {
                     monitor.stop().await;
                     return Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
                         "controller disconnected",
-                    ));
+                    )
+                    .with_report_context("control.start_neighbour_monitor.send"));
                 }
                 state.neighbour_monitor = Some(monitor);
             }
@@ -156,17 +181,30 @@ async fn handle_packet(
         Command::DumpNeighbours => {
             let handle = state.netlink.handle();
             Ok(HandleResult::Reply(neighbours_packet(
-                &crate::neighbour::dump(&handle).await?,
+                &crate::neighbour::dump(&handle)
+                    .await
+                    .with_report_context("control.dump_neighbours")?,
             )))
         }
         Command::StaticAddress(command) => {
             let handle = state.netlink.handle();
-            apply_static_address(&handle, &command).await?;
+            apply_static_address(&handle, &command)
+                .await
+                .with_report_context_details(
+                    "control.static_address",
+                    [
+                        ("operation", format!("{:?}", command.operation)),
+                        ("address", command.address.to_string()),
+                        ("interface", command.interface.clone()),
+                    ],
+                )?;
             Ok(HandleResult::Reply(ok_packet()))
         }
         Command::CleanRouting(command) => {
             let handle = state.netlink.handle();
-            routing::clean(&handle, &command).await?;
+            routing::clean(&handle, &command)
+                .await
+                .with_report_context("control.clean_routing")?;
             Ok(HandleResult::Reply(ok_packet()))
         }
     }

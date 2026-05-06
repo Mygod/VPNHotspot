@@ -1,5 +1,9 @@
+use std::error::Error;
+use std::fmt;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::panic::Location;
+use std::process;
 
 use crate::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ipv6_to_u128, ClientConfig, Ipv6NatConfig, MasqueradeMode,
@@ -11,6 +15,9 @@ const STATUS_ERROR: u8 = 1;
 
 const FRAME_REPLY: u8 = 0;
 const FRAME_NEIGHBOURS: u8 = 1;
+const FRAME_NON_FATAL: u8 = 2;
+const MAX_ERROR_DETAILS: usize = 32;
+const MAX_ERROR_FIELD_BYTES: usize = 4096;
 
 const CMD_START_SESSION: u32 = 1;
 const CMD_REPLACE_SESSION: u32 = 2;
@@ -119,6 +126,206 @@ pub struct CleanIpCommand {
     pub ipv6_nat_prefix_seed: String,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DaemonErrorReport {
+    pub context: String,
+    pub message: String,
+    pub errno: Option<i32>,
+    pub kind: String,
+    pub file: String,
+    pub line: u32,
+    pub column: u32,
+    pub pid: u32,
+    pub details: Vec<(String, String)>,
+}
+
+impl DaemonErrorReport {
+    #[track_caller]
+    pub fn from_message(
+        context: impl Into<String>,
+        message: impl Into<String>,
+        kind: impl Into<String>,
+    ) -> Self {
+        Self::from_message_with_details(context, message, kind, std::iter::empty::<(&str, &str)>())
+    }
+
+    #[track_caller]
+    pub fn from_message_with_details<I, K, V>(
+        context: impl Into<String>,
+        message: impl Into<String>,
+        kind: impl Into<String>,
+        details: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        let location = Location::caller();
+        Self {
+            context: trim_error_field(context.into()),
+            message: trim_error_field(message.into()),
+            errno: None,
+            kind: trim_error_field(kind.into()),
+            file: trim_error_field(location.file().to_owned()),
+            line: location.line(),
+            column: location.column(),
+            pid: process::id(),
+            details: details
+                .into_iter()
+                .take(MAX_ERROR_DETAILS)
+                .map(|(key, value)| {
+                    (
+                        trim_error_field(key.to_string()),
+                        trim_error_field(value.to_string()),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    #[track_caller]
+    pub fn from_io_error(context: impl Into<String>, error: io::Error) -> Self {
+        Self::from_io_error_with_details(context, error, std::iter::empty::<(&str, &str)>())
+    }
+
+    #[track_caller]
+    pub fn from_io_error_with_details<I, K, V>(
+        context: impl Into<String>,
+        error: io::Error,
+        details: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        if let Some(report) = Self::from_reported_io_error(&error) {
+            return report;
+        }
+        let location = Location::caller();
+        Self {
+            context: trim_error_field(context.into()),
+            message: trim_error_field(error.to_string()),
+            errno: error.raw_os_error(),
+            kind: trim_error_field(format!("{:?}", error.kind())),
+            file: trim_error_field(location.file().to_owned()),
+            line: location.line(),
+            column: location.column(),
+            pid: process::id(),
+            details: details
+                .into_iter()
+                .take(MAX_ERROR_DETAILS)
+                .map(|(key, value)| {
+                    (
+                        trim_error_field(key.to_string()),
+                        trim_error_field(value.to_string()),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn from_reported_io_error(error: &io::Error) -> Option<Self> {
+        error
+            .get_ref()?
+            .downcast_ref::<DaemonReportError>()
+            .map(|error| error.report.clone())
+    }
+}
+
+#[derive(Debug)]
+pub struct DaemonReportError {
+    report: DaemonErrorReport,
+}
+
+impl DaemonReportError {
+    pub fn report(&self) -> &DaemonErrorReport {
+        &self.report
+    }
+}
+
+impl fmt::Display for DaemonReportError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "{}: {}",
+            self.report.context, self.report.message
+        )
+    }
+}
+
+impl Error for DaemonReportError {}
+
+pub fn error_errno(error: &io::Error) -> Option<i32> {
+    DaemonErrorReport::from_reported_io_error(error)
+        .and_then(|report| report.errno)
+        .or_else(|| error.raw_os_error())
+}
+
+pub trait IoErrorReportExt {
+    #[track_caller]
+    fn with_report_context(self, context: impl Into<String>) -> Self;
+
+    #[track_caller]
+    fn with_report_context_details<I, K, V>(self, context: impl Into<String>, details: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString;
+}
+
+impl IoErrorReportExt for io::Error {
+    #[track_caller]
+    fn with_report_context(self, context: impl Into<String>) -> Self {
+        self.with_report_context_details(context, std::iter::empty::<(&str, &str)>())
+    }
+
+    #[track_caller]
+    fn with_report_context_details<I, K, V>(self, context: impl Into<String>, details: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        if DaemonErrorReport::from_reported_io_error(&self).is_some() {
+            return self;
+        }
+        let kind = self.kind();
+        let report = DaemonErrorReport::from_io_error_with_details(context, self, details);
+        io::Error::new(kind, DaemonReportError { report })
+    }
+}
+
+pub trait IoResultReportExt<T> {
+    #[track_caller]
+    fn with_report_context(self, context: impl Into<String>) -> Self;
+
+    #[track_caller]
+    fn with_report_context_details<I, K, V>(self, context: impl Into<String>, details: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString;
+}
+
+impl<T> IoResultReportExt<T> for io::Result<T> {
+    #[track_caller]
+    fn with_report_context(self, context: impl Into<String>) -> Self {
+        self.map_err(|error| error.with_report_context(context))
+    }
+
+    #[track_caller]
+    fn with_report_context_details<I, K, V>(self, context: impl Into<String>, details: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        self.map_err(|error| error.with_report_context_details(context, details))
+    }
+}
+
 pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
     let mut parser = Parser::new(packet);
     match parser.read_u32()? {
@@ -159,6 +366,12 @@ pub fn neighbours_frame(replace: bool, neighbours: &[Neighbour]) -> Vec<u8> {
     frame
 }
 
+pub fn nonfatal_frame(report: DaemonErrorReport) -> Vec<u8> {
+    let mut frame = vec![FRAME_NON_FATAL];
+    write_error_report(&mut frame, &report);
+    frame
+}
+
 pub fn ok_packet() -> Vec<u8> {
     vec![STATUS_OK]
 }
@@ -177,19 +390,16 @@ pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
     packet
 }
 
-pub fn error_packet(error: io::Error) -> Vec<u8> {
+pub fn error_packet(report: DaemonErrorReport) -> Vec<u8> {
     let mut packet = vec![STATUS_ERROR];
-    packet.extend_from_slice(&error.raw_os_error().unwrap_or(-1).to_be_bytes());
-    let message = error.to_string().into_bytes();
-    packet.extend_from_slice(&(message.len() as u32).to_be_bytes());
-    packet.extend_from_slice(&message);
+    write_error_report(&mut packet, &report);
     packet
 }
 
 pub fn should_suppress_static_address_error(error: &io::Error, operation: IpOperation) -> bool {
     match operation {
-        IpOperation::Replace => error.raw_os_error() == Some(libc::EEXIST),
-        IpOperation::Delete => matches!(error.raw_os_error(), Some(libc::ENOENT | libc::ESRCH)),
+        IpOperation::Replace => error_errno(error) == Some(libc::EEXIST),
+        IpOperation::Delete => matches!(error_errno(error), Some(libc::ENOENT | libc::ESRCH)),
     }
 }
 
@@ -236,6 +446,35 @@ fn neighbours_payload(replace: bool, neighbours: &[Neighbour]) -> Vec<u8> {
 fn write_utf(packet: &mut Vec<u8>, value: &str) {
     packet.extend_from_slice(&(value.len() as u32).to_be_bytes());
     packet.extend_from_slice(value.as_bytes());
+}
+
+fn write_error_report(packet: &mut Vec<u8>, report: &DaemonErrorReport) {
+    write_utf(packet, &report.context);
+    write_utf(packet, &report.message);
+    packet.extend_from_slice(&report.errno.unwrap_or(-1).to_be_bytes());
+    write_utf(packet, &report.kind);
+    write_utf(packet, &report.file);
+    packet.extend_from_slice(&report.line.to_be_bytes());
+    packet.extend_from_slice(&report.column.to_be_bytes());
+    packet.extend_from_slice(&report.pid.to_be_bytes());
+    packet.extend_from_slice(&(report.details.len() as u32).to_be_bytes());
+    for (key, value) in &report.details {
+        write_utf(packet, key);
+        write_utf(packet, value);
+    }
+}
+
+fn trim_error_field(value: String) -> String {
+    if value.len() <= MAX_ERROR_FIELD_BYTES {
+        return value;
+    }
+    let mut end = MAX_ERROR_FIELD_BYTES;
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut value = value[..end].to_owned();
+    value.push_str("...");
+    value
 }
 
 struct Parser<'a> {
@@ -702,6 +941,25 @@ mod tests {
     }
 
     #[test]
+    fn static_address_error_suppression_preserves_reported_errno() {
+        let existing = io::Error::from_raw_os_error(libc::EEXIST).with_report_context("address");
+        assert_eq!(existing.raw_os_error(), None);
+        assert_eq!(error_errno(&existing), Some(libc::EEXIST));
+        assert!(should_suppress_static_address_error(
+            &existing,
+            IpOperation::Replace,
+        ));
+
+        let missing = io::Error::from_raw_os_error(libc::ENOENT).with_report_context("address");
+        assert_eq!(missing.raw_os_error(), None);
+        assert_eq!(error_errno(&missing), Some(libc::ENOENT));
+        assert!(should_suppress_static_address_error(
+            &missing,
+            IpOperation::Delete,
+        ));
+    }
+
+    #[test]
     fn parse_clean_routing_reads_prefix_seed() {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_CLEAN_ROUTING.to_be_bytes());
@@ -713,6 +971,38 @@ mod tests {
         assert_eq!(
             command.ipv6_nat_prefix_seed,
             "be.mygod.vpnhotspot\0android-id"
+        );
+    }
+
+    #[test]
+    fn error_packet_encodes_structured_report() {
+        let report = daemon_error_report();
+        let packet = error_packet(report.clone());
+
+        assert_eq!(packet[0], STATUS_ERROR);
+        assert_eq!(read_error_report(&packet[1..]), report);
+    }
+
+    #[test]
+    fn nonfatal_frame_encodes_structured_report() {
+        let report = daemon_error_report();
+        let packet = nonfatal_frame(report.clone());
+
+        assert_eq!(packet[0], FRAME_NON_FATAL);
+        assert_eq!(read_error_report(&packet[1..]), report);
+    }
+
+    #[test]
+    fn report_context_preserves_existing_report() {
+        let report = daemon_error_report();
+        let error = io::Error::other(DaemonReportError {
+            report: report.clone(),
+        })
+        .with_report_context("outer");
+
+        assert_eq!(
+            DaemonErrorReport::from_reported_io_error(&error),
+            Some(report)
         );
     }
 
@@ -738,6 +1028,51 @@ mod tests {
         Route {
             prefix: ipv6_to_u128(address.parse::<Ipv6Addr>().unwrap()),
             prefix_len,
+        }
+    }
+
+    fn daemon_error_report() -> DaemonErrorReport {
+        DaemonErrorReport {
+            context: "routing.command".to_owned(),
+            message: "Device or resource busy".to_owned(),
+            errno: Some(libc::EBUSY),
+            kind: "ResourceBusy".to_owned(),
+            file: "routing.rs".to_owned(),
+            line: 123,
+            column: 45,
+            pid: 2345,
+            details: vec![("command".to_owned(), "iptables-restore".to_owned())],
+        }
+    }
+
+    fn read_error_report(packet: &[u8]) -> DaemonErrorReport {
+        let mut parser = Parser::new(packet);
+        let context = parser.read_utf().unwrap();
+        let message = parser.read_utf().unwrap();
+        let errno = match parser.read_i32().unwrap() {
+            errno if errno < 0 => None,
+            errno => Some(errno),
+        };
+        let kind = parser.read_utf().unwrap();
+        let file = parser.read_utf().unwrap();
+        let line = parser.read_u32().unwrap();
+        let column = parser.read_u32().unwrap();
+        let pid = parser.read_u32().unwrap();
+        let detail_count = parser.read_u32().unwrap();
+        let mut details = Vec::new();
+        for _ in 0..detail_count {
+            details.push((parser.read_utf().unwrap(), parser.read_utf().unwrap()));
+        }
+        DaemonErrorReport {
+            context,
+            message,
+            errno,
+            kind,
+            file,
+            line,
+            column,
+            pid,
+            details,
         }
     }
 }

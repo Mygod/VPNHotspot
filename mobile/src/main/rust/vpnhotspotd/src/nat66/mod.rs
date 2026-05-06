@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::netlink;
+use crate::report;
 use vpnhotspotd::shared::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig};
 
 mod ra;
@@ -97,7 +98,7 @@ impl Runtime {
 
     pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
         if let Err(e) = self.ra_task.await {
-            eprintln!("ra task join failed: {e}");
+            report::message("nat66.ra_task_join", e.to_string(), "JoinError");
         }
         let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
             return;

@@ -16,7 +16,7 @@ use rtnetlink::packet_route::{
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
-use crate::netlink;
+use crate::{netlink, report};
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, Ipv6NatPorts, MasqueradeMode,
     SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
@@ -24,8 +24,8 @@ use vpnhotspotd::shared::model::{
     LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
-    CleanIpCommand, IpAddressCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand,
-    RouteType, RuleAction,
+    error_errno, CleanIpCommand, IoErrorReportExt, IoResultReportExt, IpAddressCommand, IpFamily,
+    IpOperation, IpRouteCommand, IpRuleCommand, RouteType, RuleAction,
 };
 
 const IPTABLES: &str = "iptables";
@@ -81,7 +81,13 @@ impl IptablesRule {
             self.chain.to_string(),
         ];
         command_args.extend(self.args.iter().cloned());
-        let _ = run_command_status_owned(self.binary, &command_args).await;
+        if let Err(e) = run_command_status_owned(self.binary, &command_args).await {
+            report::io_with_details(
+                "routing.iptables_delete",
+                e,
+                command_details(self.binary, command_args.iter().map(String::as_str)),
+            );
+        }
     }
 }
 
@@ -418,7 +424,7 @@ impl Runtime {
     }
 
     async fn remove_ip_forward(&self, config: &SessionConfig) {
-        let _ = run_ndc(
+        if let Err(e) = run_ndc(
             "ipfwd",
             &[
                 "ipfwd",
@@ -426,7 +432,14 @@ impl Runtime {
                 &format!("vpnhotspot_{}", config.downstream),
             ],
         )
-        .await;
+        .await
+        {
+            report::io_with_details(
+                "routing.remove_ip_forward",
+                e,
+                [("downstream", config.downstream.clone())],
+            );
+        }
     }
 
     async fn add_disable_system_rule(&self, config: &SessionConfig) -> io::Result<()> {
@@ -1166,7 +1179,14 @@ impl Runtime {
     }
 
     async fn iptables_new_chain(&self, binary: &str, table: &str, chain: &str) {
-        let _ = run_command_status(binary, &["-w", "-t", table, "-N", chain]).await;
+        let args = ["-w", "-t", table, "-N", chain];
+        if let Err(e) = run_command_status(binary, &args).await {
+            report::io_with_details(
+                "routing.iptables_new_chain",
+                e,
+                command_details(binary, args),
+            );
+        }
     }
 
     async fn iptables_insert_rules<I>(&self, rules: I) -> io::Result<()>
@@ -1235,7 +1255,7 @@ async fn clean_firewall() {
         &["-j", "vpnhotspot_masquerade"],
     )
     .await;
-    let _ = run_restore(
+    if let Err(e) = run_restore(
         IPTABLES_RESTORE,
         "*mangle
 :vpnhotspot_dns_tproxy - [0:0]
@@ -1254,7 +1274,10 @@ COMMIT
 COMMIT
 ",
     )
-    .await;
+    .await
+    {
+        report::io("routing.clean_firewall.iptables_restore", e);
+    }
     for chain in ["INPUT", "FORWARD", "OUTPUT"] {
         delete_iptables_repeated(IP6TABLES, "filter", chain, &["-j", "vpnhotspot_filter"]).await;
     }
@@ -1272,7 +1295,7 @@ COMMIT
         &["-j", "vpnhotspot_v6_tproxy"],
     )
     .await;
-    let _ = run_restore(
+    if let Err(e) = run_restore(
         IP6TABLES_RESTORE,
         "*filter
 :vpnhotspot_filter - [0:0]
@@ -1292,7 +1315,10 @@ COMMIT
 COMMIT
 ",
     )
-    .await;
+    .await
+    {
+        report::io("routing.clean_firewall.ip6tables_restore", e);
+    }
 }
 
 pub(crate) async fn apply_static_address(
@@ -1306,35 +1332,37 @@ async fn clean_ip(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Res
     flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
     for interface in netlink::link_names(handle).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
-        let _ = apply_address_command(
-            handle,
-            &IpAddressCommand {
-                operation: IpOperation::Delete,
-                address: IpAddr::V6(ipv6_nat_gateway(prefix)),
-                prefix_len: prefix.prefix_len,
-                interface: interface.clone(),
-            },
-        )
-        .await;
-        let _ = apply_route_command(
-            handle,
-            &IpRouteCommand {
-                operation: IpOperation::Delete,
-                route_type: RouteType::Unicast,
-                destination: IpAddr::V6(Ipv6Addr::from(prefix.prefix.to_be_bytes())),
-                prefix_len: prefix.prefix_len,
-                interface,
-                table: LOCAL_NETWORK_TABLE,
-            },
-        )
-        .await;
+        let address = IpAddressCommand {
+            operation: IpOperation::Delete,
+            address: IpAddr::V6(ipv6_nat_gateway(prefix)),
+            prefix_len: prefix.prefix_len,
+            interface: interface.clone(),
+        };
+        if let Err(e) = apply_address_command(handle, &address).await {
+            if !is_missing(&e) {
+                report::io_with_details("routing.clean_ip.address", e, address_details(&address));
+            }
+        }
+        let route = IpRouteCommand {
+            operation: IpOperation::Delete,
+            route_type: RouteType::Unicast,
+            destination: IpAddr::V6(Ipv6Addr::from(prefix.prefix.to_be_bytes())),
+            prefix_len: prefix.prefix_len,
+            interface,
+            table: LOCAL_NETWORK_TABLE,
+        };
+        if let Err(e) = apply_route_command(handle, &route).await {
+            if !is_missing(&e) {
+                report::io_with_details("routing.clean_ip.route", e, route_details(&route));
+            }
+        }
     }
     Ok(())
 }
 
 async fn add_rule(handle: &netlink::Handle, command: IpRuleCommand) -> io::Result<()> {
     match apply_rule_command(handle, &command).await {
-        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
@@ -1342,7 +1370,7 @@ async fn add_rule(handle: &netlink::Handle, command: IpRuleCommand) -> io::Resul
 async fn delete_rule(handle: &netlink::Handle, command: IpRuleCommand) {
     if let Err(e) = apply_rule_command(handle, &command).await {
         if !is_missing(&e) {
-            eprintln!("delete rule failed: {e}");
+            report::io_with_details("routing.delete_rule", e, rule_details(&command));
         }
     }
 }
@@ -1376,7 +1404,7 @@ async fn delete_rule_repeated(
 
 async fn apply_route(handle: &netlink::Handle, command: IpRouteCommand) -> io::Result<()> {
     match apply_route_command(handle, &command).await {
-        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
@@ -1384,14 +1412,14 @@ async fn apply_route(handle: &netlink::Handle, command: IpRouteCommand) -> io::R
 async fn delete_route(handle: &netlink::Handle, command: IpRouteCommand) {
     if let Err(e) = apply_route_command(handle, &command).await {
         if !is_missing(&e) {
-            eprintln!("delete route failed: {e}");
+            report::io_with_details("routing.delete_route", e, route_details(&command));
         }
     }
 }
 
 async fn apply_address(handle: &netlink::Handle, command: IpAddressCommand) -> io::Result<()> {
     match apply_address_command(handle, &command).await {
-        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => Ok(()),
+        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
         result => result,
     }
 }
@@ -1399,7 +1427,7 @@ async fn apply_address(handle: &netlink::Handle, command: IpAddressCommand) -> i
 async fn delete_address(handle: &netlink::Handle, command: IpAddressCommand) {
     if let Err(e) = apply_address_command(handle, &command).await {
         if !is_missing(&e) {
-            eprintln!("delete address failed: {e}");
+            report::io_with_details("routing.delete_address", e, address_details(&command));
         }
     }
 }
@@ -1408,7 +1436,9 @@ async fn apply_address_command(
     handle: &netlink::Handle,
     command: &IpAddressCommand,
 ) -> io::Result<()> {
-    let index = netlink::link_index(handle, &command.interface).await?;
+    let index = netlink::link_index(handle, &command.interface)
+        .await
+        .with_report_context_details("routing.address.link_index", address_details(command))?;
     match command.operation {
         IpOperation::Replace => {
             let mut request = handle
@@ -1429,37 +1459,46 @@ async fn apply_address_command(
         }
     }
     .map_err(netlink::to_io_error)
+    .with_report_context_details("routing.address", address_details(command))
 }
 
 async fn apply_route_command(handle: &netlink::Handle, command: &IpRouteCommand) -> io::Result<()> {
     let message = route_message(
         command,
-        netlink::link_index(handle, &command.interface).await?,
+        netlink::link_index(handle, &command.interface)
+            .await
+            .with_report_context_details("routing.route.link_index", route_details(command))?,
     );
     match command.operation {
         IpOperation::Replace => handle.raw().route().add(message).replace().execute().await,
         IpOperation::Delete => handle.raw().route().del(message).execute().await,
     }
     .map_err(netlink::to_io_error)
+    .with_report_context_details("routing.route", route_details(command))
 }
 
 async fn apply_rule_command(handle: &netlink::Handle, command: &IpRuleCommand) -> io::Result<()> {
     match command.operation {
         IpOperation::Replace => {
             let mut request = handle.raw().rule().add();
-            fill_rule_message(request.message_mut(), command)?;
+            fill_rule_message(request.message_mut(), command)
+                .with_report_context_details("routing.rule.fill", rule_details(command))?;
             request.execute().await
         }
         IpOperation::Delete => {
             handle
                 .raw()
                 .rule()
-                .del(rule_message(command)?)
+                .del(
+                    rule_message(command)
+                        .with_report_context_details("routing.rule.fill", rule_details(command))?,
+                )
                 .execute()
                 .await
         }
     }
     .map_err(netlink::to_io_error)
+    .with_report_context_details("routing.rule", rule_details(command))
 }
 
 async fn flush_routes(
@@ -1476,7 +1515,19 @@ async fn flush_routes(
     pin_mut!(routes);
     while let Some(route) = routes.try_next().await.map_err(netlink::to_io_error)? {
         if route_table(&route) == Some(table) {
-            let _ = handle.raw().route().del(route).execute().await;
+            if let Err(e) = handle.raw().route().del(route).execute().await {
+                let e = netlink::to_io_error(e);
+                if !is_missing(&e) {
+                    report::io_with_details(
+                        "routing.flush_routes.delete",
+                        e,
+                        [
+                            ("family", format!("{family:?}")),
+                            ("table", table.to_string()),
+                        ],
+                    );
+                }
+            }
         }
     }
     Ok(())
@@ -1606,22 +1657,95 @@ fn family_value(family: IpFamily) -> AddressFamily {
 
 fn is_missing(error: &io::Error) -> bool {
     matches!(
-        error.raw_os_error(),
+        error_errno(error),
         Some(libc::ENOENT | libc::ESRCH | libc::ENODEV)
     )
+}
+
+fn command_details<'a>(
+    binary: &str,
+    args: impl IntoIterator<Item = &'a str>,
+) -> Vec<(String, String)> {
+    let args = args.into_iter().collect::<Vec<_>>().join(" ");
+    vec![
+        ("binary".to_owned(), binary.to_owned()),
+        ("args".to_owned(), args),
+    ]
+}
+
+fn restore_details(binary: &str, input: &str) -> Vec<(String, String)> {
+    vec![
+        ("binary".to_owned(), binary.to_owned()),
+        ("stdin".to_owned(), input.to_owned()),
+    ]
+}
+
+fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
+    vec![
+        ("operation".to_owned(), format!("{:?}", command.operation)),
+        ("family".to_owned(), format!("{:?}", command.family)),
+        ("iif".to_owned(), command.iif.clone()),
+        ("priority".to_owned(), command.priority.to_string()),
+        ("action".to_owned(), format!("{:?}", command.action)),
+        ("table".to_owned(), command.table.to_string()),
+        (
+            "fwmark".to_owned(),
+            command
+                .fwmark
+                .map(|(mark, mask)| format!("{mark:#x}/{mask:#x}"))
+                .unwrap_or_default(),
+        ),
+    ]
+}
+
+fn route_details(command: &IpRouteCommand) -> Vec<(String, String)> {
+    vec![
+        ("operation".to_owned(), format!("{:?}", command.operation)),
+        ("type".to_owned(), format!("{:?}", command.route_type)),
+        ("destination".to_owned(), command.destination.to_string()),
+        ("prefix_len".to_owned(), command.prefix_len.to_string()),
+        ("interface".to_owned(), command.interface.clone()),
+        ("table".to_owned(), command.table.to_string()),
+    ]
+}
+
+fn address_details(command: &IpAddressCommand) -> Vec<(String, String)> {
+    vec![
+        ("operation".to_owned(), format!("{:?}", command.operation)),
+        ("address".to_owned(), command.address.to_string()),
+        ("prefix_len".to_owned(), command.prefix_len.to_string()),
+        ("interface".to_owned(), command.interface.clone()),
+    ]
 }
 
 async fn delete_iptables_repeated(binary: &str, table: &str, chain: &str, args: &[&str]) {
     let mut command_args = vec!["-w", "-t", table, "-D", chain];
     command_args.extend_from_slice(args);
-    while run_command_status(binary, &command_args)
-        .await
-        .unwrap_or(false)
-    {}
+    loop {
+        match run_command_status(binary, &command_args).await {
+            Ok(true) => {}
+            Ok(false) => break,
+            Err(e) => {
+                report::io_with_details(
+                    "routing.delete_iptables_repeated",
+                    e,
+                    command_details(binary, command_args.iter().copied()),
+                );
+                break;
+            }
+        }
+    }
 }
 
 async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
-    let output = Command::new("ndc").args(args).output().await?;
+    let output = Command::new("ndc")
+        .args(args)
+        .output()
+        .await
+        .with_report_context_details(
+            "routing.ndc.spawn",
+            command_details("ndc", args.iter().copied()),
+        )?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let suffix = format!("200 0 {name} operation succeeded\n");
     if output.status.success() && stdout.ends_with(&suffix) {
@@ -1637,6 +1761,10 @@ async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
             stdout.trim_end(),
             String::from_utf8_lossy(&output.stderr).trim_end()
         )))
+        .with_report_context_details(
+            "routing.ndc.status",
+            command_details("ndc", args.iter().copied()),
+        )
     }
 }
 
@@ -1646,23 +1774,41 @@ async fn run_restore(binary: &str, input: &str) -> io::Result<()> {
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
-        .spawn()?;
+        .spawn()
+        .with_report_context_details("routing.restore.spawn", restore_details(binary, input))?;
     child
         .stdin
         .take()
-        .ok_or_else(|| io::Error::other("missing restore stdin"))?
+        .ok_or_else(|| {
+            io::Error::other("missing restore stdin").with_report_context_details(
+                "routing.restore.stdin",
+                restore_details(binary, input),
+            )
+        })?
         .write_all(input.as_bytes())
-        .await?;
-    let status = child.wait().await?;
+        .await
+        .with_report_context_details("routing.restore.write", restore_details(binary, input))?;
+    let status = child
+        .wait()
+        .await
+        .with_report_context_details("routing.restore.wait", restore_details(binary, input))?;
     if status.success() {
         Ok(())
     } else {
         Err(io::Error::other(format!("{binary} exited with {status}")))
+            .with_report_context_details("routing.restore.status", restore_details(binary, input))
     }
 }
 
 async fn run_command(binary: &str, args: &[String]) -> io::Result<()> {
-    let output = Command::new(binary).args(args).output().await?;
+    let output = Command::new(binary)
+        .args(args)
+        .output()
+        .await
+        .with_report_context_details(
+            "routing.command.spawn",
+            command_details(binary, args.iter().map(String::as_str)),
+        )?;
     if output.status.success() {
         Ok(())
     } else {
@@ -1674,6 +1820,10 @@ async fn run_command(binary: &str, args: &[String]) -> io::Result<()> {
             String::from_utf8_lossy(&output.stdout).trim_end(),
             String::from_utf8_lossy(&output.stderr).trim_end()
         )))
+        .with_report_context_details(
+            "routing.command.status",
+            command_details(binary, args.iter().map(String::as_str)),
+        )
     }
 }
 
@@ -1683,7 +1833,11 @@ async fn run_command_status(binary: &str, args: &[&str]) -> io::Result<bool> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .await?
+        .await
+        .with_report_context_details(
+            "routing.command_status.spawn",
+            command_details(binary, args.iter().copied()),
+        )?
         .success())
 }
 
@@ -1693,7 +1847,11 @@ async fn run_command_status_owned(binary: &str, args: &[String]) -> io::Result<b
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
-        .await?
+        .await
+        .with_report_context_details(
+            "routing.command_status.spawn",
+            command_details(binary, args.iter().map(String::as_str)),
+        )?
         .success())
 }
 

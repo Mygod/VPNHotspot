@@ -10,6 +10,8 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{self, DNS_PORT};
+use crate::report;
+use crate::socket::is_connection_closed;
 use crate::upstream::connect_tcp;
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
@@ -32,12 +34,16 @@ pub(crate) fn spawn_loop(
                                 select! {
                                     _ = connection_stop.cancelled() => {}
                                     result = handle_connection(socket, config) => if let Err(e) = result {
-                                        eprintln!("tcp proxy failed: {e}");
+                                        if is_connection_closed(&e) {
+                                            eprintln!("tcp proxy connection closed: {e}");
+                                        } else {
+                                            report::io("nat66.tcp_connection", e);
+                                        }
                                     }
                                 }
                             });
                         }
-                        Err(e) => eprintln!("tcp accept failed: {e}"),
+                        Err(e) => report::io("nat66.tcp_accept", e),
                     }
                 }
             }
