@@ -22,7 +22,12 @@ impl Session {
     ) -> io::Result<Self> {
         let stop = CancellationToken::new();
         let shared = Arc::new(Mutex::new(config.clone()));
-        let dns = match dns::Runtime::start(config.dns_bind_address, shared.clone(), stop.clone()) {
+        let dns = match dns::Runtime::start(
+            config.dns_bind_address,
+            config.reply_mark,
+            shared.clone(),
+            stop.clone(),
+        ) {
             Ok(runtime) => runtime,
             Err(e) => {
                 stop.cancel();

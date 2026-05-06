@@ -115,6 +115,13 @@ impl Runtime {
                 "routing session downstream cannot change",
             ));
         }
+        let ipv6_nat_routing_changed = match (&previous.ipv6_nat, &next.ipv6_nat) {
+            (Some(previous), Some(next)) => {
+                previous.gateway != next.gateway || previous.prefix_len != next.prefix_len
+            }
+            (None, None) => false,
+            _ => true,
+        };
         if previous.dns_bind_address != next.dns_bind_address {
             self.remove_dns(previous).await;
             self.add_dns(next).await?;
@@ -153,7 +160,7 @@ impl Runtime {
                 self.add_ipv6_block(next).await?;
             }
         }
-        if previous.ipv6_nat != next.ipv6_nat {
+        if ipv6_nat_routing_changed {
             if let Some(ipv6_nat) = &previous.ipv6_nat {
                 self.remove_ipv6_nat(previous, ipv6_nat).await;
             }

@@ -4,6 +4,7 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Arc;
 
 use libc::{c_int, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+use socket2::SockRef;
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{
@@ -30,12 +31,13 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn start(
         bind_address: Ipv4Addr,
+        reply_mark: u32,
         config: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
     ) -> io::Result<Self> {
-        let tcp_listener = create_tcp_listener(bind_address)?;
+        let tcp_listener = create_tcp_listener(bind_address, reply_mark)?;
         let tcp_port = tcp_listener.local_addr()?.port();
-        let udp_socket = create_udp_listener(bind_address)?;
+        let udp_socket = create_udp_listener(bind_address, reply_mark)?;
         let udp_port = udp_socket.local_addr()?.port();
         spawn_tcp_loop(tcp_listener, config.clone(), stop.clone())?;
         if let Err(e) = spawn_udp_loop(udp_socket, config, stop.clone()) {
@@ -98,14 +100,16 @@ unsafe extern "C" {
     fn android_res_cancel(nsend_fd: c_int);
 }
 
-fn create_tcp_listener(bind_address: Ipv4Addr) -> io::Result<TcpListener> {
+fn create_tcp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<TcpListener> {
     let listener = TcpListener::bind((bind_address, 0))?;
+    SockRef::from(&listener).set_mark(reply_mark)?;
     listener.set_nonblocking(true)?;
     Ok(listener)
 }
 
-fn create_udp_listener(bind_address: Ipv4Addr) -> io::Result<UdpSocket> {
+fn create_udp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<UdpSocket> {
     let socket = UdpSocket::bind((bind_address, 0))?;
+    SockRef::from(&socket).set_mark(reply_mark)?;
     socket.set_nonblocking(true)?;
     Ok(socket)
 }
@@ -191,7 +195,9 @@ fn spawn_udp_loop(
                                 _ = query_stop.cancelled() => {}
                                 response = resolve_or_error(&snapshot, &query) => {
                                     if let Some(response) = response {
-                                        let _ = socket.send_to(&response, source).await;
+                                        if let Err(e) = socket.send_to(&response, source).await {
+                                            eprintln!("dns udp response failed: {e}");
+                                        }
                                     }
                                 }
                             }
