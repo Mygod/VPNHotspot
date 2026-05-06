@@ -4,7 +4,6 @@ import be.mygod.vpnhotspot.net.IpDev
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
-import be.mygod.vpnhotspot.root.daemon.DaemonTransport
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
@@ -15,14 +14,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.io.IOException
 
 class NetlinkNeighbourMonitor private constructor(private val previousDestroy: Job?) {
     companion object {
@@ -49,9 +47,9 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
             val monitor = instance
             val destroyJob = monitor?.scope?.launch {
                 try {
-                    monitor.worker.join()
                     lifecycleLock.withLock {
-                        monitor.callId?.let { DaemonController.stopNeighbourMonitor(it) }
+                        monitor.worker.cancelAndJoin()
+                        monitor.neighbours = persistentMapOf()
                     }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {
@@ -88,59 +86,46 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         }
     }
     private var neighbours = persistentMapOf<IpDev, NetlinkNeighbour>()
-    private var callId: Long? = null
-    private val listener: suspend (ByteArray) -> Unit = {
-        withContext(dispatcher) { updateLocked(DaemonProtocol.readNeighbourDeltas(it)) }
-    }
-    private val onError: (DaemonTransport.DaemonException) -> Unit = { exception ->
-        scope.launch {
-            Timber.w(exception)
-            SmartSnackbar.make(exception).show()
-        }
-    }
-    private val worker: Job = scope.launch {
+    private var worker: Job = launchGeneration(previousDestroy)
+
+    private fun launchGeneration(waitFor: Job? = null) = scope.launch {
         try {
-            previousDestroy?.join()
-            replaceLocked(emptyList())
-            lifecycleLock.withLock { callId = DaemonController.startNeighbourMonitor(listener, onError) }
+            neighbours = persistentMapOf()
+            waitFor?.join()
+            collectGeneration()
+            neighbours = persistentMapOf()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
+            neighbours = persistentMapOf()
         }
     }
 
-    private fun replaceLocked(next: List<NetlinkNeighbour>) {
-        val old = neighbours
-        neighbours = persistentMapOf<IpDev, NetlinkNeighbour>().mutate {
-            for (candidate in next) it[IpDev(candidate)] = candidate
+    private suspend fun collectGeneration() {
+        var first = true
+        DaemonController.neighbourMonitor().collect {
+            updateLocked(it, first)
+            first = false
         }
-        if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
     }
 
-    private fun updateLocked(deltas: List<DaemonProtocol.NeighbourDelta>) {
+    private fun updateLocked(deltas: List<DaemonProtocol.NeighbourDelta>, force: Boolean) {
         val old = neighbours
-        neighbours = old.mutate {
+        neighbours = (if (force) persistentMapOf() else old).mutate {
             for (delta in deltas) when (delta) {
                 is DaemonProtocol.NeighbourDelta.Upsert -> it[IpDev(delta.neighbour)] = delta.neighbour
                 is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
             }
         }
-        if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
+        if (force || neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
     }
 
-    private suspend fun flush() {
-        val neighbours = try {
-            DaemonController.dumpNeighbours()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: IOException) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-            return
+    fun flushAsync() = scope.launch {
+        lifecycleLock.withLock {
+            worker.cancelAndJoin()
+            worker = launchGeneration(previousDestroy)
         }
-        replaceLocked(neighbours)
     }
-    fun flushAsync() = scope.launch { flush() }
 }

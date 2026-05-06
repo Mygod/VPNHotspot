@@ -52,13 +52,12 @@ impl Monitor {
         let (registration, mut events) = netlink.register_neighbour_monitor()?;
         let handle = netlink.handle();
         let neighbours = dump(&handle, Some(call_id)).await?;
-        if !neighbours.is_empty()
-            && sender
-                .send(event_frame(
-                    call_id,
-                    neighbour_deltas_packet(neighbours.into_iter().map(NeighbourDelta::Upsert)),
-                ))
-                .is_err()
+        if sender
+            .send(event_frame(
+                call_id,
+                neighbour_deltas_packet(neighbours.into_iter().map(NeighbourDelta::Upsert)),
+            ))
+            .is_err()
         {
             return Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,

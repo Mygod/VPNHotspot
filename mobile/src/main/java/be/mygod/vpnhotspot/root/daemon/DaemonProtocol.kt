@@ -21,7 +21,6 @@ object DaemonProtocol {
     const val CMD_SHUTDOWN = 4
     const val CMD_READ_TRAFFIC_COUNTERS = 5
     const val CMD_START_NEIGHBOUR_MONITOR = 6
-    const val CMD_DUMP_NEIGHBOURS = 8
     const val CMD_STATIC_ADDRESS = 9
     const val CMD_CLEAN_ROUTING = 12
 
@@ -108,7 +107,6 @@ object DaemonProtocol {
     fun shutdown(mode: RemoveMode) = writePacket(CMD_SHUTDOWN) { writeByte(mode.protocolValue) }
     fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS) { }
     fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR) { }
-    fun dumpNeighbours() = writePacket(CMD_DUMP_NEIGHBOURS) { }
     fun staticAddress(operation: IpOperation, address: InetAddress, prefixLength: Int, dev: String) =
             writePacket(CMD_STATIC_ADDRESS) {
                 writeByte(operation.protocolValue)
@@ -138,10 +136,6 @@ object DaemonProtocol {
     fun readTrafficCounterLines(packet: ByteArray): List<String> {
         val input = Buffer().apply { write(packet) }
         return List(input.readCount("traffic counter line")) { input.readUtf() }
-    }
-
-    fun readNeighbours(packet: ByteArray): List<NetlinkNeighbour> {
-        return readNeighbourDeltas(packet).mapNotNull { (it as? NeighbourDelta.Upsert)?.neighbour }
     }
 
     fun readNeighbourDeltas(packet: ByteArray): List<NeighbourDelta> {

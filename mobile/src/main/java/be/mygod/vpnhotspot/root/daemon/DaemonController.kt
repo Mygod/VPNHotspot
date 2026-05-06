@@ -28,6 +28,11 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -128,29 +133,8 @@ object DaemonController {
         throw e
     }
 
-    suspend fun startNeighbourMonitor(
-        listener: suspend (ByteArray) -> Unit,
-        onError: (DaemonTransport.DaemonException) -> Unit,
-    ) = lock.withLock {
-        val id = nextCallIdLocked()
-        try {
-            ensureDaemonLocked()
-            calls[id] = Call.Event(listener, onError)
-            writePacketLocked(DaemonTransport.call(id, DaemonProtocol.startNeighbourMonitor()))
-            id
-        } catch (e: Exception) {
-            calls.remove(id)
-            closeConnectionLocked()
-            throw e
-        }
-    }
-
-    suspend fun stopNeighbourMonitor(id: Long) = lock.withLock {
-        cancelCallLocked(id)
-        maybeShutdownLocked()
-    }
-
-    suspend fun dumpNeighbours() = DaemonProtocol.readNeighbours(request(DaemonProtocol.dumpNeighbours()))
+    fun neighbourMonitor(): Flow<List<DaemonProtocol.NeighbourDelta>> =
+        eventCall(DaemonProtocol.startNeighbourMonitor()).map(DaemonProtocol::readNeighbourDeltas)
 
     suspend fun replaceStaticAddress(address: java.net.InetAddress, prefixLength: Int, dev: String) {
         DaemonProtocol.readAck(request(DaemonProtocol.staticAddress(
@@ -168,10 +152,7 @@ object DaemonController {
 
     private sealed class Call {
         class OneShot(val reply: CompletableDeferred<ByteArray>) : Call()
-        class Event(
-            val listener: suspend (ByteArray) -> Unit,
-            val onError: (DaemonTransport.DaemonException) -> Unit,
-        ) : Call()
+        class Event(val channel: Channel<ByteArray>) : Call()
     }
 
     private class DaemonStdioEofException(message: String) : IOException(message)
@@ -306,6 +287,33 @@ object DaemonController {
         return reply
     }
 
+    private fun eventCall(packet: ByteArray): Flow<ByteArray> = flow {
+        val channel = Channel<ByteArray>(Channel.UNLIMITED)
+        val id = lock.withLock {
+            val id = nextCallIdLocked()
+            try {
+                ensureDaemonLocked()
+                calls[id] = Call.Event(channel)
+                writePacketLocked(DaemonTransport.call(id, packet))
+                id
+            } catch (e: Exception) {
+                calls.remove(id)
+                closeConnectionLocked()
+                throw e
+            }
+        }
+        try {
+            for (event in channel) emit(event)
+        } finally {
+            withContext(NonCancellable) {
+                lock.withLock {
+                    cancelCallLocked(id)
+                    maybeShutdownLocked()
+                }
+            }
+        }
+    }.buffer(Channel.UNLIMITED)
+
     private fun nextCallIdLocked(): Long {
         while (calls.containsKey(nextCallId)) nextCallId = if (nextCallId == Long.MAX_VALUE) 1 else nextCallId + 1
         return nextCallId.also { nextCallId = if (it == Long.MAX_VALUE) 1 else it + 1 }
@@ -333,15 +341,20 @@ object DaemonController {
                         reply?.complete(frame.packet)
                     }
                     is DaemonTransport.Frame.Event -> {
-                        val listener = lock.withLock { (calls[frame.id] as? Call.Event)?.listener }
-                        if (listener == null) {
+                        val call = lock.withLock { calls[frame.id] as? Call.Event }
+                        if (call == null) {
                             Timber.d("Dropping event for unknown $BINARY_NAME call ${frame.id}")
-                        } else try {
-                            listener(frame.packet)
-                        } catch (e: CancellationException) {
-                            Timber.d(e)
-                        } catch (e: Exception) {
-                            Timber.w(e)
+                        } else {
+                            val result = call.channel.trySend(frame.packet)
+                            if (result.isFailure) {
+                                result.exceptionOrNull()?.let { call.channel.close(it) }
+                                lock.withLock {
+                                    if (calls[frame.id] === call) {
+                                        cancelCallLocked(frame.id)
+                                        maybeShutdownLocked()
+                                    }
+                                }
+                            }
                         }
                     }
                     is DaemonTransport.Frame.Error -> {
@@ -353,7 +366,7 @@ object DaemonController {
                         }
                         when (call) {
                             is Call.OneShot -> call.reply.completeExceptionally(frame.exception)
-                            is Call.Event -> call.onError(frame.exception)
+                            is Call.Event -> call.channel.close(frame.exception)
                             null -> { }
                         }
                     }
@@ -365,9 +378,11 @@ object DaemonController {
                             maybeShutdownLocked()
                             call
                         }
-                        if (call is Call.OneShot) {
-                            call.reply.completeExceptionally(IOException("Unexpected $BINARY_NAME complete for " +
-                                    "call ${frame.id}"))
+                        when (call) {
+                            is Call.OneShot -> call.reply.completeExceptionally(IOException("Unexpected " +
+                                    "$BINARY_NAME complete for call ${frame.id}"))
+                            is Call.Event -> call.channel.close()
+                            null -> { }
                         }
                     }
                 }
@@ -382,7 +397,10 @@ object DaemonController {
     }
 
     private fun completeCallsLocked(e: Throwable) {
-        for (call in calls.values) if (call is Call.OneShot) call.reply.completeExceptionally(e)
+        for (call in calls.values) when (call) {
+            is Call.OneShot -> call.reply.completeExceptionally(e)
+            is Call.Event -> call.channel.close(e)
+        }
         calls.clear()
     }
 

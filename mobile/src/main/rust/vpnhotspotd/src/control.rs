@@ -20,9 +20,9 @@ use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
-    neighbours_packet, ok_packet, parse_command, ports_packet,
-    should_suppress_static_address_error, traffic_counter_lines_packet, Command, DaemonErrorReport,
-    IoErrorReportExt, IoResultReportExt, IpAddressCommand,
+    ok_packet, parse_command, ports_packet, should_suppress_static_address_error,
+    traffic_counter_lines_packet, Command, DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
+    IpAddressCommand,
 };
 use vpnhotspotd::shared::transport::{error_frame, parse_client_frame, reply_frame, ClientFrame};
 
@@ -229,14 +229,6 @@ async fn handle_command(
         Command::StartNeighbourMonitor => {
             start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
             Ok(CallOutput::NoFrame)
-        }
-        Command::DumpNeighbours => {
-            let handle = state.netlink.handle();
-            Ok(CallOutput::Reply(neighbours_packet(
-                &crate::neighbour::dump(&handle, Some(id))
-                    .await
-                    .with_report_context("control.dump_neighbours")?,
-            )))
         }
         Command::StaticAddress(command) => {
             let handle = state.netlink.handle();

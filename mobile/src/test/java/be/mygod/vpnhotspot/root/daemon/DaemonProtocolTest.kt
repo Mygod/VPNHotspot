@@ -152,6 +152,13 @@ class DaemonProtocolTest {
     }
 
     @Test
+    fun readNeighbourDeltasDecodesEmptyList() {
+        val deltas = DaemonProtocol.readNeighbourDeltas(Buffer().apply { writeInt(0) }.readByteArray())
+
+        assertEquals(emptyList<DaemonProtocol.NeighbourDelta>(), deltas)
+    }
+
+    @Test
     fun readNeighbourDeltasDecodesNullMacAndDelete() {
         val packet = Buffer().apply {
             writeInt(2)

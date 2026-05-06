@@ -19,7 +19,6 @@ const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_SHUTDOWN: u32 = 4;
 const CMD_READ_TRAFFIC_COUNTERS: u32 = 5;
 const CMD_START_NEIGHBOUR_MONITOR: u32 = 6;
-const CMD_DUMP_NEIGHBOURS: u32 = 8;
 const CMD_STATIC_ADDRESS: u32 = 9;
 const CMD_CLEAN_ROUTING: u32 = 12;
 const NETWORK_UNSPECIFIED: Network = 0;
@@ -37,7 +36,6 @@ pub enum Command {
     },
     ReadTrafficCounters,
     StartNeighbourMonitor,
-    DumpNeighbours,
     StaticAddress(IpAddressCommand),
     CleanRouting(CleanIpCommand),
 }
@@ -338,7 +336,6 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
         }),
         CMD_READ_TRAFFIC_COUNTERS => Ok(Command::ReadTrafficCounters),
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
-        CMD_DUMP_NEIGHBOURS => Ok(Command::DumpNeighbours),
         CMD_STATIC_ADDRESS => Ok(Command::StaticAddress(parser.read_ip_address_command()?)),
         CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_ip_command()?)),
         command => Err(io::Error::new(
@@ -380,10 +377,6 @@ pub fn traffic_counter_lines_packet(lines: &[String]) -> Vec<u8> {
         write_utf(&mut packet, line);
     }
     packet
-}
-
-pub fn neighbours_packet(neighbours: &[Neighbour]) -> Vec<u8> {
-    neighbour_deltas_packet(neighbours.iter().cloned().map(NeighbourDelta::Upsert))
 }
 
 pub fn neighbour_deltas_packet<I>(deltas: I) -> Vec<u8>
@@ -943,6 +936,15 @@ mod tests {
             command.ipv6_nat_prefix_seed,
             "be.mygod.vpnhotspot\0android-id"
         );
+    }
+
+    #[test]
+    fn neighbour_deltas_packet_encodes_empty_list() {
+        let packet = neighbour_deltas_packet(std::iter::empty::<NeighbourDelta>());
+        let mut parser = Parser::new(&packet);
+
+        assert_eq!(parser.read_u32().unwrap(), 0);
+        assert_eq!(packet.len(), 4);
     }
 
     #[test]
