@@ -18,7 +18,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), NetlinkNeighbourMo
     protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .filter { it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID }
+                    .filter { it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID }
                     .distinctBy { it.lladdr }
                     .size
         }

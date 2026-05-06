@@ -2,7 +2,8 @@ use std::io;
 use std::sync::OnceLock;
 
 use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
-use vpnhotspotd::shared::protocol::{nonfatal_frame, DaemonErrorReport};
+use vpnhotspotd::shared::protocol::DaemonErrorReport;
+use vpnhotspotd::shared::transport::nonfatal_frame;
 
 static REPORTER: OnceLock<WeakUnboundedSender<Vec<u8>>> = OnceLock::new();
 
@@ -13,8 +14,12 @@ pub(crate) fn init(sender: UnboundedSender<Vec<u8>>) -> io::Result<()> {
 }
 
 pub(crate) fn report(report: DaemonErrorReport) {
+    report_for(None, report);
+}
+
+pub(crate) fn report_for(call_id: Option<u64>, report: DaemonErrorReport) {
     if let Some(sender) = REPORTER.get().and_then(WeakUnboundedSender::upgrade) {
-        if sender.send(nonfatal_frame(report.clone())).is_ok() {
+        if sender.send(nonfatal_frame(call_id, report.clone())).is_ok() {
             return;
         }
     }

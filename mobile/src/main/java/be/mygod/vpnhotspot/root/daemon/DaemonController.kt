@@ -52,9 +52,8 @@ object DaemonController {
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
     private var readerJob: Job? = null
-    private val pendingReplies = ArrayDeque<CompletableDeferred<ByteArray>>()
-    private var neighbourMonitorActive = false
-    private var neighbourListener: (suspend (DaemonProtocol.NeighbourUpdate) -> Unit)? = null
+    private var nextCallId = 1L
+    private val calls = mutableMapOf<Long, Call>()
     private var daemonStdioClosing = false
     private var daemonStdioEofReported = false
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -79,7 +78,7 @@ object DaemonController {
         }
         try {
             return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
-        } catch (e: DaemonProtocol.DaemonException) {
+        } catch (e: DaemonTransport.DaemonException) {
             if (leaseAdded) lock.withLock {
                 activeSessions.remove(config.downstream)
                 maybeShutdownLocked()
@@ -94,7 +93,7 @@ object DaemonController {
     suspend fun replaceSession(config: DaemonProtocol.SessionConfig) {
         try {
             DaemonProtocol.readAck(request(DaemonProtocol.replaceSession(config)))
-        } catch (e: DaemonProtocol.DaemonException) {
+        } catch (e: DaemonTransport.DaemonException) {
             throw e
         } catch (e: Exception) {
             lock.withLock { closeAndClearStateLocked() }
@@ -122,73 +121,33 @@ object DaemonController {
 
     suspend fun readTrafficCounterLines() = try {
         DaemonProtocol.readTrafficCounterLines(request(DaemonProtocol.readTrafficCounters()))
-    } catch (e: DaemonProtocol.DaemonException) {
+    } catch (e: DaemonTransport.DaemonException) {
         throw e
     } catch (e: Exception) {
         lock.withLock { closeAndClearStateLocked() }
         throw e
     }
 
-    suspend fun startNeighbourMonitor(listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit) {
-        val reply = try {
-            lock.withLock {
-                neighbourMonitorActive = true
-                neighbourListener = listener
-                requestLocked(DaemonProtocol.startNeighbourMonitor())
-            }
-        } catch (e: Exception) {
-            handleStartNeighbourMonitorFailure(listener, e)
-            throw e
-        }
-        try {
-            DaemonProtocol.readAck(reply.await())
-        } catch (e: Exception) {
-            handleStartNeighbourMonitorFailure(listener, e)
-            throw e
-        }
-    }
-
-    private suspend fun handleStartNeighbourMonitorFailure(
-        listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit,
-        e: Exception,
+    suspend fun startNeighbourMonitor(
+        listener: suspend (ByteArray) -> Unit,
+        onError: (DaemonTransport.DaemonException) -> Unit,
     ) = lock.withLock {
-        if (e !is DaemonProtocol.DaemonException && e !is CancellationException) {
-            closeAndClearStateLocked()
-        } else if (neighbourListener === listener) {
-            neighbourMonitorActive = false
-            neighbourListener = null
-            maybeShutdownLocked()
+        val id = nextCallIdLocked()
+        try {
+            ensureDaemonLocked()
+            calls[id] = Call.Event(listener, onError)
+            writePacketLocked(DaemonTransport.call(id, DaemonProtocol.startNeighbourMonitor()))
+            id
+        } catch (e: Exception) {
+            calls.remove(id)
+            closeConnectionLocked()
+            throw e
         }
     }
 
-    suspend fun stopNeighbourMonitor(listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit) {
-        val reply = try {
-            lock.withLock {
-                if (!neighbourMonitorActive || neighbourListener !== listener) return
-                if (output == null) {
-                    neighbourMonitorActive = false
-                    neighbourListener = null
-                    null
-                } else {
-                    neighbourMonitorActive = false
-                    neighbourListener = null
-                    requestLocked(DaemonProtocol.stopNeighbourMonitor())
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-            null
-        }
-        if (reply != null) try {
-            DaemonProtocol.readAck(reply.await())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-        }
-        lock.withLock { maybeShutdownLocked() }
+    suspend fun stopNeighbourMonitor(id: Long) = lock.withLock {
+        cancelCallLocked(id)
+        maybeShutdownLocked()
     }
 
     suspend fun dumpNeighbours() = DaemonProtocol.readNeighbours(request(DaemonProtocol.dumpNeighbours()))
@@ -205,6 +164,14 @@ object DaemonController {
 
     suspend fun cleanRouting(ipv6NatPrefixSeed: String) {
         DaemonProtocol.readAck(request(DaemonProtocol.cleanRouting(ipv6NatPrefixSeed)))
+    }
+
+    private sealed class Call {
+        class OneShot(val reply: CompletableDeferred<ByteArray>) : Call()
+        class Event(
+            val listener: suspend (ByteArray) -> Unit,
+            val onError: (DaemonTransport.DaemonException) -> Unit,
+        ) : Call()
     }
 
     private class DaemonStdioEofException(message: String) : IOException(message)
@@ -307,51 +274,102 @@ object DaemonController {
     }
 
     private suspend fun request(packet: ByteArray): ByteArray {
-        val reply = lock.withLock { requestLocked(packet) }
-        return reply.await()
+        var id = 0L
+        val reply = lock.withLock {
+            id = nextCallIdLocked()
+            requestLocked(id, packet)
+        }
+        try {
+            return reply.await()
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) {
+                lock.withLock {
+                    cancelCallLocked(id)
+                    maybeShutdownLocked()
+                }
+            }
+            throw e
+        }
     }
 
-    private suspend fun requestLocked(packet: ByteArray): CompletableDeferred<ByteArray> {
+    private suspend fun requestLocked(id: Long, packet: ByteArray): CompletableDeferred<ByteArray> {
         val reply = CompletableDeferred<ByteArray>()
         try {
             ensureDaemonLocked()
-            pendingReplies.addLast(reply)
-            writePacketLocked(packet)
+            calls[id] = Call.OneShot(reply)
+            writePacketLocked(DaemonTransport.call(id, packet))
         } catch (e: Exception) {
-            pendingReplies.remove(reply)
+            calls.remove(id)
             closeConnectionLocked()
             throw e
         }
         return reply
     }
 
+    private fun nextCallIdLocked(): Long {
+        while (calls.containsKey(nextCallId)) nextCallId = if (nextCallId == Long.MAX_VALUE) 1 else nextCallId + 1
+        return nextCallId.also { nextCallId = if (it == Long.MAX_VALUE) 1 else it + 1 }
+    }
+
     private fun startReaderLocked(input: ByteReadChannel) {
         readerJob = logScope.launch {
             try {
-                while (currentCoroutineContext().isActive) when (val frame = DaemonProtocol.readFrame(
+                while (currentCoroutineContext().isActive) when (val frame = DaemonTransport.readFrame(
                     DaemonIpc.readFrame(input))) {
-                    is DaemonProtocol.Frame.Reply -> lock.withLock {
-                        val reply = if (pendingReplies.isEmpty()) null else pendingReplies.removeFirst()
-                        if (reply == null) {
-                            Timber.w("Unexpected $BINARY_NAME reply")
-                        } else {
-                            reply.complete(frame.packet)
-                            maybeShutdownLocked()
+                    is DaemonTransport.Frame.Reply -> {
+                        val reply = lock.withLock {
+                            when (val call = calls[frame.id]) {
+                                is Call.OneShot -> {
+                                    calls.remove(frame.id)
+                                    maybeShutdownLocked()
+                                    call.reply
+                                }
+                                else -> {
+                                    Timber.w("Unexpected $BINARY_NAME reply for call ${frame.id}")
+                                    null
+                                }
+                            }
                         }
+                        reply?.complete(frame.packet)
                     }
-                    is DaemonProtocol.Frame.Neighbours -> {
-                        val listener = lock.withLock { neighbourListener }
+                    is DaemonTransport.Frame.Event -> {
+                        val listener = lock.withLock { (calls[frame.id] as? Call.Event)?.listener }
                         if (listener == null) {
-                            Timber.d("Dropping neighbour update without listener")
+                            Timber.d("Dropping event for unknown $BINARY_NAME call ${frame.id}")
                         } else try {
-                            listener(frame.update)
+                            listener(frame.packet)
                         } catch (e: CancellationException) {
-                            throw e
+                            Timber.d(e)
                         } catch (e: Exception) {
                             Timber.w(e)
                         }
                     }
-                    is DaemonProtocol.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception)
+                    is DaemonTransport.Frame.Error -> {
+                        val call = lock.withLock {
+                            val call = calls.remove(frame.id)
+                            if (call == null) Timber.w("Unexpected $BINARY_NAME error for call ${frame.id}")
+                            maybeShutdownLocked()
+                            call
+                        }
+                        when (call) {
+                            is Call.OneShot -> call.reply.completeExceptionally(frame.exception)
+                            is Call.Event -> call.onError(frame.exception)
+                            null -> { }
+                        }
+                    }
+                    is DaemonTransport.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception)
+                    is DaemonTransport.Frame.Complete -> {
+                        val call = lock.withLock {
+                            val call = calls.remove(frame.id)
+                            if (call == null) Timber.d("Dropping complete for unknown $BINARY_NAME call ${frame.id}")
+                            maybeShutdownLocked()
+                            call
+                        }
+                        if (call is Call.OneShot) {
+                            call.reply.completeExceptionally(IOException("Unexpected $BINARY_NAME complete for " +
+                                    "call ${frame.id}"))
+                        }
+                    }
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {
@@ -363,15 +381,28 @@ object DaemonController {
         }
     }
 
-    private fun completePendingRepliesLocked(e: Throwable) {
-        while (pendingReplies.isNotEmpty()) pendingReplies.removeFirst().completeExceptionally(e)
+    private fun completeCallsLocked(e: Throwable) {
+        for (call in calls.values) if (call is Call.OneShot) call.reply.completeExceptionally(e)
+        calls.clear()
+    }
+
+    private suspend fun cancelCallLocked(id: Long) {
+        if (calls.remove(id) == null || output == null) return
+        try {
+            writePacketLocked(DaemonTransport.cancel(id))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+            closeConnectionLocked()
+        }
     }
 
     private suspend fun maybeShutdownLocked() {
-        if (output == null || pendingReplies.isNotEmpty() || activeSessions.isNotEmpty() ||
-                neighbourMonitorActive) return
+        if (output == null || calls.isNotEmpty() || activeSessions.isNotEmpty()) return
         try {
-            writePacketLocked(DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup))
+            writePacketLocked(DaemonTransport.call(nextCallIdLocked(),
+                DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup)))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -385,11 +416,9 @@ object DaemonController {
         cancelReader: Boolean = true,
         cause: Throwable? = null,
     ) {
-        if (cause != null) completePendingRepliesLocked(cause)
+        if (cause != null) completeCallsLocked(cause)
         closeConnectionLocked(cancelReader)
         activeSessions.clear()
-        neighbourMonitorActive = false
-        neighbourListener = null
     }
 
     private suspend fun writePacketLocked(packet: ByteArray) {
@@ -398,7 +427,7 @@ object DaemonController {
 
     private suspend fun closeConnectionLocked(cancelReader: Boolean = true) = withContext(NonCancellable) {
         daemonStdioClosing = true
-        completePendingRepliesLocked(IOException("$BINARY_NAME connection closed"))
+        completeCallsLocked(IOException("$BINARY_NAME connection closed"))
         if (cancelReader) readerJob?.cancel()
         readerJob = null
         input?.cancel(null)
@@ -440,14 +469,12 @@ object DaemonController {
                         }
                         lock.withLock {
                             if (!daemonStdioClosing &&
-                                    (activeSessions.isNotEmpty() || neighbourMonitorActive ||
-                                            pendingReplies.isNotEmpty()) &&
+                                    (activeSessions.isNotEmpty() || calls.isNotEmpty()) &&
                                     !daemonStdioEofReported) {
                                 daemonStdioEofReported = true
                                 Timber.w(DaemonStdioEofException("$BINARY_NAME $stream EOF " +
                                         "activeSessions=${activeSessions.size} " +
-                                        "neighbourMonitor=$neighbourMonitorActive " +
-                                        "pendingReplies=${pendingReplies.size}"))
+                                        "calls=${calls.size}"))
                             }
                         }
                     } catch (e: ErrnoException) {

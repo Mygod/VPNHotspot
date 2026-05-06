@@ -116,11 +116,12 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
         }
         for (client in wifiAp) clients[client] = Client(client.second, client.first, TetherType.WIFI)
         for (neighbour in neighbours) {
-            val key = neighbour.dev to neighbour.lladdr
+            val lladdr = neighbour.lladdr ?: continue
+            val key = neighbour.dev to lladdr
             var client = clients[key]
             if (client == null) {
                 if (!tetheredInterfaces.contains(neighbour.dev)) continue
-                client = Client(neighbour.lladdr, neighbour.dev)
+                client = Client(lladdr, neighbour.dev)
                 clients[key] = client
             }
             client.ip.compute(neighbour.ip) { _, info ->

@@ -4,6 +4,7 @@ import be.mygod.vpnhotspot.net.IpDev
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
+import be.mygod.vpnhotspot.root.daemon.DaemonTransport
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
@@ -49,7 +50,9 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
             val destroyJob = monitor?.scope?.launch {
                 try {
                     monitor.worker.join()
-                    lifecycleLock.withLock { DaemonController.stopNeighbourMonitor(monitor.listener) }
+                    lifecycleLock.withLock {
+                        monitor.callId?.let { DaemonController.stopNeighbourMonitor(it) }
+                    }
                 } catch (_: CancellationException) {
                 } catch (e: Exception) {
                     Timber.w(e)
@@ -85,13 +88,21 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         }
     }
     private var neighbours = persistentMapOf<IpDev, NetlinkNeighbour>()
-    private val listener: suspend (DaemonProtocol.NeighbourUpdate) -> Unit = {
-        withContext(dispatcher) { updateLocked(it) }
+    private var callId: Long? = null
+    private val listener: suspend (ByteArray) -> Unit = {
+        withContext(dispatcher) { updateLocked(DaemonProtocol.readNeighbourDeltas(it)) }
+    }
+    private val onError: (DaemonTransport.DaemonException) -> Unit = { exception ->
+        scope.launch {
+            Timber.w(exception)
+            SmartSnackbar.make(exception).show()
+        }
     }
     private val worker: Job = scope.launch {
         try {
             previousDestroy?.join()
-            lifecycleLock.withLock { DaemonController.startNeighbourMonitor(listener) }
+            replaceLocked(emptyList())
+            lifecycleLock.withLock { callId = DaemonController.startNeighbourMonitor(listener, onError) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -100,19 +111,20 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         }
     }
 
-    private fun updateLocked(update: DaemonProtocol.NeighbourUpdate) {
-        if (update.replace) {
-            neighbours = persistentMapOf<IpDev, NetlinkNeighbour>().mutate {
-                for (candidate in update.neighbours) it[IpDev(candidate)] = candidate
-            }
-            aggregateChannel.trySend(neighbours).onFailure { throw it!! }
-            return
+    private fun replaceLocked(next: List<NetlinkNeighbour>) {
+        val old = neighbours
+        neighbours = persistentMapOf<IpDev, NetlinkNeighbour>().mutate {
+            for (candidate in next) it[IpDev(candidate)] = candidate
         }
+        if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
+    }
+
+    private fun updateLocked(deltas: List<DaemonProtocol.NeighbourDelta>) {
         val old = neighbours
         neighbours = old.mutate {
-            for (candidate in update.neighbours) when (candidate.state) {
-                NetlinkNeighbour.State.DELETING -> it.remove(IpDev(candidate))
-                else -> it[IpDev(candidate)] = candidate
+            for (delta in deltas) when (delta) {
+                is DaemonProtocol.NeighbourDelta.Upsert -> it[IpDev(delta.neighbour)] = delta.neighbour
+                is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
             }
         }
         if (neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
@@ -128,7 +140,7 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
             SmartSnackbar.make(e).show()
             return
         }
-        updateLocked(DaemonProtocol.NeighbourUpdate(true, neighbours))
+        replaceLocked(neighbours)
     }
     fun flushAsync() = scope.launch { flush() }
 }

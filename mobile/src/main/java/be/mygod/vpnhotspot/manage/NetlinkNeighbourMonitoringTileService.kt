@@ -23,7 +23,8 @@ abstract class NetlinkNeighbourMonitoringTileService : KillableTileService(), Ne
 
     protected fun Tile.subtitleDevices(filter: (String) -> Boolean) {
         val size = neighbours
-                .filter { it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID && filter(it.dev) }
+                .filter { it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID &&
+                        filter(it.dev) }
                 .distinctBy { it.lladdr }
                 .size
         if (size > 0) subtitle = resources.getQuantityString(

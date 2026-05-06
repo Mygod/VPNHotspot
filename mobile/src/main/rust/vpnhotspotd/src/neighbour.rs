@@ -14,16 +14,24 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::{spawn, task::JoinHandle};
 
 use crate::{netlink, report};
-use vpnhotspotd::shared::protocol::{neighbours_frame, Neighbour, NeighbourState};
+use vpnhotspotd::shared::protocol::{
+    neighbour_deltas_packet, DaemonErrorReport, Neighbour, NeighbourDelta, NeighbourState,
+};
+use vpnhotspotd::shared::transport::event_frame;
 
-pub(crate) async fn dump(handle: &netlink::Handle) -> io::Result<Vec<Neighbour>> {
+pub(crate) async fn dump(
+    handle: &netlink::Handle,
+    call_id: Option<u64>,
+) -> io::Result<Vec<Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
     let _dump = handle.lock_dump().await;
     let mut messages = handle.raw().neighbours().get().execute();
     let mut neighbours = Vec::new();
     while let Some(message) = messages.try_next().await.map_err(netlink::to_io_error)? {
         let interface = interface_name_from_map(&interfaces, message.header.ifindex);
-        if let Some(neighbour) = neighbour_from_message(false, message, interface) {
+        if let Some(NeighbourDelta::Upsert(neighbour)) =
+            neighbour_from_message(call_id, false, message, interface)
+        {
             neighbours.push(neighbour);
         }
     }
@@ -36,18 +44,39 @@ pub(crate) struct Monitor {
 }
 
 impl Monitor {
-    pub(crate) fn spawn(
+    pub(crate) async fn spawn(
+        call_id: u64,
         netlink: &netlink::Runtime,
         sender: UnboundedSender<Vec<u8>>,
     ) -> io::Result<Self> {
         let (registration, mut events) = netlink.register_neighbour_monitor()?;
         let handle = netlink.handle();
+        let neighbours = dump(&handle, Some(call_id)).await?;
+        if !neighbours.is_empty()
+            && sender
+                .send(event_frame(
+                    call_id,
+                    neighbour_deltas_packet(neighbours.into_iter().map(NeighbourDelta::Upsert)),
+                ))
+                .is_err()
+        {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "controller disconnected",
+            ));
+        }
         Ok(Self {
             registration,
             task: spawn(async move {
                 while let Some(message) = events.recv().await {
-                    if let Some(neighbour) = neighbour_from_event(&handle, message).await {
-                        if sender.send(neighbours_frame(false, &[neighbour])).is_err() {
+                    if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
+                        if sender
+                            .send(event_frame(
+                                call_id,
+                                neighbour_deltas_packet(std::iter::once(delta)),
+                            ))
+                            .is_err()
+                        {
                             eprintln!(
                                 "neighbour monitor frame send failed: controller disconnected"
                             );
@@ -69,9 +98,10 @@ impl Monitor {
 }
 
 async fn neighbour_from_event(
+    call_id: u64,
     handle: &netlink::Handle,
     message: RouteNetlinkMessage,
-) -> Option<Neighbour> {
+) -> Option<NeighbourDelta> {
     let (deleting, message) = match message {
         RouteNetlinkMessage::NewNeighbour(message) => (false, message),
         RouteNetlinkMessage::DelNeighbour(message) => (true, message),
@@ -89,7 +119,7 @@ async fn neighbour_from_event(
             format!("if{}", message.header.ifindex)
         }
     };
-    neighbour_from_message(deleting, message, interface)
+    neighbour_from_message(Some(call_id), deleting, message, interface)
 }
 
 fn interface_name_from_map(interfaces: &HashMap<u32, String>, index: u32) -> String {
@@ -100,10 +130,11 @@ fn interface_name_from_map(interfaces: &HashMap<u32, String>, index: u32) -> Str
 }
 
 fn neighbour_from_message(
+    call_id: Option<u64>,
     deleting: bool,
     message: NeighbourMessage,
     interface: String,
-) -> Option<Neighbour> {
+) -> Option<NeighbourDelta> {
     if has_state(message.header.state, NetlinkNeighbourState::Noarp) || message.header.ifindex == 0
     {
         return None;
@@ -112,7 +143,7 @@ fn neighbour_from_message(
         return None;
     }
     let mut address = None;
-    let mut lladdr = Vec::new();
+    let mut lladdr = None;
     for attribute in message.attributes {
         match attribute {
             NeighbourAttribute::Destination(NeighbourAddress::Inet(value)) => {
@@ -121,14 +152,29 @@ fn neighbour_from_message(
             NeighbourAttribute::Destination(NeighbourAddress::Inet6(value)) => {
                 address = Some(IpAddr::V6(value));
             }
-            NeighbourAttribute::LinkLayerAddress(value) => lladdr.extend(value),
+            NeighbourAttribute::LinkLayerAddress(value) => {
+                if value.len() == 6 {
+                    lladdr = Some(value.as_slice().try_into().unwrap());
+                } else {
+                    report::report_for(
+                        call_id,
+                        DaemonErrorReport::from_message_with_details(
+                            "neighbour.lladdr",
+                            "invalid link-layer address length",
+                            "InvalidData",
+                            [("length", value.len().to_string())],
+                        ),
+                    );
+                }
+            }
             _ => {}
         }
     }
     let address = address?;
-    let state = if deleting {
-        NeighbourState::Deleting
-    } else {
+    if deleting {
+        return Some(NeighbourDelta::Delete { address, interface });
+    }
+    let state = {
         let state = message.header.state;
         if has_state(state, NetlinkNeighbourState::Reachable)
             || has_state(state, NetlinkNeighbourState::Delay)
@@ -145,12 +191,12 @@ fn neighbour_from_message(
             NeighbourState::Unset
         }
     };
-    Some(Neighbour {
+    Some(NeighbourDelta::Upsert(Neighbour {
         address,
         interface,
         lladdr,
         state,
-    })
+    }))
 }
 
 fn has_state(state: NetlinkNeighbourState, flag: NetlinkNeighbourState) -> bool {

@@ -10,12 +10,6 @@ use crate::shared::model::{
     Network, Route, SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
 };
 
-const STATUS_OK: u8 = 0;
-const STATUS_ERROR: u8 = 1;
-
-const FRAME_REPLY: u8 = 0;
-const FRAME_NEIGHBOURS: u8 = 1;
-const FRAME_NON_FATAL: u8 = 2;
 const MAX_ERROR_DETAILS: usize = 32;
 const MAX_ERROR_FIELD_BYTES: usize = 4096;
 
@@ -25,7 +19,6 @@ const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_SHUTDOWN: u32 = 4;
 const CMD_READ_TRAFFIC_COUNTERS: u32 = 5;
 const CMD_START_NEIGHBOUR_MONITOR: u32 = 6;
-const CMD_STOP_NEIGHBOUR_MONITOR: u32 = 7;
 const CMD_DUMP_NEIGHBOURS: u32 = 8;
 const CMD_STATIC_ADDRESS: u32 = 9;
 const CMD_CLEAN_ROUTING: u32 = 12;
@@ -44,7 +37,6 @@ pub enum Command {
     },
     ReadTrafficCounters,
     StartNeighbourMonitor,
-    StopNeighbourMonitor,
     DumpNeighbours,
     StaticAddress(IpAddressCommand),
     CleanRouting(CleanIpCommand),
@@ -63,8 +55,14 @@ pub enum NeighbourState {
 pub struct Neighbour {
     pub address: IpAddr,
     pub interface: String,
-    pub lladdr: Vec<u8>,
+    pub lladdr: Option<[u8; 6]>,
     pub state: NeighbourState,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum NeighbourDelta {
+    Upsert(Neighbour),
+    Delete { address: IpAddr, interface: String },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -340,7 +338,6 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
         }),
         CMD_READ_TRAFFIC_COUNTERS => Ok(Command::ReadTrafficCounters),
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
-        CMD_STOP_NEIGHBOUR_MONITOR => Ok(Command::StopNeighbourMonitor),
         CMD_DUMP_NEIGHBOURS => Ok(Command::DumpNeighbours),
         CMD_STATIC_ADDRESS => Ok(Command::StaticAddress(parser.read_ip_address_command()?)),
         CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_ip_command()?)),
@@ -351,33 +348,12 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
     }
 }
 
-pub fn reply_frame(packet: Vec<u8>) -> Vec<u8> {
-    let mut frame = Vec::with_capacity(packet.len() + 1);
-    frame.push(FRAME_REPLY);
-    frame.extend_from_slice(&packet);
-    frame
-}
-
-pub fn neighbours_frame(replace: bool, neighbours: &[Neighbour]) -> Vec<u8> {
-    let payload = neighbours_payload(replace, neighbours);
-    let mut frame = Vec::with_capacity(payload.len() + 1);
-    frame.push(FRAME_NEIGHBOURS);
-    frame.extend_from_slice(&payload);
-    frame
-}
-
-pub fn nonfatal_frame(report: DaemonErrorReport) -> Vec<u8> {
-    let mut frame = vec![FRAME_NON_FATAL];
-    write_error_report(&mut frame, &report);
-    frame
-}
-
 pub fn ok_packet() -> Vec<u8> {
-    vec![STATUS_OK]
+    Vec::new()
 }
 
 pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
-    let mut packet = vec![STATUS_OK];
+    let mut packet = Vec::new();
     packet.extend_from_slice(&ports.dns_tcp.to_be_bytes());
     packet.extend_from_slice(&ports.dns_udp.to_be_bytes());
     if let Some(ipv6_nat) = ports.ipv6_nat {
@@ -390,12 +366,6 @@ pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
     packet
 }
 
-pub fn error_packet(report: DaemonErrorReport) -> Vec<u8> {
-    let mut packet = vec![STATUS_ERROR];
-    write_error_report(&mut packet, &report);
-    packet
-}
-
 pub fn should_suppress_static_address_error(error: &io::Error, operation: IpOperation) -> bool {
     match operation {
         IpOperation::Replace => error_errno(error) == Some(libc::EEXIST),
@@ -404,7 +374,7 @@ pub fn should_suppress_static_address_error(error: &io::Error, operation: IpOper
 }
 
 pub fn traffic_counter_lines_packet(lines: &[String]) -> Vec<u8> {
-    let mut packet = vec![STATUS_OK];
+    let mut packet = Vec::new();
     packet.extend_from_slice(&(lines.len() as u32).to_be_bytes());
     for line in lines {
         write_utf(&mut packet, line);
@@ -413,55 +383,56 @@ pub fn traffic_counter_lines_packet(lines: &[String]) -> Vec<u8> {
 }
 
 pub fn neighbours_packet(neighbours: &[Neighbour]) -> Vec<u8> {
-    let payload = neighbours_payload(false, neighbours);
-    let mut packet = Vec::with_capacity(payload.len());
-    packet.push(STATUS_OK);
-    packet.extend_from_slice(&payload[1..]);
+    neighbour_deltas_packet(neighbours.iter().cloned().map(NeighbourDelta::Upsert))
+}
+
+pub fn neighbour_deltas_packet<I>(deltas: I) -> Vec<u8>
+where
+    I: IntoIterator<Item = NeighbourDelta>,
+{
+    let deltas: Vec<_> = deltas.into_iter().collect();
+    let mut packet = Vec::new();
+    packet.extend_from_slice(&(deltas.len() as u32).to_be_bytes());
+    for delta in deltas {
+        match delta {
+            NeighbourDelta::Upsert(neighbour) => {
+                packet.push(0);
+                packet.push(neighbour.state as u8);
+                write_ip_address(&mut packet, neighbour.address);
+                write_utf(&mut packet, &neighbour.interface);
+                if let Some(lladdr) = neighbour.lladdr {
+                    packet.push(1);
+                    packet.extend_from_slice(&lladdr);
+                } else {
+                    packet.push(0);
+                }
+            }
+            NeighbourDelta::Delete { address, interface } => {
+                packet.push(1);
+                write_ip_address(&mut packet, address);
+                write_utf(&mut packet, &interface);
+            }
+        }
+    }
     packet
 }
 
-fn neighbours_payload(replace: bool, neighbours: &[Neighbour]) -> Vec<u8> {
-    let mut packet = Vec::new();
-    packet.push(u8::from(replace));
-    packet.extend_from_slice(&(neighbours.len() as u32).to_be_bytes());
-    for neighbour in neighbours {
-        packet.push(neighbour.state as u8);
-        match neighbour.address {
-            IpAddr::V4(address) => {
-                packet.extend_from_slice(&4u32.to_be_bytes());
-                packet.extend_from_slice(&address.octets());
-            }
-            IpAddr::V6(address) => {
-                packet.extend_from_slice(&16u32.to_be_bytes());
-                packet.extend_from_slice(&address.octets());
-            }
+fn write_ip_address(packet: &mut Vec<u8>, address: IpAddr) {
+    match address {
+        IpAddr::V4(address) => {
+            packet.extend_from_slice(&4u32.to_be_bytes());
+            packet.extend_from_slice(&address.octets());
         }
-        write_utf(&mut packet, &neighbour.interface);
-        packet.extend_from_slice(&(neighbour.lladdr.len() as u32).to_be_bytes());
-        packet.extend_from_slice(&neighbour.lladdr);
+        IpAddr::V6(address) => {
+            packet.extend_from_slice(&16u32.to_be_bytes());
+            packet.extend_from_slice(&address.octets());
+        }
     }
-    packet
 }
 
 fn write_utf(packet: &mut Vec<u8>, value: &str) {
     packet.extend_from_slice(&(value.len() as u32).to_be_bytes());
     packet.extend_from_slice(value.as_bytes());
-}
-
-fn write_error_report(packet: &mut Vec<u8>, report: &DaemonErrorReport) {
-    write_utf(packet, &report.context);
-    write_utf(packet, &report.message);
-    packet.extend_from_slice(&report.errno.unwrap_or(-1).to_be_bytes());
-    write_utf(packet, &report.kind);
-    write_utf(packet, &report.file);
-    packet.extend_from_slice(&report.line.to_be_bytes());
-    packet.extend_from_slice(&report.column.to_be_bytes());
-    packet.extend_from_slice(&report.pid.to_be_bytes());
-    packet.extend_from_slice(&(report.details.len() as u32).to_be_bytes());
-    for (key, value) in &report.details {
-        write_utf(packet, key);
-        write_utf(packet, value);
-    }
 }
 
 fn trim_error_field(value: String) -> String {
@@ -975,21 +946,37 @@ mod tests {
     }
 
     #[test]
-    fn error_packet_encodes_structured_report() {
-        let report = daemon_error_report();
-        let packet = error_packet(report.clone());
+    fn neighbour_deltas_packet_encodes_upsert_and_delete() {
+        let packet = neighbour_deltas_packet([
+            NeighbourDelta::Upsert(Neighbour {
+                address: "192.0.2.2".parse().unwrap(),
+                interface: "wlan0".to_owned(),
+                lladdr: Some([2, 0, 0, 0, 0, 1]),
+                state: NeighbourState::Valid,
+            }),
+            NeighbourDelta::Delete {
+                address: "2001:db8::1".parse().unwrap(),
+                interface: "wlan1".to_owned(),
+            },
+        ]);
+        let mut parser = Parser::new(&packet);
 
-        assert_eq!(packet[0], STATUS_ERROR);
-        assert_eq!(read_error_report(&packet[1..]), report);
-    }
-
-    #[test]
-    fn nonfatal_frame_encodes_structured_report() {
-        let report = daemon_error_report();
-        let packet = nonfatal_frame(report.clone());
-
-        assert_eq!(packet[0], FRAME_NON_FATAL);
-        assert_eq!(read_error_report(&packet[1..]), report);
+        assert_eq!(parser.read_u32().unwrap(), 2);
+        assert_eq!(parser.read_u8().unwrap(), 0);
+        assert_eq!(parser.read_u8().unwrap(), NeighbourState::Valid as u8);
+        assert_eq!(
+            parser.read_ip_address().unwrap(),
+            "192.0.2.2".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(parser.read_utf().unwrap(), "wlan0");
+        assert_eq!(parser.read_u8().unwrap(), 1);
+        assert_eq!(parser.read_exact(6).unwrap(), &[2, 0, 0, 0, 0, 1]);
+        assert_eq!(parser.read_u8().unwrap(), 1);
+        assert_eq!(
+            parser.read_ip_address().unwrap(),
+            "2001:db8::1".parse::<IpAddr>().unwrap()
+        );
+        assert_eq!(parser.read_utf().unwrap(), "wlan1");
     }
 
     #[test]
@@ -1042,37 +1029,6 @@ mod tests {
             column: 45,
             pid: 2345,
             details: vec![("command".to_owned(), "iptables-restore".to_owned())],
-        }
-    }
-
-    fn read_error_report(packet: &[u8]) -> DaemonErrorReport {
-        let mut parser = Parser::new(packet);
-        let context = parser.read_utf().unwrap();
-        let message = parser.read_utf().unwrap();
-        let errno = match parser.read_i32().unwrap() {
-            errno if errno < 0 => None,
-            errno => Some(errno),
-        };
-        let kind = parser.read_utf().unwrap();
-        let file = parser.read_utf().unwrap();
-        let line = parser.read_u32().unwrap();
-        let column = parser.read_u32().unwrap();
-        let pid = parser.read_u32().unwrap();
-        let detail_count = parser.read_u32().unwrap();
-        let mut details = Vec::new();
-        for _ in 0..detail_count {
-            details.push((parser.read_utf().unwrap(), parser.read_utf().unwrap()));
-        }
-        DaemonErrorReport {
-            context,
-            message,
-            errno,
-            kind,
-            file,
-            line,
-            column,
-            pid,
-            details,
         }
     }
 }

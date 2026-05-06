@@ -269,11 +269,12 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         val nextClients = linkedMapOf<Inet4Address, MacAddress>()
         val nextAllowedMacs = linkedSetOf<MacAddress>()
         for (neighbour in neighbours) {
+            val lladdr = neighbour.lladdr ?: continue
             if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
-                    AppDatabase.instance.clientRecordDao.lookupOrDefault(neighbour.lladdr).blocked) continue
-            nextAllowedMacs.add(neighbour.lladdr)
+                    AppDatabase.instance.clientRecordDao.lookupOrDefault(lladdr).blocked) continue
+            nextAllowedMacs.add(lladdr)
             val ip = neighbour.ip
-            if (ip is Inet4Address) nextClients[ip] = neighbour.lladdr
+            if (ip is Inet4Address) nextClients[ip] = lladdr
         }
         val removed = clients.keys - nextClients.keys
         if (removed.isNotEmpty()) TrafficRecorder.update()

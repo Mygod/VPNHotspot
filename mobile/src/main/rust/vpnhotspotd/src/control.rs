@@ -3,23 +3,28 @@ use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream as StdUnixStream;
+use std::sync::Arc;
 
 use libc::EINPROGRESS;
 use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
+use tokio::select;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::task::JoinHandle;
+use tokio::sync::Mutex;
+use tokio::task::{JoinHandle, JoinSet};
+use tokio_util::sync::CancellationToken;
 
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
-    error_packet, neighbours_frame, neighbours_packet, ok_packet, parse_command, ports_packet,
-    reply_frame, should_suppress_static_address_error, traffic_counter_lines_packet, Command,
-    DaemonErrorReport, IoErrorReportExt, IoResultReportExt, IpAddressCommand,
+    neighbours_packet, ok_packet, parse_command, ports_packet,
+    should_suppress_static_address_error, traffic_counter_lines_packet, Command, DaemonErrorReport,
+    IoErrorReportExt, IoResultReportExt, IpAddressCommand,
 };
+use vpnhotspotd::shared::transport::{error_frame, parse_client_frame, reply_frame, ClientFrame};
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
@@ -30,47 +35,85 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let (mut controller_read, controller_write) = controller.into_split();
     let (sender, writer) = spawn_writer(controller_write);
     report::init(sender.clone())?;
-    let mut state = State {
+    let state = Arc::new(State {
         netlink: netlink::Runtime::new()?,
-        sessions: HashMap::new(),
-        neighbour_monitor: None,
-    };
+        sessions: Mutex::new(HashMap::new()),
+        neighbour_monitor: Mutex::new(None),
+    });
+    let active_calls = Arc::new(Mutex::new(HashMap::new()));
+    let shutdown = CancellationToken::new();
+    let mut tasks = JoinSet::new();
     loop {
-        let packet = match recv_packet(&mut controller_read).await {
-            Ok(packet) => packet,
-            Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
-            Err(e) => {
-                report::io("control.recv_packet", e);
-                break;
-            }
-        };
-        let response = match handle_packet(&packet, &mut state, &sender).await {
-            Ok(HandleResult::Reply(reply)) => Some(reply),
-            Ok(HandleResult::Shutdown(reply)) => {
-                if sender.send(reply_frame(reply)).is_err() {
-                    eprintln!("controller send failed");
+        let packet = select! {
+            _ = shutdown.cancelled() => break,
+            result = tasks.join_next(), if !tasks.is_empty() => {
+                if let Some(Err(e)) = result {
+                    report::message("control.call_join", e.to_string(), "JoinError");
                 }
-                break;
+                continue;
             }
-            Err(e) => Some(error_packet(DaemonErrorReport::from_io_error(
-                "control.handle_packet",
-                e,
-            ))),
+            packet = recv_packet(&mut controller_read) => match packet {
+                Ok(packet) => packet,
+                Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => break,
+                Err(e) => {
+                    report::io("control.recv_packet", e);
+                    break;
+                }
+            },
         };
-        if let Some(response) = response {
-            if sender.send(reply_frame(response)).is_err() {
-                eprintln!("controller send failed");
+        match parse_client_frame(&packet) {
+            Ok(ClientFrame::Call { id, packet }) => {
+                let call = Arc::new(CallState {
+                    cancel: CancellationToken::new(),
+                });
+                {
+                    let mut active = active_calls.lock().await;
+                    if active.contains_key(&id) {
+                        let report = DaemonErrorReport::from_message_with_details(
+                            "control.call",
+                            "call already active",
+                            "AlreadyExists",
+                            [("id", id.to_string())],
+                        );
+                        if sender.send(error_frame(id, report)).is_err() {
+                            eprintln!("controller send failed");
+                            break;
+                        }
+                        continue;
+                    }
+                    active.insert(id, call.clone());
+                }
+                tasks.spawn(handle_call(
+                    id,
+                    packet,
+                    state.clone(),
+                    sender.clone(),
+                    active_calls.clone(),
+                    call,
+                    shutdown.clone(),
+                ));
+            }
+            Ok(ClientFrame::Cancel { id }) => {
+                if let Some(call) = active_calls.lock().await.get(&id) {
+                    call.cancel.cancel();
+                }
+            }
+            Err(e) => {
+                report::io("control.parse_frame", e);
                 break;
             }
         }
     }
+    for call in active_calls.lock().await.values() {
+        call.cancel.cancel();
+    }
+    while let Some(result) = tasks.join_next().await {
+        if let Err(e) = result {
+            report::message("control.call_join", e.to_string(), "JoinError");
+        }
+    }
+    state.stop(false).await;
     drop(sender);
-    if let Some(monitor) = state.neighbour_monitor.take() {
-        monitor.stop().await;
-    }
-    for (_, session) in state.sessions {
-        session.stop(false).await;
-    }
     if let Err(e) = writer.await {
         eprintln!("controller writer task failed: {e}");
     }
@@ -79,109 +122,118 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     netlink: netlink::Runtime,
-    sessions: HashMap<String, Session>,
-    neighbour_monitor: Option<Monitor>,
+    sessions: Mutex<HashMap<String, Arc<Mutex<Option<Session>>>>>,
+    neighbour_monitor: Mutex<Option<MonitorState>>,
 }
 
-enum HandleResult {
+struct MonitorState {
+    id: u64,
+    cancel: CancellationToken,
+    monitor: Monitor,
+}
+
+impl State {
+    async fn stop(&self, withdraw_cleanup: bool) {
+        if let Some(monitor) = self.neighbour_monitor.lock().await.take() {
+            monitor.monitor.stop().await;
+        }
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .await
+            .drain()
+            .map(|(_, session)| session)
+            .collect();
+        for session in sessions {
+            if let Some(session) = session.lock().await.take() {
+                session.stop(withdraw_cleanup).await;
+            }
+        }
+    }
+}
+
+struct CallState {
+    cancel: CancellationToken,
+}
+
+enum CallOutput {
     Reply(Vec<u8>),
+    NoFrame,
     Shutdown(Vec<u8>),
 }
 
-async fn handle_packet(
-    packet: &[u8],
-    state: &mut State,
-    sender: &UnboundedSender<Vec<u8>>,
-) -> io::Result<HandleResult> {
-    match parse_command(packet).with_report_context("control.parse_command")? {
-        Command::StartSession(config) => {
-            let downstream = config.downstream.clone();
-            if state.sessions.contains_key(&downstream) {
-                return Err(
-                    io::Error::new(io::ErrorKind::AlreadyExists, "session already exists")
-                        .with_report_context_details(
-                            "control.start_session",
-                            [("downstream", downstream)],
-                        ),
-                );
-            }
-            let session = Session::start(config, &state.netlink)
-                .await
-                .with_report_context_details(
-                    "control.start_session",
-                    [("downstream", downstream.as_str())],
-                )?;
-            let reply = ports_packet(session.ports());
-            state.sessions.insert(downstream, session);
-            Ok(HandleResult::Reply(reply))
+async fn handle_call(
+    id: u64,
+    packet: Vec<u8>,
+    state: Arc<State>,
+    sender: UnboundedSender<Vec<u8>>,
+    active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
+    call: Arc<CallState>,
+    shutdown: CancellationToken,
+) {
+    match handle_command(id, &packet, state, &sender, call.cancel.clone()).await {
+        Ok(CallOutput::Reply(packet)) => {
+            send_terminal_frame(id, &active_calls, &call, &sender, reply_frame(id, packet)).await;
         }
+        Ok(CallOutput::NoFrame) => {
+            remove_call(id, &active_calls, &call).await;
+        }
+        Ok(CallOutput::Shutdown(packet)) => {
+            send_terminal_frame(id, &active_calls, &call, &sender, reply_frame(id, packet)).await;
+            shutdown.cancel();
+        }
+        Err(e) => {
+            let report = DaemonErrorReport::from_io_error("control.handle_call", e);
+            if call.cancel.is_cancelled() {
+                if remove_call(id, &active_calls, &call).await {
+                    report::report_for(Some(id), report);
+                }
+            } else {
+                send_terminal_frame(id, &active_calls, &call, &sender, error_frame(id, report))
+                    .await;
+            }
+        }
+    }
+}
+
+async fn handle_command(
+    id: u64,
+    packet: &[u8],
+    state: Arc<State>,
+    sender: &UnboundedSender<Vec<u8>>,
+    cancel: CancellationToken,
+) -> io::Result<CallOutput> {
+    match parse_command(packet).with_report_context("control.parse_command")? {
+        Command::StartSession(config) => start_session(&state, config).await.map(CallOutput::Reply),
         Command::ReplaceSession(config) => {
-            let session = state.sessions.get_mut(&config.downstream).ok_or_else(|| {
-                io::Error::new(io::ErrorKind::NotFound, "session not found")
-                    .with_report_context_details(
-                        "control.replace_session",
-                        [("downstream", config.downstream.as_str())],
-                    )
-            })?;
-            session
-                .replace_config(config)
-                .await
-                .with_report_context("control.replace_session")?;
-            Ok(HandleResult::Reply(ok_packet()))
+            replace_session(&state, config).await?;
+            Ok(CallOutput::Reply(ok_packet()))
         }
         Command::RemoveSession {
             downstream,
             withdraw_cleanup,
         } => {
-            if let Some(session) = state.sessions.remove(&downstream) {
-                session.stop(withdraw_cleanup).await;
-            }
-            Ok(HandleResult::Reply(ok_packet()))
+            remove_session(&state, downstream, withdraw_cleanup).await;
+            Ok(CallOutput::Reply(ok_packet()))
         }
         Command::Shutdown { withdraw_cleanup } => {
-            if let Some(monitor) = state.neighbour_monitor.take() {
-                monitor.stop().await;
-            }
-            for (_, session) in state.sessions.drain() {
-                session.stop(withdraw_cleanup).await;
-            }
-            Ok(HandleResult::Shutdown(ok_packet()))
+            state.stop(withdraw_cleanup).await;
+            Ok(CallOutput::Shutdown(ok_packet()))
         }
         Command::ReadTrafficCounters => {
             let lines = crate::traffic::read_counter_lines()
                 .await
                 .with_report_context("control.read_traffic_counters")?;
-            Ok(HandleResult::Reply(traffic_counter_lines_packet(&lines)))
+            Ok(CallOutput::Reply(traffic_counter_lines_packet(&lines)))
         }
         Command::StartNeighbourMonitor => {
-            if state.neighbour_monitor.is_none() {
-                let monitor = Monitor::spawn(&state.netlink, sender.clone())?;
-                let handle = state.netlink.handle();
-                let neighbours = crate::neighbour::dump(&handle)
-                    .await
-                    .with_report_context("control.start_neighbour_monitor.dump")?;
-                if sender.send(neighbours_frame(true, &neighbours)).is_err() {
-                    monitor.stop().await;
-                    return Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe,
-                        "controller disconnected",
-                    )
-                    .with_report_context("control.start_neighbour_monitor.send"));
-                }
-                state.neighbour_monitor = Some(monitor);
-            }
-            Ok(HandleResult::Reply(ok_packet()))
-        }
-        Command::StopNeighbourMonitor => {
-            if let Some(monitor) = state.neighbour_monitor.take() {
-                monitor.stop().await;
-            }
-            Ok(HandleResult::Reply(ok_packet()))
+            start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
+            Ok(CallOutput::NoFrame)
         }
         Command::DumpNeighbours => {
             let handle = state.netlink.handle();
-            Ok(HandleResult::Reply(neighbours_packet(
-                &crate::neighbour::dump(&handle)
+            Ok(CallOutput::Reply(neighbours_packet(
+                &crate::neighbour::dump(&handle, Some(id))
                     .await
                     .with_report_context("control.dump_neighbours")?,
             )))
@@ -198,16 +250,142 @@ async fn handle_packet(
                         ("interface", command.interface.clone()),
                     ],
                 )?;
-            Ok(HandleResult::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ok_packet()))
         }
         Command::CleanRouting(command) => {
             let handle = state.netlink.handle();
             routing::clean(&handle, &command)
                 .await
                 .with_report_context("control.clean_routing")?;
-            Ok(HandleResult::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ok_packet()))
         }
     }
+}
+
+async fn start_session(
+    state: &State,
+    config: vpnhotspotd::shared::model::SessionConfig,
+) -> io::Result<Vec<u8>> {
+    let downstream = config.downstream.clone();
+    let slot = Arc::new(Mutex::new(None));
+    {
+        let mut sessions = state.sessions.lock().await;
+        if sessions.contains_key(&downstream) {
+            return Err(
+                io::Error::new(io::ErrorKind::AlreadyExists, "session already exists")
+                    .with_report_context_details(
+                        "control.start_session",
+                        [("downstream", downstream)],
+                    ),
+            );
+        }
+        sessions.insert(downstream.clone(), slot.clone());
+    }
+    let mut guard = slot.lock().await;
+    match Session::start(config, &state.netlink)
+        .await
+        .with_report_context_details(
+            "control.start_session",
+            [("downstream", downstream.as_str())],
+        ) {
+        Ok(session) => {
+            let reply = ports_packet(session.ports());
+            *guard = Some(session);
+            Ok(reply)
+        }
+        Err(e) => {
+            drop(guard);
+            let mut sessions = state.sessions.lock().await;
+            if sessions
+                .get(&downstream)
+                .is_some_and(|current| Arc::ptr_eq(current, &slot))
+            {
+                sessions.remove(&downstream);
+            }
+            Err(e)
+        }
+    }
+}
+
+async fn replace_session(
+    state: &State,
+    config: vpnhotspotd::shared::model::SessionConfig,
+) -> io::Result<()> {
+    let slot = state
+        .sessions
+        .lock()
+        .await
+        .get(&config.downstream)
+        .cloned()
+        .ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "session not found")
+                .with_report_context_details(
+                    "control.replace_session",
+                    [("downstream", config.downstream.as_str())],
+                )
+        })?;
+    let mut guard = slot.lock().await;
+    let session = guard.as_mut().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::NotFound, "session not ready").with_report_context_details(
+            "control.replace_session",
+            [("downstream", config.downstream.as_str())],
+        )
+    })?;
+    session
+        .replace_config(config)
+        .await
+        .with_report_context("control.replace_session")
+}
+
+async fn remove_session(state: &State, downstream: String, withdraw_cleanup: bool) {
+    let session = state.sessions.lock().await.remove(&downstream);
+    if let Some(session) = session {
+        if let Some(session) = session.lock().await.take() {
+            session.stop(withdraw_cleanup).await;
+        }
+    }
+}
+
+async fn start_neighbour_monitor(
+    id: u64,
+    state: &State,
+    sender: UnboundedSender<Vec<u8>>,
+    cancel: CancellationToken,
+) -> io::Result<()> {
+    let mut current = state.neighbour_monitor.lock().await;
+    if current
+        .as_ref()
+        .is_some_and(|current| !current.cancel.is_cancelled())
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::AlreadyExists,
+            "neighbour monitor already active",
+        )
+        .with_report_context("control.start_neighbour_monitor"));
+    }
+    if let Some(monitor) = current.take() {
+        monitor.monitor.stop().await;
+    }
+    *current = Some(MonitorState {
+        id,
+        cancel: cancel.clone(),
+        monitor: Monitor::spawn(id, &state.netlink, sender)
+            .await
+            .with_report_context("control.start_neighbour_monitor")?,
+    });
+    drop(current);
+    cancel.cancelled().await;
+    let mut current = state.neighbour_monitor.lock().await;
+    let monitor = if current.as_ref().is_some_and(|current| current.id == id) {
+        current.take()
+    } else {
+        None
+    };
+    drop(current);
+    if let Some(monitor) = monitor {
+        monitor.monitor.stop().await;
+    }
+    Ok(())
 }
 
 async fn apply_static_address(
@@ -218,6 +396,36 @@ async fn apply_static_address(
         Ok(()) => Ok(()),
         Err(e) if should_suppress_static_address_error(&e, command.operation) => Ok(()),
         Err(e) => Err(e),
+    }
+}
+
+async fn send_terminal_frame(
+    id: u64,
+    active_calls: &Mutex<HashMap<u64, Arc<CallState>>>,
+    call: &Arc<CallState>,
+    sender: &UnboundedSender<Vec<u8>>,
+    frame: Vec<u8>,
+) {
+    let cancelled = call.cancel.is_cancelled();
+    if remove_call(id, active_calls, call).await && !cancelled && sender.send(frame).is_err() {
+        eprintln!("controller send failed");
+    }
+}
+
+async fn remove_call(
+    id: u64,
+    active_calls: &Mutex<HashMap<u64, Arc<CallState>>>,
+    call: &Arc<CallState>,
+) -> bool {
+    let mut active = active_calls.lock().await;
+    if active
+        .get(&id)
+        .is_some_and(|current| Arc::ptr_eq(current, call))
+    {
+        active.remove(&id);
+        true
+    } else {
+        false
     }
 }
 

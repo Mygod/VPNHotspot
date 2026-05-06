@@ -6,7 +6,6 @@ import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -84,7 +83,6 @@ class DaemonProtocolTest {
     @Test
     fun readPortsDecodesResponse() {
         val packet = byteArrayOf(
-            DaemonProtocol.STATUS_OK.toByte(),
             0x12, 0x34,
             0x23, 0x45,
             1,
@@ -96,36 +94,104 @@ class DaemonProtocolTest {
     }
 
     @Test
-    fun readAckDecodesStructuredStatusError() {
+    fun readFrameDecodesStructuredError() {
         val report = daemonErrorReport()
-        val packet = Buffer().apply {
-            writeByte(DaemonProtocol.STATUS_ERROR.toByte())
+        val frame = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(2)
+            writeLong(123)
             writeErrorReport(report)
-        }.readByteArray()
-        try {
-            DaemonProtocol.readAck(packet)
-            fail("Expected daemon status exception")
-        } catch (e: DaemonProtocol.DaemonException) {
-            assertEquals(16, e.report.errno)
-            assertEquals(report, e.report)
-            assertEquals("vpnhotspotd", e.stackTrace.single().className)
-            assertEquals("routing.command", e.stackTrace.single().methodName)
-            assertEquals("routing.rs", e.stackTrace.single().fileName)
-            assertEquals(123, e.stackTrace.single().lineNumber)
-            assertEquals("routing.command", e.report.crashlyticsKeyValues["daemon.context"])
-            assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
-        }
+        }.readByteArray())
+        assertTrue(frame is DaemonTransport.Frame.Error)
+        val e = (frame as DaemonTransport.Frame.Error).exception
+        assertEquals(16, e.report.errno)
+        assertEquals(report, e.report)
+        assertEquals("vpnhotspotd", e.stackTrace.single().className)
+        assertEquals("routing.command", e.stackTrace.single().methodName)
+        assertEquals("routing.rs", e.stackTrace.single().fileName)
+        assertEquals(123, e.stackTrace.single().lineNumber)
+        assertEquals("routing.command", e.report.crashlyticsKeyValues["daemon.context"])
+        assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
     }
 
     @Test
     fun readFrameDecodesNonFatalError() {
         val report = daemonErrorReport()
-        val frame = DaemonProtocol.readFrame(Buffer().apply {
-            writeByte(DaemonProtocol.FRAME_NON_FATAL.toByte())
+        val frame = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(3)
+            writeLong(0)
             writeErrorReport(report)
         }.readByteArray())
-        assertTrue(frame is DaemonProtocol.Frame.NonFatal)
-        assertEquals(report, (frame as DaemonProtocol.Frame.NonFatal).exception.report)
+        assertTrue(frame is DaemonTransport.Frame.NonFatal)
+        assertEquals(report, (frame as DaemonTransport.Frame.NonFatal).exception.report)
+    }
+
+    @Test
+    fun readFrameDecodesReplyEventAndCompleteIds() {
+        val reply = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(0)
+            writeLong(10)
+            writeByte(1)
+        }.readByteArray())
+        assertTrue(reply is DaemonTransport.Frame.Reply)
+        assertEquals(10, (reply as DaemonTransport.Frame.Reply).id)
+        assertEquals(1, reply.packet.single().toInt())
+        val event = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(1)
+            writeLong(11)
+            writeByte(2)
+        }.readByteArray())
+        assertTrue(event is DaemonTransport.Frame.Event)
+        assertEquals(11, (event as DaemonTransport.Frame.Event).id)
+        assertEquals(2, event.packet.single().toInt())
+        val complete = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(4)
+            writeLong(12)
+        }.readByteArray())
+        assertTrue(complete is DaemonTransport.Frame.Complete)
+        assertEquals(12, (complete as DaemonTransport.Frame.Complete).id)
+    }
+
+    @Test
+    fun readNeighbourDeltasDecodesNullMacAndDelete() {
+        val packet = Buffer().apply {
+            writeInt(2)
+            writeByte(0)
+            writeByte(2)
+            writeInetAddress(InetAddress.getByName("192.0.2.2"))
+            writeUtf("wlan0")
+            writeByte(0)
+            writeByte(1)
+            writeInetAddress(InetAddress.getByName("2001:db8::1"))
+            writeUtf("wlan1")
+        }.readByteArray()
+
+        val deltas = DaemonProtocol.readNeighbourDeltas(packet)
+        val upsert = deltas[0] as DaemonProtocol.NeighbourDelta.Upsert
+        assertEquals("192.0.2.2", upsert.neighbour.ip.hostAddress)
+        assertEquals("wlan0", upsert.neighbour.dev)
+        assertEquals(null, upsert.neighbour.lladdr)
+        assertEquals(be.mygod.vpnhotspot.net.NetlinkNeighbour.State.VALID, upsert.neighbour.state)
+        val delete = deltas[1] as DaemonProtocol.NeighbourDelta.Delete
+        assertEquals("2001:db8:0:0:0:0:0:1", delete.ip.hostAddress)
+        assertEquals("wlan1", delete.dev)
+    }
+
+    @Test
+    fun transportCallAndCancelEncodeCallerId() {
+        Buffer().apply {
+            write(DaemonTransport.call(123, byteArrayOf(1, 2)))
+        }.let { input ->
+            assertEquals(0, input.readByte().toInt())
+            assertEquals(123, input.readLong())
+            assertEquals(1, input.readByte().toInt())
+            assertEquals(2, input.readByte().toInt())
+        }
+        Buffer().apply {
+            write(DaemonTransport.cancel(124))
+        }.let { input ->
+            assertEquals(1, input.readByte().toInt())
+            assertEquals(124, input.readLong())
+        }
     }
 
     @Test
@@ -165,7 +231,7 @@ class DaemonProtocolTest {
 
     private fun Source.readUtf() = readString(readInt().toLong())
 
-    private fun daemonErrorReport() = DaemonProtocol.DaemonErrorReport(
+    private fun daemonErrorReport() = DaemonTransport.DaemonErrorReport(
         context = "routing.command",
         message = "Device or resource busy",
         errno = 16,
@@ -177,7 +243,7 @@ class DaemonProtocolTest {
         details = mapOf("command" to "iptables-restore"),
     )
 
-    private fun Buffer.writeErrorReport(report: DaemonProtocol.DaemonErrorReport) {
+    private fun Buffer.writeErrorReport(report: DaemonTransport.DaemonErrorReport) {
         writeUtf(report.context)
         writeUtf(report.message)
         writeInt(report.errno ?: -1)
@@ -197,5 +263,10 @@ class DaemonProtocolTest {
         val bytes = value.encodeToByteArray()
         writeInt(bytes.size)
         write(bytes)
+    }
+
+    private fun Buffer.writeInetAddress(address: InetAddress) {
+        writeInt(address.address.size)
+        write(address.address)
     }
 }
