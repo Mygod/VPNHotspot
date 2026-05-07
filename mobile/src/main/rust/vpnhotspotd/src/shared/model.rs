@@ -20,7 +20,6 @@ pub struct SessionConfig {
     pub downstream: String,
     pub reply_mark: u32,
     pub ip_forward: bool,
-    pub forward: bool,
     pub masquerade: MasqueradeMode,
     pub ipv6_block: bool,
     pub primary_network: Option<Network>,
@@ -47,7 +46,6 @@ pub enum UpstreamRole {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct UpstreamConfig {
     pub ifname: String,
-    pub ifindex: u32,
     pub role: UpstreamRole,
 }
 
@@ -61,9 +59,6 @@ pub struct ClientConfig {
 pub struct Ipv6NatConfig {
     pub gateway: Ipv6Addr,
     pub prefix_len: u8,
-    pub mtu: u32,
-    pub suppressed_prefixes: Vec<Route>,
-    pub cleanup_prefixes: Vec<Route>,
 }
 
 #[derive(Clone, Copy)]
@@ -204,7 +199,6 @@ mod tests {
             downstream: "wlan0".to_string(),
             reply_mark: 0,
             ip_forward: false,
-            forward: false,
             masquerade: MasqueradeMode::None,
             ipv6_block: false,
             primary_network,

@@ -492,7 +492,6 @@ impl<'a> Parser<'a> {
     fn read_session_config(&mut self) -> io::Result<SessionConfig> {
         let downstream = self.read_utf()?;
         let ip_forward = self.read_bool()?;
-        let forward = self.read_bool()?;
         let masquerade = self.read_masquerade_mode()?;
         let ipv6_block = self.read_bool()?;
         let primary_network = self.read_network()?;
@@ -503,20 +502,9 @@ impl<'a> Parser<'a> {
         let ipv6_nat = if self.read_bool()? {
             let prefix = ipv6_nat_prefix(&self.read_utf()?, &downstream);
             let gateway = ipv6_nat_gateway(prefix);
-            let mtu = self.read_i32()? as u32;
-            let suppressed_prefixes = self
-                .read_routes()?
-                .into_iter()
-                .filter(|route| {
-                    route.prefix != prefix.prefix || route.prefix_len != prefix.prefix_len
-                })
-                .collect();
             Some(Ipv6NatConfig {
                 gateway,
                 prefix_len: prefix.prefix_len,
-                mtu,
-                suppressed_prefixes,
-                cleanup_prefixes: self.read_routes()?,
             })
         } else {
             None
@@ -525,7 +513,6 @@ impl<'a> Parser<'a> {
             downstream,
             reply_mark: DAEMON_REPLY_MARK,
             ip_forward,
-            forward,
             masquerade,
             ipv6_block,
             primary_network,
@@ -564,12 +551,7 @@ impl<'a> Parser<'a> {
                 }
             };
             let ifname = self.read_utf()?;
-            let ifindex = self.read_u32()?;
-            upstreams.push(UpstreamConfig {
-                ifname,
-                ifindex,
-                role,
-            });
+            upstreams.push(UpstreamConfig { ifname, role });
         }
         Ok(upstreams)
     }
@@ -740,7 +722,6 @@ mod tests {
         packet.extend_from_slice(&1i32.to_be_bytes());
         packet.push(0);
         write_utf(&mut packet, "rmnet_data0");
-        packet.extend_from_slice(&1234u32.to_be_bytes());
         packet.extend_from_slice(&1i32.to_be_bytes());
         packet.extend_from_slice(&[0x02, 0, 0, 0, 0, 1]);
         packet.extend_from_slice(&1i32.to_be_bytes());
@@ -752,7 +733,6 @@ mod tests {
         };
         assert_eq!(config.downstream, "wlan0");
         assert_eq!(config.reply_mark, DAEMON_REPLY_MARK);
-        assert!(config.forward);
         assert_eq!(config.masquerade, MasqueradeMode::Simple);
         assert_eq!(config.primary_network, Some(123));
         assert_eq!(config.primary_routes.len(), 2);
@@ -762,7 +742,6 @@ mod tests {
         assert_eq!(config.upstreams.len(), 1);
         assert_eq!(config.upstreams[0].role, UpstreamRole::Primary);
         assert_eq!(config.upstreams[0].ifname, "rmnet_data0");
-        assert_eq!(config.upstreams[0].ifindex, 1234);
         assert_eq!(config.clients.len(), 1);
         assert_eq!(config.clients[0].mac, [0x02, 0, 0, 0, 0, 1]);
         assert_eq!(config.clients[0].ipv4, vec![Ipv4Addr::new(192, 0, 2, 10)]);
@@ -803,11 +782,6 @@ mod tests {
         packet.extend_from_slice(&0i32.to_be_bytes());
         packet.push(1);
         write_utf(&mut packet, "be.mygod.vpnhotspot\0android-id");
-        packet.extend_from_slice(&1280i32.to_be_bytes());
-        packet.extend_from_slice(&2i32.to_be_bytes());
-        write_route(&mut packet, "fd8d:32f9:31e3:b417::".parse().unwrap(), 64);
-        write_route(&mut packet, "2001:db8::".parse().unwrap(), 32);
-        packet.extend_from_slice(&0i32.to_be_bytes());
 
         let Command::StartSession(config) = parse_command(&packet).unwrap() else {
             panic!("expected start session");
@@ -818,8 +792,6 @@ mod tests {
             "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
         );
         assert_eq!(ipv6_nat.prefix_len, 64);
-        assert_eq!(ipv6_nat.mtu, 1280);
-        assert_eq!(ipv6_nat.suppressed_prefixes, vec![route("2001:db8::", 32)]);
     }
 
     #[test]
@@ -996,20 +968,12 @@ mod tests {
     fn write_session_flags(packet: &mut Vec<u8>) {
         packet.push(0);
         packet.push(1);
-        packet.push(1);
         packet.push(0);
     }
 
     fn write_route(packet: &mut Vec<u8>, address: Ipv6Addr, prefix_len: i32) {
         packet.extend_from_slice(&address.octets());
         packet.extend_from_slice(&prefix_len.to_be_bytes());
-    }
-
-    fn route(address: &str, prefix_len: u8) -> Route {
-        Route {
-            prefix: ipv6_to_u128(address.parse::<Ipv6Addr>().unwrap()),
-            prefix_len,
-        }
     }
 
     fn daemon_error_report() -> DaemonErrorReport {

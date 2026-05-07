@@ -21,6 +21,9 @@
             app:icon="@drawable/ic_action_settings_input_component"
             app:title="@string/settings_upstream_fallback"
             app:summary="@string/settings_upstream_fallback_auto"/>
+    </PreferenceCategory>
+    <PreferenceCategory
+        app:title="@string/settings_downstream">
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.masqueradeMode"
             app:icon="@drawable/ic_social_people"
@@ -28,9 +31,6 @@
             app:entries="@array/settings_service_masquerade"
             app:entryValues="@array/settings_service_masquerade_values"
             app:useSimpleSummaryProvider="true"/>
-    </PreferenceCategory>
-    <PreferenceCategory
-        app:title="@string/settings_downstream">
         <com.takisoft.preferencex.SimpleMenuPreference
             app:key="service.ipv6Mode"
             app:icon="@drawable/ic_image_looks_6"

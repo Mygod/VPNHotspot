@@ -172,6 +172,39 @@ pub(crate) async fn link_index(handle: &Handle, name: &str) -> io::Result<u32> {
     }
 }
 
+pub(crate) async fn link_mtu(handle: &Handle, name: &str) -> io::Result<u32> {
+    validate_interface_name(name)?;
+    let links = handle
+        .raw()
+        .link()
+        .get()
+        .match_name(name.to_owned())
+        .execute();
+    pin_mut!(links);
+    if let Some(link) = links.try_next().await.map_err(to_io_error)? {
+        link.attributes
+            .into_iter()
+            .find_map(|attribute| {
+                if let LinkAttribute::Mtu(mtu) = attribute {
+                    Some(mtu)
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("interface {name} missing MTU"),
+                )
+            })
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("interface {name} not found"),
+        ))
+    }
+}
+
 pub(crate) async fn link_name(handle: &Handle, index: u32) -> io::Result<String> {
     let links = handle.raw().link().get().match_index(index).execute();
     pin_mut!(links);

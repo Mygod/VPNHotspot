@@ -4,6 +4,7 @@ import android.net.IpPrefix
 import android.net.MacAddress
 import android.net.Network
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
+import be.mygod.vpnhotspot.net.Routing
 import kotlinx.io.Buffer
 import kotlinx.io.Sink
 import kotlinx.io.Source
@@ -30,8 +31,7 @@ object DaemonProtocol {
     data class SessionConfig(
         val downstream: String,
         val ipForward: Boolean,
-        val forward: Boolean,
-        val masquerade: MasqueradeMode,
+        val masquerade: Routing.MasqueradeMode,
         val ipv6Block: Boolean,
         val primaryNetwork: Network?,
         val primaryRoutes: List<IpPrefix>,
@@ -41,12 +41,6 @@ object DaemonProtocol {
         val ipv6Nat: Ipv6NatConfig?,
     )
 
-    enum class MasqueradeMode(val protocolValue: Byte) {
-        None(0),
-        Simple(1),
-        Netd(2),
-    }
-
     enum class UpstreamRole(val protocolValue: Byte) {
         Primary(0),
         Fallback(1),
@@ -55,7 +49,6 @@ object DaemonProtocol {
     data class UpstreamConfig(
         val role: UpstreamRole,
         val ifname: String,
-        val ifindex: Int,
     )
 
     data class ClientConfig(
@@ -65,9 +58,6 @@ object DaemonProtocol {
 
     data class Ipv6NatConfig(
         val prefixSeed: String,
-        val mtu: Int,
-        val suppressedPrefixes: List<IpPrefix>,
-        val cleanupPrefixes: List<IpPrefix>,
     )
 
     data class SessionPorts(
@@ -147,7 +137,6 @@ object DaemonProtocol {
     private fun Sink.writeSession(config: SessionConfig) {
         writeUtf(config.downstream)
         writeByte((if (config.ipForward) 1 else 0).toByte())
-        writeByte((if (config.forward) 1 else 0).toByte())
         writeByte(config.masquerade.protocolValue)
         writeByte((if (config.ipv6Block) 1 else 0).toByte())
         writeNetwork(config.primaryNetwork)
@@ -158,7 +147,6 @@ object DaemonProtocol {
         for (upstream in config.upstreams) {
             writeByte(upstream.role.protocolValue)
             writeUtf(upstream.ifname)
-            writeInt(upstream.ifindex)
         }
         writeInt(config.clients.size)
         for (client in config.clients) {
@@ -170,11 +158,6 @@ object DaemonProtocol {
         writeByte((if (ipv6Nat != null) 1 else 0).toByte())
         if (ipv6Nat == null) return
         writeUtf(ipv6Nat.prefixSeed)
-        writeInt(ipv6Nat.mtu)
-        writeInt(ipv6Nat.suppressedPrefixes.size)
-        for (prefix in ipv6Nat.suppressedPrefixes) writeIpv6Prefix(prefix)
-        writeInt(ipv6Nat.cleanupPrefixes.size)
-        for (prefix in ipv6Nat.cleanupPrefixes) writeIpv6Prefix(prefix)
     }
 
     private fun Sink.writeNetwork(network: Network?) = writeLong(network?.networkHandle ?: 0L)

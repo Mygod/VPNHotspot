@@ -57,7 +57,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                         }
                     }
                 } ?: return
-                for (routing in routings) routing.stop(withdrawCleanupPrefixes = true)
+                for (routing in routings) routing.stopForClean()
                 try {
                     Routing.clean()
                 } catch (e: Exception) {
@@ -92,13 +92,11 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
      * Both repeater and local-only hotspot are Wi-Fi based.
      */
     class LocalOnly(caller: Any, downstream: String) : RoutingManager(caller, downstream, true) {
-        override suspend fun Routing.configure() {
-            ipForward() // local only interfaces need to enable ip_forward
-            forward()
-            masquerade(masqueradeMode)
-            when (ipv6Mode) {
-                Ipv6Mode.Block, Ipv6Mode.System -> { }
-                Ipv6Mode.Nat -> ipv6Nat()
+        override fun Routing.configure() {
+            ipForward = true // local only interfaces need to enable ip_forward
+            ipv6Mode = when (RoutingManager.ipv6Mode) {
+                Ipv6Mode.Block, Ipv6Mode.System -> Ipv6Mode.System
+                Ipv6Mode.Nat -> Ipv6Mode.Nat
             }
         }
     }
@@ -165,19 +163,17 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     }
 
     private fun startRouting(routing: Routing) {
-        routing.start(
-            onFailure = {
-                monitor.withLock {
-                    if (this.routing === routing) {
-                        this.routing = null
-                        if (started) releaseLocked()
-                        started = false
-                        active.remove(downstream, this@RoutingManager)
-                    }
+        routing.masqueradeMode = masqueradeMode
+        routing.configure()
+        routing.start {
+            monitor.withLock {
+                if (this.routing === routing) {
+                    this.routing = null
+                    if (started) releaseLocked()
+                    started = false
+                    active.remove(downstream, this@RoutingManager)
                 }
-            },
-        ) {
-            configure()
+            }
         }
     }
 
@@ -186,11 +182,11 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         if (isWifi) WifiDoubleLock.release(this)
     }
 
-    protected abstract suspend fun Routing.configure()
+    protected abstract fun Routing.configure()
 
     suspend fun stop() {
         val routing = monitor.withLock {
-            if (active[downstream] !== this@RoutingManager || (!started && routing == null)) {
+            if (active[downstream] !== this@RoutingManager || !started && routing == null) {
                 started = false
                 null
             } else {

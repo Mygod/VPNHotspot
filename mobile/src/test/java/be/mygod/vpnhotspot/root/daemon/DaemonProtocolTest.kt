@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root.daemon
 
+import be.mygod.vpnhotspot.net.Routing
 import kotlinx.io.Buffer
 import kotlinx.io.Source
 import kotlinx.io.readByteArray
@@ -15,14 +16,13 @@ class DaemonProtocolTest {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
             ipForward = true,
-            forward = true,
-            masquerade = DaemonProtocol.MasqueradeMode.Simple,
+            masquerade = Routing.MasqueradeMode.Simple,
             ipv6Block = false,
             primaryNetwork = null,
             primaryRoutes = emptyList(),
             fallbackNetwork = null,
             upstreams = listOf(DaemonProtocol.UpstreamConfig(
-                DaemonProtocol.UpstreamRole.Primary, "rmnet_data0", 1234)),
+                DaemonProtocol.UpstreamRole.Primary, "rmnet_data0")),
             clients = emptyList(),
             ipv6Nat = null,
         ))
@@ -30,8 +30,7 @@ class DaemonProtocolTest {
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
             assertEquals(true, input.readBoolean())
-            assertEquals(true, input.readBoolean())
-            assertEquals(DaemonProtocol.MasqueradeMode.Simple.protocolValue, input.readByte())
+            assertEquals(Routing.MasqueradeMode.Simple.protocolValue, input.readByte())
             assertEquals(false, input.readBoolean())
             assertEquals(0L, input.readLong())
             assertEquals(0, input.readInt())
@@ -39,7 +38,6 @@ class DaemonProtocolTest {
             assertEquals(1, input.readInt())
             assertEquals(DaemonProtocol.UpstreamRole.Primary.protocolValue, input.readByte())
             assertEquals("rmnet_data0", input.readUtf())
-            assertEquals(1234, input.readInt())
             assertEquals(0, input.readInt())
             assertEquals(false, input.readBoolean())
         }
@@ -50,26 +48,21 @@ class DaemonProtocolTest {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
             ipForward = false,
-            forward = false,
-            masquerade = DaemonProtocol.MasqueradeMode.None,
+            masquerade = Routing.MasqueradeMode.None,
             ipv6Block = false,
             primaryNetwork = null,
             primaryRoutes = emptyList(),
             fallbackNetwork = null,
             upstreams = emptyList(),
             clients = emptyList(),
-            ipv6Nat = DaemonProtocol.Ipv6NatConfig("be.mygod.vpnhotspot\u0000android-id", 1280,
-                emptyList(), emptyList()),
+            ipv6Nat = DaemonProtocol.Ipv6NatConfig("be.mygod.vpnhotspot\u0000android-id"),
         ))
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
-            input.skip((1 + 1 + 1 + 1 + 8 + 4 + 8 + 4 + 4).toLong())
+            input.skip((1 + 1 + 1 + 8 + 4 + 8 + 4 + 4).toLong())
             assertEquals(true, input.readBoolean())
             assertEquals("be.mygod.vpnhotspot\u0000android-id", input.readUtf())
-            assertEquals(1280, input.readInt())
-            assertEquals(0, input.readInt())
-            assertEquals(0, input.readInt())
         }
     }
 

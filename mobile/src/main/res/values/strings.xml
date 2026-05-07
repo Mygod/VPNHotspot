@@ -130,7 +130,7 @@
 
     <string name="settings_upstream">Upstream</string>
     <string name="settings_downstream">Downstream</string>
-    <string name="settings_service_masquerade">IP Masquerade Mode</string>
+    <string name="settings_service_masquerade">IPv4 masquerade mode</string>
     <string name="settings_service_masquerade_none">None</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
@@ -138,7 +138,6 @@
     <string name="settings_service_ipv6_mode_block">Block</string>
     <string name="settings_service_ipv6_mode_system">System</string>
     <string name="settings_service_ipv6_mode_nat">NAT (Userspace)</string>
-    <string name="warn_ipv6_nat_failed">NAT66 setup failed: %s</string>
     <string name="settings_service_auto_start">Auto start services</string>
     <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
         update</string>

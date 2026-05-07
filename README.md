@@ -64,7 +64,10 @@ Default settings are picked to suit general use cases and maximize compatibility
 * (Android 12+) Platform-managed IPsec tunnel VPNs such as Pixel VPN and some `VpnManager`/`Ikev2VpnProfile`
   profiles may need a compatibility workaround. VPN Hotspot updates the live IPv4 tunnel forwarding policy in
   place while sharing and relies on Android to recreate the stock policy when that tunnel is rebuilt.
-* IP Masquerade Mode:
+
+### Downstream
+
+* IPv4 Masquerade Mode:
   - None:
     Nothing will be done to remap address/port from downstream.
     I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
@@ -74,9 +77,6 @@ Default settings are picked to suit general use cases and maximize compatibility
     Let your system handle masquerade.
     Android system will do a few extra things to make things like FTP and tethering traffic counter work.
     You should probably not use this if you are trying to hide your tethering activity from your carrier.
-
-### Downstream
-
 * IPv6 mode:
   - System:
     Leave IPv6 handling to the platform/system routing setup.

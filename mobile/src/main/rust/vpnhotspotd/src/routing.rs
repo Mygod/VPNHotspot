@@ -194,7 +194,7 @@ impl Runtime {
             ));
         }
         self.downstream_ipv4 = downstream_ipv4;
-        let desired = self.desired_mutations(next)?;
+        let desired = self.desired_mutations(next).await?;
         self.reconcile(desired).await
     }
 
@@ -203,7 +203,7 @@ impl Runtime {
     }
 
     async fn setup(&mut self, config: &SessionConfig) -> io::Result<()> {
-        let desired = self.desired_mutations(config)?;
+        let desired = self.desired_mutations(config).await?;
         self.reconcile(desired).await
     }
 
@@ -257,7 +257,7 @@ impl Runtime {
         }
     }
 
-    fn desired_mutations(&self, config: &SessionConfig) -> io::Result<Vec<RoutingMutation>> {
+    async fn desired_mutations(&self, config: &SessionConfig) -> io::Result<Vec<RoutingMutation>> {
         let mut mutations = Vec::new();
         if config.ip_forward {
             push_unique(
@@ -282,20 +282,18 @@ impl Runtime {
                 fwmark: None,
             }),
         );
-        if config.forward {
-            for chain in ["vpnhotspot_acl", "vpnhotspot_stats"] {
-                push_unique(
-                    &mut mutations,
-                    RoutingMutation::EnsureIptablesChain {
-                        target: IptablesTarget::Ipv4,
-                        table: "filter",
-                        chain,
-                    },
-                );
-            }
-            for rule in self.forward_rules(config) {
-                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-            }
+        for chain in ["vpnhotspot_acl", "vpnhotspot_stats"] {
+            push_unique(
+                &mut mutations,
+                RoutingMutation::EnsureIptablesChain {
+                    target: IptablesTarget::Ipv4,
+                    table: "filter",
+                    chain,
+                },
+            );
+        }
+        for rule in self.forward_rules(config) {
+            push_unique(&mut mutations, RoutingMutation::Iptables(rule));
         }
         if config.masquerade == MasqueradeMode::Simple {
             push_unique(
@@ -316,6 +314,16 @@ impl Runtime {
             if upstreams.contains(upstream) {
                 continue;
             }
+            let ifindex = match netlink::link_index(&self.netlink, &upstream.ifname).await {
+                Ok(ifindex) => ifindex,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) => {
+                    return Err(e).with_report_context_details(
+                        "routing.resolve_upstream_index",
+                        [("upstream", upstream.ifname.as_str())],
+                    );
+                }
+            };
             upstreams.push(upstream.clone());
             push_unique(
                 &mut mutations,
@@ -328,7 +336,7 @@ impl Runtime {
                         UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
                     }),
                     action: RuleAction::Lookup,
-                    table: 1000 + upstream.ifindex,
+                    table: 1000 + ifindex,
                     fwmark: None,
                 }),
             );
@@ -450,27 +458,25 @@ impl Runtime {
         let mut client_ips = Vec::new();
         let mut client_macs_v6 = Vec::new();
         for client in &config.clients {
-            if config.forward {
-                if !client_macs_v4.contains(&client.mac) {
-                    client_macs_v4.push(client.mac);
-                    for rule in Self::client_mac_v4_rules(
-                        config,
-                        &ClientConfig {
-                            mac: client.mac,
-                            ipv4: Vec::new(),
-                        },
-                    ) {
-                        push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-                    }
+            if !client_macs_v4.contains(&client.mac) {
+                client_macs_v4.push(client.mac);
+                for rule in Self::client_mac_v4_rules(
+                    config,
+                    &ClientConfig {
+                        mac: client.mac,
+                        ipv4: Vec::new(),
+                    },
+                ) {
+                    push_unique(&mut mutations, RoutingMutation::Iptables(rule));
                 }
-                for address in &client.ipv4 {
-                    if client_ips.contains(address) {
-                        continue;
-                    }
-                    client_ips.push(*address);
-                    for rule in Self::client_ip_stats_rules(config, *address) {
-                        push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-                    }
+            }
+            for address in &client.ipv4 {
+                if client_ips.contains(address) {
+                    continue;
+                }
+                client_ips.push(*address);
+                for rule in Self::client_ip_stats_rules(config, *address) {
+                    push_unique(&mut mutations, RoutingMutation::Iptables(rule));
                 }
             }
             if config.ipv6_nat.is_some() && !client_macs_v6.contains(&client.mac) {

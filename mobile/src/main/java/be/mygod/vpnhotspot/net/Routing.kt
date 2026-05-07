@@ -1,16 +1,13 @@
 package be.mygod.vpnhotspot.net
 
 import android.annotation.SuppressLint
-import android.net.IpPrefix
 import android.net.LinkProperties
 import android.net.MacAddress
 import android.net.Network
 import android.net.RouteInfo
 import android.os.Build
 import android.provider.Settings
-import android.system.Os
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
@@ -21,7 +18,6 @@ import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
-import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -38,10 +34,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
-import java.net.NetworkInterface
 
 /**
  * Builds and updates a root routing session for one downstream interface.
@@ -66,21 +60,30 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         Nat,
     }
 
-    enum class MasqueradeMode {
-        None,
-        Simple,
-        Netd,
+    enum class MasqueradeMode(val protocolValue: Byte) {
+        None(0),
+        Simple(1),
+        Netd(2),
     }
 
     private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> Timber.w(t) })
 
     @Volatile
     private var stopped = false
-    private var ipForward = false
-    private var forward = false
-    private var ipv6Block = false
-    private var ipv6Nat = false
-    private var masqueradeMode = MasqueradeMode.None
+
+    /**
+     * This command is available since API 23 and also handles IPv6 forwarding.
+     * https://android.googlesource.com/platform/system/netd/+/android-6.0.0_r1/server/CommandListener.cpp#527
+     *
+     * `requester` set by system service is assumed to be `tethering`.
+     * https://android.googlesource.com/platform/frameworks/base/+/bd249a19bba38a29e617aa849b2f42c3c281eff5/services/core/java/com/android/server/NetworkManagementService.java#1241
+     *
+     * The fallback approach is consistent with legacy system's IP forwarding approach,
+     * but may be broken when system tethering shutdown before local-only interfaces.
+     */
+    var ipForward = false
+    var ipv6Mode = Ipv6Mode.System
+    var masqueradeMode = MasqueradeMode.None
 
     private sealed class RoutingUpdate {
         class UpstreamSnapshot(
@@ -115,9 +118,8 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         val result = updateSignal.trySend(Unit)
         if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
     }
-    private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
     private inner class Upstream(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
-        val interfaces = linkedMapOf<String, Int>()
+        val interfaces = linkedSetOf<String>()
         var network: Network? = null
             private set
         var properties: LinkProperties? = null
@@ -129,34 +131,25 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         suspend fun update(network: Network?, properties: LinkProperties?) {
             this.network = network
             this.properties = properties
-            val nextInterfaces = linkedMapOf<String, Int>()
+            val nextInterfaces = linkedSetOf<String>()
             for (ifname in properties?.allInterfaceNames ?: emptyList()) {
-                try {
-                    val ifindex = Os.if_nametoindex(ifname).also {
-                        if (it <= 0) throw InterfaceGoneException(ifname)
-                    }
-                    nextInterfaces[ifname] = ifindex
-                    if (Build.VERSION.SDK_INT >= 31 && !interfaces.containsKey(ifname)) try {
-                        RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        SmartSnackbar.make(e).show()
-                        Timber.w(e)
-                    }
+                nextInterfaces += ifname
+                if (Build.VERSION.SDK_INT >= 31 && !interfaces.contains(ifname)) try {
+                    RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     SmartSnackbar.make(e).show()
-                    if (e !is CancellationException && e !is InterfaceGoneException) Timber.w(e)
+                    Timber.w(e)
                 }
             }
             interfaces.clear()
-            interfaces.putAll(nextInterfaces)
+            interfaces.addAll(nextInterfaces)
             daemonSession?.update()
         }
 
         fun appendConfig(target: MutableList<DaemonProtocol.UpstreamConfig>, seen: MutableSet<String>) {
-            for ((ifname, ifindex) in interfaces) if (seen.add(ifname)) {
-                target += DaemonProtocol.UpstreamConfig(role, ifname, ifindex)
-            }
+            for (ifname in interfaces) if (seen.add(ifname)) target += DaemonProtocol.UpstreamConfig(role, ifname)
         }
     }
     private val fallbackUpstream = Upstream(DaemonProtocol.UpstreamRole.Fallback)
@@ -164,84 +157,56 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
     private var daemonSession: DaemonSession? = null
 
     private inner class DaemonSession {
-        private val mtu by lazy { NetworkInterface.getByName(downstream)?.mtu ?: 1500 }
-
         private fun nextConfig(
             clientSnapshot: Map<Inet4Address, MacAddress> = clients,
             allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-        ): DaemonProtocol.SessionConfig {
-            val ipv6NatConfig = if (ipv6Nat) {
-                val interfaceAddresses = NetworkInterface.getByName(downstream)?.interfaceAddresses ?: emptyList()
-                DaemonProtocol.Ipv6NatConfig(
-                    prefixSeed = ipv6NatPrefixSeed,
-                    mtu = mtu,
-                    suppressedPrefixes = interfaceAddresses.mapNotNull { address ->
-                        val inet = address.address
-                        if (inet !is Inet6Address || inet.isLinkLocalAddress || inet.isLoopbackAddress ||
-                                inet.isMulticastAddress) null else {
-                            IpPrefix(inet, address.networkPrefixLength.toInt())
-                        }
-                    },
-                    cleanupPrefixes = emptyList(),
-                )
-            } else null
-            return DaemonProtocol.SessionConfig(
-                downstream = downstream,
-                ipForward = ipForward,
-                forward = forward,
-                masquerade = when (masqueradeMode) {
-                    MasqueradeMode.None -> DaemonProtocol.MasqueradeMode.None
-                    MasqueradeMode.Simple -> DaemonProtocol.MasqueradeMode.Simple
-                    MasqueradeMode.Netd -> DaemonProtocol.MasqueradeMode.Netd
-                },
-                ipv6Block = ipv6Block,
-                primaryNetwork = upstream.network,
-                primaryRoutes = upstream.properties?.allRoutes?.mapNotNull { route ->
-                    val destination = route.destination
-                    if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
-                } ?: emptyList(),
-                fallbackNetwork = fallbackUpstream.network,
-                upstreams = buildList {
-                    val seen = HashSet<String>()
-                    upstream.appendConfig(this, seen)
-                    fallbackUpstream.appendConfig(this, seen)
-                },
-                clients = buildList {
-                    for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
-                        clientSnapshot.filterValues { it == mac }.keys.toList()))
-                },
-                ipv6Nat = ipv6NatConfig,
-            )
-        }
+        ) = DaemonProtocol.SessionConfig(
+            downstream = downstream,
+            ipForward = ipForward,
+            masquerade = masqueradeMode,
+            ipv6Block = ipv6Mode == Ipv6Mode.Block,
+            primaryNetwork = upstream.network,
+            primaryRoutes = upstream.properties?.allRoutes?.mapNotNull { route ->
+                val destination = route.destination
+                if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
+            } ?: emptyList(),
+            fallbackNetwork = fallbackUpstream.network,
+            upstreams = buildList {
+                val seen = HashSet<String>()
+                upstream.appendConfig(this, seen)
+                fallbackUpstream.appendConfig(this, seen)
+            },
+            clients = buildList {
+                for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
+                    clientSnapshot.filterValues { it == mac }.keys.toList()))
+            },
+            ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
+        )
 
         suspend fun prepare() = DaemonController.startSession(nextConfig())
 
         suspend fun update(
             clientSnapshot: Map<Inet4Address, MacAddress> = clients,
             allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-        ): Boolean {
-            try {
-                DaemonController.replaceSession(nextConfig(clientSnapshot, allowedMacSnapshot))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-                return false
-            }
-            return true
+        ) = try {
+            DaemonController.replaceSession(nextConfig(clientSnapshot, allowedMacSnapshot))
+            true
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+            false
         }
 
         suspend fun close(
             removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
-        ) {
-            try {
-                DaemonController.removeSession(downstream, removeMode)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Timber.w(e)
-            }
+        ) = try {
+            DaemonController.removeSession(downstream, removeMode)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
         }
     }
 
@@ -282,42 +247,38 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         allowedMacs.addAll(nextAllowedMacs)
     }
 
-    /**
-     * This command is available since API 23 and also handles IPv6 forwarding.
-     * https://android.googlesource.com/platform/system/netd/+/android-6.0.0_r1/server/CommandListener.cpp#527
-     *
-     * `requester` set by system service is assumed to be `tethering`.
-     * https://android.googlesource.com/platform/frameworks/base/+/bd249a19bba38a29e617aa849b2f42c3c281eff5/services/core/java/com/android/server/NetworkManagementService.java#1241
-     *
-     * The fallback approach is consistent with legacy system's IP forwarding approach,
-     * but may be broken when system tethering shutdown before local-only interfaces.
-     */
-    fun ipForward() {
-        ipForward = true
-    }
-
-    fun disableIpv6() {
-        ipv6Block = true
-    }
-
-    fun ipv6Nat() {
-        ipv6Nat = true
-    }
-
-    fun forward() {
-        forward = true
-    }
-
-    fun masquerade(mode: MasqueradeMode) {
-        masqueradeMode = mode
-    }
-
-    fun start(onFailure: suspend () -> Unit, configure: suspend Routing.() -> Unit) {
+    fun start(onFailure: suspend () -> Unit) {
         lateinit var start: Job
         start = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                configure()
-                commit()
+                if (daemonSession == null) daemonSession = DaemonSession().apply { prepare() }
+                Timber.i("Started routing for $downstream by $caller")
+                check(updateWorker == null)
+                updateWorker = scope.launch {
+                    updateSignal.consumeEach {
+                        val batch = ArrayList<RoutingUpdate>()
+                        val done = synchronized(updateLock) {
+                            batch.addAll(pendingUpdates.values)
+                            pendingUpdates.clear()
+                            pendingBarrier.also { pendingBarrier = null }
+                        }
+                        for (next in batch) try {
+                            when (next) {
+                                is RoutingUpdate.UpstreamSnapshot -> if (!stopped) {
+                                    next.upstream.update(next.network, next.properties)
+                                }
+                                is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
+                            }
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            Timber.w(e)
+                        }
+                        done?.complete(Unit)
+                    }
+                }
+                FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+                UpstreamMonitor.registerCallback(upstream)
+                NetlinkNeighbourMonitor.registerCallback(this@Routing)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 Timber.w(e)
@@ -346,11 +307,9 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         start.start()
     }
 
-    suspend fun stop(withdrawCleanupPrefixes: Boolean = false) =
-        cleanupAfterStop(withdrawCleanupPrefixes, waitForStart = true)
-
-    private suspend fun cleanupAfterStop(withdrawCleanupPrefixes: Boolean, waitForStart: Boolean) =
-        withContext(NonCancellable) {
+    suspend fun stopForClean() = cleanupAfterStop(withdrawCleanupPrefixes = true, waitForStart = true)
+    private suspend fun cleanupAfterStop(withdrawCleanupPrefixes: Boolean,
+                                         waitForStart: Boolean) = withContext(NonCancellable) {
         var wait: CompletableDeferred<Unit>? = null
         var start: Job? = null
         val stop = CompletableDeferred<Unit>()
@@ -399,57 +358,8 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         }
     }
 
-    private suspend fun commit() {
-        if (daemonSession == null) {
-            val session = DaemonSession()
-            try {
-                session.prepare()
-                daemonSession = session
-            } catch (e: Exception) {
-                if (!ipv6Nat || e is CancellationException) throw e
-                Timber.w(e)
-                SmartSnackbar.make(app.getString(R.string.warn_ipv6_nat_failed, e.readableMessage)).show()
-                ipv6Nat = false
-                val fallback = DaemonSession()
-                try {
-                    fallback.prepare()
-                    daemonSession = fallback
-                } catch (fallbackError: Exception) {
-                    withContext(NonCancellable) { fallback.close() }
-                    throw fallbackError
-                }
-            }
-        }
-        Timber.i("Started routing for $downstream by $caller")
-        check(updateWorker == null)
-        updateWorker = scope.launch {
-            updateSignal.consumeEach {
-                val batch = ArrayList<RoutingUpdate>()
-                val done = synchronized(updateLock) {
-                    batch.addAll(pendingUpdates.values)
-                    pendingUpdates.clear()
-                    pendingBarrier.also { pendingBarrier = null }
-                }
-                for (next in batch) try {
-                    when (next) {
-                        is RoutingUpdate.UpstreamSnapshot -> if (!stopped) {
-                            next.upstream.update(next.network, next.properties)
-                        }
-                        is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
-                    }
-                } catch (e: Exception) {
-                    if (e is CancellationException) throw e
-                    Timber.w(e)
-                }
-                done?.complete(Unit)
-            }
-        }
-        FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
-        UpstreamMonitor.registerCallback(upstream)
-        NetlinkNeighbourMonitor.registerCallback(this)
-    }
     suspend fun revert() = withContext(NonCancellable) {
-        stop()
+        cleanupAfterStop(withdrawCleanupPrefixes = false, waitForStart = true)
         for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         allowedMacs.clear()

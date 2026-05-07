@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
@@ -46,14 +45,8 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
 
     private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
             RoutingManager(caller, downstream) {
-        override suspend fun Routing.configure() {
-            forward()
-            masquerade(masqueradeMode)
-            when (ipv6Mode) {
-                Ipv6Mode.Block -> disableIpv6()
-                Ipv6Mode.System -> { }
-                Ipv6Mode.Nat -> ipv6Nat()
-            }
+        override fun Routing.configure() {
+            ipv6Mode = RoutingManager.ipv6Mode
         }
     }
 

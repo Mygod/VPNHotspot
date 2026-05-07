@@ -30,9 +30,9 @@ impl Runtime {
         netlink: netlink::Handle,
         ipv6_address_changed: Arc<Notify>,
     ) -> io::Result<Option<Self>> {
-        let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
+        if config.ipv6_nat.is_none() {
             return Ok(None);
-        };
+        }
         let config_changed = Arc::new(Notify::new());
         let tcp_listener = tproxy::create_tcp_listener(config.reply_mark)?;
         let tcp = tcp_listener.local_addr()?.port();
@@ -59,7 +59,7 @@ impl Runtime {
         };
         Ok(Some(Self {
             ports: Ipv6NatPorts { tcp, udp },
-            cleanup_prefixes: ipv6_nat.cleanup_prefixes.clone(),
+            cleanup_prefixes: Vec::new(),
             netlink,
             config_changed,
             ra_task,
@@ -74,11 +74,6 @@ impl Runtime {
         let Some(next) = next.ipv6_nat.as_ref() else {
             return;
         };
-        for prefix in next.cleanup_prefixes.iter().copied() {
-            if !self.cleanup_prefixes.contains(&prefix) {
-                self.cleanup_prefixes.push(prefix);
-            }
-        }
         if let Some(previous) = previous.ipv6_nat.as_ref() {
             if previous.gateway != next.gateway || previous.prefix_len != next.prefix_len {
                 let previous_prefix = Route {
