@@ -1,5 +1,6 @@
 mod control;
 mod dns;
+mod downstream;
 mod firewall;
 mod nat66;
 mod neighbour;

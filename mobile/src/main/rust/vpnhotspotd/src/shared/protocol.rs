@@ -491,8 +491,6 @@ impl<'a> Parser<'a> {
 
     fn read_session_config(&mut self) -> io::Result<SessionConfig> {
         let downstream = self.read_utf()?;
-        let dns_bind_address = self.read_ipv4()?;
-        let downstream_prefix_len = self.read_ipv4_prefix_len()?;
         let ip_forward = self.read_bool()?;
         let forward = self.read_bool()?;
         let masquerade = self.read_masquerade_mode()?;
@@ -525,8 +523,6 @@ impl<'a> Parser<'a> {
         };
         Ok(SessionConfig {
             downstream,
-            dns_bind_address,
-            downstream_prefix_len,
             reply_mark: DAEMON_REPLY_MARK,
             ip_forward,
             forward,
@@ -670,17 +666,6 @@ impl<'a> Parser<'a> {
         Ok(prefix_len as u8)
     }
 
-    fn read_ipv4_prefix_len(&mut self) -> io::Result<u8> {
-        let prefix_len = self.read_i32()?;
-        if !(0..=32).contains(&prefix_len) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid IPv4 prefix length {prefix_len}"),
-            ));
-        }
-        Ok(prefix_len as u8)
-    }
-
     fn read_ip_address(&mut self) -> io::Result<IpAddr> {
         let length = self.read_u32()?;
         let bytes = self.read_exact(length as usize)?;
@@ -746,7 +731,6 @@ mod tests {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
         write_utf(&mut packet, "wlan0");
-        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
         write_session_flags(&mut packet);
         packet.extend_from_slice(&123u64.to_be_bytes());
         packet.extend_from_slice(&2i32.to_be_bytes());
@@ -767,8 +751,6 @@ mod tests {
             panic!("expected start session");
         };
         assert_eq!(config.downstream, "wlan0");
-        assert_eq!(config.dns_bind_address, Ipv4Addr::new(192, 0, 2, 1));
-        assert_eq!(config.downstream_prefix_len, 24);
         assert_eq!(config.reply_mark, DAEMON_REPLY_MARK);
         assert!(config.forward);
         assert_eq!(config.masquerade, MasqueradeMode::Simple);
@@ -792,7 +774,6 @@ mod tests {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_REPLACE_SESSION.to_be_bytes());
         write_utf(&mut packet, "wlan0");
-        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
         write_session_flags(&mut packet);
         packet.extend_from_slice(&0u64.to_be_bytes());
         packet.extend_from_slice(&0i32.to_be_bytes());
@@ -814,7 +795,6 @@ mod tests {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
         write_utf(&mut packet, "wlan0");
-        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
         write_session_flags(&mut packet);
         packet.extend_from_slice(&0u64.to_be_bytes());
         packet.extend_from_slice(&0i32.to_be_bytes());
@@ -847,7 +827,6 @@ mod tests {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
         write_utf(&mut packet, "wlan0");
-        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
         write_session_flags(&mut packet);
         packet.extend_from_slice(&123u64.to_be_bytes());
         packet.extend_from_slice(&(-1i32).to_be_bytes());
@@ -865,7 +844,6 @@ mod tests {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_START_SESSION.to_be_bytes());
         write_utf(&mut packet, "wlan0");
-        packet.extend_from_slice(&Ipv4Addr::new(192, 0, 2, 1).octets());
         write_session_flags(&mut packet);
         packet.extend_from_slice(&123u64.to_be_bytes());
         packet.extend_from_slice(&1i32.to_be_bytes());
@@ -1016,7 +994,6 @@ mod tests {
     }
 
     fn write_session_flags(packet: &mut Vec<u8>) {
-        packet.extend_from_slice(&24i32.to_be_bytes());
         packet.push(0);
         packet.push(1);
         packet.push(1);

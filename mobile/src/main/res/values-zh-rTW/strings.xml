@@ -173,7 +173,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">未知錯誤 #%d</string>
-    <string name="exception_interface_not_found">重大錯誤：找不到下游介面</string>
     <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
 

@@ -159,7 +159,6 @@
         <item quantity="other">%d 個のデバイス</item>
     </plurals>
     <string name="failure_reason_unknown">不明 #%d</string>
-    <string name="exception_interface_not_found">致命的: ダウンストリームインターフェースが見つかりません</string>
     <string name="noisy_su_failure">問題が発生しました。デバッグ情報を確認してください。</string>
     <string name="permission_missing">権限がありません</string>
     <string name="configuration_view">Wi\u2011Fi の構成</string>

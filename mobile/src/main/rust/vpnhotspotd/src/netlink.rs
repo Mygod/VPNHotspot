@@ -7,7 +7,7 @@ use rtnetlink::{
     packet_core::NetlinkPayload,
     packet_route::{
         link::{LinkAttribute, LinkMessage},
-        RouteNetlinkMessage,
+        AddressFamily, RouteNetlinkMessage,
     },
     MulticastGroup,
 };
@@ -43,6 +43,7 @@ impl Handle {
 
 pub(crate) struct Runtime {
     handle: Handle,
+    ipv4_address_changed: Arc<Notify>,
     ipv6_address_changed: Arc<Notify>,
     neighbour_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
     task: JoinHandle<()>,
@@ -52,11 +53,15 @@ impl Runtime {
     pub(crate) fn new() -> io::Result<Self> {
         let (connection, handle, mut messages) = rtnetlink::new_multicast_connection(&[
             MulticastGroup::Neigh,
+            MulticastGroup::Link,
+            MulticastGroup::Ipv4Ifaddr,
             MulticastGroup::Ipv6Ifaddr,
         ])?;
+        let ipv4_address_changed = Arc::new(Notify::new());
         let ipv6_address_changed = Arc::new(Notify::new());
         let neighbour_events =
             Arc::new(StdMutex::new(None::<UnboundedSender<RouteNetlinkMessage>>));
+        let task_ipv4_address_changed = ipv4_address_changed.clone();
         let task_ipv6_address_changed = ipv6_address_changed.clone();
         let task_neighbour_events = neighbour_events.clone();
         let task = tokio::spawn(async move {
@@ -67,6 +72,7 @@ impl Runtime {
                     message = messages.next() => match message {
                         Some((message, _)) => dispatch_message(
                                 message.payload,
+                                &task_ipv4_address_changed,
                                 &task_ipv6_address_changed,
                                 &task_neighbour_events,
                             ),
@@ -77,6 +83,7 @@ impl Runtime {
         });
         Ok(Self {
             handle: Handle::new(handle),
+            ipv4_address_changed,
             ipv6_address_changed,
             neighbour_events,
             task,
@@ -85,6 +92,10 @@ impl Runtime {
 
     pub(crate) fn handle(&self) -> Handle {
         self.handle.clone()
+    }
+
+    pub(crate) fn ipv4_address_changed(&self) -> Arc<Notify> {
+        self.ipv4_address_changed.clone()
     }
 
     pub(crate) fn ipv6_address_changed(&self) -> Arc<Notify> {
@@ -213,6 +224,7 @@ pub(crate) fn to_io_error(error: rtnetlink::Error) -> io::Error {
 
 fn dispatch_message(
     payload: NetlinkPayload<RouteNetlinkMessage>,
+    ipv4_address_changed: &Notify,
     ipv6_address_changed: &Notify,
     neighbour_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
 ) {
@@ -221,8 +233,15 @@ fn dispatch_message(
             message @ (RouteNetlinkMessage::NewNeighbour(_) | RouteNetlinkMessage::DelNeighbour(_)),
         ) => send_neighbour_event(neighbour_events, message),
         NetlinkPayload::InnerMessage(
-            RouteNetlinkMessage::NewAddress(_) | RouteNetlinkMessage::DelAddress(_),
-        ) => ipv6_address_changed.notify_waiters(),
+            RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_),
+        ) => ipv4_address_changed.notify_waiters(),
+        NetlinkPayload::InnerMessage(
+            RouteNetlinkMessage::NewAddress(message) | RouteNetlinkMessage::DelAddress(message),
+        ) => match message.header.family {
+            AddressFamily::Inet => ipv4_address_changed.notify_waiters(),
+            AddressFamily::Inet6 => ipv6_address_changed.notify_waiters(),
+            _ => {}
+        },
         _ => {}
     }
 }

@@ -25,12 +25,14 @@ import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -40,7 +42,6 @@ import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.NetworkInterface
-import java.net.SocketException
 
 /**
  * Builds and updates a root routing session for one downstream interface.
@@ -71,22 +72,6 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         Netd,
     }
 
-    class InterfaceNotFoundException(cause: Throwable) : SocketException() {
-        init {
-            initCause(cause)
-        }
-        override val message: String get() = app.getString(R.string.exception_interface_not_found)
-    }
-
-    private val hostAddress = try {
-        val iface = NetworkInterface.getByName(downstream) ?: error("iface not found")
-        val addresses = iface.interfaceAddresses!!.filter { it.address is Inet4Address && it.networkPrefixLength <= 32 }
-        if (addresses.size > 1) error("More than one addresses was found: $addresses")
-        addresses.first()
-    } catch (e: Exception) {
-        throw InterfaceNotFoundException(e)
-    }
-    private val hostPrefixLength = hostAddress.networkPrefixLength.toInt()
     private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> Timber.w(t) })
 
     @Volatile
@@ -110,6 +95,8 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
     private val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
     private var pendingBarrier: CompletableDeferred<Unit>? = null
     private val updateSignal = Channel<Unit>(Channel.CONFLATED)
+    private var startJob: Job? = null
+    private var stopBarrier: CompletableDeferred<Unit>? = null
     private var updateWorker: Job? = null
     private fun enqueue(update: RoutingUpdate) {
         synchronized(updateLock) {
@@ -200,8 +187,6 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             } else null
             return DaemonProtocol.SessionConfig(
                 downstream = downstream,
-                dnsBindAddress = hostAddress.address as Inet4Address,
-                downstreamPrefixLength = hostPrefixLength,
                 ipForward = ipForward,
                 forward = forward,
                 masquerade = when (masqueradeMode) {
@@ -327,35 +312,94 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         masqueradeMode = mode
     }
 
-    suspend fun stop(withdrawCleanupPrefixes: Boolean = false) {
-        val done = synchronized(updateLock) {
-            stopped = true
-            if (updateWorker?.isActive == true) {
-                pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
-            } else null
-        }
-        NetlinkNeighbourMonitor.unregisterCallback(this)
-        FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
-        UpstreamMonitor.unregisterCallback(upstream)
-        if (done != null) {
-            val result = updateSignal.trySend(Unit)
-            if (result.isSuccess) {
-                done.await()
-            } else {
-                result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+    fun start(onFailure: suspend () -> Unit, configure: suspend Routing.() -> Unit) {
+        lateinit var start: Job
+        start = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                configure()
+                commit()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+                withContext(NonCancellable) {
+                    synchronized(updateLock) {
+                        if (startJob === start) startJob = null
+                    }
+                    cleanupAfterStop(withdrawCleanupPrefixes = false, waitForStart = false)
+                    onFailure()
+                }
+            } finally {
+                synchronized(updateLock) {
+                    if (startJob === start) startJob = null
+                }
             }
         }
-        if (clients.isNotEmpty()) TrafficRecorder.update()
-        daemonSession?.close(removeMode = if (withdrawCleanupPrefixes) {
-            DaemonProtocol.RemoveMode.WithdrawCleanup
-        } else DaemonProtocol.RemoveMode.PreserveCleanup)
-        daemonSession = null
-        updateSignal.close()
-        scope.cancel("Routing stopped")
-        Timber.i("Stopped routing for $downstream by $caller")
+        synchronized(updateLock) {
+            if (stopped) {
+                start.cancel()
+                return
+            }
+            check(startJob == null)
+            startJob = start
+        }
+        start.start()
     }
 
-    suspend fun commit() {
+    suspend fun stop(withdrawCleanupPrefixes: Boolean = false) =
+        cleanupAfterStop(withdrawCleanupPrefixes, waitForStart = true)
+
+    private suspend fun cleanupAfterStop(withdrawCleanupPrefixes: Boolean, waitForStart: Boolean) =
+        withContext(NonCancellable) {
+        var wait: CompletableDeferred<Unit>? = null
+        var start: Job? = null
+        val stop = CompletableDeferred<Unit>()
+        synchronized(updateLock) {
+            wait = stopBarrier
+            if (wait == null) {
+                stopBarrier = stop
+                stopped = true
+                start = startJob.also { startJob = null }
+            }
+        }
+        val pending = wait
+        if (pending != null) {
+            if (!waitForStart) return@withContext
+            pending.await()
+            return@withContext
+        }
+        try {
+            if (waitForStart) start?.cancelAndJoin()
+            val done = synchronized(updateLock) {
+                if (updateWorker?.isActive == true) {
+                    pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
+                } else null
+            }
+            NetlinkNeighbourMonitor.unregisterCallback(this@Routing)
+            FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
+            UpstreamMonitor.unregisterCallback(upstream)
+            if (done != null) {
+                val result = updateSignal.trySend(Unit)
+                if (result.isSuccess) {
+                    done.await()
+                } else {
+                    result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
+                }
+            }
+            if (clients.isNotEmpty()) TrafficRecorder.update()
+            daemonSession?.close(removeMode = if (withdrawCleanupPrefixes) {
+                DaemonProtocol.RemoveMode.WithdrawCleanup
+            } else DaemonProtocol.RemoveMode.PreserveCleanup)
+            daemonSession = null
+            updateSignal.close()
+            scope.cancel("Routing stopped")
+            Timber.i("Stopped routing for $downstream by $caller")
+        } finally {
+            stop.complete(Unit)
+        }
+    }
+
+    private suspend fun commit() {
         if (daemonSession == null) {
             val session = DaemonSession()
             try {

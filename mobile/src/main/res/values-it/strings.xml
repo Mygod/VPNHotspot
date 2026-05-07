@@ -136,7 +136,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">sconosciuta #%d</string>
-    <string name="exception_interface_not_found">Fatale: Interfaccia Downstream non trovata</string>
     <string name="noisy_su_failure">Qualcosa è andato storto, per favore controlla le informazioni di debug.</string>
 
     <string name="configuration_view">Configurazione Wi\u2011Fi</string>

@@ -163,7 +163,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">desconhecido #%d</string>
-    <string name="exception_interface_not_found">Fatal: Interface de downstream não encontrada</string>
     <string name="noisy_su_failure">Algo se saiu errado. Por favor, verifique o log de depuração</string>
     <string name="permission_missing">Permissão faltando.</string>
 

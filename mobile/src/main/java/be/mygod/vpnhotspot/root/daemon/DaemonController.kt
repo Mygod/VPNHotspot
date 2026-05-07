@@ -80,6 +80,11 @@ object DaemonController {
         val leaseAdded = lock.withLock { activeSessions.add(config.downstream) }
         try {
             return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
+        } catch (e: CancellationException) {
+            if (leaseAdded) withContext(NonCancellable) {
+                removeSession(config.downstream)
+            }
+            throw e
         } catch (e: DaemonTransport.DaemonException) {
             if (leaseAdded) lock.withLock {
                 activeSessions.remove(config.downstream)
@@ -107,7 +112,13 @@ object DaemonController {
         downstream: String,
         removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
     ) {
-        if (lock.withLock { output == null }) return
+        if (lock.withLock {
+            if (output == null) {
+                activeSessions.remove(downstream)
+                maybeShutdownLocked()
+                true
+            } else false
+        }) return
         try {
             DaemonProtocol.readAck(request(DaemonProtocol.removeSession(downstream, removeMode)))
         } catch (e: Exception) {

@@ -17,6 +17,7 @@ use crate::{
     firewall::{self, IptablesTarget},
     netlink, report,
 };
+use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, MasqueradeMode, SessionConfig,
     SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
@@ -155,6 +156,7 @@ impl RoutingMutation {
 
 pub(crate) struct Runtime {
     ports: SessionPorts,
+    downstream_ipv4: DownstreamIpv4,
     netlink: netlink::Handle,
     applied: Vec<RoutingMutation>,
 }
@@ -162,11 +164,13 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) async fn start(
         config: &SessionConfig,
+        downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
     ) -> io::Result<Self> {
         let mut runtime = Self {
             ports,
+            downstream_ipv4,
             netlink,
             applied: Vec::new(),
         };
@@ -181,6 +185,7 @@ impl Runtime {
         &mut self,
         previous: &SessionConfig,
         next: &SessionConfig,
+        downstream_ipv4: DownstreamIpv4,
     ) -> io::Result<()> {
         if previous.downstream != next.downstream {
             return Err(io::Error::new(
@@ -188,6 +193,7 @@ impl Runtime {
                 "routing session downstream cannot change",
             ));
         }
+        self.downstream_ipv4 = downstream_ipv4;
         let desired = self.desired_mutations(next)?;
         self.reconcile(desired).await
     }
@@ -330,7 +336,7 @@ impl Runtime {
                 MasqueradeMode::None => {}
                 MasqueradeMode::Simple => push_unique(
                     &mut mutations,
-                    RoutingMutation::Iptables(Self::upstream_masquerade_rule(config, upstream)),
+                    RoutingMutation::Iptables(self.upstream_masquerade_rule(upstream)),
                 ),
                 MasqueradeMode::Netd => push_unique(
                     &mut mutations,
@@ -495,7 +501,7 @@ impl Runtime {
                         "-p".into(),
                         protocol.into(),
                         "-d".into(),
-                        config.dns_bind_address.to_string(),
+                        self.downstream_ipv4.address.to_string(),
                         "--dport".into(),
                         "53".into(),
                         "-j".into(),
@@ -572,14 +578,14 @@ impl Runtime {
         )
     }
 
-    fn upstream_masquerade_rule(config: &SessionConfig, upstream: &UpstreamConfig) -> IptablesRule {
+    fn upstream_masquerade_rule(&self, upstream: &UpstreamConfig) -> IptablesRule {
         IptablesRule::new(
             IptablesTarget::Ipv4,
             "nat",
             "vpnhotspot_masquerade",
             vec![
                 "-s".into(),
-                host_subnet(config),
+                host_subnet(self.downstream_ipv4),
                 "-o".into(),
                 upstream.ifname.clone(),
                 "-j".into(),
@@ -1634,17 +1640,17 @@ async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
     }
 }
 
-fn host_subnet(config: &SessionConfig) -> String {
-    let raw = u32::from(config.dns_bind_address);
-    let mask = if config.downstream_prefix_len == 0 {
+fn host_subnet(downstream_ipv4: DownstreamIpv4) -> String {
+    let raw = u32::from(downstream_ipv4.address);
+    let mask = if downstream_ipv4.prefix_len == 0 {
         0
     } else {
-        u32::MAX << (32 - config.downstream_prefix_len)
+        u32::MAX << (32 - downstream_ipv4.prefix_len)
     };
     format!(
         "{}/{}",
         Ipv4Addr::from(raw & mask),
-        config.downstream_prefix_len
+        downstream_ipv4.prefix_len
     )
 }
 
@@ -1681,23 +1687,13 @@ mod tests {
 
     #[test]
     fn host_subnet_masks_host_bits() {
-        let config = SessionConfig {
-            downstream: "wlan0".to_string(),
-            dns_bind_address: Ipv4Addr::new(192, 168, 43, 1),
-            downstream_prefix_len: 24,
-            reply_mark: DAEMON_REPLY_MARK,
-            ip_forward: false,
-            forward: true,
-            masquerade: MasqueradeMode::Simple,
-            ipv6_block: false,
-            primary_network: None,
-            primary_routes: Vec::new(),
-            fallback_network: None,
-            upstreams: Vec::new(),
-            clients: Vec::new(),
-            ipv6_nat: None,
-        };
-        assert_eq!(host_subnet(&config), "192.168.43.0/24");
+        assert_eq!(
+            host_subnet(DownstreamIpv4 {
+                address: Ipv4Addr::new(192, 168, 43, 1),
+                prefix_len: 24,
+            }),
+            "192.168.43.0/24"
+        );
     }
 
     #[test]

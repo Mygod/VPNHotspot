@@ -82,7 +82,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
             val toRemove = downstreams.toMutableMap()   // make a copy
             for (iface in interfaces) {
                 val downstream = toRemove.remove(iface) ?: continue
-                if (downstream.monitor && !downstream.start()) downstream.stop()
+                if (downstream.monitor && !downstream.start()) dismissIfApplicable()
             }
             for ((iface, downstream) in toRemove) {
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
@@ -138,8 +138,6 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                         check(downstreams.put(iface, downstream) == null)
                         if (!downstream.start()) {
                             dismissIfApplicable()
-                            downstreams.remove(iface, downstream)
-                            downstream.stop()
                         }
                     }
                 }
@@ -150,10 +148,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                     if (downstream == null) {
                         val monitored = Downstream(this@TetheringService, iface, true)
                         check(downstreams.put(iface, monitored) == null)
-                        if (!monitored.start(true)) {
-                            dismissIfApplicable()
-                            monitored.stop()
-                        }
+                        if (!monitored.start()) dismissIfApplicable()
                     } else downstream.monitor = true
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }

@@ -8,7 +8,7 @@ import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -37,20 +37,54 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
          */
         private val active = mutableMapOf<String, RoutingManager>()
         private val monitor = Mutex()
+        private var cleaning: CompletableDeferred<Unit>? = null
 
-        suspend fun clean(reinit: Boolean = true) = monitor.withLock {
-            if (!reinit && active.isEmpty()) return@withLock
-            for (manager in active.values) {
-                manager.routing?.stop(withdrawCleanupPrefixes = true)
+        suspend fun clean(reinit: Boolean = true) {
+            val clean = CompletableDeferred<Unit>()
+            monitor.withLock {
+                cleaning?.let { return@withLock it }
+                cleaning = clean
+                null
+            }?.let {
+                it.await()
+                return
             }
             try {
-                Routing.clean()
-            } catch (e: Exception) {
-                Timber.d(e)
-                SmartSnackbar.make(e).show()
-                return@withLock
+                val routings = monitor.withLock {
+                    if (!reinit && active.isEmpty()) null else active.values.mapNotNull { manager ->
+                        manager.routing.also {
+                            manager.routing = null
+                        }
+                    }
+                } ?: return
+                for (routing in routings) routing.stop(withdrawCleanupPrefixes = true)
+                try {
+                    Routing.clean()
+                } catch (e: Exception) {
+                    Timber.d(e)
+                    SmartSnackbar.make(e).show()
+                    return
+                }
+                val restarts = if (reinit) monitor.withLock {
+                    active.values.mapNotNull { manager ->
+                        if (!manager.started || manager.routing != null) null else {
+                            val routing = Routing(manager.caller, manager.downstream)
+                            manager.routing = routing
+                            manager to routing
+                        }
+                    }
+                } else emptyList()
+                monitor.withLock {
+                    if (cleaning === clean) cleaning = null
+                }
+                clean.complete(Unit)
+                for ((manager, routing) in restarts) manager.startRouting(routing)
+            } finally {
+                monitor.withLock {
+                    if (cleaning === clean) cleaning = null
+                }
+                clean.complete(Unit)
             }
-            if (reinit) for (manager in active.values) manager.initRoutingLocked()
         }
     }
 
@@ -77,59 +111,101 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     private var routing: Routing? = null
     private var isWifi = forceWifi || TetherType.ofInterface(downstream).isWifi
 
-    suspend fun start(fromMonitor: Boolean = false) = monitor.withLock {
-        started = true
-        when (val other = active.putIfAbsent(downstream, this)) {
-            null -> {
-                if (isWifi) WifiDoubleLock.acquire(this)
-                if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-                    val isWifiNow = TetherType.ofInterface(downstream).isWifi
-                    if (isWifi != isWifiNow) {
-                        if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
-                        isWifi = isWifiNow
+    suspend fun start(): Boolean {
+        while (true) {
+            var clean: CompletableDeferred<Unit>? = null
+            val routing = monitor.withLock {
+                val currentClean = cleaning
+                if (currentClean != null) {
+                    clean = currentClean
+                    null
+                } else {
+                    when (val other = active.putIfAbsent(downstream, this@RoutingManager)) {
+                        null -> {
+                            started = true
+                            acquireLocked()
+                            Routing(caller, downstream).also { this@RoutingManager.routing = it }
+                        }
+                        this@RoutingManager -> {
+                            if (!started) null else if (this@RoutingManager.routing != null) {
+                                return true
+                            } else {
+                                Routing(caller, downstream).also { this@RoutingManager.routing = it }
+                            }
+                        }
+                        else -> {
+                            val msg = "Double routing detected for $downstream from $caller != ${other.caller}"
+                            Timber.w(RuntimeException(msg))
+                            SmartSnackbar.make(msg).show()
+                            null
+                        }
                     }
                 }
-                initRoutingLocked(fromMonitor)
             }
-            this -> true    // already started
-            else -> {
-                val msg = "Double routing detected for $downstream from $caller != ${other.caller}"
-                Timber.w(RuntimeException(msg))
-                SmartSnackbar.make(msg).show()
-                false
+            val pendingClean = clean
+            if (pendingClean != null) {
+                pendingClean.await()
+                continue
+            }
+            if (routing == null) return false
+            startRouting(routing)
+            return true
+        }
+    }
+
+    private fun acquireLocked() {
+        if (isWifi) WifiDoubleLock.acquire(this)
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this@RoutingManager] = {
+            val isWifiNow = TetherType.ofInterface(downstream).isWifi
+            if (isWifi != isWifiNow) {
+                if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
+                isWifi = isWifiNow
             }
         }
     }
 
-    private suspend fun initRoutingLocked(fromMonitor: Boolean = false) = try {
-        routing = Routing(caller, downstream).apply {
-            try {
-                configure()
-                commit()
-            } catch (e: Exception) {
-                revert()
-                throw e
-            }
+    private fun startRouting(routing: Routing) {
+        routing.start(
+            onFailure = {
+                monitor.withLock {
+                    if (this.routing === routing) {
+                        this.routing = null
+                        if (started) releaseLocked()
+                        started = false
+                        active.remove(downstream, this@RoutingManager)
+                    }
+                }
+            },
+        ) {
+            configure()
         }
-        true
-    } catch (e: Exception) {
-        when (e) {
-            is Routing.InterfaceNotFoundException -> if (!fromMonitor) Timber.d(e)
-            !is CancellationException -> Timber.w(e)
-        }
-        if (e !is Routing.InterfaceNotFoundException || !fromMonitor) SmartSnackbar.make(e).show()
-        routing = null
-        false
+    }
+
+    private fun releaseLocked() {
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
+        if (isWifi) WifiDoubleLock.release(this)
     }
 
     protected abstract suspend fun Routing.configure()
 
-    suspend fun stop() = monitor.withLock {
-        started = false
-        if (active.remove(downstream, this)) {
-            if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
-            if (isWifi) WifiDoubleLock.release(this)
-            routing?.revert()
+    suspend fun stop() {
+        val routing = monitor.withLock {
+            if (active[downstream] !== this@RoutingManager || (!started && routing == null)) {
+                started = false
+                null
+            } else {
+                if (started) releaseLocked()
+                started = false
+                routing.also {
+                    routing = null
+                    if (it == null) active.remove(downstream, this@RoutingManager)
+                }
+            }
+        } ?: return
+        try {
+            routing.revert()
+        } finally {
+            monitor.withLock { active.remove(downstream, this@RoutingManager) }
         }
     }
 }

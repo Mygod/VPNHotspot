@@ -18,8 +18,6 @@ pub const LOCAL_NETWORK_TABLE: u32 = 99;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionConfig {
     pub downstream: String,
-    pub dns_bind_address: Ipv4Addr,
-    pub downstream_prefix_len: u8,
     pub reply_mark: u32,
     pub ip_forward: bool,
     pub forward: bool,
@@ -204,8 +202,6 @@ mod tests {
     ) -> SessionConfig {
         SessionConfig {
             downstream: "wlan0".to_string(),
-            dns_bind_address: Ipv4Addr::new(192, 0, 2, 1),
-            downstream_prefix_len: 24,
             reply_mark: 0,
             ip_forward: false,
             forward: false,

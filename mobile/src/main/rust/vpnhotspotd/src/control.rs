@@ -194,7 +194,13 @@ async fn handle_command(
     cancel: CancellationToken,
 ) -> io::Result<CallOutput> {
     match parse_command(packet).with_report_context("control.parse_command")? {
-        Command::StartSession(config) => start_session(&state, config).await.map(CallOutput::Reply),
+        Command::StartSession(config) => match start_session(&state, config, &cancel).await {
+            Ok(reply) => Ok(CallOutput::Reply(reply)),
+            Err(e) if cancel.is_cancelled() && e.kind() == io::ErrorKind::Interrupted => {
+                Ok(CallOutput::NoFrame)
+            }
+            Err(e) => Err(e),
+        },
         Command::ReplaceSession(config) => {
             replace_session(&state, config).await?;
             Ok(CallOutput::Reply(ok_packet()))
@@ -252,6 +258,7 @@ async fn handle_command(
 async fn start_session(
     state: &State,
     config: vpnhotspotd::shared::model::SessionConfig,
+    cancel: &CancellationToken,
 ) -> io::Result<Vec<u8>> {
     let downstream = config.downstream.clone();
     let slot = Arc::new(Mutex::new(None));
@@ -269,7 +276,7 @@ async fn start_session(
         sessions.insert(downstream.clone(), slot.clone());
     }
     let mut guard = slot.lock().await;
-    match Session::start(config, &state.netlink)
+    match Session::start(config, &state.netlink, cancel)
         .await
         .with_report_context_details(
             "control.start_session",

@@ -7,7 +7,6 @@ import kotlinx.io.readString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.net.Inet4Address
 import java.net.InetAddress
 
 class DaemonProtocolTest {
@@ -15,8 +14,6 @@ class DaemonProtocolTest {
     fun startSessionEncodesSessionConfig() {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
-            dnsBindAddress = InetAddress.getByName("192.0.2.1") as Inet4Address,
-            downstreamPrefixLength = 24,
             ipForward = true,
             forward = true,
             masquerade = DaemonProtocol.MasqueradeMode.Simple,
@@ -32,8 +29,6 @@ class DaemonProtocolTest {
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
-            assertEquals("192.0.2.1", input.readIpv4Address())
-            assertEquals(24, input.readInt())
             assertEquals(true, input.readBoolean())
             assertEquals(true, input.readBoolean())
             assertEquals(DaemonProtocol.MasqueradeMode.Simple.protocolValue, input.readByte())
@@ -54,8 +49,6 @@ class DaemonProtocolTest {
     fun startSessionEncodesIpv6NatPrefixSeed() {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
-            dnsBindAddress = InetAddress.getByName("192.0.2.1") as Inet4Address,
-            downstreamPrefixLength = 24,
             ipForward = false,
             forward = false,
             masquerade = DaemonProtocol.MasqueradeMode.None,
@@ -71,7 +64,7 @@ class DaemonProtocolTest {
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
-            input.skip((4 + 4 + 1 + 1 + 1 + 1 + 8 + 4 + 8 + 4 + 4).toLong())
+            input.skip((1 + 1 + 1 + 1 + 8 + 4 + 8 + 4 + 4).toLong())
             assertEquals(true, input.readBoolean())
             assertEquals("be.mygod.vpnhotspot\u0000android-id", input.readUtf())
             assertEquals(1280, input.readInt())
@@ -217,8 +210,6 @@ class DaemonProtocolTest {
     }
 
     private fun Source.readBoolean() = readByte().toInt() != 0
-
-    private fun Source.readIpv4Address() = InetAddress.getByAddress(readByteArray(4)).hostAddress
 
     private fun Source.readUtf() = readString(readInt().toLong())
 

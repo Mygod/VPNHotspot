@@ -29,8 +29,6 @@ object DaemonProtocol {
 
     data class SessionConfig(
         val downstream: String,
-        val dnsBindAddress: Inet4Address,
-        val downstreamPrefixLength: Int,
         val ipForward: Boolean,
         val forward: Boolean,
         val masquerade: MasqueradeMode,
@@ -148,8 +146,6 @@ object DaemonProtocol {
 
     private fun Sink.writeSession(config: SessionConfig) {
         writeUtf(config.downstream)
-        writeInet4Address(config.dnsBindAddress)
-        writeInt(config.downstreamPrefixLength)
         writeByte((if (config.ipForward) 1 else 0).toByte())
         writeByte((if (config.forward) 1 else 0).toByte())
         writeByte(config.masquerade.protocolValue)
