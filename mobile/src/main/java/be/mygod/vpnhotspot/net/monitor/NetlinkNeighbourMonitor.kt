@@ -89,7 +89,18 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         try {
             neighbours = persistentMapOf()
             waitFor?.join()
-            collectGeneration()
+            var first = true
+            DaemonController.neighbourMonitor().collect { deltas ->
+                val old = neighbours
+                neighbours = old.mutate {
+                    for (delta in deltas) when (delta) {
+                        is DaemonProtocol.NeighbourDelta.Upsert -> it[IpDev(delta.neighbour)] = delta.neighbour
+                        is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
+                    }
+                }
+                if (first || neighbours != old) aggregateChannel.trySend(neighbours).exceptionOrNull()?.let { throw it }
+                first = false
+            }
             neighbours = persistentMapOf()
         } catch (e: CancellationException) {
             throw e
@@ -98,25 +109,6 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
             SmartSnackbar.make(e).show()
             neighbours = persistentMapOf()
         }
-    }
-
-    private suspend fun collectGeneration() {
-        var first = true
-        DaemonController.neighbourMonitor().collect {
-            updateLocked(it, first)
-            first = false
-        }
-    }
-
-    private fun updateLocked(deltas: List<DaemonProtocol.NeighbourDelta>, force: Boolean) {
-        val old = neighbours
-        neighbours = (if (force) persistentMapOf() else old).mutate {
-            for (delta in deltas) when (delta) {
-                is DaemonProtocol.NeighbourDelta.Upsert -> it[IpDev(delta.neighbour)] = delta.neighbour
-                is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
-            }
-        }
-        if (force || neighbours != old) aggregateChannel.trySend(neighbours).exceptionOrNull()?.let { throw it }
     }
 
     fun flushAsync() = scope.launch {
