@@ -17,7 +17,6 @@ object DaemonTransport {
     private const val FRAME_EVENT = 1
     private const val FRAME_ERROR = 2
     private const val FRAME_NON_FATAL = 3
-    private const val FRAME_COMPLETE = 4
 
     private const val NO_CALL_ID = 0L
     private val INVALID_CRASHLYTICS_KEY_CHAR = Regex("[^A-Za-z0-9_.-]")
@@ -68,7 +67,6 @@ object DaemonTransport {
         data class Event(val id: Long, val packet: ByteArray) : Frame()
         data class Error(val id: Long, val exception: DaemonException) : Frame()
         data class NonFatal(val id: Long?, val exception: DaemonException) : Frame()
-        data class Complete(val id: Long) : Frame()
     }
 
     fun call(id: Long, packet: ByteArray) = writeFrame(FRAME_CALL, id) { write(packet) }
@@ -89,7 +87,6 @@ object DaemonTransport {
                 if (id != null && id < 0) throw IOException("Invalid daemon nonfatal call id $id")
                 Frame.NonFatal(id, DaemonException(input.readErrorReport(), id))
             }
-            FRAME_COMPLETE -> Frame.Complete(input.readCallId())
             else -> throw IOException("Unknown daemon frame type $type")
         }
     }

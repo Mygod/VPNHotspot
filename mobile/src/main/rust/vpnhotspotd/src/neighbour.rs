@@ -153,7 +153,9 @@ fn neighbour_from_message(
             }
             NeighbourAttribute::LinkLayerAddress(value) => {
                 if value.len() == 6 {
-                    lladdr = Some(value.as_slice().try_into().unwrap());
+                    let mut bytes = [0u8; 6];
+                    bytes.copy_from_slice(&value);
+                    lladdr = Some(bytes);
                 } else {
                     report::report_for(
                         call_id,

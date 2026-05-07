@@ -18,10 +18,8 @@ object DaemonProtocol {
     const val CMD_START_SESSION = 1
     const val CMD_REPLACE_SESSION = 2
     const val CMD_REMOVE_SESSION = 3
-    const val CMD_SHUTDOWN = 4
     const val CMD_READ_TRAFFIC_COUNTERS = 5
     const val CMD_START_NEIGHBOUR_MONITOR = 6
-    const val CMD_STATIC_ADDRESS = 9
     const val CMD_CLEAN_ROUTING = 12
     const val CMD_REPLACE_STATIC_ADDRESSES = 13
     const val CMD_DELETE_STATIC_ADDRESSES = 14
@@ -95,27 +93,14 @@ object DaemonProtocol {
         WithdrawCleanup(1),
     }
 
-    enum class IpOperation(val protocolValue: Byte) {
-        Replace(0),
-        Delete(1),
-    }
-
     fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION) { writeSession(config) }
     fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION) { writeSession(config) }
     fun removeSession(downstream: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION) {
         writeUtf(downstream)
         writeByte(mode.protocolValue)
     }
-    fun shutdown(mode: RemoveMode) = writePacket(CMD_SHUTDOWN) { writeByte(mode.protocolValue) }
     fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS) { }
     fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR) { }
-    fun staticAddress(operation: IpOperation, address: InetAddress, prefixLength: Int, dev: String) =
-            writePacket(CMD_STATIC_ADDRESS) {
-                writeByte(operation.protocolValue)
-                writeInetAddress(address)
-                writeInt(prefixLength)
-                writeUtf(dev)
-            }
     fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) =
             writePacket(CMD_REPLACE_STATIC_ADDRESSES) {
                 writeUtf(dev)

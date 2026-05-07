@@ -16,10 +16,8 @@ const MAX_ERROR_FIELD_BYTES: usize = 4096;
 const CMD_START_SESSION: u32 = 1;
 const CMD_REPLACE_SESSION: u32 = 2;
 const CMD_REMOVE_SESSION: u32 = 3;
-const CMD_SHUTDOWN: u32 = 4;
 const CMD_READ_TRAFFIC_COUNTERS: u32 = 5;
 const CMD_START_NEIGHBOUR_MONITOR: u32 = 6;
-const CMD_STATIC_ADDRESS: u32 = 9;
 const CMD_CLEAN_ROUTING: u32 = 12;
 const CMD_REPLACE_STATIC_ADDRESSES: u32 = 13;
 const CMD_DELETE_STATIC_ADDRESSES: u32 = 14;
@@ -33,12 +31,8 @@ pub enum Command {
         downstream: String,
         withdraw_cleanup: bool,
     },
-    Shutdown {
-        withdraw_cleanup: bool,
-    },
     ReadTrafficCounters,
     StartNeighbourMonitor,
-    StaticAddress(IpAddressCommand),
     CleanRouting(CleanIpCommand),
     ReplaceStaticAddresses(StaticAddressesCommand),
     DeleteStaticAddresses {
@@ -349,12 +343,8 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
             downstream: parser.read_utf()?,
             withdraw_cleanup: parser.read_bool()?,
         }),
-        CMD_SHUTDOWN => Ok(Command::Shutdown {
-            withdraw_cleanup: parser.read_bool()?,
-        }),
         CMD_READ_TRAFFIC_COUNTERS => Ok(Command::ReadTrafficCounters),
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
-        CMD_STATIC_ADDRESS => Ok(Command::StaticAddress(parser.read_ip_address_command()?)),
         CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_ip_command()?)),
         CMD_REPLACE_STATIC_ADDRESSES => Ok(Command::ReplaceStaticAddresses(
             parser.read_static_addresses_command()?,
@@ -385,13 +375,6 @@ pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
         packet.push(0);
     }
     packet
-}
-
-pub fn should_suppress_static_address_error(error: &io::Error, operation: IpOperation) -> bool {
-    match operation {
-        IpOperation::Replace => error_errno(error) == Some(libc::EEXIST),
-        IpOperation::Delete => matches!(error_errno(error), Some(libc::ENOENT | libc::ESRCH)),
-    }
 }
 
 pub fn traffic_counter_lines_packet(lines: &[String]) -> Vec<u8> {
@@ -610,19 +593,6 @@ impl<'a> Parser<'a> {
         Ok(clients)
     }
 
-    fn read_ip_address_command(&mut self) -> io::Result<IpAddressCommand> {
-        let operation = self.read_ip_operation()?;
-        let address = self.read_ip_address()?;
-        let prefix_len = self.read_prefix_len(&address)?;
-        let interface = self.read_utf()?;
-        Ok(IpAddressCommand {
-            operation,
-            address,
-            prefix_len,
-            interface,
-        })
-    }
-
     fn read_clean_ip_command(&mut self) -> io::Result<CleanIpCommand> {
         Ok(CleanIpCommand {
             ipv6_nat_prefix_seed: self.read_utf()?,
@@ -632,7 +602,7 @@ impl<'a> Parser<'a> {
     fn read_static_addresses_command(&mut self) -> io::Result<StaticAddressesCommand> {
         let interface = self.read_utf()?;
         let count = self.read_count("static address")?;
-        let mut addresses = Vec::new();
+        let mut addresses = Vec::with_capacity(count);
         for _ in 0..count {
             let address = self.read_ip_address()?;
             let prefix_len = self.read_prefix_len(&address)?;
@@ -645,17 +615,6 @@ impl<'a> Parser<'a> {
             interface,
             addresses,
         })
-    }
-
-    fn read_ip_operation(&mut self) -> io::Result<IpOperation> {
-        match self.read_u8()? {
-            0 => Ok(IpOperation::Replace),
-            1 => Ok(IpOperation::Delete),
-            value => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("invalid IP operation {value}"),
-            )),
-        }
     }
 
     fn read_network(&mut self) -> io::Result<Option<Network>> {
@@ -920,49 +879,6 @@ mod tests {
             error.to_string(),
             "route count 1 exceeds remaining packet length 0"
         );
-    }
-
-    #[test]
-    fn static_address_error_suppression_matches_idempotent_address_ops() {
-        assert!(should_suppress_static_address_error(
-            &io::Error::from_raw_os_error(libc::EEXIST),
-            IpOperation::Replace,
-        ));
-        assert!(!should_suppress_static_address_error(
-            &io::Error::from_raw_os_error(libc::ENOENT),
-            IpOperation::Replace,
-        ));
-        assert!(should_suppress_static_address_error(
-            &io::Error::from_raw_os_error(libc::ENOENT),
-            IpOperation::Delete,
-        ));
-        assert!(should_suppress_static_address_error(
-            &io::Error::from_raw_os_error(libc::ESRCH),
-            IpOperation::Delete,
-        ));
-        assert!(!should_suppress_static_address_error(
-            &io::Error::from_raw_os_error(libc::EEXIST),
-            IpOperation::Delete,
-        ));
-    }
-
-    #[test]
-    fn static_address_error_suppression_preserves_reported_errno() {
-        let existing = io::Error::from_raw_os_error(libc::EEXIST).with_report_context("address");
-        assert_eq!(existing.raw_os_error(), None);
-        assert_eq!(error_errno(&existing), Some(libc::EEXIST));
-        assert!(should_suppress_static_address_error(
-            &existing,
-            IpOperation::Replace,
-        ));
-
-        let missing = io::Error::from_raw_os_error(libc::ENOENT).with_report_context("address");
-        assert_eq!(missing.raw_os_error(), None);
-        assert_eq!(error_errno(&missing), Some(libc::ENOENT));
-        assert!(should_suppress_static_address_error(
-            &missing,
-            IpOperation::Delete,
-        ));
     }
 
     #[test]

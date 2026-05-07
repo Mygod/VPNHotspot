@@ -231,25 +231,19 @@ fn send_neighbour_event(
     neighbour_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
     message: RouteNetlinkMessage,
 ) {
-    let mut disconnected = false;
     match neighbour_events.lock() {
-        Ok(neighbour_events) => {
-            if let Some(sender) = neighbour_events.as_ref() {
-                disconnected = sender.send(message).is_err();
+        Ok(mut neighbour_events) => {
+            if neighbour_events
+                .as_ref()
+                .is_some_and(|sender| sender.send(message).is_err())
+            {
+                neighbour_events.take();
             }
         }
-        Err(_) => {
-            report::io(
-                "netlink.send_neighbour_event",
-                io::Error::other("neighbour monitor state poisoned"),
-            );
-            return;
-        }
-    }
-    if disconnected {
-        if let Ok(mut neighbour_events) = neighbour_events.lock() {
-            neighbour_events.take();
-        }
+        Err(_) => report::io(
+            "netlink.send_neighbour_event",
+            io::Error::other("neighbour monitor state poisoned"),
+        ),
     }
 }
 

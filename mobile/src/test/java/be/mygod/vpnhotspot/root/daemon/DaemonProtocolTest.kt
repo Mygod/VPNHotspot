@@ -126,7 +126,7 @@ class DaemonProtocolTest {
     }
 
     @Test
-    fun readFrameDecodesReplyEventAndCompleteIds() {
+    fun readFrameDecodesReplyAndEventIds() {
         val reply = DaemonTransport.readFrame(Buffer().apply {
             writeByte(0)
             writeLong(10)
@@ -143,12 +143,6 @@ class DaemonProtocolTest {
         assertTrue(event is DaemonTransport.Frame.Event)
         assertEquals(11, (event as DaemonTransport.Frame.Event).id)
         assertEquals(2, event.packet.single().toInt())
-        val complete = DaemonTransport.readFrame(Buffer().apply {
-            writeByte(4)
-            writeLong(12)
-        }.readByteArray())
-        assertTrue(complete is DaemonTransport.Frame.Complete)
-        assertEquals(12, (complete as DaemonTransport.Frame.Complete).id)
     }
 
     @Test
@@ -209,16 +203,6 @@ class DaemonProtocolTest {
             assertEquals(DaemonProtocol.CMD_REMOVE_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
             assertEquals(DaemonProtocol.RemoveMode.WithdrawCleanup.protocolValue, input.readByte())
-        }
-    }
-
-    @Test
-    fun shutdownEncodesRemoveMode() {
-        Buffer().apply {
-            write(DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup))
-        }.let { input ->
-            assertEquals(DaemonProtocol.CMD_SHUTDOWN, input.readInt())
-            assertEquals(DaemonProtocol.RemoveMode.PreserveCleanup.protocolValue, input.readByte())
         }
     }
 

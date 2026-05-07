@@ -16,7 +16,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -29,18 +28,16 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
         private var pendingDestroy: Job? = null
         var instance: NetlinkNeighbourMonitor? = null
 
-        fun registerCallback(callback: Callback) = synchronized(callbacks) {
-            if (!callbacks.add(callback)) return@synchronized null
-            var monitor = instance
-            if (monitor == null) {
-                monitor = NetlinkNeighbourMonitor(pendingDestroy)
-                instance = monitor
-                null
-            } else {
-                monitor.flushAsync()
-                monitor
-            }
-        }?.let { monitor -> monitor.scope.launch { callback.onNetlinkNeighbourAvailable(monitor.neighbours.values) } }
+        fun registerCallback(callback: Callback) {
+            val monitor = synchronized(callbacks) {
+                if (!callbacks.add(callback)) return@synchronized null
+                instance?.also { it.flushAsync() } ?: run {
+                    instance = NetlinkNeighbourMonitor(pendingDestroy)
+                    null
+                }
+            } ?: return
+            monitor.scope.launch { callback.onNetlinkNeighbourAvailable(monitor.neighbours.values) }
+        }
         fun unregisterCallback(callback: Callback) = synchronized(callbacks) {
             if (!callbacks.remove(callback)) return@synchronized
             if (callbacks.isNotEmpty()) return@synchronized
@@ -119,7 +116,7 @@ class NetlinkNeighbourMonitor private constructor(private val previousDestroy: J
                 is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
             }
         }
-        if (force || neighbours != old) aggregateChannel.trySend(neighbours).onFailure { throw it!! }
+        if (force || neighbours != old) aggregateChannel.trySend(neighbours).exceptionOrNull()?.let { throw it }
     }
 
     fun flushAsync() = scope.launch {

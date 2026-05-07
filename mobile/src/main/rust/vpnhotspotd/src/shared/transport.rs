@@ -9,7 +9,6 @@ const FRAME_REPLY: u8 = 0;
 const FRAME_EVENT: u8 = 1;
 const FRAME_ERROR: u8 = 2;
 const FRAME_NON_FATAL: u8 = 3;
-const FRAME_COMPLETE: u8 = 4;
 const NO_CALL_ID: u64 = 0;
 
 #[derive(Debug)]
@@ -64,13 +63,9 @@ pub fn nonfatal_frame(id: Option<u64>, report: DaemonErrorReport) -> Vec<u8> {
     frame
 }
 
-pub fn complete_frame(id: u64) -> Vec<u8> {
-    write_frame_header(FRAME_COMPLETE, id)
-}
-
 fn write_frame(frame_type: u8, id: u64, packet: Vec<u8>) -> Vec<u8> {
     let mut frame = write_frame_header(frame_type, id);
-    frame.extend_from_slice(&packet);
+    frame.extend(packet);
     frame
 }
 
@@ -184,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn event_error_and_complete_frames_encode_id() {
+    fn event_and_error_frames_encode_id() {
         let report = DaemonErrorReport {
             context: "context".to_owned(),
             message: "message".to_owned(),
@@ -204,9 +199,6 @@ mod tests {
         let error = error_frame(11, report);
         assert_eq!(error[0], FRAME_ERROR);
         assert_eq!(u64::from_be_bytes(error[1..9].try_into().unwrap()), 11);
-        let complete = complete_frame(12);
-        assert_eq!(complete[0], FRAME_COMPLETE);
-        assert_eq!(u64::from_be_bytes(complete[1..9].try_into().unwrap()), 12);
     }
 
     #[test]

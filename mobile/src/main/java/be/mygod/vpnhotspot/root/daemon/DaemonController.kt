@@ -77,10 +77,7 @@ object DaemonController {
     }
 
     suspend fun startSession(config: DaemonProtocol.SessionConfig): DaemonProtocol.SessionPorts {
-        var leaseAdded = false
-        lock.withLock {
-            leaseAdded = activeSessions.add(config.downstream)
-        }
+        val leaseAdded = lock.withLock { activeSessions.add(config.downstream) }
         try {
             return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
         } catch (e: DaemonTransport.DaemonException) {
@@ -135,16 +132,6 @@ object DaemonController {
 
     fun neighbourMonitor(): Flow<List<DaemonProtocol.NeighbourDelta>> =
         eventCall(DaemonProtocol.startNeighbourMonitor()).map(DaemonProtocol::readNeighbourDeltas)
-
-    suspend fun replaceStaticAddress(address: java.net.InetAddress, prefixLength: Int, dev: String) {
-        DaemonProtocol.readAck(request(DaemonProtocol.staticAddress(
-            DaemonProtocol.IpOperation.Replace, address, prefixLength, dev)))
-    }
-
-    suspend fun deleteStaticAddress(address: java.net.InetAddress, prefixLength: Int, dev: String) {
-        DaemonProtocol.readAck(request(DaemonProtocol.staticAddress(
-            DaemonProtocol.IpOperation.Delete, address, prefixLength, dev)))
-    }
 
     suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<java.net.InetAddress, Int>>) {
         DaemonProtocol.readAck(request(DaemonProtocol.replaceStaticAddresses(dev, addresses)))
@@ -379,20 +366,6 @@ object DaemonController {
                         }
                     }
                     is DaemonTransport.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception)
-                    is DaemonTransport.Frame.Complete -> {
-                        val call = lock.withLock {
-                            val call = calls.remove(frame.id)
-                            if (call == null) Timber.d("Dropping complete for unknown $BINARY_NAME call ${frame.id}")
-                            maybeShutdownLocked()
-                            call
-                        }
-                        when (call) {
-                            is Call.OneShot -> call.reply.completeExceptionally(IOException("Unexpected " +
-                                    "$BINARY_NAME complete for call ${frame.id}"))
-                            is Call.Event -> call.channel.close()
-                            null -> { }
-                        }
-                    }
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {
@@ -426,16 +399,7 @@ object DaemonController {
 
     private suspend fun maybeShutdownLocked() {
         if (output == null || calls.isNotEmpty() || activeSessions.isNotEmpty()) return
-        try {
-            writePacketLocked(DaemonTransport.call(nextCallIdLocked(),
-                DaemonProtocol.shutdown(DaemonProtocol.RemoveMode.PreserveCleanup)))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-        } finally {
-            closeConnectionLocked()
-        }
+        closeConnectionLocked()
     }
 
     private suspend fun closeAndClearStateLocked(

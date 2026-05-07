@@ -20,9 +20,8 @@ use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
-    ok_packet, parse_command, ports_packet, should_suppress_static_address_error,
-    traffic_counter_lines_packet, Command, DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
-    IpAddressCommand,
+    ok_packet, parse_command, ports_packet, traffic_counter_lines_packet, Command,
+    DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
 };
 use vpnhotspotd::shared::transport::{error_frame, parse_client_frame, reply_frame, ClientFrame};
 
@@ -41,11 +40,9 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         neighbour_monitor: Mutex::new(None),
     });
     let active_calls = Arc::new(Mutex::new(HashMap::new()));
-    let shutdown = CancellationToken::new();
     let mut tasks = JoinSet::new();
     loop {
         let packet = select! {
-            _ = shutdown.cancelled() => break,
             result = tasks.join_next(), if !tasks.is_empty() => {
                 if let Some(Err(e)) = result {
                     report::message("control.call_join", e.to_string(), "JoinError");
@@ -90,7 +87,6 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                     sender.clone(),
                     active_calls.clone(),
                     call,
-                    shutdown.clone(),
                 ));
             }
             Ok(ClientFrame::Cancel { id }) => {
@@ -159,7 +155,6 @@ struct CallState {
 enum CallOutput {
     Reply(Vec<u8>),
     NoFrame,
-    Shutdown(Vec<u8>),
 }
 
 async fn handle_call(
@@ -169,7 +164,6 @@ async fn handle_call(
     sender: UnboundedSender<Vec<u8>>,
     active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
     call: Arc<CallState>,
-    shutdown: CancellationToken,
 ) {
     match handle_command(id, &packet, state, &sender, call.cancel.clone()).await {
         Ok(CallOutput::Reply(packet)) => {
@@ -177,10 +171,6 @@ async fn handle_call(
         }
         Ok(CallOutput::NoFrame) => {
             remove_call(id, &active_calls, &call).await;
-        }
-        Ok(CallOutput::Shutdown(packet)) => {
-            send_terminal_frame(id, &active_calls, &call, &sender, reply_frame(id, packet)).await;
-            shutdown.cancel();
         }
         Err(e) => {
             let report = DaemonErrorReport::from_io_error("control.handle_call", e);
@@ -216,10 +206,6 @@ async fn handle_command(
             remove_session(&state, downstream, withdraw_cleanup).await;
             Ok(CallOutput::Reply(ok_packet()))
         }
-        Command::Shutdown { withdraw_cleanup } => {
-            state.stop(withdraw_cleanup).await;
-            Ok(CallOutput::Shutdown(ok_packet()))
-        }
         Command::ReadTrafficCounters => {
             let lines = crate::traffic::read_counter_lines()
                 .await
@@ -229,20 +215,6 @@ async fn handle_command(
         Command::StartNeighbourMonitor => {
             start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
             Ok(CallOutput::NoFrame)
-        }
-        Command::StaticAddress(command) => {
-            let handle = state.netlink.handle();
-            apply_static_address(&handle, &command)
-                .await
-                .with_report_context_details(
-                    "control.static_address",
-                    [
-                        ("operation", format!("{:?}", command.operation)),
-                        ("address", command.address.to_string()),
-                        ("interface", command.interface.clone()),
-                    ],
-                )?;
-            Ok(CallOutput::Reply(ok_packet()))
         }
         Command::ReplaceStaticAddresses(command) => {
             let handle = state.netlink.handle();
@@ -408,17 +380,6 @@ async fn start_neighbour_monitor(
         monitor.monitor.stop().await;
     }
     Ok(())
-}
-
-async fn apply_static_address(
-    handle: &netlink::Handle,
-    command: &IpAddressCommand,
-) -> io::Result<()> {
-    match routing::apply_static_address(handle, command).await {
-        Ok(()) => Ok(()),
-        Err(e) if should_suppress_static_address_error(&e, command.operation) => Ok(()),
-        Err(e) => Err(e),
-    }
 }
 
 async fn send_terminal_frame(

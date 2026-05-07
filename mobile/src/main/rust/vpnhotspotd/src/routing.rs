@@ -1086,13 +1086,6 @@ async fn remove_ip_forward(downstream: &str) -> bool {
     }
 }
 
-pub(crate) async fn apply_static_address(
-    handle: &netlink::Handle,
-    command: &IpAddressCommand,
-) -> io::Result<()> {
-    apply_address_command(handle, command).await
-}
-
 pub(crate) async fn replace_static_addresses(
     handle: &netlink::Handle,
     command: &StaticAddressesCommand,

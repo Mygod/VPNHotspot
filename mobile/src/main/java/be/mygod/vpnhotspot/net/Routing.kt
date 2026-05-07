@@ -129,7 +129,7 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
     }
     private class InterfaceGoneException(upstream: String) : IOException("Interface $upstream not found")
-    private open inner class Upstream(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
+    private inner class Upstream(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
         val interfaces = linkedMapOf<String, Int>()
         var network: Network? = null
             private set
@@ -307,23 +307,23 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
      * The fallback approach is consistent with legacy system's IP forwarding approach,
      * but may be broken when system tethering shutdown before local-only interfaces.
      */
-    suspend fun ipForward() {
+    fun ipForward() {
         ipForward = true
     }
 
-    suspend fun disableIpv6() {
+    fun disableIpv6() {
         ipv6Block = true
     }
 
-    suspend fun ipv6Nat() {
+    fun ipv6Nat() {
         ipv6Nat = true
     }
 
-    suspend fun forward() {
+    fun forward() {
         forward = true
     }
 
-    suspend fun masquerade(mode: MasqueradeMode) {
+    fun masquerade(mode: MasqueradeMode) {
         masqueradeMode = mode
     }
 
@@ -406,7 +406,7 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
     }
     suspend fun revert() = withContext(NonCancellable) {
         stop()
-        for (ip in clients.keys.toList()) TrafficRecorder.unregister(ip, downstream)
+        for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         allowedMacs.clear()
         fallbackUpstream.interfaces.clear()
