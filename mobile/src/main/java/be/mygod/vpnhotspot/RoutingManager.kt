@@ -78,7 +78,9 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     if (cleaning === clean) cleaning = null
                 }
                 clean.complete(Unit)
-                for ((manager, routing) in restarts) manager.startRouting(routing)
+                for ((manager, routing) in restarts) monitor.withLock {
+                    if (manager.routing === routing) manager.startRoutingLocked(routing)
+                }
             } finally {
                 monitor.withLock {
                     if (cleaning === clean) cleaning = null
@@ -112,25 +114,21 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     suspend fun start(): Boolean {
         while (true) {
             var clean: CompletableDeferred<Unit>? = null
-            val routing = monitor.withLock {
+            val startedNow = monitor.withLock {
                 val currentClean = cleaning
                 if (currentClean != null) {
                     clean = currentClean
                     null
                 } else {
-                    when (val other = active.putIfAbsent(downstream, this@RoutingManager)) {
+                    val routing = when (val other = active.putIfAbsent(downstream, this@RoutingManager)) {
                         null -> {
                             started = true
                             acquireLocked()
                             Routing(caller, downstream).also { this@RoutingManager.routing = it }
                         }
-                        this@RoutingManager -> {
-                            if (!started) null else if (this@RoutingManager.routing != null) {
-                                return true
-                            } else {
-                                Routing(caller, downstream).also { this@RoutingManager.routing = it }
-                            }
-                        }
+                        this@RoutingManager -> if (!started) null else if (this@RoutingManager.routing == null) {
+                            Routing(caller, downstream).also { this@RoutingManager.routing = it }
+                        } else return true
                         else -> {
                             val msg = "Double routing detected for $downstream from $caller != ${other.caller}"
                             Timber.w(RuntimeException(msg))
@@ -138,16 +136,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                             null
                         }
                     }
+                    routing?.let { startRoutingLocked(it) } ?: false
                 }
             }
-            val pendingClean = clean
-            if (pendingClean != null) {
-                pendingClean.await()
-                continue
-            }
-            if (routing == null) return false
-            startRouting(routing)
-            return true
+            (clean ?: return startedNow ?: false).await()
         }
     }
 
@@ -162,19 +154,19 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         }
     }
 
-    private fun startRouting(routing: Routing) {
+    private fun startRoutingLocked(routing: Routing): Boolean {
         routing.masqueradeMode = masqueradeMode
         routing.configure()
-        routing.start {
-            monitor.withLock {
-                if (this.routing === routing) {
-                    this.routing = null
-                    if (started) releaseLocked()
-                    started = false
-                    active.remove(downstream, this@RoutingManager)
-                }
-            }
-        }
+        routing.start()
+        return true
+    }
+
+    private fun forgetRoutingLocked(routing: Routing) {
+        if (this.routing !== routing) return
+        this.routing = null
+        if (started) releaseLocked()
+        started = false
+        active.remove(downstream, this@RoutingManager)
     }
 
     private fun releaseLocked() {

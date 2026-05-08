@@ -20,22 +20,18 @@ import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.CoroutineExceptionHandler
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.Inet4Address
 import java.net.Inet6Address
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Builds and updates a root routing session for one downstream interface.
@@ -66,11 +62,6 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         Netd(2),
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + CoroutineExceptionHandler { _, t -> Timber.w(t) })
-
-    @Volatile
-    private var stopped = false
-
     /**
      * This command is available since API 23 and also handles IPv6 forwarding.
      * https://android.googlesource.com/platform/system/netd/+/android-6.0.0_r1/server/CommandListener.cpp#527
@@ -85,40 +76,76 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
     var ipv6Mode = Ipv6Mode.System
     var masqueradeMode = MasqueradeMode.None
 
-    private sealed class RoutingUpdate {
+    private val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
+    private var daemonSession: DaemonSessionHandle? = null
+    private val removeMode = AtomicReference(DaemonProtocol.RemoveMode.PreserveCleanup)
+
+    private val fallbackUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Fallback)
+    private val primaryUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Primary)
+    private val clients = linkedMapOf<Inet4Address, MacAddress>()
+    private val allowedMacs = linkedSetOf<MacAddress>()
+
+    private object NeighbourUpdateKey
+
+    private sealed class RoutingUpdate(val key: Any) {
         class UpstreamSnapshot(
-            val upstream: Upstream,
+            val upstream: UpstreamTracker,
             val network: Network?,
             val properties: LinkProperties?,
-        ) : RoutingUpdate()
-        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate()
+        ) : RoutingUpdate(upstream)
+        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighbourUpdateKey)
     }
-    private val updateLock = Any()
-    private val neighbourUpdateKey = Any()
-    private val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
-    private var pendingBarrier: CompletableDeferred<Unit>? = null
-    private val updateSignal = Channel<Unit>(Channel.CONFLATED)
-    private var startJob: Job? = null
-    private var stopBarrier: CompletableDeferred<Unit>? = null
-    private var updateWorker: Job? = null
-    private fun enqueue(update: RoutingUpdate) {
-        synchronized(updateLock) {
-            if (stopped) return
-            when (update) {
-                is RoutingUpdate.UpstreamSnapshot -> {
-                    pendingUpdates.remove(update.upstream)
-                    pendingUpdates[update.upstream] = update
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private val routingJob = GlobalScope.launch(start = CoroutineStart.LAZY) {
+        try {
+            val session = DaemonSessionHandle()
+            daemonSession = session
+            session.prepare()
+            FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
+            UpstreamMonitor.registerCallback(primaryUpstream)
+            NetlinkNeighbourMonitor.registerCallback(this@Routing)
+            Timber.i("Started routing for $downstream by $caller")
+            val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
+            for (update in updates) {
+                pendingUpdates[update.key] = update
+                while (true) {
+                    val next = updates.tryReceive().getOrNull() ?: break
+                    pendingUpdates[next.key] = next
                 }
-                is RoutingUpdate.NeighboursSnapshot -> {
-                    pendingUpdates.remove(neighbourUpdateKey)
-                    pendingUpdates[neighbourUpdateKey] = update
+                for (pending in pendingUpdates.values) withContext(NonCancellable) {
+                    try {
+                        when (pending) {
+                            is RoutingUpdate.UpstreamSnapshot -> pending.upstream.update(
+                                pending.network, pending.properties)
+                            is RoutingUpdate.NeighboursSnapshot -> updateNeighbours(pending.neighbours)
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                    }
                 }
+                pendingUpdates.clear()
+            }
+        } catch (_: CancellationException) {
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+        } finally {
+            withContext(NonCancellable) {
+                NetlinkNeighbourMonitor.unregisterCallback(this@Routing)
+                FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
+                UpstreamMonitor.unregisterCallback(primaryUpstream)
+                updates.cancel()
+                if (clients.isNotEmpty()) TrafficRecorder.update()
+                daemonSession?.close(removeMode.get())
+                daemonSession = null
+                Timber.i("Stopped routing for $downstream by $caller")
             }
         }
-        val result = updateSignal.trySend(Unit)
-        if (result.isFailure) result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
     }
-    private inner class Upstream(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
+
+    private inner class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
         val interfaces = linkedSetOf<String>()
         var network: Network? = null
             private set
@@ -126,7 +153,7 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             private set
 
         override fun onAvailable(network: Network?, properties: LinkProperties?) {
-            enqueue(RoutingUpdate.UpstreamSnapshot(this, network, properties))
+            updates.trySend(RoutingUpdate.UpstreamSnapshot(this, network, properties))
         }
         suspend fun update(network: Network?, properties: LinkProperties?) {
             this.network = network
@@ -152,11 +179,8 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             for (ifname in interfaces) if (seen.add(ifname)) target += DaemonProtocol.UpstreamConfig(role, ifname)
         }
     }
-    private val fallbackUpstream = Upstream(DaemonProtocol.UpstreamRole.Fallback)
-    private val upstream = Upstream(DaemonProtocol.UpstreamRole.Primary)
-    private var daemonSession: DaemonSession? = null
 
-    private inner class DaemonSession {
+    private inner class DaemonSessionHandle {
         private fun nextConfig(
             clientSnapshot: Map<Inet4Address, MacAddress> = clients,
             allowedMacSnapshot: Set<MacAddress> = allowedMacs,
@@ -165,15 +189,15 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             ipForward = ipForward,
             masquerade = masqueradeMode,
             ipv6Block = ipv6Mode == Ipv6Mode.Block,
-            primaryNetwork = upstream.network,
-            primaryRoutes = upstream.properties?.allRoutes?.mapNotNull { route ->
+            primaryNetwork = primaryUpstream.network,
+            primaryRoutes = primaryUpstream.properties?.allRoutes?.mapNotNull { route ->
                 val destination = route.destination
                 if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
             } ?: emptyList(),
             fallbackNetwork = fallbackUpstream.network,
             upstreams = buildList {
                 val seen = HashSet<String>()
-                upstream.appendConfig(this, seen)
+                primaryUpstream.appendConfig(this, seen)
                 fallbackUpstream.appendConfig(this, seen)
             },
             clients = buildList {
@@ -210,10 +234,8 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         }
     }
 
-    private val clients = linkedMapOf<Inet4Address, MacAddress>()
-    private val allowedMacs = linkedSetOf<MacAddress>()
     override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
-        enqueue(RoutingUpdate.NeighboursSnapshot(neighbours))
+        updates.trySend(RoutingUpdate.NeighboursSnapshot(neighbours))
     }
     private suspend fun updateNeighbours(neighbours: Collection<NetlinkNeighbour>) {
         val nextClients = linkedMapOf<Inet4Address, MacAddress>()
@@ -247,123 +269,19 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         allowedMacs.addAll(nextAllowedMacs)
     }
 
-    fun start(onFailure: suspend () -> Unit) {
-        lateinit var start: Job
-        start = scope.launch(start = CoroutineStart.LAZY) {
-            try {
-                if (daemonSession == null) daemonSession = DaemonSession().apply { prepare() }
-                Timber.i("Started routing for $downstream by $caller")
-                check(updateWorker == null)
-                updateWorker = scope.launch {
-                    updateSignal.consumeEach {
-                        val batch = ArrayList<RoutingUpdate>()
-                        val done = synchronized(updateLock) {
-                            batch.addAll(pendingUpdates.values)
-                            pendingUpdates.clear()
-                            pendingBarrier.also { pendingBarrier = null }
-                        }
-                        for (next in batch) try {
-                            when (next) {
-                                is RoutingUpdate.UpstreamSnapshot -> if (!stopped) {
-                                    next.upstream.update(next.network, next.properties)
-                                }
-                                is RoutingUpdate.NeighboursSnapshot -> if (!stopped) updateNeighbours(next.neighbours)
-                            }
-                        } catch (e: Exception) {
-                            if (e is CancellationException) throw e
-                            Timber.w(e)
-                        }
-                        done?.complete(Unit)
-                    }
-                }
-                FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
-                UpstreamMonitor.registerCallback(upstream)
-                NetlinkNeighbourMonitor.registerCallback(this@Routing)
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-                withContext(NonCancellable) {
-                    synchronized(updateLock) {
-                        if (startJob === start) startJob = null
-                    }
-                    cleanupAfterStop(withdrawCleanupPrefixes = false, waitForStart = false)
-                    onFailure()
-                }
-            } finally {
-                synchronized(updateLock) {
-                    if (startJob === start) startJob = null
-                }
-            }
-        }
-        synchronized(updateLock) {
-            if (stopped) {
-                start.cancel()
-                return
-            }
-            check(startJob == null)
-            startJob = start
-        }
-        start.start()
-    }
+    fun start() = routingJob.start()
 
-    suspend fun stopForClean() = cleanupAfterStop(withdrawCleanupPrefixes = true, waitForStart = true)
-    private suspend fun cleanupAfterStop(withdrawCleanupPrefixes: Boolean,
-                                         waitForStart: Boolean) = withContext(NonCancellable) {
-        var wait: CompletableDeferred<Unit>? = null
-        var start: Job? = null
-        val stop = CompletableDeferred<Unit>()
-        synchronized(updateLock) {
-            wait = stopBarrier
-            if (wait == null) {
-                stopBarrier = stop
-                stopped = true
-                start = startJob.also { startJob = null }
-            }
-        }
-        val pending = wait
-        if (pending != null) {
-            if (!waitForStart) return@withContext
-            pending.await()
-            return@withContext
-        }
-        try {
-            if (waitForStart) start?.cancelAndJoin()
-            val done = synchronized(updateLock) {
-                if (updateWorker?.isActive == true) {
-                    pendingBarrier ?: CompletableDeferred<Unit>().also { pendingBarrier = it }
-                } else null
-            }
-            NetlinkNeighbourMonitor.unregisterCallback(this@Routing)
-            FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
-            UpstreamMonitor.unregisterCallback(upstream)
-            if (done != null) {
-                val result = updateSignal.trySend(Unit)
-                if (result.isSuccess) {
-                    done.await()
-                } else {
-                    result.exceptionOrNull()?.let { if (it !is CancellationException) Timber.w(it) }
-                }
-            }
-            if (clients.isNotEmpty()) TrafficRecorder.update()
-            daemonSession?.close(removeMode = if (withdrawCleanupPrefixes) {
-                DaemonProtocol.RemoveMode.WithdrawCleanup
-            } else DaemonProtocol.RemoveMode.PreserveCleanup)
-            daemonSession = null
-            updateSignal.close()
-            scope.cancel("Routing stopped")
-            Timber.i("Stopped routing for $downstream by $caller")
-        } finally {
-            stop.complete(Unit)
-        }
+    suspend fun stopForClean() = withContext(NonCancellable) {
+        removeMode.set(DaemonProtocol.RemoveMode.WithdrawCleanup)
+        routingJob.cancelAndJoin()
     }
 
     suspend fun revert() = withContext(NonCancellable) {
-        cleanupAfterStop(withdrawCleanupPrefixes = false, waitForStart = true)
+        routingJob.cancelAndJoin()
         for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         allowedMacs.clear()
         fallbackUpstream.interfaces.clear()
-        upstream.interfaces.clear()
+        primaryUpstream.interfaces.clear()
     }
 }
