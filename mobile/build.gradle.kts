@@ -80,6 +80,11 @@ abstract class BuildDaemonNativeLibsTask : DefaultTask() {
             mkdirs()
         }
         val profile = cargoProfile.get()
+        val rustFlags = listOf(
+            "--remap-path-prefix=${System.getProperty("user.home").trimEnd('/')}/=",
+            "--remap-path-prefix=${cargoDir.absolutePath}=.",
+            "--remap-path-prefix=${cargoDir.absolutePath}/=",
+        ).joinToString("\u001F")
         val targets = listOf(
             "arm64-v8a" to "aarch64-linux-android",
             "armeabi-v7a" to "armv7-linux-androideabi",
@@ -92,7 +97,10 @@ abstract class BuildDaemonNativeLibsTask : DefaultTask() {
                 if (profile == "release") add("--release")
             }
             val process = ProcessBuilder(command).directory(cargoDir).redirectErrorStream(true).apply {
-                environment()["CARGO_BUILD_TARGET_DIR"] = targetDir.absolutePath
+                environment().run {
+                    this["CARGO_BUILD_TARGET_DIR"] = targetDir.absolutePath
+                    this["CARGO_ENCODED_RUSTFLAGS"] = rustFlags
+                }
             }.start()
             val output = process.inputStream.bufferedReader().readText()
             check(process.waitFor() == 0) {
