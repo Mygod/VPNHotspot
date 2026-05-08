@@ -38,7 +38,7 @@
     <string name="clients_mac_lookup_unexpected_error">Сервер вернул ошибку для %1$s: %2$s</string>
     <string name="clients_nickname_title">Никнэйм  для %s</string>
     <string name="clients_nickname_set_to_vendor">Имя вендора</string>
-    <string name="clients_stats_title">Статистика для %s</string>
+    <string name="clients_stats_title">Статистика для ^1</string>
 
 
     <string name="notification_tethering_title">VPN-модем активен</string>

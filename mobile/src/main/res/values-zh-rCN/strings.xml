@@ -63,19 +63,19 @@
     <string name="tethering_manage_wifi">WLAN 热点</string>
     <string name="tethering_manage_bluetooth">蓝牙网络共享</string>
     <string name="tethering_manage_ethernet" msgid="959743110824197356">"以太网络共享"</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz, 频道 %2$d, 频宽 %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
-        关闭延迟 %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, 频道 %2$d, 频宽 %3$s,
+    <string name="tethering_manage_wifi_info">^1 MHz, 频道 ^2, 频宽 ^3</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">^4: Wi\u2011Fi ^5, ^1 MHz, 频道 ^2, 频宽 ^3,
+        关闭延迟 ^6</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">^4: Wi\u2011Fi ^5, ^1 MHz, 频道 ^2, 频宽 ^3,
         不自动关闭</string>
     <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="other">已连接 %1$s/%2$d 个设备\n支持功能：%3$s</item>
+        <item quantity="other">已连接 ^1/^2 个设备\n支持功能：^3</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
-        <item quantity="other">已连接 %d 个设备</item>
+        <item quantity="other">已连接 ^1 个设备</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\n支持频道: %s</string>
-    <string name="tethering_manage_wifi_country_code">\n驱动国家代码：%s</string>
+    <string name="tethering_manage_wifi_supported_channels">\n支持频道: ^1</string>
+    <string name="tethering_manage_wifi_country_code">\n驱动国家代码：^1</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">随机接入点 MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">桥接 AP 并发</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA/AP 并发</string>
@@ -100,7 +100,7 @@
     <string name="clients_mac_lookup_unexpected_error">服务器为 %1$s 返回错误：%2$s</string>
     <string name="clients_nickname_title">%s 的昵称</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 厂商</string>
-    <string name="clients_stats_title">%s 的流量</string>
+    <string name="clients_stats_title">^1 的流量</string>
     <plurals name="clients_stats_message_1">
         <item quantity="other">自 %2$s 以来连接了 %1$s 次</item>
     </plurals>
@@ -129,12 +129,11 @@
     <string name="settings_service_wifi_lock_none">系统默认</string>
     <string name="settings_service_wifi_lock_high_perf_v29">禁用省电</string>
     <string name="settings_service_wifi_lock_low_latency">低延迟模式</string>
-    <string name="settings_service_upstream_monitor">当前上游接口</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s；备用：%2$s</string>
     <string name="settings_service_upstream">上游网络接口</string>
     <string name="settings_service_upstream_auto">自动检测系统 VPN</string>
     <string name="settings_upstream_fallback">备用上游接口</string>
     <string name="settings_upstream_fallback_auto">自动检测系统默认网络</string>
+    <string name="settings_upstream_current_summary">^1（当前：^2）</string>
     <string name="settings_service_clean">清理/重新应用路由规则</string>
     <string name="settings_service_clean_summary">将修改的设置应用到当前启用的服务上。也可用于修复偶尔会发生的竞态条件。</string>
     <string name="settings_system_tether_offload">网络共享硬件加速</string>

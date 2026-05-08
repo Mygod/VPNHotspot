@@ -1,17 +1,15 @@
 package be.mygod.vpnhotspot.net
 
 import android.annotation.SuppressLint
-import android.net.LinkProperties
 import android.net.MacAddress
-import android.net.Network
 import android.net.RouteInfo
 import android.os.Build
 import android.provider.Settings
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
 import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
-import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.Upstream
+import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.DaemonController
@@ -22,14 +20,11 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.produceIn
-import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -80,7 +75,6 @@ class Routing(private val caller: Any, private val downstream: String) {
     var ipv6Mode = Ipv6Mode.System
     var masqueradeMode = MasqueradeMode.None
 
-    private val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
     private var daemonSession: DaemonSessionHandle? = null
     private val removeMode = AtomicReference(DaemonProtocol.RemoveMode.PreserveCleanup)
 
@@ -92,46 +86,53 @@ class Routing(private val caller: Any, private val downstream: String) {
     private object NeighbourUpdateKey
 
     private sealed class RoutingUpdate(val key: Any) {
-        class UpstreamSnapshot(
-            val upstream: UpstreamTracker,
-            val network: Network?,
-            val properties: LinkProperties?,
-        ) : RoutingUpdate(upstream)
+        class UpstreamSnapshot(val upstream: UpstreamTracker, val value: Upstream?) : RoutingUpdate(upstream)
         class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighbourUpdateKey)
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    private val routingJob = GlobalScope.launch(start = CoroutineStart.LAZY) {
+    private val routingJob = GlobalScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
         try {
             val session = DaemonSessionHandle()
             daemonSession = session
             session.prepare()
-            FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
-            UpstreamMonitor.registerCallback(primaryUpstream)
             Timber.i("Started routing for $downstream by $caller")
+            val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
+            launch {
+                Upstreams.primary.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(primaryUpstream, it)) }
+            }
+            launch {
+                Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
+            }
+            launch { NetlinkNeighbours.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
             val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
-            val mergedUpdates = merge(
-                updates.receiveAsFlow(),
-                NetlinkNeighbours.snapshots.map { RoutingUpdate.NeighboursSnapshot(it) },
-            ).produceIn(this)
-            for (update in mergedUpdates) {
+            for (update in updates) {
                 pendingUpdates[update.key] = update
                 while (true) {
-                    val next = mergedUpdates.tryReceive().getOrNull() ?: break
+                    val next = updates.tryReceive().getOrNull() ?: break
                     pendingUpdates[next.key] = next
                 }
+                var upstreamChanged = false
                 for (pending in pendingUpdates.values) withContext(NonCancellable) {
                     try {
                         when (pending) {
-                            is RoutingUpdate.UpstreamSnapshot -> pending.upstream.update(
-                                pending.network, pending.properties)
-                            is RoutingUpdate.NeighboursSnapshot -> updateNeighbours(pending.neighbours)
+                            is RoutingUpdate.UpstreamSnapshot -> {
+                                upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
+                            }
+                            is RoutingUpdate.NeighboursSnapshot -> {
+                                if (upstreamChanged) {
+                                    daemonSession?.update()
+                                    upstreamChanged = false
+                                }
+                                updateNeighbours(pending.neighbours)
+                            }
                         }
                     } catch (e: Exception) {
                         Timber.w(e)
                         SmartSnackbar.make(e).show()
                     }
                 }
+                if (upstreamChanged) withContext(NonCancellable) { daemonSession?.update() }
                 pendingUpdates.clear()
             }
         } catch (_: CancellationException) {
@@ -140,9 +141,6 @@ class Routing(private val caller: Any, private val downstream: String) {
             SmartSnackbar.make(e).show()
         } finally {
             withContext(NonCancellable) {
-                FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
-                UpstreamMonitor.unregisterCallback(primaryUpstream)
-                updates.cancel()
                 if (clients.isNotEmpty()) TrafficRecorder.update()
                 daemonSession?.close(removeMode.get())
                 daemonSession = null
@@ -151,21 +149,16 @@ class Routing(private val caller: Any, private val downstream: String) {
         }
     }
 
-    private inner class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) : UpstreamMonitor.Callback {
-        val interfaces = linkedSetOf<String>()
-        var network: Network? = null
-            private set
-        var properties: LinkProperties? = null
+    private inner class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) {
+        private var interfaces = linkedSetOf<String>()
+        var upstream: Upstream? = null
             private set
 
-        override fun onAvailable(network: Network?, properties: LinkProperties?) {
-            updates.trySend(RoutingUpdate.UpstreamSnapshot(this, network, properties))
-        }
-        suspend fun update(network: Network?, properties: LinkProperties?) {
-            this.network = network
-            this.properties = properties
+        suspend fun update(value: Upstream?): Boolean {
+            if (upstream == value) return false
+            upstream = value
             val nextInterfaces = linkedSetOf<String>()
-            for (ifname in properties?.allInterfaceNames ?: emptyList()) {
+            for (ifname in value?.properties?.allInterfaceNames ?: emptyList()) {
                 nextInterfaces += ifname
                 if (Build.VERSION.SDK_INT >= 31 && !interfaces.contains(ifname)) try {
                     RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
@@ -176,9 +169,8 @@ class Routing(private val caller: Any, private val downstream: String) {
                     Timber.w(e)
                 }
             }
-            interfaces.clear()
-            interfaces.addAll(nextInterfaces)
-            daemonSession?.update()
+            interfaces = nextInterfaces
+            return true
         }
 
         fun appendConfig(target: MutableList<DaemonProtocol.UpstreamConfig>, seen: MutableSet<String>) {
@@ -195,12 +187,12 @@ class Routing(private val caller: Any, private val downstream: String) {
             ipForward = ipForward,
             masquerade = masqueradeMode,
             ipv6Block = ipv6Mode == Ipv6Mode.Block,
-            primaryNetwork = primaryUpstream.network,
-            primaryRoutes = primaryUpstream.properties?.allRoutes?.mapNotNull { route ->
+            primaryNetwork = primaryUpstream.upstream?.network,
+            primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
                 val destination = route.destination
                 if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
             } ?: emptyList(),
-            fallbackNetwork = fallbackUpstream.network,
+            fallbackNetwork = fallbackUpstream.upstream?.network,
             upstreams = buildList {
                 val seen = HashSet<String>()
                 primaryUpstream.appendConfig(this, seen)
@@ -284,7 +276,5 @@ class Routing(private val caller: Any, private val downstream: String) {
         for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         allowedMacs.clear()
-        fallbackUpstream.interfaces.clear()
-        primaryUpstream.interfaces.clear()
     }
 }

@@ -63,17 +63,17 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi ホットスポット</string>
     <string name="tethering_manage_bluetooth">Bluetooth テザリング</string>
     <string name="tethering_manage_ethernet">イーサネットテザリング</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz - チャンネル: %2$d - 幅: %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウトまで %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d - %1$d MHz - チャンネル: %2$d -         幅: %3$s - アイドルタイムアウト無効</string>
+    <string name="tethering_manage_wifi_info">^1 MHz - チャンネル: ^2 - 幅: ^3</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">^4: Wi\u2011Fi ^5 - ^1 MHz - チャンネル: ^2 -         幅: ^3 - アイドルタイムアウトまで ^6</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">^4: Wi\u2011Fi ^5 - ^1 MHz - チャンネル: ^2 -         幅: ^3 - アイドルタイムアウト無効</string>
     <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="other">%1$s/%2$d 件のクライアントが接続済み\n対応している機能: %3$s</item>
+        <item quantity="other">^1/^2 件のクライアントが接続済み\n対応している機能: ^3</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
-        <item quantity="other">%1d 個のクライアントが接続済み</item>
+        <item quantity="other">^1 個のクライアントが接続済み</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\n対応チャンネル: %s</string>
-    <string name="tethering_manage_wifi_country_code">\nドライバ国コード: %s</string>
+    <string name="tethering_manage_wifi_supported_channels">\n対応チャンネル: ^1</string>
+    <string name="tethering_manage_wifi_country_code">\nドライバ国コード: ^1</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">ランダム化された AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ブリッジ AP の並行性</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP の並行性</string>
@@ -94,7 +94,7 @@
     <string name="clients_mac_lookup_unexpected_error">サーバーが %1$s のエラーを返しました: %2$s</string>
     <string name="clients_nickname_title">%s のニックネーム</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 ベンダー</string>
-    <string name="clients_stats_title">%s の状態</string>
+    <string name="clients_stats_title">^1 の状態</string>
     <plurals name="clients_stats_message_1">
         <item quantity="other">%1$s 回、%2$s に接続しました</item>
     </plurals>
@@ -126,12 +126,11 @@
     <string name="settings_service_wifi_lock_none">システムデフォルト</string>
     <string name="settings_service_wifi_lock_high_perf_v29">パワーセーブを無効化する</string>
     <string name="settings_service_wifi_lock_low_latency">低遅延モード</string>
-    <string name="settings_service_upstream_monitor">現在のアップストリーム</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s; フォールバック: %2$s</string>
     <string name="settings_service_upstream">アップストリームネットワークインターフェース</string>
     <string name="settings_service_upstream_auto">システム VPN を自動検出</string>
     <string name="settings_upstream_fallback">フォールバックアップストリームネットワークインターフェース</string>
     <string name="settings_upstream_fallback_auto">システムのデフォルトネットワークを自動検出</string>
+    <string name="settings_upstream_current_summary">^1（現在: ^2）</string>
     <string name="settings_service_clean">ルーティングルールを消去または再適用</string>
     <string name="settings_service_clean_summary">変更された設定をアクティブなサービスに更新します。
         まれに発生する競合状態も修正できます</string>

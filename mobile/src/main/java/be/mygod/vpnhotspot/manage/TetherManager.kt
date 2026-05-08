@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Parcelable
 import android.provider.Settings
 import android.text.SpannableStringBuilder
+import android.text.TextUtils
 import android.text.format.DateUtils
 import android.view.View
 import android.widget.Toast
@@ -28,16 +29,24 @@ import be.mygod.vpnhotspot.databinding.ListitemInterfaceBinding
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.wifi.*
+import be.mygod.vpnhotspot.net.wifi.SoftApCapability
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.net.wifi.SoftApInfo
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.RangeInput
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.joinToSpanned
+import be.mygod.vpnhotspot.util.makeMacSpan
+import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
-import java.util.*
+import java.text.NumberFormat
+import java.util.Locale
 
 sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         TetheringManagerCompat.StartTetheringCallback, TetheringManagerCompat.StopTetheringCallback {
@@ -194,59 +203,8 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
         override val tetherType get() = TetherType.WIFI
         override val type get() = VIEW_TYPE_WIFI
 
-        @TargetApi(30)
-        private fun formatCapability(locale: Locale) = capability?.let { parcel ->
-            val capability = SoftApCapability(parcel)
-            val numClients = numClients
-            val maxClients = capability.maxSupportedClients
-            var features = capability.supportedFeatures
-            if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
-                SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfiguration.BAND_6GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfiguration.BAND_60GHZ,
-            )) {
-                if (capability.getSupportedChannelList(band).isEmpty()) continue
-                // reduce double reporting
-                features = features and flag.inv()
-            }
-            val result = parent.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0)
-                .format(locale, numClients ?: "?", maxClients, sequence {
-                    if (WifiApManager.isApMacRandomizationSupported) yield(parent.getText(
-                        R.string.tethering_manage_wifi_feature_ap_mac_randomization))
-                    if (Services.wifi.isStaApConcurrencySupported) yield(parent.getText(
-                        R.string.tethering_manage_wifi_feature_sta_ap_concurrency))
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        if (Services.wifi.isBridgedApConcurrencySupported) yield(parent.getText(
-                            R.string.tethering_manage_wifi_feature_bridged_ap_concurrency))
-                        if (Services.wifi.isStaBridgedApConcurrencySupported) yield(parent.getText(
-                            R.string.tethering_manage_wifi_feature_sta_bridged_ap_concurrency))
-                    }
-                    if (features != 0L) while (features != 0L) {
-                        val bit = features.takeLowestOneBit()
-                        yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
-                        features = features and bit.inv()
-                    }
-                }.joinToSpanned().ifEmpty { parent.getText(R.string.tethering_manage_wifi_no_features) })
-            if (Build.VERSION.SDK_INT >= 31) {
-                val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
-                    val channels = capability.getSupportedChannelList(band)
-                    if (channels.isNotEmpty()) {
-                        "${SoftApConfigurationCompat.bandLookup(band, true)} (${RangeInput.toString(channels)})"
-                    } else null
-                }.filterNotNull()
-                if (list.isNotEmpty()) result.append(parent.getText(R.string.tethering_manage_wifi_supported_channels)
-                    .format(locale, list.joinToString("; ")))
-                capability.countryCode?.let {
-                    result.append(parent.getText(R.string.tethering_manage_wifi_country_code).format(locale, it))
-                }
-            }
-            result
-        } ?: numClients?.let { numClients ->
-            app.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, numClients).format(locale,
-                numClients)
-        }
         override val text get() = parent.resources.configuration.locales[0].let { locale ->
+            val integerFormat = NumberFormat.getIntegerInstance(locale)
             listOfNotNull(failureReason?.let { WifiApManager.failureReasonLookup(it) }, baseError, info.run {
                 if (isEmpty()) null else joinToSpanned("\n") @TargetApi(30) { parcel ->
                     val info = SoftApInfo(parcel)
@@ -263,18 +221,88 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                             }
                         } ?: bssid ?: "?"
                         val timeout = info.autoShutdownTimeoutMillis
-                        parent.getText(if (timeout == 0L) {
+                        SpannableStringBuilder(TextUtils.expandTemplate(parent.getText(if (timeout == 0L) {
                             R.string.tethering_manage_wifi_info_timeout_disabled
-                        } else R.string.tethering_manage_wifi_info_timeout_enabled).format(locale,
-                            frequency, channel, bandwidth, bssidAp, info.wifiStandard,
+                        } else R.string.tethering_manage_wifi_info_timeout_enabled),
+                            integerFormat.format(frequency.toLong()),
+                            integerFormat.format(channel.toLong()),
+                            bandwidth,
+                            bssidAp,
+                            integerFormat.format(info.wifiStandard.toLong()),
                             // http://unicode.org/cldr/trac/ticket/3407
-                            DateUtils.formatElapsedTime(timeout / 1000))
-                    } else parent.getText(R.string.tethering_manage_wifi_info).format(locale,
-                        frequency, channel, bandwidth)).also { result ->
+                            DateUtils.formatElapsedTime(timeout / 1000),
+                        ))
+                    } else SpannableStringBuilder(TextUtils.expandTemplate(
+                        parent.getText(R.string.tethering_manage_wifi_info),
+                        integerFormat.format(frequency.toLong()),
+                        integerFormat.format(channel.toLong()),
+                        bandwidth,
+                    ))).also { result ->
                         info.mldAddress?.let { result.append(", MLD MAC ").append(makeMacSpan(it.toString())) }
                     }
                 }
-            }, formatCapability(locale)).joinToSpanned("\n")
+            }, @TargetApi(30) capability?.let { parcel ->
+                val capability = SoftApCapability(parcel)
+                val numClients = numClients
+                val maxClients = capability.maxSupportedClients
+                var features = capability.supportedFeatures
+                if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
+                    SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
+                    SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,
+                    SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfiguration.BAND_6GHZ,
+                    SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfiguration.BAND_60GHZ,
+                )) {
+                    if (capability.getSupportedChannelList(band).isEmpty()) continue
+                    // reduce double reporting
+                    features = features and flag.inv()
+                }
+                val result = SpannableStringBuilder(TextUtils.expandTemplate(
+                    parent.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0),
+                    numClients?.let { integerFormat.format(it.toLong()) } ?: "?",
+                    integerFormat.format(maxClients.toLong()),
+                    sequence {
+                        if (WifiApManager.isApMacRandomizationSupported) yield(parent.getText(
+                            R.string.tethering_manage_wifi_feature_ap_mac_randomization))
+                        if (Services.wifi.isStaApConcurrencySupported) yield(parent.getText(
+                            R.string.tethering_manage_wifi_feature_sta_ap_concurrency))
+                        if (Build.VERSION.SDK_INT >= 31) {
+                            if (Services.wifi.isBridgedApConcurrencySupported) yield(parent.getText(
+                                R.string.tethering_manage_wifi_feature_bridged_ap_concurrency))
+                            if (Services.wifi.isStaBridgedApConcurrencySupported) yield(parent.getText(
+                                R.string.tethering_manage_wifi_feature_sta_bridged_ap_concurrency))
+                        }
+                        if (features != 0L) while (features != 0L) {
+                            val bit = features.takeLowestOneBit()
+                            yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
+                            features = features and bit.inv()
+                        }
+                    }.joinToSpanned().ifEmpty { parent.getText(R.string.tethering_manage_wifi_no_features) },
+                ))
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val list = SoftApConfigurationCompat.BAND_TYPES.map { band ->
+                        val channels = capability.getSupportedChannelList(band)
+                        if (channels.isNotEmpty()) {
+                            "${SoftApConfigurationCompat.bandLookup(band, true)} (${RangeInput.toString(channels)})"
+                        } else null
+                    }.filterNotNull()
+                    if (list.isNotEmpty()) result.append(TextUtils.expandTemplate(
+                        parent.getText(R.string.tethering_manage_wifi_supported_channels),
+                        list.joinToString("; "),
+                    ))
+                    capability.countryCode?.let {
+                        result.append(TextUtils.expandTemplate(
+                            parent.getText(R.string.tethering_manage_wifi_country_code),
+                            it,
+                        ))
+                    }
+                }
+                result
+            } ?: numClients?.let { numClients ->
+                TextUtils.expandTemplate(
+                    app.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, numClients),
+                    integerFormat.format(numClients.toLong()),
+                )
+            }).joinToSpanned("\n")
         }
 
         override fun start() = TetheringManagerCompat.startTethering(TetheringManager.TETHERING_WIFI, true, this)

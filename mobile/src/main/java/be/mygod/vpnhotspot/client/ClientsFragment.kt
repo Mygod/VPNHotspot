@@ -5,6 +5,7 @@ import android.net.MacAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.text.TextUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
@@ -38,7 +39,6 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
@@ -91,7 +91,7 @@ class ClientsFragment : Fragment() {
             val context = context
             val resources = resources
             val locale = resources.configuration.locales[0]
-            setTitle(getText(R.string.clients_stats_title).format(locale, arg.title))
+            setTitle(TextUtils.expandTemplate(getText(R.string.clients_stats_title), arg.title))
             val format = NumberFormat.getIntegerInstance(locale)
             setMessage("%s\n%s\n%s".format(
                     resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),

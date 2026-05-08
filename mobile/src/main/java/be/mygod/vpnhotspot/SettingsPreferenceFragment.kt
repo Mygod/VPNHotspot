@@ -5,19 +5,20 @@ import android.os.Build
 import android.os.Bundle
 import android.os.ext.SdkExtensions
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.TwoStatePreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetherOffloadManager
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
-import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.preference.AutoCompleteNetworkPreferenceDialogFragment
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
-import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
-import be.mygod.vpnhotspot.preference.UpstreamsPreference
+import be.mygod.vpnhotspot.preference.UpstreamSummaryProvider
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
@@ -44,9 +45,14 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
-        findPreference<UpstreamsPreference>("service.upstream.monitor")!!.attachListener(lifecycle)
-        SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
-        SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
+        val primaryUpstream = UpstreamSummaryProvider(findPreference<EditTextPreference>(Upstreams.KEY_PRIMARY)!!)
+        val fallbackUpstream = UpstreamSummaryProvider(findPreference<EditTextPreference>(Upstreams.KEY_FALLBACK)!!)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch { Upstreams.primary.collect { primaryUpstream.current = it } }
+                launch { Upstreams.fallback.collect { fallbackUpstream.current = it } }
+            }
+        }
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
             isChecked = TetherOffloadManager.enabled
             setOnPreferenceChangeListener { _, newValue ->
@@ -132,7 +138,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     }
 
     override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
-        UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
+        Upstreams.KEY_PRIMARY, Upstreams.KEY_FALLBACK ->
             AutoCompleteNetworkPreferenceDialogFragment().apply {
                 setArguments(preference.key)
                 setTargetFragment(this@SettingsPreferenceFragment, 0)
