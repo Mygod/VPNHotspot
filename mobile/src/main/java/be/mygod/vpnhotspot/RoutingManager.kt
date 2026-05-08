@@ -145,7 +145,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     private fun acquireLocked() {
         if (isWifi) WifiDoubleLock.acquire(this)
-        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this@RoutingManager] = {
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
             val isWifiNow = TetherType.ofInterface(downstream).isWifi
             if (isWifi != isWifiNow) {
                 if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
@@ -153,25 +153,16 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             }
         }
     }
+    private fun releaseLocked() {
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
+        if (isWifi) WifiDoubleLock.release(this)
+    }
 
     private fun startRoutingLocked(routing: Routing): Boolean {
         routing.masqueradeMode = masqueradeMode
         routing.configure()
         routing.start()
         return true
-    }
-
-    private fun forgetRoutingLocked(routing: Routing) {
-        if (this.routing !== routing) return
-        this.routing = null
-        if (started) releaseLocked()
-        started = false
-        active.remove(downstream, this@RoutingManager)
-    }
-
-    private fun releaseLocked() {
-        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
-        if (isWifi) WifiDoubleLock.release(this)
     }
 
     protected abstract fun Routing.configure()
