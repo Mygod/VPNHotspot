@@ -262,10 +262,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     }
     private suspend fun doStart(generation: Int) {
         if (!receiverRegistered) {
-            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let {
-                receiverRegistered = true
-                updateState(it)
-            }
+            receiverRegistered = true
+            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         }
         if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) {
             if (Build.VERSION.SDK_INT >= 33) try {
