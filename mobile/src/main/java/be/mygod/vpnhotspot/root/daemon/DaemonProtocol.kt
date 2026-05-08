@@ -81,16 +81,25 @@ object DaemonProtocol {
         WithdrawCleanup(1),
     }
 
-    fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION) { writeSession(config) }
-    fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION) { writeSession(config) }
-    fun removeSession(downstream: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION) {
+    class Command internal constructor(val packet: ByteArray, private val description: String) {
+        override fun toString() = description
+    }
+
+    fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION, "StartSession(config=$config)") {
+        writeSession(config)
+    }
+    fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION, "ReplaceSession(config=$config)") {
+        writeSession(config)
+    }
+    fun removeSession(downstream: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION,
+            "RemoveSession(downstream=$downstream, mode=$mode)") {
         writeUtf(downstream)
         writeByte(mode.protocolValue)
     }
-    fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS) { }
-    fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR) { }
+    fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS, "ReadTrafficCounters") { }
+    fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR, "StartNeighbourMonitor") { }
     fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) =
-            writePacket(CMD_REPLACE_STATIC_ADDRESSES) {
+            writePacket(CMD_REPLACE_STATIC_ADDRESSES, "ReplaceStaticAddresses(dev=$dev, addresses=$addresses)") {
                 writeUtf(dev)
                 writeInt(addresses.size)
                 for ((address, prefixLength) in addresses) {
@@ -98,8 +107,12 @@ object DaemonProtocol {
                     writeInt(prefixLength)
                 }
             }
-    fun deleteStaticAddresses(dev: String) = writePacket(CMD_DELETE_STATIC_ADDRESSES) { writeUtf(dev) }
-    fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING) {
+    fun deleteStaticAddresses(dev: String) = writePacket(CMD_DELETE_STATIC_ADDRESSES,
+            "DeleteStaticAddresses(dev=$dev)") {
+        writeUtf(dev)
+    }
+    fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING,
+            "CleanRouting(ipv6NatPrefixSeed=$ipv6NatPrefixSeed)") {
         writeUtf(ipv6NatPrefixSeed)
     }
 
@@ -127,11 +140,11 @@ object DaemonProtocol {
         return readNeighbourDeltas(Buffer().apply { write(packet) })
     }
 
-    private fun writePacket(command: Int, block: Sink.() -> Unit): ByteArray {
+    private fun writePacket(command: Int, description: String, block: Sink.() -> Unit): Command {
         val output = Buffer()
         output.writeInt(command)
         output.block()
-        return output.readByteArray()
+        return Command(output.readByteArray(), description)
     }
 
     private fun Sink.writeSession(config: SessionConfig) {

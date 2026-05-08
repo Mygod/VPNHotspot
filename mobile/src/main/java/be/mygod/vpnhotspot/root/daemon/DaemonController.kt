@@ -165,6 +165,7 @@ object DaemonController {
 
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
+        Timber.d("Starting $BINARY_NAME")
         daemonStdioClosing = false
         daemonStdioEofReported = false
         val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
@@ -176,12 +177,7 @@ object DaemonController {
             LocalServerSocket(socketName).use { serverSocket ->
                 RootManager.use { server ->
                     try {
-                        server.execute(RunDaemon(
-                            daemonCommand,
-                            socketName,
-                            stdout!!,
-                            stderr!!,
-                        ))
+                        server.execute(RunDaemon(daemonCommand, socketName, stdout!!, stderr!!))
                     } finally {
                         try {
                             stdout?.close()
@@ -198,6 +194,7 @@ object DaemonController {
                     input = ParcelFileDescriptor.dup(it.fileDescriptor).openReadChannel(Services.mainHandler.looper)
                     output = ParcelFileDescriptor.dup(it.fileDescriptor).openWriteChannel(Services.mainHandler.looper)
                     startReaderLocked(input!!)
+                    Timber.d("Started $BINARY_NAME")
                 }
             }
         } catch (e: Exception) {
@@ -260,11 +257,11 @@ object DaemonController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private suspend fun request(packet: ByteArray): ByteArray {
+    private suspend fun request(command: DaemonProtocol.Command): ByteArray {
         var id = 0L
         val reply = lock.withLock {
             id = nextCallIdLocked()
-            requestLocked(id, packet)
+            requestLocked(id, command)
         }
         try {
             return reply.await()
@@ -279,12 +276,13 @@ object DaemonController {
         }
     }
 
-    private suspend fun requestLocked(id: Long, packet: ByteArray): CompletableDeferred<ByteArray> {
+    private suspend fun requestLocked(id: Long, command: DaemonProtocol.Command): CompletableDeferred<ByteArray> {
         val reply = CompletableDeferred<ByteArray>()
         try {
             ensureDaemonLocked()
             calls[id] = Call.OneShot(reply)
-            writePacketLocked(DaemonTransport.call(id, packet))
+            writePacketLocked(DaemonTransport.call(id, command.packet))
+            Timber.d("Sent #$id: $command")
         } catch (e: Exception) {
             calls.remove(id)
             closeConnectionLocked()
@@ -293,14 +291,15 @@ object DaemonController {
         return reply
     }
 
-    private fun eventCall(packet: ByteArray): Flow<ByteArray> = flow {
+    private fun eventCall(command: DaemonProtocol.Command): Flow<ByteArray> = flow {
         val channel = Channel<ByteArray>(Channel.UNLIMITED)
         val id = lock.withLock {
             val id = nextCallIdLocked()
             try {
                 ensureDaemonLocked()
                 calls[id] = Call.Event(channel)
-                writePacketLocked(DaemonTransport.call(id, packet))
+                writePacketLocked(DaemonTransport.call(id, command.packet))
+                Timber.d("Sent #$id: $command")
                 id
             } catch (e: Exception) {
                 calls.remove(id)
@@ -427,6 +426,8 @@ object DaemonController {
     }
 
     private suspend fun closeConnectionLocked(cancelReader: Boolean = true) = withContext(NonCancellable) {
+        val wasConnected = socket != null || input != null || output != null || readerJob != null
+        if (wasConnected) Timber.d("Stopping $BINARY_NAME")
         daemonStdioClosing = true
         completeCallsLocked(IOException("$BINARY_NAME connection closed"))
         if (cancelReader) readerJob?.cancel()
@@ -443,6 +444,7 @@ object DaemonController {
         input = null
         output = null
         socket = null
+        if (wasConnected) Timber.d("Stopped $BINARY_NAME")
     }
 
     private class DaemonLog(private val stream: String, private val log: (String) -> Unit) {

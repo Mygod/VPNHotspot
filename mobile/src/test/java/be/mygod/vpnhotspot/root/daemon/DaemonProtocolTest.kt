@@ -25,7 +25,7 @@ class DaemonProtocolTest {
                 DaemonProtocol.UpstreamRole.Primary, "rmnet_data0")),
             clients = emptyList(),
             ipv6Nat = null,
-        ))
+        )).packet
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
@@ -56,7 +56,7 @@ class DaemonProtocolTest {
             upstreams = emptyList(),
             clients = emptyList(),
             ipv6Nat = DaemonProtocol.Ipv6NatConfig("be.mygod.vpnhotspot\u0000android-id"),
-        ))
+        )).packet
         Buffer().apply { write(packet) }.let { input ->
             assertEquals(DaemonProtocol.CMD_START_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
@@ -184,7 +184,7 @@ class DaemonProtocolTest {
     @Test
     fun removeSessionEncodesRemoveMode() {
         Buffer().apply {
-            write(DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup))
+            write(DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup).packet)
         }.let { input ->
             assertEquals(DaemonProtocol.CMD_REMOVE_SESSION, input.readInt())
             assertEquals("wlan0", input.readUtf())
@@ -193,9 +193,15 @@ class DaemonProtocolTest {
     }
 
     @Test
+    fun commandDescriptionNamesDaemonCommand() {
+        assertEquals("RemoveSession(downstream=wlan0, mode=WithdrawCleanup)",
+            DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup).toString())
+    }
+
+    @Test
     fun cleanRoutingEncodesPrefixSeed() {
         Buffer().apply {
-            write(DaemonProtocol.cleanRouting("be.mygod.vpnhotspot\u0000android-id"))
+            write(DaemonProtocol.cleanRouting("be.mygod.vpnhotspot\u0000android-id").packet)
         }.let { input ->
             assertEquals(DaemonProtocol.CMD_CLEAN_ROUTING, input.readInt())
             assertEquals("be.mygod.vpnhotspot\u0000android-id", input.readUtf())
