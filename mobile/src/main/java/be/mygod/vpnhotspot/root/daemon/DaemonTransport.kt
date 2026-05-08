@@ -36,14 +36,6 @@ object DaemonTransport {
         val details: Map<String, String>,
     ) {
         val crashlyticsKeyValues get() = buildMap {
-            put("daemon.context", context)
-            put("daemon.message", message)
-            if (errno != null) put("daemon.errno", errno.toString())
-            put("daemon.kind", kind)
-            put("daemon.file", file)
-            put("daemon.line", line.toString())
-            put("daemon.column", column.toString())
-            put("daemon.pid", pid.toString())
             for ((key, value) in details) put("daemon.${sanitizeCrashlyticsKey(key)}", value)
         }
     }

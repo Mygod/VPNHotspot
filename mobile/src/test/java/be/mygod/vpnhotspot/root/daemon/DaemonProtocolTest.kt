@@ -95,7 +95,7 @@ class DaemonProtocolTest {
         assertEquals("routing.command", e.stackTrace.single().methodName)
         assertEquals("routing.rs", e.stackTrace.single().fileName)
         assertEquals(123, e.stackTrace.single().lineNumber)
-        assertEquals("routing.command", e.report.crashlyticsKeyValues["daemon.context"])
+        assertEquals(setOf("daemon.command"), e.report.crashlyticsKeyValues.keys)
         assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
     }
 
