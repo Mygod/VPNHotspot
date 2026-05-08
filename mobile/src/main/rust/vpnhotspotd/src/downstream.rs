@@ -39,7 +39,7 @@ async fn query_ipv4(
 ) -> io::Result<Option<DownstreamIpv4>> {
     let index = match netlink::link_index(handle, downstream).await {
         Ok(index) => index,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if netlink::is_missing_link(&e) => return Ok(None),
         Err(e) => {
             return Err(e.with_report_context_details(
                 "downstream.ipv4.link_index",

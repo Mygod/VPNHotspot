@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root.daemon
 
+import android.os.RemoteException
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import com.google.firebase.crashlytics.CustomKeysAndValues
 import kotlinx.io.Buffer
@@ -43,15 +44,24 @@ object DaemonTransport {
     class DaemonException(
         val report: DaemonErrorReport,
         private val callId: Long? = null,
-    ) : IOException(report.toExceptionMessage()), CrashlyticsKeyProvider {
+        cause: Throwable = DaemonReportException(report),
+    ) : RemoteException(report.toExceptionMessage()), CrashlyticsKeyProvider {
         init {
-            stackTrace = arrayOf(StackTraceElement("vpnhotspotd", report.context, report.file, report.line))
+            initCause(cause)
         }
+
+        fun withCurrentTrace() = DaemonException(report, callId, this)
 
         override val crashlyticsKeys get() = CustomKeysAndValues.Builder().apply {
             for ((key, value) in report.crashlyticsKeyValues) putString(key, value)
             if (callId != null) putString("daemon.callId", callId.toString())
         }.build()
+    }
+
+    private class DaemonReportException(report: DaemonErrorReport) : IOException(report.toExceptionMessage()) {
+        init {
+            stackTrace = arrayOf(StackTraceElement("vpnhotspotd", report.context, report.file, report.line))
+        }
     }
 
     sealed class Frame {

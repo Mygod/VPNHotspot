@@ -108,7 +108,7 @@ async fn neighbour_from_event(
     };
     let interface = match netlink::link_name(handle, message.header.ifindex).await {
         Ok(name) => name,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => format!("if{}", message.header.ifindex),
+        Err(e) if netlink::is_missing_link(&e) => format!("if{}", message.header.ifindex),
         Err(e) => {
             report::io_with_details(
                 "neighbour.link_name",

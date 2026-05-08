@@ -6,6 +6,7 @@ import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
@@ -91,10 +92,7 @@ class DaemonProtocolTest {
         val e = (frame as DaemonTransport.Frame.Error).exception
         assertEquals(16, e.report.errno)
         assertEquals(report, e.report)
-        assertEquals("vpnhotspotd", e.stackTrace.single().className)
-        assertEquals("routing.command", e.stackTrace.single().methodName)
-        assertEquals("routing.rs", e.stackTrace.single().fileName)
-        assertEquals(123, e.stackTrace.single().lineNumber)
+        assertDaemonReportCause(e)
         assertEquals(setOf("daemon.command"), e.report.crashlyticsKeyValues.keys)
         assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
     }
@@ -108,7 +106,9 @@ class DaemonProtocolTest {
             writeErrorReport(report)
         }.readByteArray())
         assertTrue(frame is DaemonTransport.Frame.NonFatal)
-        assertEquals(report, (frame as DaemonTransport.Frame.NonFatal).exception.report)
+        val e = (frame as DaemonTransport.Frame.NonFatal).exception
+        assertEquals(report, e.report)
+        assertDaemonReportCause(e)
     }
 
     @Test
@@ -223,6 +223,15 @@ class DaemonProtocolTest {
         pid = 2345,
         details = mapOf("command" to "iptables-restore"),
     )
+
+    private fun assertDaemonReportCause(e: DaemonTransport.DaemonException) {
+        assertNotNull(e.cause)
+        val frame = e.cause!!.stackTrace.single()
+        assertEquals("vpnhotspotd", frame.className)
+        assertEquals("routing.command", frame.methodName)
+        assertEquals("routing.rs", frame.fileName)
+        assertEquals(123, frame.lineNumber)
+    }
 
     private fun Buffer.writeErrorReport(report: DaemonTransport.DaemonErrorReport) {
         writeUtf(report.context)

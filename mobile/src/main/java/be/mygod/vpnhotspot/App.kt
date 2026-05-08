@@ -96,10 +96,7 @@ class App : Application() {
                     if (priority != Log.DEBUG || BuildConfig.DEBUG) Log.println(priority, tag, message)
                     FirebaseCrashlytics.getInstance().log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
                 } else {
-                    if (priority >= Log.WARN || priority == Log.DEBUG) {
-                        Log.println(priority, tag, message)
-                        Log.w(tag, message, t)
-                    }
+                    if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
                     if (priority >= Log.INFO && t !is NoShellException) {
                         val crashlyticsKeys = (t as? CrashlyticsKeyProvider)?.crashlyticsKeys
                         if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(t)

@@ -265,6 +265,8 @@ object DaemonController {
         }
         try {
             return reply.await()
+        } catch (e: DaemonTransport.DaemonException) {
+            throw e.withCurrentTrace()
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
                 lock.withLock {
@@ -309,6 +311,8 @@ object DaemonController {
         }
         try {
             for (event in channel) emit(event)
+        } catch (e: DaemonTransport.DaemonException) {
+            throw e.withCurrentTrace()
         } finally {
             withContext(NonCancellable) {
                 lock.withLock {
@@ -375,7 +379,7 @@ object DaemonController {
                             null -> { }
                         }
                     }
-                    is DaemonTransport.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception)
+                    is DaemonTransport.Frame.NonFatal -> Timber.tag(BINARY_NAME).w(frame.exception.withCurrentTrace())
                 }
             } catch (_: CancellationException) {
             } catch (e: Exception) {

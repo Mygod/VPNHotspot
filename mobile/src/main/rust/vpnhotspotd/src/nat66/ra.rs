@@ -101,8 +101,13 @@ pub(crate) fn spawn_loop(
                 }
             }
             let mtu = downstream_mtu(&netlink, &current.downstream, "nat66.ra_mtu_lookup").await;
+            let mut missing_interface = false;
             let router = match link_local_router(&netlink, &current.downstream).await {
                 Ok(router) => router,
+                Err(e) if netlink::is_missing_link(&e) => {
+                    missing_interface = true;
+                    None
+                }
                 Err(e) => {
                     report::io_with_details(
                         "nat66.ra_link_local_lookup",
@@ -125,11 +130,15 @@ pub(crate) fn spawn_loop(
             }
             if router.is_none() {
                 if !waiting_logged {
-                    eprintln!(
-                        "ra waiting for link-local router address on {}",
-                        current.downstream
-                    );
-                    waiting_logged = true;
+                    if missing_interface {
+                        waiting_logged = false;
+                    } else {
+                        eprintln!(
+                            "ra waiting for link-local router address on {}",
+                            current.downstream
+                        );
+                        waiting_logged = true;
+                    }
                 }
                 if next_ra <= now {
                     next_ra = now + RA_PERIOD;
@@ -236,6 +245,7 @@ pub(crate) async fn withdraw_prefixes_once(
             );
             return;
         }
+        Err(e) if netlink::is_missing_link(&e) => return,
         Err(e) => {
             report::io_with_details(
                 "nat66.ra_withdraw_link_local_lookup",
@@ -321,7 +331,7 @@ fn create_send_socket(interface: &str, mark: u32, router: Router) -> io::Result<
 async fn downstream_mtu(handle: &netlink::Handle, interface: &str, context: &str) -> u32 {
     match netlink::link_mtu(handle, interface).await {
         Ok(mtu) => mtu,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => DEFAULT_MTU,
+        Err(e) if netlink::is_missing_link(&e) => DEFAULT_MTU,
         Err(e) => {
             report::io_with_details(context, e, [("interface", interface.to_owned())]);
             DEFAULT_MTU
@@ -335,7 +345,7 @@ async fn downstream_ipv6_prefixes(
 ) -> io::Result<Vec<Route>> {
     let interface_index = match netlink::link_index(handle, interface).await {
         Ok(index) => index,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
     let _dump = handle.lock_dump().await;
@@ -347,7 +357,13 @@ async fn downstream_ipv6_prefixes(
         .execute();
     pin_mut!(addresses);
     let mut prefixes = Vec::new();
-    while let Some(message) = addresses.try_next().await.map_err(netlink::to_io_error)? {
+    loop {
+        let message = match addresses.try_next().await.map_err(netlink::to_io_error) {
+            Ok(Some(message)) => message,
+            Ok(None) => break,
+            Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
+            Err(e) => return Err(e),
+        };
         if message.header.family != AddressFamily::Inet6 {
             continue;
         }
@@ -401,7 +417,12 @@ async fn link_local_router(
         .execute();
     pin_mut!(addresses);
     let mut router = None;
-    while let Some(address) = addresses.try_next().await.map_err(netlink::to_io_error)? {
+    loop {
+        let address = match addresses.try_next().await.map_err(netlink::to_io_error) {
+            Ok(Some(address)) => address,
+            Ok(None) => break,
+            Err(e) => return Err(e),
+        };
         if router.is_none() && address.header.family == AddressFamily::Inet6 {
             if let Some(address) = router_address(&address) {
                 router = Some(Router {

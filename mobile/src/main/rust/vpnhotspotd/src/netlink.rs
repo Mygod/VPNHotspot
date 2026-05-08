@@ -255,6 +255,10 @@ pub(crate) fn to_io_error(error: rtnetlink::Error) -> io::Error {
     }
 }
 
+pub(crate) fn is_missing_link(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(libc::ENODEV)
+}
+
 fn dispatch_message(
     payload: NetlinkPayload<RouteNetlinkMessage>,
     ipv4_address_changed: &Notify,
@@ -307,4 +311,21 @@ fn link_name_from_message(link: LinkMessage) -> Option<String> {
             None
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_link_accepts_kernel_enodev_and_synthetic_not_found() {
+        assert!(is_missing_link(&io::Error::from_raw_os_error(libc::ENODEV)));
+        assert!(is_missing_link(&io::Error::new(
+            io::ErrorKind::NotFound,
+            "interface not found"
+        )));
+        assert!(!is_missing_link(&io::Error::from_raw_os_error(
+            libc::EINVAL
+        )));
+    }
 }

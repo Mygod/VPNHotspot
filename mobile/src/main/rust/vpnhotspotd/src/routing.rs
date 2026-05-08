@@ -316,7 +316,7 @@ impl Runtime {
             }
             let ifindex = match netlink::link_index(&self.netlink, &upstream.ifname).await {
                 Ok(ifindex) => ifindex,
-                Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(e) if netlink::is_missing_link(&e) => continue,
                 Err(e) => {
                     return Err(e).with_report_context_details(
                         "routing.resolve_upstream_index",
