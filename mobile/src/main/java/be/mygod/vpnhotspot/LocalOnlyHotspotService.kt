@@ -10,7 +10,6 @@ import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
@@ -26,13 +25,11 @@ import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -43,7 +40,7 @@ import java.lang.reflect.InvocationTargetException
 import java.net.Inet4Address
 import java.util.concurrent.atomic.AtomicInteger
 
-class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), CoroutineScope, TetherStates.Callback {
+class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
     companion object {
         const val KEY_USE_SYSTEM = "service.tempHotspot.useSystem"
 
@@ -198,9 +195,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), CoroutineSc
         val manager = RoutingManager.LocalOnly(this, iface)
         routingManager = manager
         manager.start()
-        if (routingManager === manager && binder.iface == iface) {
-            NetlinkNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
-        }
+        if (routingManager === manager && binder.iface == iface) startNetlinkNeighbours()
     }
     private fun onFrameworkStopped(generation: Int) {
         if (reservation?.generation == generation) reservation = null
@@ -320,8 +315,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), CoroutineSc
         }
     }
 
-    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
-        super.onNetlinkNeighbourAvailable(neighbours)
+    override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
+        super.onNetlinkNeighboursChanged(neighbours)
         timeoutMonitor?.onClientsChanged(neighbours.none {
             it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
         })
@@ -341,7 +336,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), CoroutineSc
                 binder.iface = null
                 waitingForIface = false
                 TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
-                NetlinkNeighbourMonitor.unregisterCallback(this@LocalOnlyHotspotService)
+                stopNetlinkNeighbours()
                 timeoutMonitor?.close()
                 timeoutMonitor = null
                 val manager = routingManager

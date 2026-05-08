@@ -12,17 +12,19 @@ import android.os.Parcelable
 import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
@@ -31,12 +33,11 @@ import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.Callback, DefaultLifecycleObserver,
-    WifiApManager.SoftApCallbackCompat, TetherStates.Callback {
+class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, WifiApManager.SoftApCallbackCompat,
+    TetherStates.Callback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
         private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
@@ -154,14 +155,23 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
         populateClients()
     }
 
+    override fun onCreate(owner: LifecycleOwner) {
+        owner.lifecycleScope.launch {
+            owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                NetlinkNeighbours.snapshots.collect {
+                    neighbours = it
+                    populateClients()
+                }
+            }
+        }
+    }
+
     override fun onStart(owner: LifecycleOwner) {
         TetherStates.registerCallback(this)
-        NetlinkNeighbourMonitor.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
-        NetlinkNeighbourMonitor.unregisterCallback(this)
         TetherStates.unregisterCallback(this)
     }
 
@@ -177,11 +187,6 @@ class ClientViewModel : ViewModel(), ServiceConnection, NetlinkNeighbourMonitor.
         repeater = null
         binder.statusChanged -= this
         binder.groupChanged -= this
-    }
-
-    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
-        this.neighbours = neighbours
-        populateClients()
     }
 
     @RequiresApi(31)

@@ -7,11 +7,9 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -20,7 +18,7 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callback, CoroutineScope {
+class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
@@ -66,7 +64,6 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
-    private var callbackRegistered = false
     override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
     override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
 
@@ -106,10 +103,9 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                 if (it.isEmpty()) BootReceiver.delete<TetheringService>()
                 else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
             }
-            if (!callbackRegistered) {
-                callbackRegistered = true
+            if (!netlinkNeighboursStarted) {
                 TetherStates.registerCallback(this)
-                NetlinkNeighbourMonitor.registerCallback(this)
+                startNetlinkNeighbours()
             }
             super.updateNotification()
         }
@@ -163,11 +159,9 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     }
 
     private fun unregisterReceiver() {
-        if (callbackRegistered) {
-            TetherStates.unregisterCallback(this)
-            NetlinkNeighbourMonitor.unregisterCallback(this)
-            callbackRegistered = false
-        }
+        if (!netlinkNeighboursStarted) return
+        TetherStates.unregisterCallback(this)
+        stopNetlinkNeighbours()
     }
 
     override fun updateNotification() {

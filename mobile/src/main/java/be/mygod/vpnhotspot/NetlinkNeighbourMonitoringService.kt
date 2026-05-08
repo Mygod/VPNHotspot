@@ -2,16 +2,31 @@ package be.mygod.vpnhotspot
 
 import android.app.Service
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.net.Inet4Address
 
-abstract class NetlinkNeighbourMonitoringService : Service(), NetlinkNeighbourMonitor.Callback {
+abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
+    private var neighboursJob: Job? = null
     private var neighbours: Collection<NetlinkNeighbour> = emptyList()
+    protected val netlinkNeighboursStarted get() = neighboursJob != null
 
     protected abstract val activeIfaces: List<String>
     protected open val inactiveIfaces get() = emptyList<String>()
 
-    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
+    protected fun startNetlinkNeighbours() {
+        if (neighboursJob == null) neighboursJob = launch {
+            NetlinkNeighbours.snapshots.collect { onNetlinkNeighboursChanged(it) }
+        }
+    }
+    protected fun stopNetlinkNeighbours() {
+        neighboursJob?.cancel()
+        neighboursJob = null
+    }
+
+    protected open fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
         this.neighbours = neighbours
         updateNotification()
     }

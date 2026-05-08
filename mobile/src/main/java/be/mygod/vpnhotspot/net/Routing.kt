@@ -9,7 +9,7 @@ import android.os.Build
 import android.provider.Settings
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbourMonitor
+import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -26,6 +26,10 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.produceIn
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -36,7 +40,7 @@ import java.util.concurrent.atomic.AtomicReference
 /**
  * Builds and updates a root routing session for one downstream interface.
  */
-class Routing(private val caller: Any, private val downstream: String) : NetlinkNeighbourMonitor.Callback {
+class Routing(private val caller: Any, private val downstream: String) {
     companion object {
         private val ipv6NatPrefixSeed: String
             @SuppressLint("HardwareIds")
@@ -104,13 +108,16 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             session.prepare()
             FallbackUpstreamMonitor.registerCallback(fallbackUpstream)
             UpstreamMonitor.registerCallback(primaryUpstream)
-            NetlinkNeighbourMonitor.registerCallback(this@Routing)
             Timber.i("Started routing for $downstream by $caller")
             val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
-            for (update in updates) {
+            val mergedUpdates = merge(
+                updates.receiveAsFlow(),
+                NetlinkNeighbours.snapshots.map { RoutingUpdate.NeighboursSnapshot(it) },
+            ).produceIn(this)
+            for (update in mergedUpdates) {
                 pendingUpdates[update.key] = update
                 while (true) {
-                    val next = updates.tryReceive().getOrNull() ?: break
+                    val next = mergedUpdates.tryReceive().getOrNull() ?: break
                     pendingUpdates[next.key] = next
                 }
                 for (pending in pendingUpdates.values) withContext(NonCancellable) {
@@ -133,7 +140,6 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
             SmartSnackbar.make(e).show()
         } finally {
             withContext(NonCancellable) {
-                NetlinkNeighbourMonitor.unregisterCallback(this@Routing)
                 FallbackUpstreamMonitor.unregisterCallback(fallbackUpstream)
                 UpstreamMonitor.unregisterCallback(primaryUpstream)
                 updates.cancel()
@@ -234,9 +240,6 @@ class Routing(private val caller: Any, private val downstream: String) : Netlink
         }
     }
 
-    override fun onNetlinkNeighbourAvailable(neighbours: Collection<NetlinkNeighbour>) {
-        updates.trySend(RoutingUpdate.NeighboursSnapshot(neighbours))
-    }
     private suspend fun updateNeighbours(neighbours: Collection<NetlinkNeighbour>) {
         val nextClients = linkedMapOf<Inet4Address, MacAddress>()
         val nextAllowedMacs = linkedSetOf<MacAddress>()
