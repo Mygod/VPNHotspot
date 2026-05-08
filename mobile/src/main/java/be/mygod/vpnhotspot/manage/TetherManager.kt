@@ -211,7 +211,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                     val frequency = info.frequency
                     val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
                     val bandwidth = SoftApInfo.channelWidthLookup(info.bandwidth, true)
-                    (if (Build.VERSION.SDK_INT >= 31) {
+                    SpannableStringBuilder(if (Build.VERSION.SDK_INT >= 31) {
                         val bssid = info.bssid.let { if (it == null) null else makeMacSpan(it.toString()) }
                         val bssidAp = info.apInstanceIdentifier?.let {
                             when (bssid) {
@@ -221,7 +221,7 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                             }
                         } ?: bssid ?: "?"
                         val timeout = info.autoShutdownTimeoutMillis
-                        SpannableStringBuilder(TextUtils.expandTemplate(parent.getText(if (timeout == 0L) {
+                        TextUtils.expandTemplate(parent.getText(if (timeout == 0L) {
                             R.string.tethering_manage_wifi_info_timeout_disabled
                         } else R.string.tethering_manage_wifi_info_timeout_enabled),
                             integerFormat.format(frequency.toLong()),
@@ -231,13 +231,13 @@ sealed class TetherManager(protected val parent: TetheringFragment) : Manager(),
                             integerFormat.format(info.wifiStandard.toLong()),
                             // http://unicode.org/cldr/trac/ticket/3407
                             DateUtils.formatElapsedTime(timeout / 1000),
-                        ))
-                    } else SpannableStringBuilder(TextUtils.expandTemplate(
+                        )
+                    } else TextUtils.expandTemplate(
                         parent.getText(R.string.tethering_manage_wifi_info),
                         integerFormat.format(frequency.toLong()),
                         integerFormat.format(channel.toLong()),
                         bandwidth,
-                    ))).also { result ->
+                    )).also { result ->
                         info.mldAddress?.let { result.append(", MLD MAC ").append(makeMacSpan(it.toString())) }
                     }
                 }
