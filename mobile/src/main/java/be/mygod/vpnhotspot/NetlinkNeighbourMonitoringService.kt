@@ -24,6 +24,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     protected fun stopNetlinkNeighbours() {
         neighboursJob?.cancel()
         neighboursJob = null
+        neighbours = emptyList()
     }
 
     protected open fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
