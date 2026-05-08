@@ -126,7 +126,9 @@ object DaemonTransport {
     private fun DaemonErrorReport.toExceptionMessage() = buildString {
         append(context).append(": ").append(message)
         if (errno != null) append(" (errno=").append(errno).append(')')
-        append(" [").append(kind).append(" at ").append(file).append(':').append(line).append(':')
+        append(" [")
+        if (errno == null || kind != "Uncategorized") append(kind).append(" at ")
+        append(file).append(':').append(line).append(':')
             .append(column).append(", pid=").append(pid).append(']')
     }
 

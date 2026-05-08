@@ -92,9 +92,23 @@ class DaemonProtocolTest {
         val e = (frame as DaemonTransport.Frame.Error).exception
         assertEquals(16, e.report.errno)
         assertEquals(report, e.report)
-        assertDaemonReportCause(e)
+        assertDaemonReportCause(e, "routing.command: Device or resource busy (errno=16) " +
+                "[ResourceBusy at routing.rs:123:45, pid=2345]")
         assertEquals(setOf("daemon.command"), e.report.crashlyticsKeyValues.keys)
         assertEquals("iptables-restore", e.report.crashlyticsKeyValues["daemon.command"])
+    }
+
+    @Test
+    fun daemonExceptionMessageHidesUncategorizedWhenErrnoIsPresent() {
+        val e = DaemonTransport.DaemonException(daemonErrorReport(
+            message = "No such device",
+            errno = 19,
+            kind = "Uncategorized",
+        ))
+
+        assertEquals("routing.command: No such device (errno=19) [routing.rs:123:45, pid=2345]",
+            e.cause!!.message)
+        assertEquals("Uncategorized", e.report.kind)
     }
 
     @Test
@@ -212,11 +226,15 @@ class DaemonProtocolTest {
 
     private fun Source.readUtf() = readString(readInt().toLong())
 
-    private fun daemonErrorReport() = DaemonTransport.DaemonErrorReport(
+    private fun daemonErrorReport(
+        message: String = "Device or resource busy",
+        errno: Int? = 16,
+        kind: String = "ResourceBusy",
+    ) = DaemonTransport.DaemonErrorReport(
         context = "routing.command",
-        message = "Device or resource busy",
-        errno = 16,
-        kind = "ResourceBusy",
+        message = message,
+        errno = errno,
+        kind = kind,
         file = "routing.rs",
         line = 123,
         column = 45,
@@ -224,8 +242,9 @@ class DaemonProtocolTest {
         details = mapOf("command" to "iptables-restore"),
     )
 
-    private fun assertDaemonReportCause(e: DaemonTransport.DaemonException) {
+    private fun assertDaemonReportCause(e: DaemonTransport.DaemonException, message: String? = null) {
         assertNotNull(e.cause)
+        if (message != null) assertEquals(message, e.cause!!.message)
         val frame = e.cause!!.stackTrace.single()
         assertEquals("vpnhotspotd", frame.className)
         assertEquals("routing.command", frame.methodName)
