@@ -25,14 +25,67 @@ use vpnhotspotd::shared::model::{
     LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
-    error_errno, CleanIpCommand, IoResultReportExt, IpAddressCommand, IpFamily, IpOperation,
-    IpRouteCommand, IpRuleCommand, RouteType, RuleAction, StaticAddressesCommand,
+    error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
 };
 
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
 const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IpOperation {
+    Replace,
+    Delete,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum IpFamily {
+    Ipv4,
+    Ipv6,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RouteType {
+    Unicast,
+    Local,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RuleAction {
+    Lookup,
+    Unreachable,
+    Any,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IpAddressCommand {
+    operation: IpOperation,
+    address: IpAddr,
+    prefix_len: u8,
+    interface: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IpRouteCommand {
+    operation: IpOperation,
+    route_type: RouteType,
+    destination: IpAddr,
+    prefix_len: u8,
+    interface: String,
+    table: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct IpRuleCommand {
+    operation: IpOperation,
+    family: IpFamily,
+    iif: String,
+    priority: u32,
+    action: RuleAction,
+    table: u32,
+    fwmark: Option<(u32, u32)>,
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct IptablesRule {
@@ -898,7 +951,10 @@ impl Runtime {
     }
 }
 
-pub(crate) async fn clean(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
+pub(crate) async fn clean(
+    handle: &netlink::Handle,
+    command: &CleanRoutingCommand,
+) -> io::Result<()> {
     delete_rule_repeated(
         handle,
         IpFamily::Ipv6,
@@ -1187,7 +1243,7 @@ pub(crate) async fn delete_static_addresses(
     Ok(())
 }
 
-async fn clean_ip(handle: &netlink::Handle, command: &CleanIpCommand) -> io::Result<()> {
+async fn clean_ip(handle: &netlink::Handle, command: &CleanRoutingCommand) -> io::Result<()> {
     flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
     for interface in netlink::link_names(handle).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);

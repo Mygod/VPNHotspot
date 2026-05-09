@@ -12,4 +12,3 @@ data class NetlinkNeighbour(val ip: InetAddress, val dev: String, val lladdr: Ma
 data class IpDev(val ip: InetAddress, val dev: String) {
     override fun toString() = "$ip%$dev"
 }
-fun IpDev(neighbour: NetlinkNeighbour) = IpDev(neighbour.ip, neighbour.dev)

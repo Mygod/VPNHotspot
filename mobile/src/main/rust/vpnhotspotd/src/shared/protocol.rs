@@ -7,7 +7,7 @@ use std::process;
 
 use crate::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ipv6_to_u128, ClientConfig, Ipv6NatConfig, MasqueradeMode,
-    Network, Route, SessionConfig, SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
+    Network, Route, SessionConfig, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
 };
 
 const MAX_ERROR_DETAILS: usize = 32;
@@ -33,7 +33,7 @@ pub enum Command {
     },
     ReadTrafficCounters,
     StartNeighbourMonitor,
-    CleanRouting(CleanIpCommand),
+    CleanRouting(CleanRoutingCommand),
     ReplaceStaticAddresses(StaticAddressesCommand),
     DeleteStaticAddresses {
         interface: String,
@@ -64,39 +64,6 @@ pub enum NeighbourDelta {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IpOperation {
-    Replace,
-    Delete,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum IpFamily {
-    Ipv4,
-    Ipv6,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RouteType {
-    Unicast,
-    Local,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RuleAction {
-    Lookup,
-    Unreachable,
-    Any,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct IpAddressCommand {
-    pub operation: IpOperation,
-    pub address: IpAddr,
-    pub prefix_len: u8,
-    pub interface: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IpAddressEntry {
     pub address: IpAddr,
     pub prefix_len: u8,
@@ -109,28 +76,7 @@ pub struct StaticAddressesCommand {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct IpRouteCommand {
-    pub operation: IpOperation,
-    pub route_type: RouteType,
-    pub destination: IpAddr,
-    pub prefix_len: u8,
-    pub interface: String,
-    pub table: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct IpRuleCommand {
-    pub operation: IpOperation,
-    pub family: IpFamily,
-    pub iif: String,
-    pub priority: u32,
-    pub action: RuleAction,
-    pub table: u32,
-    pub fwmark: Option<(u32, u32)>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CleanIpCommand {
+pub struct CleanRoutingCommand {
     pub ipv6_nat_prefix_seed: String,
 }
 
@@ -345,7 +291,7 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
         }),
         CMD_READ_TRAFFIC_COUNTERS => Ok(Command::ReadTrafficCounters),
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
-        CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_ip_command()?)),
+        CMD_CLEAN_ROUTING => Ok(Command::CleanRouting(parser.read_clean_routing_command()?)),
         CMD_REPLACE_STATIC_ADDRESSES => Ok(Command::ReplaceStaticAddresses(
             parser.read_static_addresses_command()?,
         )),
@@ -361,20 +307,6 @@ pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
 
 pub fn ok_packet() -> Vec<u8> {
     Vec::new()
-}
-
-pub fn ports_packet(ports: SessionPorts) -> Vec<u8> {
-    let mut packet = Vec::new();
-    packet.extend_from_slice(&ports.dns_tcp.to_be_bytes());
-    packet.extend_from_slice(&ports.dns_udp.to_be_bytes());
-    if let Some(ipv6_nat) = ports.ipv6_nat {
-        packet.push(1);
-        packet.extend_from_slice(&ipv6_nat.tcp.to_be_bytes());
-        packet.extend_from_slice(&ipv6_nat.udp.to_be_bytes());
-    } else {
-        packet.push(0);
-    }
-    packet
 }
 
 pub fn traffic_counter_lines_packet(lines: &[String]) -> Vec<u8> {
@@ -571,8 +503,8 @@ impl<'a> Parser<'a> {
         Ok(clients)
     }
 
-    fn read_clean_ip_command(&mut self) -> io::Result<CleanIpCommand> {
-        Ok(CleanIpCommand {
+    fn read_clean_routing_command(&mut self) -> io::Result<CleanRoutingCommand> {
+        Ok(CleanRoutingCommand {
             ipv6_nat_prefix_seed: self.read_utf()?,
         })
     }

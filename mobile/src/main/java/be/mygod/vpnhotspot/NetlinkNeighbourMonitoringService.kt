@@ -11,7 +11,6 @@ import java.net.Inet4Address
 abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     private var neighboursJob: Job? = null
     private var neighbours: Collection<NetlinkNeighbour> = emptyList()
-    protected val netlinkNeighboursStarted get() = neighboursJob != null
 
     protected abstract val activeIfaces: List<String>
     protected open val inactiveIfaces get() = emptyList<String>()

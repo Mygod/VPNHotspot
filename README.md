@@ -118,18 +118,6 @@ Default settings are picked to suit general use cases and maximize compatibility
   Attempt to start a temporary hotspot using system Wi-Fi hotspot configuration.
   This feature is most likely only functional on Android 12 or newer.
   Enabling this switch will also prevent other apps from using the [local-only hotspot](https://developer.android.com/guide/topics/connectivity/localonlyhotspot) functionality.
-* Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
-  (when custom upstream is used).
-  Requires restarting the app to take effects. (best way is to go to app info and force stop)
-   - Netlink monitor: Use Linux netlink mechanism, most battery efficient but may not work with SELinux enforcing mode.
-     Sometimes auto fallbacks to Netlink monitor with root and Poll.
-   - Netlink monitor with root: Same as above but runs netlink as root. This option works well with SELinux enforcing mode
-     but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
-   - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
-     devices. Recommended to switch to other modes if possible.
-   - Poll with root: Same as Poll but polling is done using a root shell.
-
-
 ## Q & A
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.

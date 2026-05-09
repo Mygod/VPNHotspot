@@ -68,19 +68,6 @@ class DaemonProtocolTest {
     }
 
     @Test
-    fun readPortsDecodesResponse() {
-        val packet = byteArrayOf(
-            0x12, 0x34,
-            0x23, 0x45,
-            1,
-            0x34, 0x56,
-            0x45, 0x67,
-        )
-        assertEquals(DaemonProtocol.SessionPorts(0x1234, 0x2345,
-            DaemonProtocol.Ipv6NatPorts(0x3456, 0x4567)), DaemonProtocol.readPorts(packet))
-    }
-
-    @Test
     fun readFrameDecodesStructuredError() {
         val report = daemonErrorReport()
         val frame = DaemonTransport.readFrame(Buffer().apply {

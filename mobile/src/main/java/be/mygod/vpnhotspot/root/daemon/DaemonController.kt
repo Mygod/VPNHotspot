@@ -77,10 +77,10 @@ object DaemonController {
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
-    suspend fun startSession(config: DaemonProtocol.SessionConfig): DaemonProtocol.SessionPorts {
+    suspend fun startSession(config: DaemonProtocol.SessionConfig) {
         val leaseAdded = lock.withLock { activeSessions.add(config.downstream) }
         try {
-            return DaemonProtocol.readPorts(request(DaemonProtocol.startSession(config)))
+            DaemonProtocol.readAck(request(DaemonProtocol.startSession(config)))
         } catch (e: CancellationException) {
             if (leaseAdded) withContext(NonCancellable) {
                 removeSession(config.downstream)

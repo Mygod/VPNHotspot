@@ -19,10 +19,7 @@ use vpnhotspotd::shared::protocol::{
 };
 use vpnhotspotd::shared::transport::event_frame;
 
-pub(crate) async fn dump(
-    handle: &netlink::Handle,
-    call_id: Option<u64>,
-) -> io::Result<Vec<Neighbour>> {
+pub(crate) async fn dump(handle: &netlink::Handle, call_id: u64) -> io::Result<Vec<Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
     let _dump = handle.lock_dump().await;
     let mut messages = handle.raw().neighbours().get().execute();
@@ -51,7 +48,7 @@ impl Monitor {
     ) -> io::Result<Self> {
         let (registration, mut events) = netlink.register_neighbour_monitor()?;
         let handle = netlink.handle();
-        let neighbours = dump(&handle, Some(call_id)).await?;
+        let neighbours = dump(&handle, call_id).await?;
         if sender
             .send(event_frame(
                 call_id,
@@ -118,7 +115,7 @@ async fn neighbour_from_event(
             format!("if{}", message.header.ifindex)
         }
     };
-    neighbour_from_message(Some(call_id), deleting, message, interface)
+    neighbour_from_message(call_id, deleting, message, interface)
 }
 
 fn interface_name_from_map(interfaces: &HashMap<u32, String>, index: u32) -> String {
@@ -129,7 +126,7 @@ fn interface_name_from_map(interfaces: &HashMap<u32, String>, index: u32) -> Str
 }
 
 fn neighbour_from_message(
-    call_id: Option<u64>,
+    call_id: u64,
     deleting: bool,
     message: NeighbourMessage,
     interface: String,
@@ -158,7 +155,7 @@ fn neighbour_from_message(
                     lladdr = Some(bytes);
                 } else {
                     report::report_for(
-                        call_id,
+                        Some(call_id),
                         DaemonErrorReport::from_message_with_details(
                             "neighbour.lladdr",
                             "invalid link-layer address length",

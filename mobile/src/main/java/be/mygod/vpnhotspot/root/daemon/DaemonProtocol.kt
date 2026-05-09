@@ -60,17 +60,6 @@ object DaemonProtocol {
         val prefixSeed: String,
     )
 
-    data class SessionPorts(
-        val dnsTcp: Int,
-        val dnsUdp: Int,
-        val ipv6Nat: Ipv6NatPorts?,
-    )
-
-    data class Ipv6NatPorts(
-        val tcp: Int,
-        val udp: Int,
-    )
-
     sealed class NeighbourDelta {
         data class Upsert(val neighbour: NetlinkNeighbour) : NeighbourDelta()
         data class Delete(val ip: InetAddress, val dev: String) : NeighbourDelta()
@@ -114,17 +103,6 @@ object DaemonProtocol {
     fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING,
             "CleanRouting(ipv6NatPrefixSeed=$ipv6NatPrefixSeed)") {
         writeUtf(ipv6NatPrefixSeed)
-    }
-
-    fun readPorts(packet: ByteArray): SessionPorts {
-        val input = Buffer().apply { write(packet) }
-        return SessionPorts(
-            input.readShort().toUShort().toInt(),
-            input.readShort().toUShort().toInt(),
-            if (input.readByte() != 0.toByte()) {
-                Ipv6NatPorts(input.readShort().toUShort().toInt(), input.readShort().toUShort().toInt())
-            } else null,
-        )
     }
 
     fun readAck(packet: ByteArray) {

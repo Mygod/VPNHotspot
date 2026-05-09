@@ -20,8 +20,8 @@ use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
-    ok_packet, parse_command, ports_packet, traffic_counter_lines_packet, Command,
-    DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
+    ok_packet, parse_command, traffic_counter_lines_packet, Command, DaemonErrorReport,
+    IoErrorReportExt, IoResultReportExt,
 };
 use vpnhotspotd::shared::transport::{error_frame, parse_client_frame, reply_frame, ClientFrame};
 
@@ -195,7 +195,7 @@ async fn handle_command(
 ) -> io::Result<CallOutput> {
     match parse_command(packet).with_report_context("control.parse_command")? {
         Command::StartSession(config) => match start_session(&state, config, &cancel).await {
-            Ok(reply) => Ok(CallOutput::Reply(reply)),
+            Ok(()) => Ok(CallOutput::Reply(ok_packet())),
             Err(e) if cancel.is_cancelled() && e.kind() == io::ErrorKind::Interrupted => {
                 Ok(CallOutput::NoFrame)
             }
@@ -259,7 +259,7 @@ async fn start_session(
     state: &State,
     config: vpnhotspotd::shared::model::SessionConfig,
     cancel: &CancellationToken,
-) -> io::Result<Vec<u8>> {
+) -> io::Result<()> {
     let downstream = config.downstream.clone();
     let slot = Arc::new(Mutex::new(None));
     {
@@ -283,9 +283,8 @@ async fn start_session(
             [("downstream", downstream.as_str())],
         ) {
         Ok(session) => {
-            let reply = ports_packet(session.ports());
             *guard = Some(session);
-            Ok(reply)
+            Ok(())
         }
         Err(e) => {
             drop(guard);

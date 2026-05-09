@@ -49,7 +49,8 @@ object NetlinkNeighbours {
                 val old = neighbours
                 neighbours = old.mutate {
                     for (delta in deltas) when (delta) {
-                        is DaemonProtocol.NeighbourDelta.Upsert -> it[IpDev(delta.neighbour)] = delta.neighbour
+                        is DaemonProtocol.NeighbourDelta.Upsert ->
+                            it[IpDev(delta.neighbour.ip, delta.neighbour.dev)] = delta.neighbour
                         is DaemonProtocol.NeighbourDelta.Delete -> it.remove(IpDev(delta.ip, delta.dev))
                     }
                 }

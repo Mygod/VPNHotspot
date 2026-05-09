@@ -10,7 +10,7 @@ use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 
 pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
-    dns: dns::Runtime,
+    _dns: dns::Runtime,
     nat66: Option<nat66::Runtime>,
     routing: routing::Runtime,
     downstream_ipv4: DownstreamIpv4,
@@ -81,20 +81,12 @@ impl Session {
         };
         Ok(Self {
             config: shared,
-            dns,
+            _dns: dns,
             nat66,
             routing,
             downstream_ipv4,
             stop,
         })
-    }
-
-    pub(crate) fn ports(&self) -> SessionPorts {
-        SessionPorts {
-            dns_tcp: self.dns.tcp_port,
-            dns_udp: self.dns.udp_port,
-            ipv6_nat: self.nat66.as_ref().map(|runtime| runtime.ports),
-        }
     }
 
     pub(crate) async fn replace_config(&mut self, config: SessionConfig) -> io::Result<()> {
