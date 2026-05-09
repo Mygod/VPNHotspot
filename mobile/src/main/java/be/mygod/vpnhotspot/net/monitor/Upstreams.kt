@@ -26,8 +26,6 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 import java.util.regex.PatternSyntaxException
 
@@ -100,7 +98,6 @@ object Upstreams {
     val primary: StateFlow<Upstream?> = Role(KEY_PRIMARY, vpn).value
     val fallback: StateFlow<Upstream?> = Role(KEY_FALLBACK, default).value
     private class Role(private val preferenceKey: String, private val defaultSource: Flow<Upstream?>) {
-        private val lifecycleLock = Mutex()
         private val _value = MutableStateFlow<Upstream?>(null)
         val value: StateFlow<Upstream?> = _value
         private var worker: Job? = null
@@ -108,26 +105,24 @@ object Upstreams {
         init {
             scope.launch {
                 _value.subscriptionCount.collect { count ->
-                    lifecycleLock.withLock {
-                        if (count == 0) {
-                            worker?.cancelAndJoin()
-                            worker = null
-                            _value.value = null
-                        } else if (worker?.isActive != true) worker = scope.launch {
-                            try {
-                                preferenceFlow(preferenceKey).collectLatest { upstream ->
-                                    (if (upstream.isNullOrEmpty()) defaultSource else iface(upstream)).collect {
-                                        _value.value = it
-                                    }
+                    if (count == 0) {
+                        worker?.cancelAndJoin()
+                        worker = null
+                        _value.value = null
+                    } else if (worker?.isActive != true) worker = scope.launch {
+                        try {
+                            preferenceFlow(preferenceKey).collectLatest { upstream ->
+                                (if (upstream.isNullOrEmpty()) defaultSource else iface(upstream)).collect {
+                                    _value.value = it
                                 }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                Timber.w(e)
-                                SmartSnackbar.make(e).show()
                             }
-                            _value.value = null
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            SmartSnackbar.make(e).show()
                         }
+                        _value.value = null
                     }
                 }
             }

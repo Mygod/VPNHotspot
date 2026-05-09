@@ -16,13 +16,10 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 object NetlinkNeighbours {
     private val scope = CoroutineScope(Dispatchers.Default.limitedParallelism(1, "NetlinkNeighbours") + SupervisorJob())
-    private val lifecycleLock = Mutex()
     private val _snapshots = MutableStateFlow<Collection<NetlinkNeighbour>?>(null)
     val snapshots = _snapshots.filterNotNull()
     private var neighbours = persistentMapOf<IpDev, NetlinkNeighbour>()
@@ -31,12 +28,10 @@ object NetlinkNeighbours {
     init {
         scope.launch {
             _snapshots.subscriptionCount.collect { count ->
-                lifecycleLock.withLock {
-                    if (count == 0) {
-                        worker?.cancelAndJoin()
-                        worker = null
-                    } else if (worker?.isActive != true) worker = launchGeneration()
-                }
+                if (count == 0) {
+                    worker?.cancelAndJoin()
+                    worker = null
+                } else if (worker?.isActive != true) worker = launchGeneration()
             }
         }
     }

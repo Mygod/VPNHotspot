@@ -39,7 +39,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         private val monitor = Mutex()
         private var cleaning: CompletableDeferred<Unit>? = null
 
-        suspend fun clean(reinit: Boolean = true) {
+        suspend fun clean() {
             val clean = CompletableDeferred<Unit>()
             monitor.withLock {
                 cleaning?.let { return@withLock it }
@@ -51,12 +51,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             }
             try {
                 val routings = monitor.withLock {
-                    if (!reinit && active.isEmpty()) null else active.values.mapNotNull { manager ->
-                        manager.routing.also {
-                            manager.routing = null
-                        }
-                    }
-                } ?: return
+                    active.values.mapNotNull { manager -> manager.routing.also { manager.routing = null } }
+                }
                 try {
                     Routing.clean()
                     for (routing in routings) routing.stopForClean()
@@ -66,7 +62,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     SmartSnackbar.make(e).show()
                     return
                 }
-                val restarts = if (reinit) monitor.withLock {
+                val restarts = monitor.withLock {
                     active.values.mapNotNull { manager ->
                         if (!manager.started || manager.routing != null) null else {
                             val routing = Routing(manager.caller, manager.downstream)
@@ -74,7 +70,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                             manager to routing
                         }
                     }
-                } else emptyList()
+                }
                 monitor.withLock {
                     if (cleaning === clean) cleaning = null
                 }

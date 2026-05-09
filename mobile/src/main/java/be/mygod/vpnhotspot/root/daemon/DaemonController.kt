@@ -85,7 +85,14 @@ object DaemonController {
     suspend fun startSession(config: DaemonProtocol.SessionConfig): SessionCall {
         val call = eventCall(DaemonProtocol.startSession(config))
         try {
-            DaemonProtocol.readAck(receiveEvent(call))
+            val event = try {
+                call.channel.receive()
+            } catch (e: DaemonTransport.DaemonException) {
+                throw e.withCurrentTrace()
+            } catch (e: ClosedReceiveChannelException) {
+                throw IOException("$BINARY_NAME call ${call.id} completed before event", e)
+            }
+            DaemonProtocol.readAck(event)
         } catch (e: Exception) {
             withContext(NonCancellable) { closeEventCall(call.id) }
             throw e
@@ -98,24 +105,11 @@ object DaemonController {
     }
 
     suspend fun replaceSession(sessionId: Long, config: DaemonProtocol.SessionConfig) {
-        try {
-            DaemonProtocol.readAck(request(DaemonProtocol.replaceSession(sessionId, config)))
-        } catch (e: DaemonTransport.DaemonException) {
-            throw e
-        } catch (e: Exception) {
-            lock.withLock { closeAndClearStateLocked() }
-            throw e
-        }
+        DaemonProtocol.readAck(request(DaemonProtocol.replaceSession(sessionId, config)))
     }
 
-    suspend fun readTrafficCounterLines() = try {
+    suspend fun readTrafficCounterLines() =
         DaemonProtocol.readTrafficCounterLines(request(DaemonProtocol.readTrafficCounters()))
-    } catch (e: DaemonTransport.DaemonException) {
-        throw e
-    } catch (e: Exception) {
-        lock.withLock { closeAndClearStateLocked() }
-        throw e
-    }
 
     fun neighbourMonitor(): Flow<List<DaemonProtocol.NeighbourDelta>> = flow {
         eventFlow(eventCall(DaemonProtocol.startNeighbourMonitor())).collect {
@@ -298,14 +292,6 @@ object DaemonController {
             if (cancelOnClose) withContext(NonCancellable) { closeEventCall(call.id) }
         }
     }.buffer(Channel.UNLIMITED)
-
-    private suspend fun receiveEvent(call: EventCall) = try {
-        call.channel.receive()
-    } catch (e: DaemonTransport.DaemonException) {
-        throw e.withCurrentTrace()
-    } catch (e: ClosedReceiveChannelException) {
-        throw IOException("$BINARY_NAME call ${call.id} completed before event", e)
-    }
 
     private suspend fun closeEventCall(id: Long) = lock.withLock {
         cancelCallLocked(id)

@@ -233,7 +233,7 @@ async fn handle_command(
     cancel: CancellationToken,
 ) -> io::Result<CallOutput> {
     match command {
-        Command::Cancel => Ok(CallOutput::NoFrame),
+        Command::Cancel => unreachable!("cancel commands are handled before call dispatch"),
         Command::StartSession(config) => {
             match start_session(id, &state, config, sender, &cancel).await {
                 Ok(()) => Ok(CallOutput::NoFrame),
