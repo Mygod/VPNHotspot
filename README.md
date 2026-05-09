@@ -377,6 +377,12 @@ Other:
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in
   `onTetherStatesChanged`.
+* The Rust DNS proxy submits upstream queries through `android_res_nsend`/`android_res_nresult`.
+  To keep daemon tasks nonblocking while still using `android_res_nresult` as the public result
+  reader/closer, it waits for `dnsproxyd` to close the one-shot `resnsend` client socket before
+  reading the result. This assumes `resnsend` writes the complete resolver result before returning
+  and the socket receive buffer can hold that result until the framework socket listener closes the
+  client socket.
 * For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
 gap between them.

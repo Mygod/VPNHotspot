@@ -6,7 +6,7 @@ use std::sync::Arc;
 use libc::{c_int, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
 use socket2::SockRef;
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, Interest, Ready};
 use tokio::net::{
     TcpListener as TokioTcpListener, TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket,
 };
@@ -55,11 +55,22 @@ struct ResolverQuery {
 }
 
 impl ResolverQuery {
-    fn close(mut self) -> io::Result<()> {
-        if unsafe { libc::close(self.fd.take().unwrap()) } < 0 {
-            Err(io::Error::last_os_error())
+    fn finish(mut self) -> io::Result<Vec<u8>> {
+        let mut rcode = 0;
+        let mut response = vec![0u8; DNS_MAX_PACKET];
+        let size = unsafe {
+            android_res_nresult(
+                self.fd.take().unwrap(),
+                &mut rcode,
+                response.as_mut_ptr(),
+                response.len(),
+            )
+        };
+        if size < 0 {
+            Err(io::Error::from_raw_os_error(-size))
         } else {
-            Ok(())
+            response.truncate(size as usize);
+            Ok(response)
         }
     }
 }
@@ -95,6 +106,7 @@ fn set_nonblocking(fd: RawFd) -> io::Result<()> {
 #[link(name = "android")]
 unsafe extern "C" {
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
+    fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
     fn android_res_cancel(nsend_fd: c_int);
 }
 
@@ -258,64 +270,16 @@ async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
 }
 
 async fn read_resolver_result(fd: AsyncFd<ResolverQuery>) -> io::Result<Vec<u8>> {
-    let result = read_be_i32(&fd).await?;
-    if result < 0 {
-        fd.into_inner().close()?;
-        return Err(io::Error::from_raw_os_error(result.saturating_neg()));
-    }
-    let size = read_be_i32(&fd).await?;
-    if size < 0 {
-        fd.into_inner().close()?;
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "negative DNS answer size",
-        ));
-    }
-    let size = size as usize;
-    if size > DNS_MAX_PACKET {
-        fd.into_inner().close()?;
-        return Err(io::Error::from_raw_os_error(libc::EMSGSIZE));
-    }
-    let mut response = vec![0u8; size];
-    read_resolver_exact(&fd, &mut response).await?;
-    fd.into_inner().close()?;
-    Ok(response)
-}
-
-async fn read_be_i32(fd: &AsyncFd<ResolverQuery>) -> io::Result<i32> {
-    let mut buffer = [0u8; 4];
-    read_resolver_exact(fd, &mut buffer).await?;
-    Ok(i32::from_be_bytes(buffer))
-}
-
-async fn read_resolver_exact(fd: &AsyncFd<ResolverQuery>, buffer: &mut [u8]) -> io::Result<()> {
-    let mut offset = 0;
-    while offset < buffer.len() {
-        let mut ready = fd.readable().await?;
-        match ready.try_io(|inner| read_fd(inner.get_ref().as_raw_fd(), &mut buffer[offset..])) {
-            Ok(Ok(0)) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::UnexpectedEof,
-                    "resolver result closed",
-                ));
-            }
-            Ok(Ok(size)) => offset += size,
-            Ok(Err(e)) => return Err(e),
-            Err(_) => {}
-        }
-    }
-    Ok(())
-}
-
-fn read_fd(fd: RawFd, buffer: &mut [u8]) -> io::Result<usize> {
+    // android_res_nresult is the public result reader/closer, but it performs synchronous reads.
+    // dnsproxyd's resnsend handler writes one result and then drops the client socket, so wait for
+    // peer close before handing the nonblocking fd back to the NDK reader.
     loop {
-        let size = unsafe { libc::read(fd, buffer.as_mut_ptr().cast(), buffer.len()) };
-        if size >= 0 {
-            return Ok(size as usize);
+        let mut ready = fd.ready(Interest::READABLE | Interest::ERROR).await?;
+        let state = ready.ready();
+        if state.is_read_closed() || state.is_error() {
+            drop(ready);
+            return fd.into_inner().finish();
         }
-        let error = io::Error::last_os_error();
-        if error.kind() != io::ErrorKind::Interrupted {
-            return Err(error);
-        }
+        ready.clear_ready_matching(Ready::READABLE);
     }
 }
