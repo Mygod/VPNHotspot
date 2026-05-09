@@ -4,9 +4,10 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
-use crate::{dns, downstream, nat66, netlink, routing};
+use crate::{dns, downstream, nat66, netlink, report, routing};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
+use vpnhotspotd::shared::protocol::DaemonErrorReport;
 
 pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
@@ -19,7 +20,8 @@ pub(crate) struct Session {
 
 impl Session {
     pub(crate) async fn start(
-        config: SessionConfig,
+        call_id: u64,
+        mut config: SessionConfig,
         netlink: &netlink::Runtime,
         cancel: &CancellationToken,
     ) -> io::Result<Self> {
@@ -47,14 +49,23 @@ impl Session {
         let nat66 = match nat66::Runtime::start(
             &config,
             shared.clone(),
-            stop.clone(),
+            stop.child_token(),
             netlink.handle(),
             netlink.ipv6_address_changed(),
         ) {
             Ok(runtime) => runtime,
             Err(e) => {
-                stop.cancel();
-                return Err(e);
+                report::report_for(
+                    Some(call_id),
+                    DaemonErrorReport::from_io_error_with_details(
+                        "session.start_ipv6_nat",
+                        e,
+                        [("downstream", config.downstream.as_str())],
+                    ),
+                );
+                config.ipv6_nat = None;
+                shared.lock().await.ipv6_nat = None;
+                None
             }
         };
         let ports = SessionPorts {
@@ -62,23 +73,9 @@ impl Session {
             dns_udp: dns.udp_port,
             ipv6_nat: nat66.as_ref().map(|runtime| runtime.ports),
         };
-        let routing = match routing::Runtime::start(
-            &config,
-            downstream_ipv4,
-            ports,
-            netlink.handle(),
-        )
-        .await
-        {
-            Ok(runtime) => runtime,
-            Err(e) => {
-                stop.cancel();
-                if let Some(nat66) = nat66 {
-                    nat66.stop(&config, false).await;
-                }
-                return Err(e);
-            }
-        };
+        let routing =
+            routing::Runtime::start(call_id, &config, downstream_ipv4, ports, netlink.handle())
+                .await;
         Ok(Self {
             config: shared,
             _dns: dns,
@@ -90,6 +87,10 @@ impl Session {
     }
 
     pub(crate) async fn replace_config(&mut self, config: SessionConfig) -> io::Result<()> {
+        let mut config = config;
+        if self.nat66.is_none() {
+            config.ipv6_nat = None;
+        }
         {
             let mut current = self.config.lock().await;
             self.routing

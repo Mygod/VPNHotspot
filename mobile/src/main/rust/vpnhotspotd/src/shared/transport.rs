@@ -2,43 +2,25 @@ use std::io;
 
 use crate::shared::protocol::DaemonErrorReport;
 
-const FRAME_CALL: u8 = 0;
-const FRAME_CANCEL: u8 = 1;
-
 const FRAME_REPLY: u8 = 0;
 const FRAME_EVENT: u8 = 1;
 const FRAME_ERROR: u8 = 2;
 const FRAME_NON_FATAL: u8 = 3;
+const FRAME_COMPLETE: u8 = 4;
 const NO_CALL_ID: u64 = 0;
 
-#[derive(Debug)]
-pub enum ClientFrame {
-    Call { id: u64, packet: Vec<u8> },
-    Cancel { id: u64 },
-}
-
-pub fn parse_client_frame(packet: &[u8]) -> io::Result<ClientFrame> {
-    let mut parser = Parser::new(packet);
-    match parser.read_u8()? {
-        FRAME_CALL => Ok(ClientFrame::Call {
-            id: parser.read_call_id()?,
-            packet: parser.remaining().to_vec(),
-        }),
-        FRAME_CANCEL => {
-            let id = parser.read_call_id()?;
-            if !parser.remaining().is_empty() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "cancel frame has payload",
-                ));
-            }
-            Ok(ClientFrame::Cancel { id })
-        }
-        frame => Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("unknown client frame {frame}"),
-        )),
+pub fn parse_client_packet(packet: &[u8]) -> io::Result<(u64, &[u8])> {
+    if packet.len() < 8 {
+        return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "short frame"));
     }
+    let id = u64::from_be_bytes(packet[..8].try_into().unwrap());
+    if id == NO_CALL_ID {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid daemon call id 0",
+        ));
+    }
+    Ok((id, &packet[8..]))
 }
 
 pub fn reply_frame(id: u64, packet: Vec<u8>) -> Vec<u8> {
@@ -47,6 +29,10 @@ pub fn reply_frame(id: u64, packet: Vec<u8>) -> Vec<u8> {
 
 pub fn event_frame(id: u64, packet: Vec<u8>) -> Vec<u8> {
     write_frame(FRAME_EVENT, id, packet)
+}
+
+pub fn complete_frame(id: u64) -> Vec<u8> {
+    write_frame_header(FRAME_COMPLETE, id)
 }
 
 pub fn error_frame(id: u64, report: DaemonErrorReport) -> Vec<u8> {
@@ -98,75 +84,33 @@ fn write_utf(packet: &mut Vec<u8>, value: &str) {
     packet.extend_from_slice(value.as_bytes());
 }
 
-struct Parser<'a> {
-    packet: &'a [u8],
-    offset: usize,
-}
-
-impl<'a> Parser<'a> {
-    fn new(packet: &'a [u8]) -> Self {
-        Self { packet, offset: 0 }
-    }
-
-    fn read_u8(&mut self) -> io::Result<u8> {
-        Ok(self.read_exact(1)?[0])
-    }
-
-    fn read_u64(&mut self) -> io::Result<u64> {
-        let bytes = self.read_exact(8)?;
-        Ok(u64::from_be_bytes(bytes.try_into().unwrap()))
-    }
-
-    fn read_call_id(&mut self) -> io::Result<u64> {
-        match self.read_u64()? {
-            NO_CALL_ID => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "invalid daemon call id 0",
-            )),
-            id => Ok(id),
-        }
-    }
-
-    fn read_exact(&mut self, count: usize) -> io::Result<&'a [u8]> {
-        if self.offset + count > self.packet.len() {
-            return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "short frame"));
-        }
-        let bytes = &self.packet[self.offset..self.offset + count];
-        self.offset += count;
-        Ok(bytes)
-    }
-
-    fn remaining(&self) -> &'a [u8] {
-        &self.packet[self.offset..]
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parse_call_frame_reads_id_and_payload() {
+    fn parse_client_packet_reads_id_and_payload() {
         let mut packet = Vec::new();
-        packet.push(FRAME_CALL);
         packet.extend_from_slice(&123u64.to_be_bytes());
         packet.extend_from_slice(&[1, 2, 3]);
 
-        let ClientFrame::Call { id, packet } = parse_client_frame(&packet).unwrap() else {
-            panic!("expected call frame");
-        };
+        let (id, packet) = parse_client_packet(&packet).unwrap();
         assert_eq!(id, 123);
-        assert_eq!(packet, vec![1, 2, 3]);
+        assert_eq!(packet, &[1, 2, 3]);
     }
 
     #[test]
-    fn parse_cancel_frame_rejects_zero_id() {
-        let mut packet = Vec::new();
-        packet.push(FRAME_CANCEL);
-        packet.extend_from_slice(&0u64.to_be_bytes());
+    fn parse_client_packet_rejects_zero_id() {
+        let packet = 0u64.to_be_bytes();
 
-        let error = parse_client_frame(&packet).unwrap_err();
+        let error = parse_client_packet(&packet).unwrap_err();
         assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn parse_client_packet_rejects_short_packet() {
+        let error = parse_client_packet(&[1, 2, 3]).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::UnexpectedEof);
     }
 
     #[test]
@@ -199,6 +143,10 @@ mod tests {
         let error = error_frame(11, report);
         assert_eq!(error[0], FRAME_ERROR);
         assert_eq!(u64::from_be_bytes(error[1..9].try_into().unwrap()), 11);
+        let complete = complete_frame(12);
+        assert_eq!(complete[0], FRAME_COMPLETE);
+        assert_eq!(u64::from_be_bytes(complete[1..9].try_into().unwrap()), 12);
+        assert_eq!(complete.len(), 9);
     }
 
     #[test]

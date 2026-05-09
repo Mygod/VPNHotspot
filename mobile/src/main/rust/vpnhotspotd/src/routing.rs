@@ -25,7 +25,7 @@ use vpnhotspotd::shared::model::{
     LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
-    error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
+    error_errno, CleanRoutingCommand, DaemonErrorReport, IoResultReportExt, StaticAddressesCommand,
 };
 
 // AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
@@ -232,11 +232,12 @@ pub(crate) struct Runtime {
 
 impl Runtime {
     pub(crate) async fn start(
+        call_id: u64,
         config: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
-    ) -> io::Result<Self> {
+    ) -> Self {
         let mut runtime = Self {
             ports,
             downstream_ipv4,
@@ -244,10 +245,16 @@ impl Runtime {
             applied: Vec::new(),
         };
         if let Err(e) = runtime.setup(config).await {
-            runtime.stop().await;
-            return Err(e);
+            report::report_for(
+                Some(call_id),
+                DaemonErrorReport::from_io_error_with_details(
+                    "routing.start",
+                    e,
+                    [("downstream", config.downstream.as_str())],
+                ),
+            );
         }
-        Ok(runtime)
+        runtime
     }
 
     pub(crate) async fn replace(
@@ -1747,8 +1754,12 @@ fn host_subnet(downstream_ipv4: DownstreamIpv4) -> String {
 }
 
 fn route_address(address: Ipv6Addr, prefix_len: u8) -> Ipv6Addr {
-    let shift = 128u32.saturating_sub(prefix_len as u32);
-    Ipv6Addr::from((u128::from(address) & (!0u128 << shift)).to_be_bytes())
+    if prefix_len == 0 {
+        Ipv6Addr::UNSPECIFIED
+    } else {
+        let shift = 128u32.saturating_sub(prefix_len as u32);
+        Ipv6Addr::from((u128::from(address) & (!0u128 << shift)).to_be_bytes())
+    }
 }
 
 fn mac_string(mac: &[u8; 6]) -> String {
@@ -1785,6 +1796,14 @@ mod tests {
                 prefix_len: 24,
             }),
             "192.168.43.0/24"
+        );
+    }
+
+    #[test]
+    fn route_address_handles_default_route() {
+        assert_eq!(
+            route_address("2001:db8::1".parse().unwrap(), 0),
+            Ipv6Addr::UNSPECIFIED
         );
     }
 

@@ -16,9 +16,9 @@ import java.net.Inet6Address
 import java.net.InetAddress
 
 object DaemonProtocol {
+    const val CMD_CANCEL = 0
     const val CMD_START_SESSION = 1
     const val CMD_REPLACE_SESSION = 2
-    const val CMD_REMOVE_SESSION = 3
     const val CMD_READ_TRAFFIC_COUNTERS = 5
     const val CMD_START_NEIGHBOUR_MONITOR = 6
     const val CMD_CLEAN_ROUTING = 12
@@ -65,25 +65,18 @@ object DaemonProtocol {
         data class Delete(val ip: InetAddress, val dev: String) : NeighbourDelta()
     }
 
-    enum class RemoveMode(val protocolValue: Byte) {
-        PreserveCleanup(0),
-        WithdrawCleanup(1),
-    }
-
     class Command internal constructor(val packet: ByteArray, private val description: String) {
         override fun toString() = description
     }
 
+    fun cancel() = writePacket(CMD_CANCEL, "Cancel") { }
     fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION, "StartSession(config=$config)") {
         writeSession(config)
     }
-    fun replaceSession(config: SessionConfig) = writePacket(CMD_REPLACE_SESSION, "ReplaceSession(config=$config)") {
+    fun replaceSession(sessionId: Long, config: SessionConfig) =
+            writePacket(CMD_REPLACE_SESSION, "ReplaceSession(sessionId=$sessionId, config=$config)") {
+        writeLong(sessionId)
         writeSession(config)
-    }
-    fun removeSession(downstream: String, mode: RemoveMode) = writePacket(CMD_REMOVE_SESSION,
-            "RemoveSession(downstream=$downstream, mode=$mode)") {
-        writeUtf(downstream)
-        writeByte(mode.protocolValue)
     }
     fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS, "ReadTrafficCounters") { }
     fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR, "StartNeighbourMonitor") { }

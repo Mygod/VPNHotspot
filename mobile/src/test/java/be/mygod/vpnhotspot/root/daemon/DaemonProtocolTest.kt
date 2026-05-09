@@ -45,6 +45,27 @@ class DaemonProtocolTest {
     }
 
     @Test
+    fun replaceSessionEncodesSessionIdAndConfig() {
+        val packet = DaemonProtocol.replaceSession(42, DaemonProtocol.SessionConfig(
+            downstream = "wlan0",
+            ipForward = true,
+            masquerade = Routing.MasqueradeMode.Simple,
+            ipv6Block = false,
+            primaryNetwork = null,
+            primaryRoutes = emptyList(),
+            fallbackNetwork = null,
+            upstreams = emptyList(),
+            clients = emptyList(),
+            ipv6Nat = null,
+        )).packet
+        Buffer().apply { write(packet) }.let { input ->
+            assertEquals(DaemonProtocol.CMD_REPLACE_SESSION, input.readInt())
+            assertEquals(42L, input.readLong())
+            assertEquals("wlan0", input.readUtf())
+        }
+    }
+
+    @Test
     fun startSessionEncodesIpv6NatPrefixSeed() {
         val packet = DaemonProtocol.startSession(DaemonProtocol.SessionConfig(
             downstream = "wlan0",
@@ -130,6 +151,12 @@ class DaemonProtocolTest {
         assertTrue(event is DaemonTransport.Frame.Event)
         assertEquals(11, (event as DaemonTransport.Frame.Event).id)
         assertEquals(2, event.packet.single().toInt())
+        val complete = DaemonTransport.readFrame(Buffer().apply {
+            writeByte(4)
+            writeLong(12)
+        }.readByteArray())
+        assertTrue(complete is DaemonTransport.Frame.Complete)
+        assertEquals(12, (complete as DaemonTransport.Frame.Complete).id)
     }
 
     @Test
@@ -165,38 +192,20 @@ class DaemonProtocolTest {
     }
 
     @Test
-    fun transportCallAndCancelEncodeCallerId() {
+    fun transportCallAndCancelCommandEncodeCallId() {
         Buffer().apply {
             write(DaemonTransport.call(123, byteArrayOf(1, 2)))
         }.let { input ->
-            assertEquals(0, input.readByte().toInt())
             assertEquals(123, input.readLong())
             assertEquals(1, input.readByte().toInt())
             assertEquals(2, input.readByte().toInt())
         }
         Buffer().apply {
-            write(DaemonTransport.cancel(124))
+            write(DaemonTransport.call(124, DaemonProtocol.cancel().packet))
         }.let { input ->
-            assertEquals(1, input.readByte().toInt())
             assertEquals(124, input.readLong())
+            assertEquals(DaemonProtocol.CMD_CANCEL, input.readInt())
         }
-    }
-
-    @Test
-    fun removeSessionEncodesRemoveMode() {
-        Buffer().apply {
-            write(DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup).packet)
-        }.let { input ->
-            assertEquals(DaemonProtocol.CMD_REMOVE_SESSION, input.readInt())
-            assertEquals("wlan0", input.readUtf())
-            assertEquals(DaemonProtocol.RemoveMode.WithdrawCleanup.protocolValue, input.readByte())
-        }
-    }
-
-    @Test
-    fun commandDescriptionNamesDaemonCommand() {
-        assertEquals("RemoveSession(downstream=wlan0, mode=WithdrawCleanup)",
-            DaemonProtocol.removeSession("wlan0", DaemonProtocol.RemoveMode.WithdrawCleanup).toString())
     }
 
     @Test

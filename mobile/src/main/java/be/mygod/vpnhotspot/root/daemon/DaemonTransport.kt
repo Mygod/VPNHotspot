@@ -4,20 +4,17 @@ import android.os.RemoteException
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import com.google.firebase.crashlytics.CustomKeysAndValues
 import kotlinx.io.Buffer
-import kotlinx.io.Sink
 import kotlinx.io.Source
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import java.io.IOException
 
 object DaemonTransport {
-    private const val FRAME_CALL = 0
-    private const val FRAME_CANCEL = 1
-
     private const val FRAME_REPLY = 0
     private const val FRAME_EVENT = 1
     private const val FRAME_ERROR = 2
     private const val FRAME_NON_FATAL = 3
+    private const val FRAME_COMPLETE = 4
 
     private const val NO_CALL_ID = 0L
     private val INVALID_CRASHLYTICS_KEY_CHAR = Regex("[^A-Za-z0-9_.-]")
@@ -69,11 +66,16 @@ object DaemonTransport {
         data class Event(val id: Long, val packet: ByteArray) : Frame()
         data class Error(val id: Long, val exception: DaemonException) : Frame()
         data class NonFatal(val id: Long?, val exception: DaemonException) : Frame()
+        data class Complete(val id: Long) : Frame()
     }
 
-    fun call(id: Long, packet: ByteArray) = writeFrame(FRAME_CALL, id) { write(packet) }
-
-    fun cancel(id: Long) = writeFrame(FRAME_CANCEL, id) { }
+    fun call(id: Long, packet: ByteArray): ByteArray {
+        require(id > 0) { "Invalid daemon call id $id" }
+        val output = Buffer()
+        output.writeLong(id)
+        output.write(packet)
+        return output.readByteArray()
+    }
 
     fun readFrame(packet: ByteArray): Frame {
         val input = Buffer().apply { write(packet) }
@@ -89,17 +91,13 @@ object DaemonTransport {
                 if (id != null && id < 0) throw IOException("Invalid daemon nonfatal call id $id")
                 Frame.NonFatal(id, DaemonException(input.readErrorReport(), id))
             }
+            FRAME_COMPLETE -> {
+                val id = input.readCallId()
+                if (input.readByteArray().isNotEmpty()) throw IOException("Unexpected daemon complete payload")
+                Frame.Complete(id)
+            }
             else -> throw IOException("Unknown daemon frame type $type")
         }
-    }
-
-    private fun writeFrame(type: Int, id: Long, block: Sink.() -> Unit): ByteArray {
-        require(id > 0) { "Invalid daemon call id $id" }
-        val output = Buffer()
-        output.writeByte(type.toByte())
-        output.writeLong(id)
-        output.block()
-        return output.readByteArray()
     }
 
     private fun Source.readCallId(): Long {

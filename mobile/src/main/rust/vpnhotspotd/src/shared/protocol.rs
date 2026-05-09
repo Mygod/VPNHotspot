@@ -13,9 +13,9 @@ use crate::shared::model::{
 const MAX_ERROR_DETAILS: usize = 32;
 const MAX_ERROR_FIELD_BYTES: usize = 4096;
 
+const CMD_CANCEL: u32 = 0;
 const CMD_START_SESSION: u32 = 1;
 const CMD_REPLACE_SESSION: u32 = 2;
-const CMD_REMOVE_SESSION: u32 = 3;
 const CMD_READ_TRAFFIC_COUNTERS: u32 = 5;
 const CMD_START_NEIGHBOUR_MONITOR: u32 = 6;
 const CMD_CLEAN_ROUTING: u32 = 12;
@@ -25,11 +25,11 @@ const NETWORK_UNSPECIFIED: Network = 0;
 const ROUTE_WIRE_LEN: usize = 16 + 4;
 
 pub enum Command {
+    Cancel,
     StartSession(SessionConfig),
-    ReplaceSession(SessionConfig),
-    RemoveSession {
-        downstream: String,
-        withdraw_cleanup: bool,
+    ReplaceSession {
+        session_id: u64,
+        config: SessionConfig,
     },
     ReadTrafficCounters,
     StartNeighbourMonitor,
@@ -283,11 +283,19 @@ impl<T> IoResultReportExt<T> for io::Result<T> {
 pub fn parse_command(packet: &[u8]) -> io::Result<Command> {
     let mut parser = Parser::new(packet);
     match parser.read_u32()? {
+        CMD_CANCEL => {
+            if !parser.remaining().is_empty() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "cancel command has payload",
+                ));
+            }
+            Ok(Command::Cancel)
+        }
         CMD_START_SESSION => Ok(Command::StartSession(parser.read_session_config()?)),
-        CMD_REPLACE_SESSION => Ok(Command::ReplaceSession(parser.read_session_config()?)),
-        CMD_REMOVE_SESSION => Ok(Command::RemoveSession {
-            downstream: parser.read_utf()?,
-            withdraw_cleanup: parser.read_bool()?,
+        CMD_REPLACE_SESSION => Ok(Command::ReplaceSession {
+            session_id: parser.read_u64()?,
+            config: parser.read_session_config()?,
         }),
         CMD_READ_TRAFFIC_COUNTERS => Ok(Command::ReadTrafficCounters),
         CMD_START_NEIGHBOUR_MONITOR => Ok(Command::StartNeighbourMonitor),
@@ -621,6 +629,10 @@ impl<'a> Parser<'a> {
         Ok(bytes)
     }
 
+    fn remaining(&self) -> &'a [u8] {
+        &self.packet[self.offset..]
+    }
+
     fn read_count(&mut self, name: &str) -> io::Result<usize> {
         let count = self.read_i32()?;
         if count < 0 {
@@ -639,6 +651,23 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use super::*;
+
+    #[test]
+    fn parse_cancel_command_rejects_payload() {
+        let mut packet = Vec::new();
+        packet.extend_from_slice(&CMD_CANCEL.to_be_bytes());
+
+        let Command::Cancel = parse_command(&packet).unwrap() else {
+            panic!("expected cancel");
+        };
+        packet.push(1);
+        let error = match parse_command(&packet) {
+            Err(error) => error,
+            Ok(_) => panic!("expected cancel payload failure"),
+        };
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "cancel command has payload");
+    }
 
     #[test]
     fn parse_session_config_reads_networks_and_primary_routes() {
@@ -684,6 +713,7 @@ mod tests {
     fn parse_session_config_maps_zero_networks_to_none() {
         let mut packet = Vec::new();
         packet.extend_from_slice(&CMD_REPLACE_SESSION.to_be_bytes());
+        packet.extend_from_slice(&42u64.to_be_bytes());
         write_utf(&mut packet, "wlan0");
         write_session_flags(&mut packet);
         packet.extend_from_slice(&0u64.to_be_bytes());
@@ -693,9 +723,10 @@ mod tests {
         packet.extend_from_slice(&0i32.to_be_bytes());
         packet.push(0);
 
-        let Command::ReplaceSession(config) = parse_command(&packet).unwrap() else {
+        let Command::ReplaceSession { session_id, config } = parse_command(&packet).unwrap() else {
             panic!("expected replace session");
         };
+        assert_eq!(session_id, 42);
         assert_eq!(config.primary_network, None);
         assert!(config.primary_routes.is_empty());
         assert_eq!(config.fallback_network, None);

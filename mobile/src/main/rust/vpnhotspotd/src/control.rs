@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream as StdUnixStream;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use libc::EINPROGRESS;
@@ -23,7 +24,9 @@ use vpnhotspotd::shared::protocol::{
     ok_packet, parse_command, traffic_counter_lines_packet, Command, DaemonErrorReport,
     IoErrorReportExt, IoResultReportExt,
 };
-use vpnhotspotd::shared::transport::{error_frame, parse_client_frame, reply_frame, ClientFrame};
+use vpnhotspotd::shared::transport::{
+    complete_frame, error_frame, event_frame, parse_client_packet, reply_frame,
+};
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
@@ -39,7 +42,8 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         sessions: Mutex::new(HashMap::new()),
         neighbour_monitor: Mutex::new(None),
     });
-    let active_calls = Arc::new(Mutex::new(HashMap::new()));
+    let active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     let mut tasks = JoinSet::new();
     loop {
         let packet = select! {
@@ -58,47 +62,58 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                 }
             },
         };
-        match parse_client_frame(&packet) {
-            Ok(ClientFrame::Call { id, packet }) => {
-                let call = Arc::new(CallState {
-                    cancel: CancellationToken::new(),
-                });
-                {
-                    let mut active = active_calls.lock().await;
-                    if active.contains_key(&id) {
-                        let report = DaemonErrorReport::from_message_with_details(
-                            "control.call",
-                            "call already active",
-                            "AlreadyExists",
-                            [("id", id.to_string())],
-                        );
-                        if sender.send(error_frame(id, report)).is_err() {
-                            eprintln!("controller send failed");
-                            break;
-                        }
-                        continue;
-                    }
-                    active.insert(id, call.clone());
-                }
-                tasks.spawn(handle_call(
-                    id,
-                    packet,
-                    state.clone(),
-                    sender.clone(),
-                    active_calls.clone(),
-                    call,
-                ));
-            }
-            Ok(ClientFrame::Cancel { id }) => {
-                if let Some(call) = active_calls.lock().await.get(&id) {
-                    call.cancel.cancel();
-                }
-            }
+        let (id, packet) = match parse_client_packet(&packet) {
+            Ok(parsed) => parsed,
             Err(e) => {
                 report::io("control.parse_frame", e);
                 break;
             }
+        };
+        let command = match parse_command(packet) {
+            Ok(Command::Cancel) => {
+                if let Some(call) = active_calls.lock().await.get(&id) {
+                    call.cancel.cancel();
+                }
+                continue;
+            }
+            Ok(command) => command,
+            Err(e) => {
+                let report = DaemonErrorReport::from_io_error("control.parse_command", e);
+                if sender.send(error_frame(id, report)).is_err() {
+                    eprintln!("controller send failed");
+                    break;
+                }
+                continue;
+            }
+        };
+        let call = Arc::new(CallState {
+            cancel: CancellationToken::new(),
+        });
+        {
+            let mut active = active_calls.lock().await;
+            if active.contains_key(&id) {
+                let report = DaemonErrorReport::from_message_with_details(
+                    "control.call",
+                    "call already active",
+                    "AlreadyExists",
+                    [("id", id.to_string())],
+                );
+                if sender.send(error_frame(id, report)).is_err() {
+                    eprintln!("controller send failed");
+                    break;
+                }
+                continue;
+            }
+            active.insert(id, call.clone());
         }
+        tasks.spawn(handle_call(
+            id,
+            command,
+            state.clone(),
+            sender.clone(),
+            active_calls.clone(),
+            call,
+        ));
     }
     for call in active_calls.lock().await.values() {
         call.cancel.cancel();
@@ -118,8 +133,15 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     netlink: netlink::Runtime,
-    sessions: Mutex<HashMap<String, Arc<Mutex<Option<Session>>>>>,
+    sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
+}
+
+struct SessionState {
+    id: u64,
+    downstream: String,
+    cleaning: AtomicBool,
+    session: Mutex<Option<Session>>,
 }
 
 struct MonitorState {
@@ -133,17 +155,24 @@ impl State {
         if let Some(monitor) = self.neighbour_monitor.lock().await.take() {
             monitor.monitor.stop().await;
         }
-        let sessions: Vec<_> = self
-            .sessions
+        let sessions = self.drain_sessions().await;
+        stop_sessions(&sessions, withdraw_cleanup).await;
+    }
+
+    async fn drain_sessions(&self) -> Vec<Arc<SessionState>> {
+        self.sessions
             .lock()
             .await
             .drain()
             .map(|(_, session)| session)
-            .collect();
-        for session in sessions {
-            if let Some(session) = session.lock().await.take() {
-                session.stop(withdraw_cleanup).await;
-            }
+            .collect()
+    }
+}
+
+async fn stop_sessions(sessions: &[Arc<SessionState>], withdraw_cleanup: bool) {
+    for session in sessions {
+        if let Some(session) = session.session.lock().await.take() {
+            session.stop(withdraw_cleanup).await;
         }
     }
 }
@@ -159,13 +188,22 @@ enum CallOutput {
 
 async fn handle_call(
     id: u64,
-    packet: Vec<u8>,
+    command: Command,
     state: Arc<State>,
     sender: UnboundedSender<Vec<u8>>,
     active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
     call: Arc<CallState>,
 ) {
-    match handle_command(id, &packet, state, &sender, call.cancel.clone()).await {
+    match handle_command(
+        id,
+        command,
+        state,
+        &sender,
+        active_calls.clone(),
+        call.cancel.clone(),
+    )
+    .await
+    {
         Ok(CallOutput::Reply(packet)) => {
             send_terminal_frame(id, &active_calls, &call, &sender, reply_frame(id, packet)).await;
         }
@@ -188,28 +226,25 @@ async fn handle_call(
 
 async fn handle_command(
     id: u64,
-    packet: &[u8],
+    command: Command,
     state: Arc<State>,
     sender: &UnboundedSender<Vec<u8>>,
+    active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
     cancel: CancellationToken,
 ) -> io::Result<CallOutput> {
-    match parse_command(packet).with_report_context("control.parse_command")? {
-        Command::StartSession(config) => match start_session(&state, config, &cancel).await {
-            Ok(()) => Ok(CallOutput::Reply(ok_packet())),
-            Err(e) if cancel.is_cancelled() && e.kind() == io::ErrorKind::Interrupted => {
-                Ok(CallOutput::NoFrame)
+    match command {
+        Command::Cancel => Ok(CallOutput::NoFrame),
+        Command::StartSession(config) => {
+            match start_session(id, &state, config, sender, &cancel).await {
+                Ok(()) => Ok(CallOutput::NoFrame),
+                Err(e) if cancel.is_cancelled() && e.kind() == io::ErrorKind::Interrupted => {
+                    Ok(CallOutput::NoFrame)
+                }
+                Err(e) => Err(e),
             }
-            Err(e) => Err(e),
-        },
-        Command::ReplaceSession(config) => {
-            replace_session(&state, config).await?;
-            Ok(CallOutput::Reply(ok_packet()))
         }
-        Command::RemoveSession {
-            downstream,
-            withdraw_cleanup,
-        } => {
-            remove_session(&state, downstream, withdraw_cleanup).await;
+        Command::ReplaceSession { session_id, config } => {
+            replace_session(&state, session_id, config).await?;
             Ok(CallOutput::Reply(ok_packet()))
         }
         Command::ReadTrafficCounters => {
@@ -246,6 +281,20 @@ async fn handle_command(
             Ok(CallOutput::Reply(ok_packet()))
         }
         Command::CleanRouting(command) => {
+            let sessions = state.drain_sessions().await;
+            let mut complete_ids = Vec::new();
+            for session in &sessions {
+                session.cleaning.store(true, Ordering::Release);
+            }
+            for session in &sessions {
+                if detach_call(session.id, &active_calls).await {
+                    complete_ids.push(session.id);
+                }
+            }
+            stop_sessions(&sessions, true).await;
+            for id in complete_ids {
+                send_complete(id, sender);
+            }
             let handle = state.netlink.handle();
             routing::clean(&handle, &command)
                 .await
@@ -256,15 +305,25 @@ async fn handle_command(
 }
 
 async fn start_session(
+    id: u64,
     state: &State,
     config: vpnhotspotd::shared::model::SessionConfig,
+    sender: &UnboundedSender<Vec<u8>>,
     cancel: &CancellationToken,
 ) -> io::Result<()> {
     let downstream = config.downstream.clone();
-    let slot = Arc::new(Mutex::new(None));
+    let slot = Arc::new(SessionState {
+        id,
+        downstream: downstream.clone(),
+        cleaning: AtomicBool::new(false),
+        session: Mutex::new(None),
+    });
     {
         let mut sessions = state.sessions.lock().await;
-        if sessions.contains_key(&downstream) {
+        if sessions
+            .values()
+            .any(|session| session.downstream == downstream)
+        {
             return Err(
                 io::Error::new(io::ErrorKind::AlreadyExists, "session already exists")
                     .with_report_context_details(
@@ -273,10 +332,10 @@ async fn start_session(
                     ),
             );
         }
-        sessions.insert(downstream.clone(), slot.clone());
+        sessions.insert(id, slot.clone());
     }
-    let mut guard = slot.lock().await;
-    match Session::start(config, &state.netlink, cancel)
+    let mut guard = slot.session.lock().await;
+    match Session::start(id, config, &state.netlink, cancel)
         .await
         .with_report_context_details(
             "control.start_session",
@@ -284,39 +343,70 @@ async fn start_session(
         ) {
         Ok(session) => {
             *guard = Some(session);
-            Ok(())
         }
         Err(e) => {
             drop(guard);
-            remove_session_slot(state, &downstream, &slot).await;
-            Err(e)
+            remove_session_slot(state, &slot).await;
+            return Err(e);
         }
     }
+    drop(guard);
+    if sender.send(event_frame(id, ok_packet())).is_err() {
+        remove_session(state, &slot, false).await;
+        return Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "controller send failed",
+        ));
+    }
+    cancel.cancelled().await;
+    if !slot.cleaning.load(Ordering::Acquire) {
+        remove_session(state, &slot, false).await;
+    }
+    Ok(())
 }
 
 async fn replace_session(
     state: &State,
+    session_id: u64,
     config: vpnhotspotd::shared::model::SessionConfig,
 ) -> io::Result<()> {
     let slot = state
         .sessions
         .lock()
         .await
-        .get(&config.downstream)
+        .get(&session_id)
         .cloned()
         .ok_or_else(|| {
             io::Error::new(io::ErrorKind::NotFound, "session not found")
                 .with_report_context_details(
                     "control.replace_session",
-                    [("downstream", config.downstream.as_str())],
+                    [("session_id", session_id.to_string())],
                 )
         })?;
-    let mut guard = slot.lock().await;
-    let session = guard.as_mut().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "session not ready").with_report_context_details(
-            "control.replace_session",
-            [("downstream", config.downstream.as_str())],
+    if slot.downstream != config.downstream {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "session downstream cannot change",
         )
+        .with_report_context_details(
+            "control.replace_session",
+            [
+                ("session_id", session_id.to_string()),
+                ("session_downstream", slot.downstream.clone()),
+                ("downstream", config.downstream.clone()),
+            ],
+        ));
+    }
+    let mut guard = slot.session.lock().await;
+    let session = guard.as_mut().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::NotFound, "session not established")
+            .with_report_context_details(
+                "control.replace_session",
+                [
+                    ("session_id", session_id.to_string()),
+                    ("downstream", config.downstream.clone()),
+                ],
+            )
     })?;
     session
         .replace_config(config)
@@ -324,25 +414,22 @@ async fn replace_session(
         .with_report_context("control.replace_session")
 }
 
-async fn remove_session(state: &State, downstream: String, withdraw_cleanup: bool) {
-    let slot = state.sessions.lock().await.get(&downstream).cloned();
-    if let Some(slot) = slot {
-        let mut guard = slot.lock().await;
-        if let Some(session) = guard.take() {
-            session.stop(withdraw_cleanup).await;
-        }
-        drop(guard);
-        remove_session_slot(state, &downstream, &slot).await;
+async fn remove_session(state: &State, slot: &Arc<SessionState>, withdraw_cleanup: bool) {
+    let mut guard = slot.session.lock().await;
+    if let Some(session) = guard.take() {
+        session.stop(withdraw_cleanup).await;
     }
+    drop(guard);
+    remove_session_slot(state, slot).await;
 }
 
-async fn remove_session_slot(state: &State, downstream: &str, slot: &Arc<Mutex<Option<Session>>>) {
+async fn remove_session_slot(state: &State, slot: &Arc<SessionState>) {
     let mut sessions = state.sessions.lock().await;
     if sessions
-        .get(downstream)
+        .get(&slot.id)
         .is_some_and(|current| Arc::ptr_eq(current, slot))
     {
-        sessions.remove(downstream);
+        sessions.remove(&slot.id);
     }
 }
 
@@ -397,6 +484,22 @@ async fn send_terminal_frame(
 ) {
     let cancelled = call.cancel.is_cancelled();
     if remove_call(id, active_calls, call).await && !cancelled && sender.send(frame).is_err() {
+        eprintln!("controller send failed");
+    }
+}
+
+async fn detach_call(id: u64, active_calls: &Mutex<HashMap<u64, Arc<CallState>>>) -> bool {
+    let call = active_calls.lock().await.remove(&id);
+    if let Some(call) = call {
+        call.cancel.cancel();
+        true
+    } else {
+        false
+    }
+}
+
+fn send_complete(id: u64, sender: &UnboundedSender<Vec<u8>>) {
+    if sender.send(complete_frame(id)).is_err() {
         eprintln!("controller send failed");
     }
 }

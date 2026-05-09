@@ -18,10 +18,10 @@ import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
@@ -30,7 +30,7 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.net.Inet4Address
 import java.net.Inet6Address
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Builds and updates a root routing session for one downstream interface.
@@ -75,13 +75,12 @@ class Routing(private val caller: Any, private val downstream: String) {
     var ipv6Mode = Ipv6Mode.System
     var masqueradeMode = MasqueradeMode.None
 
-    private var daemonSession: DaemonSessionHandle? = null
-    private val removeMode = AtomicReference(DaemonProtocol.RemoveMode.PreserveCleanup)
-
     private val fallbackUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Fallback)
     private val primaryUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Primary)
     private val clients = linkedMapOf<Inet4Address, MacAddress>()
     private val allowedMacs = linkedSetOf<MacAddress>()
+    private val started = AtomicBoolean()
+    private val job = Job()
 
     private object NeighbourUpdateKey
 
@@ -90,67 +89,127 @@ class Routing(private val caller: Any, private val downstream: String) {
         class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighbourUpdateKey)
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
-    private val routingJob = GlobalScope.launch(Dispatchers.Default, start = CoroutineStart.LAZY) {
-        try {
-            val session = DaemonSessionHandle()
-            daemonSession = session
-            session.prepare()
-            Timber.i("Started routing for $downstream by $caller")
-            val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
-            launch {
-                Upstreams.primary.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(primaryUpstream, it)) }
-            }
-            launch {
-                Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
-            }
-            launch { NetlinkNeighbours.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
-            val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
-            for (update in updates) {
-                pendingUpdates[update.key] = update
-                while (true) {
-                    val next = updates.tryReceive().getOrNull() ?: break
-                    pendingUpdates[next.key] = next
+    fun start(): Boolean {
+        if (!started.compareAndSet(false, true)) return false
+        CoroutineScope(job + CoroutineExceptionHandler { _, e ->
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+        }).launch {
+            var session: DaemonController.SessionCall? = null
+            try {
+                session = DaemonController.startSession(nextConfig())
+                launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
+                Timber.i("Started routing for $downstream by $caller")
+                val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
+                launch {
+                    Upstreams.primary.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(primaryUpstream, it)) }
                 }
-                var upstreamChanged = false
-                for (pending in pendingUpdates.values) withContext(NonCancellable) {
+                launch {
+                    Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
+                }
+                launch { NetlinkNeighbours.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
+                val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
+                for (update in updates) {
+                    pendingUpdates[update.key] = update
+                    while (true) {
+                        val next = updates.tryReceive().getOrNull() ?: break
+                        pendingUpdates[next.key] = next
+                    }
                     try {
-                        when (pending) {
-                            is RoutingUpdate.UpstreamSnapshot -> {
-                                upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
-                            }
-                            is RoutingUpdate.NeighboursSnapshot -> {
-                                if (upstreamChanged) {
-                                    daemonSession?.update()
-                                    upstreamChanged = false
+                        var upstreamChanged = false
+                        var neighbourSnapshot: Collection<NetlinkNeighbour>? = null
+                        for (pending in pendingUpdates.values) withContext(NonCancellable) {
+                            when (pending) {
+                                is RoutingUpdate.UpstreamSnapshot -> {
+                                    upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
                                 }
-                                updateNeighbours(pending.neighbours)
+                                is RoutingUpdate.NeighboursSnapshot -> {
+                                    neighbourSnapshot = pending.neighbours
+                                }
                             }
                         }
+                        var clientSnapshot: Map<Inet4Address, MacAddress> = clients
+                        var allowedMacSnapshot: Set<MacAddress> = allowedMacs
+                        var nextClients: LinkedHashMap<Inet4Address, MacAddress>? = null
+                        var nextAllowedMacs: LinkedHashSet<MacAddress>? = null
+                        var added = emptyMap<Inet4Address, MacAddress>()
+                        var removed = emptySet<Inet4Address>()
+                        val clientsChanged = neighbourSnapshot?.let { neighbours ->
+                            val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
+                            val candidateAllowedMacs = linkedSetOf<MacAddress>()
+                            for (neighbour in neighbours) {
+                                val lladdr = neighbour.lladdr ?: continue
+                                if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
+                                    AppDatabase.instance.clientRecordDao.lookupOrDefault(lladdr).blocked) continue
+                                candidateAllowedMacs.add(lladdr)
+                                val ip = neighbour.ip
+                                if (ip is Inet4Address) candidateClients[ip] = lladdr
+                            }
+                            if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {
+                                removed = clients.keys - candidateClients.keys
+                                // record stats before removing rules to prevent stats losing
+                                if (removed.isNotEmpty()) withContext(NonCancellable) { TrafficRecorder.update() }
+                                added = candidateClients.filterKeys { !clients.containsKey(it) }
+                                clientSnapshot = candidateClients
+                                allowedMacSnapshot = candidateAllowedMacs
+                                nextClients = candidateClients
+                                nextAllowedMacs = candidateAllowedMacs
+                                true
+                            }
+                        } == true
+                        if (upstreamChanged || clientsChanged) try {
+                            withContext(NonCancellable) {
+                                DaemonController.replaceSession(
+                                    session.id,
+                                    nextConfig(clientSnapshot, allowedMacSnapshot),
+                                )
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            SmartSnackbar.make(e).show()
+                            continue
+                        }
+                        if (clientsChanged) {
+                            for ((ip, mac) in added) try {
+                                TrafficRecorder.register(ip, downstream, mac)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Timber.w(e)
+                                SmartSnackbar.make(e).show()
+                            }
+                            withContext(NonCancellable) {
+                                for (ip in removed) TrafficRecorder.unregister(ip, downstream)
+                            }
+                            clients.clear()
+                            clients.putAll(nextClients!!)
+                            allowedMacs.clear()
+                            allowedMacs.addAll(nextAllowedMacs!!)
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Timber.w(e)
                         SmartSnackbar.make(e).show()
+                    } finally {
+                        pendingUpdates.clear()
                     }
                 }
-                if (upstreamChanged) withContext(NonCancellable) { daemonSession?.update() }
-                pendingUpdates.clear()
-            }
-        } catch (_: CancellationException) {
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-        } finally {
-            withContext(NonCancellable) {
-                // record stats before exiting to prevent stats losing
-                if (clients.isNotEmpty()) TrafficRecorder.update()
-                daemonSession?.close(removeMode.get())
-                daemonSession = null
-                Timber.i("Stopped routing for $downstream by $caller")
+            } finally {
+                withContext(NonCancellable) {
+                    // record stats before exiting to prevent stats losing
+                    if (clients.isNotEmpty()) TrafficRecorder.update()
+                    session?.close()
+                    Timber.i("Stopped routing for $downstream by $caller")
+                }
             }
         }
+        return true
     }
 
-    private inner class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) {
+    private class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) {
         private var interfaces = linkedSetOf<String>()
         var upstream: Upstream? = null
             private set
@@ -179,102 +238,36 @@ class Routing(private val caller: Any, private val downstream: String) {
         }
     }
 
-    private inner class DaemonSessionHandle {
-        private fun nextConfig(
-            clientSnapshot: Map<Inet4Address, MacAddress> = clients,
-            allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-        ) = DaemonProtocol.SessionConfig(
-            downstream = downstream,
-            ipForward = ipForward,
-            masquerade = masqueradeMode,
-            ipv6Block = ipv6Mode == Ipv6Mode.Block,
-            primaryNetwork = primaryUpstream.upstream?.network,
-            primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
-                val destination = route.destination
-                if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
-            } ?: emptyList(),
-            fallbackNetwork = fallbackUpstream.upstream?.network,
-            upstreams = buildList {
-                val seen = HashSet<String>()
-                primaryUpstream.appendConfig(this, seen)
-                fallbackUpstream.appendConfig(this, seen)
-            },
-            clients = buildList {
-                for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
-                    clientSnapshot.filterValues { it == mac }.keys.toList()))
-            },
-            ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
-        )
+    private fun nextConfig(
+        clientSnapshot: Map<Inet4Address, MacAddress> = clients,
+        allowedMacSnapshot: Set<MacAddress> = allowedMacs,
+    ) = DaemonProtocol.SessionConfig(
+        downstream = downstream,
+        ipForward = ipForward,
+        masquerade = masqueradeMode,
+        ipv6Block = ipv6Mode == Ipv6Mode.Block,
+        primaryNetwork = primaryUpstream.upstream?.network,
+        primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
+            val destination = route.destination
+            if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
+        } ?: emptyList(),
+        fallbackNetwork = fallbackUpstream.upstream?.network,
+        upstreams = buildList {
+            val seen = HashSet<String>()
+            primaryUpstream.appendConfig(this, seen)
+            fallbackUpstream.appendConfig(this, seen)
+        },
+        clients = buildList {
+            for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
+                clientSnapshot.filterValues { it == mac }.keys.toList()))
+        },
+        ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
+    )
 
-        suspend fun prepare() = DaemonController.startSession(nextConfig())
-
-        suspend fun update(
-            clientSnapshot: Map<Inet4Address, MacAddress> = clients,
-            allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-        ) = try {
-            DaemonController.replaceSession(nextConfig(clientSnapshot, allowedMacSnapshot))
-            true
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-            false
-        }
-
-        suspend fun close(
-            removeMode: DaemonProtocol.RemoveMode = DaemonProtocol.RemoveMode.PreserveCleanup,
-        ) = try {
-            DaemonController.removeSession(downstream, removeMode)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-        }
-    }
-
-    private suspend fun updateNeighbours(neighbours: Collection<NetlinkNeighbour>) {
-        val nextClients = linkedMapOf<Inet4Address, MacAddress>()
-        val nextAllowedMacs = linkedSetOf<MacAddress>()
-        for (neighbour in neighbours) {
-            val lladdr = neighbour.lladdr ?: continue
-            if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
-                    AppDatabase.instance.clientRecordDao.lookupOrDefault(lladdr).blocked) continue
-            nextAllowedMacs.add(lladdr)
-            val ip = neighbour.ip
-            if (ip is Inet4Address) nextClients[ip] = lladdr
-        }
-        val removed = clients.keys - nextClients.keys
-        // record stats before removing rules to prevent stats losing
-        if (removed.isNotEmpty()) TrafficRecorder.update()
-        val added = nextClients.filterKeys { !clients.containsKey(it) }
-        if (daemonSession?.update(nextClients, nextAllowedMacs) == false) return
-        val registered = ArrayList<Inet4Address>()
-        for ((ip, mac) in added) try {
-            TrafficRecorder.register(ip, downstream, mac)
-            registered += ip
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-            for (rollback in registered) TrafficRecorder.unregister(rollback, downstream)
-            return
-        }
-        for (ip in removed) TrafficRecorder.unregister(ip, downstream)
-        clients.clear()
-        clients.putAll(nextClients)
-        allowedMacs.clear()
-        allowedMacs.addAll(nextAllowedMacs)
-    }
-
-    fun start() = routingJob.start()
-
-    suspend fun stopForClean() = withContext(NonCancellable) {
-        removeMode.set(DaemonProtocol.RemoveMode.WithdrawCleanup)
-        routingJob.cancelAndJoin()
-    }
+    suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }
 
     suspend fun revert() = withContext(NonCancellable) {
-        routingJob.cancelAndJoin()
+        job.cancelAndJoin()
         for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
         clients.clear()
         allowedMacs.clear()

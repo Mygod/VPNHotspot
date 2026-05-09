@@ -100,8 +100,12 @@ pub struct Ipv6NatPorts {
 }
 
 pub fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {
-    let shift = 128u32.saturating_sub(prefix_len as u32);
-    (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
+    if prefix_len == 0 {
+        [0; 16]
+    } else {
+        let shift = 128u32.saturating_sub(prefix_len as u32);
+        (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
+    }
 }
 
 pub fn ipv6_nat_prefix(seed: &str, interface: &str) -> Route {
@@ -229,6 +233,11 @@ mod tests {
             select_network(&config, "2001:db8::1".parse().unwrap()),
             Some(456)
         );
+    }
+
+    #[test]
+    fn network_prefix_handles_default_route() {
+        assert_eq!(network_prefix("2001:db8::1".parse().unwrap(), 0), [0; 16]);
     }
 
     #[test]
