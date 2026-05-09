@@ -41,6 +41,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import java.io.EOFException
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
@@ -161,7 +162,7 @@ object DaemonController {
         class Event(val channel: Channel<ByteArray>) : Call()
     }
 
-    private class DaemonStdioEofException(message: String) : IOException(message)
+    private class DaemonStdioEofException(message: String) : EOFException(message)
 
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
@@ -261,7 +262,18 @@ object DaemonController {
         var id = 0L
         val reply = lock.withLock {
             id = nextCallIdLocked()
-            requestLocked(id, command)
+            val reply = CompletableDeferred<ByteArray>()
+            try {
+                ensureDaemonLocked()
+                calls[id] = Call.OneShot(reply)
+                writePacketLocked(DaemonTransport.call(id, command.packet))
+                Timber.d("Sent #$id: $command")
+            } catch (e: Exception) {
+                calls.remove(id)
+                closeConnectionLocked()
+                throw e
+            }
+            reply
         }
         try {
             return reply.await()
@@ -276,21 +288,6 @@ object DaemonController {
             }
             throw e
         }
-    }
-
-    private suspend fun requestLocked(id: Long, command: DaemonProtocol.Command): CompletableDeferred<ByteArray> {
-        val reply = CompletableDeferred<ByteArray>()
-        try {
-            ensureDaemonLocked()
-            calls[id] = Call.OneShot(reply)
-            writePacketLocked(DaemonTransport.call(id, command.packet))
-            Timber.d("Sent #$id: $command")
-        } catch (e: Exception) {
-            calls.remove(id)
-            closeConnectionLocked()
-            throw e
-        }
-        return reply
     }
 
     private fun eventCall(command: DaemonProtocol.Command): Flow<ByteArray> = flow {
