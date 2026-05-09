@@ -209,7 +209,6 @@ dependencies {
     implementation(libs.preference)
     implementation(libs.preferencex.simplemenu)
     implementation(libs.room.ktx)
-    implementation(libs.swiperefreshlayout)
     implementation(libs.timber)
     implementation(libs.zxing.core)
     testImplementation(libs.junit)

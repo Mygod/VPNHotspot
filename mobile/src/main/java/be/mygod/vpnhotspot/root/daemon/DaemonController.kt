@@ -44,6 +44,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.EOFException
 import java.io.IOException
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -122,7 +123,7 @@ object DaemonController {
         }
     }
 
-    suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<java.net.InetAddress, Int>>) {
+    suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) {
         DaemonProtocol.readAck(request(DaemonProtocol.replaceStaticAddresses(dev, addresses)))
     }
 
@@ -306,11 +307,9 @@ object DaemonController {
         throw IOException("$BINARY_NAME call ${call.id} completed before event", e)
     }
 
-    private suspend fun closeEventCall(id: Long) {
-        lock.withLock {
-            cancelCallLocked(id)
-            maybeShutdownLocked()
-        }
+    private suspend fun closeEventCall(id: Long) = lock.withLock {
+        cancelCallLocked(id)
+        maybeShutdownLocked()
     }
 
     private fun nextCallIdLocked(): Long {
@@ -340,7 +339,19 @@ object DaemonController {
                         reply?.complete(frame.packet)
                     }
                     is DaemonTransport.Frame.Event -> {
-                        deliverEventCallFrame(frame.id, frame.packet)
+                        val call = lock.withLock { calls[frame.id] as? Call.Event }
+                        if (call != null) {
+                            val result = call.channel.trySend(frame.packet)
+                            if (result.isFailure) {
+                                result.exceptionOrNull()?.let { call.channel.close(it) }
+                                lock.withLock {
+                                    if (calls[frame.id] === call) {
+                                        cancelCallLocked(frame.id)
+                                        maybeShutdownLocked()
+                                    }
+                                }
+                            }
+                        } else Timber.w("Dropping event for unknown $BINARY_NAME call ${frame.id}")
                     }
                     is DaemonTransport.Frame.Error -> {
                         val call = lock.withLock {
@@ -393,25 +404,6 @@ object DaemonController {
                 }
             }
         }
-    }
-
-    private suspend fun deliverEventCallFrame(id: Long, packet: ByteArray): Boolean {
-        val call = lock.withLock { calls[id] as? Call.Event }
-        if (call == null) {
-            Timber.d("Dropping event for unknown $BINARY_NAME call $id")
-            return false
-        }
-        val result = call.channel.trySend(packet)
-        if (result.isFailure) {
-            result.exceptionOrNull()?.let { call.channel.close(it) }
-            lock.withLock {
-                if (calls[id] === call) {
-                    cancelCallLocked(id)
-                    maybeShutdownLocked()
-                }
-            }
-        }
-        return true
     }
 
     private fun completeCallsLocked(e: Throwable) {

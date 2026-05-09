@@ -35,8 +35,6 @@ object NetlinkNeighbours {
                     if (count == 0) {
                         worker?.cancelAndJoin()
                         worker = null
-                        _snapshots.value = null
-                        neighbours = persistentMapOf()
                     } else if (worker?.isActive != true) worker = launchGeneration()
                 }
             }
@@ -62,16 +60,9 @@ object NetlinkNeighbours {
         } catch (e: Exception) {
             Timber.w(e)
             SmartSnackbar.make(e).show()
-        }
-        _snapshots.value = null
-        neighbours = persistentMapOf()
-    }
-
-    fun flushAsync() = scope.launch {
-        lifecycleLock.withLock {
-            if (_snapshots.subscriptionCount.value == 0) return@withLock
-            worker?.cancelAndJoin()
-            worker = launchGeneration()
+        } finally {
+            _snapshots.value = null
+            neighbours = persistentMapOf()
         }
     }
 }

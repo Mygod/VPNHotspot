@@ -34,7 +34,6 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
@@ -153,7 +152,6 @@ class ClientsFragment : Fragment() {
                             AppDatabase.instance.clientRecordDao.update(this@apply)
                         }
                     }
-                    NetlinkNeighbours.flushAsync()
                     if (!wasWorking && item.itemId == R.id.block) {
                         SmartSnackbar.make(R.string.clients_popup_block_service_inactive).show()
                     }
@@ -187,7 +185,6 @@ class ClientsFragment : Fragment() {
             val deferred = CompletableDeferred<Int>()
             size = deferred
             super.submitList(list) { deferred.complete(list?.size ?: 0) }
-            binding.swipeRefresher.isRefreshing = false
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ClientViewHolder(parent)
@@ -230,8 +227,6 @@ class ClientsFragment : Fragment() {
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
-        binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
-        binding.swipeRefresher.setOnRefreshListener { NetlinkNeighbours.flushAsync() }
         activityViewModels<ClientViewModel>().value.apply {
             lifecycle.addObserver(clientsFragmentObserver)
             clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }

@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.map
 import androidx.room.*
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toLong
+import kotlinx.coroutines.flow.Flow
 
 @Entity
 data class ClientRecord(@PrimaryKey
@@ -25,6 +26,9 @@ data class ClientRecord(@PrimaryKey
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
         protected abstract fun lookupSync(mac: MacAddress): LiveData<ClientRecord?>
         fun lookupOrDefaultSync(mac: MacAddress) = lookupSync(mac).map { it ?: ClientRecord(mac) }
+
+        @Query("SELECT `mac` FROM `ClientRecord` WHERE `blocked`")
+        abstract fun observeBlockedMacs(): Flow<List<MacAddress>>
 
         @Insert(onConflict = OnConflictStrategy.REPLACE)
         protected abstract suspend fun updateInternal(value: ClientRecord): Long

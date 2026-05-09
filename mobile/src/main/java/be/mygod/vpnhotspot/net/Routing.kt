@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -82,11 +83,14 @@ class Routing(private val caller: Any, private val downstream: String) {
     private val started = AtomicBoolean()
     private val job = Job()
 
-    private object NeighbourUpdateKey
-
     private sealed class RoutingUpdate(val key: Any) {
         class UpstreamSnapshot(val upstream: UpstreamTracker, val value: Upstream?) : RoutingUpdate(upstream)
-        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighbourUpdateKey)
+        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighboursSnapshot) {
+            private companion object
+        }
+        class BlockedMacsSnapshot(val macs: Set<MacAddress>) : RoutingUpdate(BlockedMacsSnapshot) {
+            private companion object
+        }
     }
 
     fun start(): Boolean {
@@ -97,9 +101,6 @@ class Routing(private val caller: Any, private val downstream: String) {
         }).launch {
             var session: DaemonController.SessionCall? = null
             try {
-                session = DaemonController.startSession(nextConfig())
-                launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
-                Timber.i("Started routing for $downstream by $caller")
                 val updates = Channel<RoutingUpdate>(Channel.UNLIMITED)
                 launch {
                     Upstreams.primary.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(primaryUpstream, it)) }
@@ -108,6 +109,22 @@ class Routing(private val caller: Any, private val downstream: String) {
                     Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
                 }
                 launch { NetlinkNeighbours.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
+                val initialBlockedMacs = CompletableDeferred<Set<MacAddress>>()
+                launch {
+                    var first = true
+                    AppDatabase.instance.clientRecordDao.observeBlockedMacs().collect {
+                        val macs = it.toSet()
+                        if (first) {
+                            first = false
+                            initialBlockedMacs.complete(macs)
+                        } else updates.trySend(RoutingUpdate.BlockedMacsSnapshot(macs))
+                    }
+                }
+                session = DaemonController.startSession(nextConfig())
+                launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
+                var blockedMacs = initialBlockedMacs.await()
+                var neighbours: Collection<NetlinkNeighbour> = emptyList()
+                Timber.i("Started routing for $downstream by $caller")
                 val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
                 for (update in updates) {
                     pendingUpdates[update.key] = update
@@ -117,14 +134,19 @@ class Routing(private val caller: Any, private val downstream: String) {
                     }
                     try {
                         var upstreamChanged = false
-                        var neighbourSnapshot: Collection<NetlinkNeighbour>? = null
+                        var clientPolicyChanged = false
                         for (pending in pendingUpdates.values) withContext(NonCancellable) {
                             when (pending) {
                                 is RoutingUpdate.UpstreamSnapshot -> {
                                     upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
                                 }
                                 is RoutingUpdate.NeighboursSnapshot -> {
-                                    neighbourSnapshot = pending.neighbours
+                                    neighbours = pending.neighbours
+                                    clientPolicyChanged = true
+                                }
+                                is RoutingUpdate.BlockedMacsSnapshot -> if (blockedMacs != pending.macs) {
+                                    blockedMacs = pending.macs
+                                    clientPolicyChanged = true
                                 }
                             }
                         }
@@ -134,13 +156,13 @@ class Routing(private val caller: Any, private val downstream: String) {
                         var nextAllowedMacs: LinkedHashSet<MacAddress>? = null
                         var added = emptyMap<Inet4Address, MacAddress>()
                         var removed = emptySet<Inet4Address>()
-                        val clientsChanged = neighbourSnapshot?.let { neighbours ->
+                        val clientsChanged = if (clientPolicyChanged) {
                             val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
                             val candidateAllowedMacs = linkedSetOf<MacAddress>()
                             for (neighbour in neighbours) {
                                 val lladdr = neighbour.lladdr ?: continue
                                 if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
-                                    AppDatabase.instance.clientRecordDao.lookupOrDefault(lladdr).blocked) continue
+                                    lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
                                 val ip = neighbour.ip
                                 if (ip is Inet4Address) candidateClients[ip] = lladdr
@@ -156,7 +178,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                                 nextAllowedMacs = candidateAllowedMacs
                                 true
                             }
-                        } == true
+                        } else false
                         if (upstreamChanged || clientsChanged) try {
                             withContext(NonCancellable) {
                                 DaemonController.replaceSession(
