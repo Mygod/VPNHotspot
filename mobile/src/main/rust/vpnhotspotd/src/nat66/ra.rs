@@ -121,7 +121,7 @@ pub(crate) fn spawn_loop(
             if router_changed {
                 last_router = router;
                 if let Some(router) = router {
-                    eprintln!(
+                    println!(
                         "ra using link-local router address {} on {}",
                         router.address, current.downstream
                     );
@@ -133,7 +133,7 @@ pub(crate) fn spawn_loop(
                     if missing_interface {
                         waiting_logged = false;
                     } else {
-                        eprintln!(
+                        println!(
                             "ra waiting for link-local router address on {}",
                             current.downstream
                         );
@@ -239,7 +239,7 @@ pub(crate) async fn withdraw_prefixes_once(
     let router = match link_local_router(netlink, &config.downstream).await {
         Ok(Some(router)) => router,
         Ok(None) => {
-            eprintln!(
+            println!(
                 "ra withdraw skipped: missing link-local router address on {}",
                 config.downstream
             );

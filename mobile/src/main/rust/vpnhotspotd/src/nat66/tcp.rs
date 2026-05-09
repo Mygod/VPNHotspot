@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{SocketAddr, TcpListener};
+use std::net::{SocketAddr, SocketAddrV6, TcpListener};
 use std::sync::Arc;
 
 use socket2::SockRef;
@@ -12,8 +12,8 @@ use tokio_util::sync::CancellationToken;
 use crate::dns::{self, DNS_PORT};
 use crate::report;
 use crate::socket::is_connection_closed;
-use crate::upstream::connect_tcp;
-use vpnhotspotd::shared::model::{select_network, SessionConfig};
+use crate::upstream::{connect_tcp, TcpConnectError};
+use vpnhotspotd::shared::model::{select_upstream_network, SelectedNetwork, SessionConfig};
 
 pub(crate) fn spawn_loop(
     listener: TcpListener,
@@ -27,15 +27,15 @@ pub(crate) fn spawn_loop(
                 _ = stop.cancelled() => break,
                 accepted = listener.accept() => {
                     match accepted {
-                        Ok((socket, _)) => {
+                        Ok((socket, client)) => {
                             let config = config.clone();
                             let connection_stop = stop.child_token();
                             spawn(async move {
                                 select! {
                                     _ = connection_stop.cancelled() => {}
-                                    result = handle_connection(socket, config) => if let Err(e) = result {
+                                    result = handle_connection(socket, client, config) => if let Err(e) = result {
                                         if is_connection_closed(&e) {
-                                            eprintln!("tcp proxy connection closed: {e}");
+                                            println!("tcp proxy connection closed: client={client}: {e}");
                                         } else {
                                             report::io("nat66.tcp_connection", e);
                                         }
@@ -54,6 +54,7 @@ pub(crate) fn spawn_loop(
 
 async fn handle_connection(
     inbound: TokioTcpStream,
+    client: SocketAddr,
     config: Arc<Mutex<SessionConfig>>,
 ) -> io::Result<()> {
     let destination = match inbound.local_addr()? {
@@ -72,16 +73,57 @@ async fn handle_connection(
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
     if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
-        return dns::handle_tcp_connection(inbound, snapshot).await;
+        if let Err(e) = dns::handle_tcp_connection(inbound, snapshot).await {
+            if is_connection_closed(&e) {
+                println!("tcp proxy dns closed: client={client} destination={destination}: {e}");
+            } else {
+                return Err(e);
+            }
+        }
+        return Ok(());
     }
-    let network = select_network(&snapshot, *destination.ip())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::AddrNotAvailable, "no upstream route"))?;
-    let outbound = connect_tcp(network, destination).await?;
-    relay(inbound, outbound).await
+    let Some(selection) = select_upstream_network(&snapshot, *destination.ip()) else {
+        println!("tcp proxy connect failed: client={client} destination={destination}: no upstream route");
+        return Ok(());
+    };
+    let outbound = match connect_tcp(selection.network, destination).await {
+        Ok(outbound) => outbound,
+        Err(TcpConnectError::Connect(e)) => {
+            log_connection_error("connect", client, destination, selection, &e);
+            return Ok(());
+        }
+        Err(TcpConnectError::Setup(e)) => return Err(e),
+    };
+    if let Err(e) = relay(inbound, outbound).await {
+        if is_connection_closed(&e) {
+            log_connection_error("relay", client, destination, selection, &e);
+        } else {
+            return Err(e);
+        }
+    }
+    Ok(())
 }
 
 async fn relay(mut inbound: TokioTcpStream, mut outbound: TokioTcpStream) -> io::Result<()> {
     copy_bidirectional(&mut inbound, &mut outbound)
         .await
         .map(|_| ())
+}
+
+fn log_connection_error(
+    operation: &str,
+    client: SocketAddr,
+    destination: SocketAddrV6,
+    selection: SelectedNetwork,
+    error: &io::Error,
+) {
+    let outcome = if is_connection_closed(error) {
+        "closed"
+    } else {
+        "failed"
+    };
+    println!(
+        "tcp proxy {operation} {outcome}: client={client} destination={destination} network={} role={:?}: {error}",
+        selection.network, selection.role
+    );
 }

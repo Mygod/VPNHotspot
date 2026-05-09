@@ -49,6 +49,12 @@ pub struct UpstreamConfig {
     pub role: UpstreamRole,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SelectedNetwork {
+    pub role: UpstreamRole,
+    pub network: Network,
+}
+
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct ClientConfig {
     pub mac: [u8; 6],
@@ -112,11 +118,27 @@ pub fn ipv6_nat_gateway(prefix: Route) -> Ipv6Addr {
 }
 
 pub fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
+    select_upstream_network(config, destination).map(|selection| selection.network)
+}
+
+pub fn select_upstream_network(
+    config: &SessionConfig,
+    destination: Ipv6Addr,
+) -> Option<SelectedNetwork> {
     let destination = ipv6_to_u128(destination);
-    if config.primary_network.is_some() && route_matches(&config.primary_routes, destination) {
-        config.primary_network
+    if let Some(network) = config
+        .primary_network
+        .filter(|_| route_matches(&config.primary_routes, destination))
+    {
+        Some(SelectedNetwork {
+            role: UpstreamRole::Primary,
+            network,
+        })
     } else {
-        config.fallback_network
+        config.fallback_network.map(|network| SelectedNetwork {
+            role: UpstreamRole::Fallback,
+            network,
+        })
     }
 }
 
@@ -150,6 +172,13 @@ mod tests {
             select_network(&config, "2001:db8:1::1".parse().unwrap()),
             Some(123)
         );
+        assert_eq!(
+            select_upstream_network(&config, "2001:db8:1::1".parse().unwrap()),
+            Some(SelectedNetwork {
+                role: UpstreamRole::Primary,
+                network: 123
+            })
+        );
     }
 
     #[test]
@@ -158,6 +187,13 @@ mod tests {
         assert_eq!(
             select_network(&config, "fd00::1".parse().unwrap()),
             Some(456)
+        );
+        assert_eq!(
+            select_upstream_network(&config, "fd00::1".parse().unwrap()),
+            Some(SelectedNetwork {
+                role: UpstreamRole::Fallback,
+                network: 456
+            })
         );
     }
 
