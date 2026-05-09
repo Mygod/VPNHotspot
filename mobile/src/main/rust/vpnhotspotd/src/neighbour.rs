@@ -121,6 +121,9 @@ async fn neighbour_from_event(
 fn interface_name_from_map(interfaces: &HashMap<u32, String>, index: u32) -> String {
     match interfaces.get(&index) {
         Some(name) => name.clone(),
+        // Match iproute2's if_indextoname fallback shape.
+        //
+        // Source: https://android.googlesource.com/platform/external/iproute2/+/4b9e917/lib/ll_map.c#152
         None => format!("if{index}"),
     }
 }

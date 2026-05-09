@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.root
 import android.content.Context
 import android.net.TetheringManager
 import android.os.Parcelable
+import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
 import androidx.annotation.RequiresApi
@@ -10,19 +11,79 @@ import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.toByteArray
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.io.File
+import java.io.IOException
 
-fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
-    environment().compute("PATH") { _, value ->
-        if (value.isNullOrEmpty()) "/system/bin" else "$value:/system/bin"
+suspend fun <T> ProcessBuilder.withOutputChannels(
+    block: suspend (Process, ByteReadChannel, ByteReadChannel) -> T,
+): T {
+    val stdoutPipe = ParcelFileDescriptor.createPipe()
+    val stderrPipe = ParcelFileDescriptor.createPipe()
+    var stdoutRead: ParcelFileDescriptor? = stdoutPipe[0]
+    var stdoutWrite: ParcelFileDescriptor? = stdoutPipe[1]
+    var stderrRead: ParcelFileDescriptor? = stderrPipe[0]
+    var stderrWrite: ParcelFileDescriptor? = stderrPipe[1]
+    var stdoutChannel: ByteReadChannel? = null
+    var stderrChannel: ByteReadChannel? = null
+    var process: Process? = null
+    var started = false
+    try {
+        redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdoutWrite!!.fd}")))
+        redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderrWrite!!.fd}")))
+        process = withContext(Dispatchers.IO) { start() }
+        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler.looper).also {
+            stdoutRead = null
+            stdoutChannel = it
+        }
+        val stderr = stderrRead!!.openReadChannel(Services.mainHandler.looper).also {
+            stderrRead = null
+            stderrChannel = it
+        }
+        stdoutWrite.close()
+        stdoutWrite = null
+        stderrWrite.close()
+        stderrWrite = null
+        started = true
+        return try {
+            block(process, stdout, stderr)
+        } catch (e: Throwable) {
+            if (process.isAlive) process.destroyForcibly()
+            throw e
+        } finally {
+            stdout.cancel(null)
+            stderr.cancel(null)
+            stdoutChannel = null
+            stderrChannel = null
+        }
+    } finally {
+        if (!started) process?.destroyForcibly()
+        stdoutChannel?.cancel(null)
+        stderrChannel?.cancel(null)
+        try {
+            stdoutRead?.close()
+        } catch (_: IOException) { }
+        try {
+            stdoutWrite?.close()
+        } catch (_: IOException) { }
+        try {
+            stderrRead?.close()
+        } catch (_: IOException) { }
+        try {
+            stderrWrite?.close()
+        } catch (_: IOException) { }
     }
-    redirectErrorStream(redirect)
 }
 
 @Parcelize
@@ -181,11 +242,16 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
         }
     }
 
-    override suspend fun execute() = withContext(Dispatchers.IO) {
-        val process = ProcessBuilder("settings", "put", "global", name, value).fixPath(true).start()
-        val error = process.inputStream.bufferedReader().readText()
-        val exit = process.waitFor()
-        if (exit != 0 || error.isNotEmpty()) throw RemoteException("Process exited with $exit: $error")
-        null
+    override suspend fun execute() = null.also {
+        val (exit, output) = ProcessBuilder("/system/bin/settings", "put", "global", name, value)
+            .withOutputChannels { process, stdout, stderr ->
+                coroutineScope {
+                    val stdoutText = async { stdout.toByteArray().decodeToString() }
+                    val stderrText = async { stderr.toByteArray().decodeToString() }
+                    val exit = runInterruptible(Dispatchers.IO) { process.waitFor() }
+                    exit to stdoutText.await() + stderrText.await()
+                }
+            }
+        if (exit != 0 || output.isNotEmpty()) throw RemoteException("Process exited with $exit: $output")
     }
 }

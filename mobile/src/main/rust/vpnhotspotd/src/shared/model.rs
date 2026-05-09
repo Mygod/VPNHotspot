@@ -8,10 +8,29 @@ pub struct Route {
 
 pub type Network = u64;
 
+/// Daemon reply sockets use Android's local-network fwmark so AOSP routes them through
+/// local_network before VPN UID rules. This is LOCAL_NET_ID 99 plus explicitlySelected and
+/// protectedFromVpn.
+///
+/// Sources:
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/binder/android/net/INetd.aidl#768
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#653
+/// https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-15.0.0_r1/service-t/src/com/android/server/NsdService.java#1761
+/// https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/server/RouteController.cpp#605
 pub const DAEMON_REPLY_MARK: u32 = 0x0003_0063;
 pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
+/// Android fwmark uses the low bits for netId and platform routing metadata. Keep IPv6 NAT
+/// TPROXY marks in the high-bit reserved area and always match through the mask.
+///
+/// Sources:
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
 pub const DAEMON_INTERCEPT_FWMARK_VALUE: u32 = 0x1000_0000;
 pub const DAEMON_INTERCEPT_FWMARK_MASK: u32 = 0x1000_0000;
+/// Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
+/// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
 pub const DAEMON_TABLE: u32 = 900;
 pub const LOCAL_NETWORK_TABLE: u32 = 99;
 

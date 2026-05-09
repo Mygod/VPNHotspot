@@ -397,18 +397,16 @@ TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sock
 AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
 `explicitlySelected` and `protectedFromVpn` fwmark bits.
 
-Undocumented system binaries are all bundled and executable:
+System/root command assumptions:
 
-* `iptables-save`, `ip6tables-save`;
+The following Android system binaries are assumed to be bundled and executable:
+
+* `/system/bin/dumpsys` (`ipsec`);
 * `/system/bin/iptables-restore`, `/system/bin/ip6tables-restore` (`-w --noflush`, restore input
   commands including `-I`, `-D`, `-N`, `-nvx -L <chain>`);
-* `echo`;
-* `/system/bin/ip` (`rule`, `route show table all`, `-s link`, for explicit diagnostic dumps);
-* `/system/bin/ndc` (`ipfwd nat network`);
-* `iptables`, `ip6tables` (diagnostic dump list/save commands);
-* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`);
-* `sh`;
-* `su`.
+* `/system/bin/ndc` (`ipfwd`, `nat`);
+* `/system/bin/settings` (`put global`);
+* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`).
 
 Wi-Fi driver `wpa_supplicant`:
 

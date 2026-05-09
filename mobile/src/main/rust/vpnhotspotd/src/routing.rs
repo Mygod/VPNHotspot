@@ -28,6 +28,13 @@ use vpnhotspotd::shared::protocol::{
     error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
 };
 
+// AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
+// on API 29..30. Keep VPNHotspot rules inside that gap.
+// This also works for Wi-Fi direct where there's no system tethering rule to override.
+//
+// Sources:
+// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#65
+// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.h#51
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
@@ -189,7 +196,10 @@ impl RoutingMutation {
             Self::NetdNat {
                 downstream,
                 upstream,
-            } => run_ndc("Nat", &["nat", "enable", downstream, upstream, "0"]).await,
+            } => {
+                // 0 means that there are no interface addresses coming after, which is unused anyway.
+                run_ndc("Nat", &["nat", "enable", downstream, upstream, "0"]).await
+            }
         }
     }
 
@@ -201,7 +211,13 @@ impl RoutingMutation {
             Self::IpRule(command) => delete_rule_result(handle, command.clone()).await,
             Self::IpRoute(command) => delete_route_result(handle, command.clone()).await,
             Self::IpAddress(command) => delete_address_result(handle, command.clone()).await,
-            // netd NAT is shared by interface pair, not owned by this session.
+            // Revert is intentionally omitted because netd tracks forwarding state globally by
+            // interface pair without ownership, so disabling here may tear down system-owned state.
+            //
+            // https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/services/core/java/com/android/server/NetworkManagementService.java#1251
+            // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/CommandListener.cpp#638
+            // https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.cpp#652
+            // https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/TetherController.h#40
             Self::NetdNat { .. } => true,
         }
     }
@@ -345,6 +361,7 @@ impl Runtime {
                 },
             );
         }
+        // The client-specific forwarding filters and counters are added from neighbour snapshots.
         for rule in self.forward_rules(config) {
             push_unique(&mut mutations, RoutingMutation::Iptables(rule));
         }
@@ -361,6 +378,7 @@ impl Runtime {
                 &mut mutations,
                 RoutingMutation::Iptables(Self::masquerade_chain_rule()),
             );
+            // Upstream-specific MASQUERADE rules are added from upstream snapshots.
         }
         let mut upstreams = Vec::new();
         for upstream in &config.upstreams {
@@ -389,6 +407,7 @@ impl Runtime {
                         UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
                     }),
                     action: RuleAction::Lookup,
+                    // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
                     table: 1000 + ifindex,
                     fwmark: None,
                 }),
@@ -585,6 +604,7 @@ impl Runtime {
                 IptablesTarget::Ipv4,
                 "filter",
                 "vpnhotspot_acl",
+                // Ensure blocking works before client-specific allow rules are added.
                 vec![
                     "-i".into(),
                     config.downstream.clone(),
@@ -638,6 +658,7 @@ impl Runtime {
     }
 
     fn upstream_masquerade_rule(&self, upstream: &UpstreamConfig) -> IptablesRule {
+        // Specifying -i would not work in POSTROUTING.
         IptablesRule::new(
             IptablesTarget::Ipv4,
             "nat",
@@ -984,6 +1005,15 @@ pub(crate) async fn clean(
     Ok(())
 }
 
+// Clean uses iptables-restore through `firewall::restore`. Android 10's bundled
+// iptables-restore supports `-w --noflush`, and with `--noflush`, `:chain - [0:0]`
+// flushes an existing user chain or creates a missing one before the following `-X chain`.
+//
+// Sources:
+// https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/iptables-restore.c#33
+// https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/iptables-restore.c#354
+// https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#36
+// https://android.googlesource.com/platform/external/iptables/+/android-10.0.0_r1/iptables/ip6tables-restore.c#355
 async fn clean_firewall() {
     delete_iptables_repeated(
         IptablesTarget::Ipv4,

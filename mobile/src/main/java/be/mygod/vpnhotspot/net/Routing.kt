@@ -141,6 +141,7 @@ class Routing(private val caller: Any, private val downstream: String) {
             SmartSnackbar.make(e).show()
         } finally {
             withContext(NonCancellable) {
+                // record stats before exiting to prevent stats losing
                 if (clients.isNotEmpty()) TrafficRecorder.update()
                 daemonSession?.close(removeMode.get())
                 daemonSession = null
@@ -244,6 +245,7 @@ class Routing(private val caller: Any, private val downstream: String) {
             if (ip is Inet4Address) nextClients[ip] = lladdr
         }
         val removed = clients.keys - nextClients.keys
+        // record stats before removing rules to prevent stats losing
         if (removed.isNotEmpty()) TrafficRecorder.update()
         val added = nextClients.filterKeys { !clients.containsKey(it) }
         if (daemonSession?.update(nextClients, nextAllowedMacs) == false) return

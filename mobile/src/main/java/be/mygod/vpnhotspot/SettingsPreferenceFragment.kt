@@ -5,9 +5,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.ext.SdkExtensions
 import androidx.core.content.FileProvider
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.TwoStatePreference
@@ -44,14 +42,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
-        val primaryUpstream = UpstreamSummaryProvider(findPreference(Upstreams.KEY_PRIMARY)!!)
-        val fallbackUpstream = UpstreamSummaryProvider(findPreference(Upstreams.KEY_FALLBACK)!!)
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                launch { Upstreams.primary.collect { primaryUpstream.current = it } }
-                launch { Upstreams.fallback.collect { fallbackUpstream.current = it } }
-            }
-        }
+        UpstreamSummaryProvider(findPreference(Upstreams.KEY_PRIMARY)!!, lifecycle, Upstreams.primary)
+        UpstreamSummaryProvider(findPreference(Upstreams.KEY_FALLBACK)!!, lifecycle, Upstreams.fallback)
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
             isChecked = TetherOffloadManager.enabled
             setOnPreferenceChangeListener { _, newValue ->
