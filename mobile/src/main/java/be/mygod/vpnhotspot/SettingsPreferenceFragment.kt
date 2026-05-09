@@ -8,7 +8,6 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.preference.EditTextPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.TwoStatePreference
@@ -45,8 +44,8 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
-        val primaryUpstream = UpstreamSummaryProvider(findPreference<EditTextPreference>(Upstreams.KEY_PRIMARY)!!)
-        val fallbackUpstream = UpstreamSummaryProvider(findPreference<EditTextPreference>(Upstreams.KEY_FALLBACK)!!)
+        val primaryUpstream = UpstreamSummaryProvider(findPreference(Upstreams.KEY_PRIMARY)!!)
+        val fallbackUpstream = UpstreamSummaryProvider(findPreference(Upstreams.KEY_FALLBACK)!!)
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { Upstreams.primary.collect { primaryUpstream.current = it } }
@@ -96,15 +95,16 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) writer.println(
                             "S extension ${SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S)}")
                         writer.println()
-                        writer.flush()
-                        try {
-                            Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
-                        } catch (e: IOException) {
-                            Timber.w(e)
-                            e.printStackTrace(writer)
-                        }
-                        writer.println()
                     }
+                }
+                try {
+                    ProcessBuilder(Dump.LOGCAT, "-d").apply {
+                        redirectErrorStream(true)
+                        redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+                    }.start().waitFor()
+                } catch (e: IOException) {
+                    Timber.w(e)
+                    logFile.appendText(e.stackTraceToString())
                 }
                 try {
                     RootManager.use {

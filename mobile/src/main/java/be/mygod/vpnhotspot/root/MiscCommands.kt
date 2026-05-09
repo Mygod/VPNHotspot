@@ -2,9 +2,7 @@ package be.mygod.vpnhotspot.root
 
 import android.content.Context
 import android.net.TetheringManager
-import android.os.Build
 import android.os.Parcelable
-import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
 import androidx.annotation.RequiresApi
@@ -13,20 +11,13 @@ import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.io.openReadChannel
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
-import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-
-private const val IP = "ip"
-private const val IPTABLES = "iptables -w"
 
 fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     environment().compute("PATH") { _, value ->
@@ -35,121 +26,67 @@ fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
     redirectErrorStream(redirect)
 }
 
-suspend fun <T> ProcessBuilder.withOutputChannels(
-    block: suspend (Process, ByteReadChannel, ByteReadChannel) -> T,
-): T {
-    val stdoutPipe = ParcelFileDescriptor.createPipe()
-    val stderrPipe = ParcelFileDescriptor.createPipe()
-    var stdoutRead: ParcelFileDescriptor? = stdoutPipe[0]
-    var stdoutWrite: ParcelFileDescriptor? = stdoutPipe[1]
-    var stderrRead: ParcelFileDescriptor? = stderrPipe[0]
-    var stderrWrite: ParcelFileDescriptor? = stderrPipe[1]
-    var stdoutChannel: ByteReadChannel? = null
-    var stderrChannel: ByteReadChannel? = null
-    var process: Process? = null
-    var started = false
-    try {
-        redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdoutWrite!!.fd}")))
-        redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderrWrite!!.fd}")))
-        process = start()
-        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler.looper).also {
-            stdoutRead = null
-            stdoutChannel = it
-        }
-        val stderr = stderrRead!!.openReadChannel(Services.mainHandler.looper).also {
-            stderrRead = null
-            stderrChannel = it
-        }
-        stdoutWrite.close()
-        stdoutWrite = null
-        stderrWrite.close()
-        stderrWrite = null
-        started = true
-        return try {
-            block(process, stdout, stderr)
-        } catch (e: Throwable) {
-            if (process.isAlive) process.destroyForcibly()
-            throw e
-        } finally {
-            stdout.cancel(null)
-            stderr.cancel(null)
-            stdoutChannel = null
-            stderrChannel = null
-        }
-    } finally {
-        if (!started) process?.destroyForcibly()
-        stdoutChannel?.cancel(null)
-        stderrChannel?.cancel(null)
-        try {
-            stdoutRead?.close()
-        } catch (_: IOException) { }
-        try {
-            stdoutWrite?.close()
-        } catch (_: IOException) { }
-        try {
-            stderrRead?.close()
-        } catch (_: IOException) { }
-        try {
-            stderrWrite?.close()
-        } catch (_: IOException) { }
-    }
-}
-
 @Parcelize
 data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
+    companion object {
+        private const val DUMPSYS = "/system/bin/dumpsys"
+        private const val IP = "/system/bin/ip"
+        private const val IPTABLES = "/system/bin/iptables"
+        const val LOGCAT = "/system/bin/logcat"
+    }
+
     override suspend fun execute() = withContext(Dispatchers.IO) {
-        FileOutputStream(path, true).use { out ->
-            val process = ProcessBuilder("sh").fixPath(true).start()
-            process.outputStream.bufferedWriter().use { commands ->
-                commands.appendLine("""
-                    |echo dumpsys ${Context.WIFI_P2P_SERVICE}
-                    |dumpsys ${Context.WIFI_P2P_SERVICE}
-                    |echo
-                    |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
-                    |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
-                    |echo
-                    |echo iptables -t filter
-                    |iptables-save -t filter
-                    |echo
-                    |echo iptables -t nat
-                    |iptables-save -t nat
-                    |echo
-                    |echo ip6tables-save
-                    |ip6tables-save
-                    |echo
-                    |echo ip rule
-                    |$IP rule
-                    |echo
-                    |echo ip route show table all
-                    |$IP route show table all
-                    |echo
-                    |echo ip neigh
-                    |$IP neigh
-                    |echo
-                    |echo ip -s link
-                    |$IP -s link
-                    |echo
-                    |echo iptables -t nat -nvx -L POSTROUTING
-                    |$IPTABLES -t nat -nvx -L POSTROUTING
-                    |echo
-                    |echo iptables -t nat -nvx -L vpnhotspot_masquerade
-                    |$IPTABLES -t nat -nvx -L vpnhotspot_masquerade
-                    |echo
-                    |echo iptables -nvx -L vpnhotspot_acl
-                    |$IPTABLES -nvx -L vpnhotspot_acl
-                    |echo
-                    |echo iptables -nvx -L vpnhotspot_stats
-                    |$IPTABLES -nvx -L vpnhotspot_stats
-                    |echo
-                    |echo logcat-su
-                    |logcat -d
-                """.trimMargin())
-            }
-            process.inputStream.copyTo(out)
-            when (val exit = process.waitFor()) {
-                0 -> { }
-                else -> out.write("Process exited with $exit".toByteArray())
-            }
+        val output = File(path)
+        val process = ProcessBuilder("/system/bin/sh").apply {
+            redirectErrorStream(true)
+            redirectOutput(ProcessBuilder.Redirect.appendTo(output))
+        }.start()
+        process.outputStream.bufferedWriter().use { commands ->
+            commands.appendLine("""
+                |echo
+                |echo dumpsys ${Context.WIFI_P2P_SERVICE}
+                |$DUMPSYS ${Context.WIFI_P2P_SERVICE}
+                |echo
+                |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
+                |$DUMPSYS ${Context.CONNECTIVITY_SERVICE} tethering
+                |echo
+                |echo iptables-save
+                |/system/bin/iptables-save
+                |echo
+                |echo ip6tables-save
+                |/system/bin/ip6tables-save
+                |echo
+                |echo ip rule
+                |$IP rule
+                |echo
+                |echo ip route show table all
+                |$IP route show table all
+                |echo
+                |echo ip neigh
+                |$IP neigh
+                |echo
+                |echo ip -s link
+                |$IP -s link
+                |echo
+                |echo iptables -t nat -nvx -L POSTROUTING
+                |$IPTABLES -w -t nat -nvx -L POSTROUTING
+                |echo
+                |echo iptables -t nat -nvx -L vpnhotspot_masquerade
+                |$IPTABLES -w -t nat -nvx -L vpnhotspot_masquerade
+                |echo
+                |echo iptables -nvx -L vpnhotspot_acl
+                |$IPTABLES -w -nvx -L vpnhotspot_acl
+                |echo
+                |echo iptables -nvx -L vpnhotspot_stats
+                |$IPTABLES -w -nvx -L vpnhotspot_stats
+                |echo
+                |echo logcat-su
+                |$LOGCAT -d
+            """.trimMargin())
+        }
+        when (val exit = process.waitFor()) {
+            0 -> { }
+            else -> output.appendText("Process exited with $exit")
         }
         null
     }
