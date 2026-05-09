@@ -10,7 +10,6 @@ import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.CompletableDeferred
@@ -27,7 +26,7 @@ fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
 }
 
 @Parcelize
-data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
+data class Dump(val path: String) : RootCommandNoResult {
     companion object {
         private const val DUMPSYS = "/system/bin/dumpsys"
         private const val IP = "/system/bin/ip"
