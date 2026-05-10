@@ -8,17 +8,14 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.crashlytics)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
-    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.parcelize)
     id("com.google.android.gms.oss-licenses-plugin")
-    kotlin("kapt")
-    id("kotlin-parcelize")
 }
 
 abstract class GenerateGitJavaTask : DefaultTask() {
@@ -125,9 +122,6 @@ android {
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
-    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
-    }
     compileSdk = 36
     compileSdkMinor = 1
     defaultConfig {
@@ -185,7 +179,6 @@ ksp {
     arg("room.incremental", "true")
     arg("room.schemaLocation", "$projectDir/schemas")
 }
-kotlin.compilerOptions.jvmTarget.set(JvmTarget.fromTarget(javaVersion.toString()))
 
 dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)

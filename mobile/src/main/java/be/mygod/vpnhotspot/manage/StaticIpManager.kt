@@ -8,12 +8,10 @@ import android.view.WindowManager
 import android.widget.EditText
 import androidx.appcompat.app.AlertDialog
 import androidx.databinding.BaseObservable
-import androidx.databinding.Bindable
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
-import be.mygod.vpnhotspot.BR
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.StaticIpSetter
 import be.mygod.vpnhotspot.databinding.ListitemStaticIpBinding
@@ -28,14 +26,12 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     }
 
     inner class Data : BaseObservable() {
-        val active: Boolean @Bindable get() = StaticIpSetter.active
-        val addresses: CharSequence @Bindable get() = StaticIpSetter.addresses
-        val applying: Boolean @Bindable get() = StaticIpSetter.applying
+        val active: Boolean get() = StaticIpSetter.active
+        val addresses: CharSequence get() = StaticIpSetter.addresses
+        val applying: Boolean get() = StaticIpSetter.applying
 
         fun onChanged() {
-            notifyPropertyChanged(BR.active)
-            notifyPropertyChanged(BR.addresses)
-            notifyPropertyChanged(BR.applying)
+            notifyChange()
         }
 
         fun configure() = ConfigureDialogFragment().apply {

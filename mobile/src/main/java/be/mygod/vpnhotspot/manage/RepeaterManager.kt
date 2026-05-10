@@ -21,14 +21,12 @@ import androidx.annotation.MainThread
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.databinding.BaseObservable
-import androidx.databinding.Bindable
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
-import be.mygod.vpnhotspot.BR
 import be.mygod.vpnhotspot.Empty
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
@@ -63,25 +61,23 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
     inner class Data : BaseObservable() {
-        val switchEnabled: Boolean
-            @Bindable get() = when (binder?.service?.status) {
+        val switchEnabled: Boolean get() = when (binder?.service?.status) {
                 RepeaterService.Status.IDLE, RepeaterService.Status.ACTIVE -> true
                 else -> false
             }
-        val serviceStarted: Boolean
-            @Bindable get() = when (binder?.service?.status) {
+        val serviceStarted: Boolean get() = when (binder?.service?.status) {
                 RepeaterService.Status.STARTING, RepeaterService.Status.ACTIVE -> true
                 else -> false
             }
 
-        val title: CharSequence @Bindable get() {
+        val title: CharSequence get() {
             binder?.group?.frequency?.let {
                 if (it != 0) return parent.getString(R.string.repeater_channel,
                         it, SoftApConfigurationCompat.frequencyToChannel(it))
             }
             return parent.getString(R.string.title_repeater)
         }
-        val description: CharSequence @Bindable get() = SpannableStringBuilder().let { result ->
+        val description: CharSequence get() = SpannableStringBuilder().let { result ->
             fun WifiP2pManager.test(@StringRes feature: Int, sdk: Int, action: (WifiP2pManager) -> Boolean) {
                 try {
                     if (!action(this)) return
@@ -119,14 +115,11 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
 
         fun onStatusChanged() {
-            notifyPropertyChanged(BR.switchEnabled)
-            notifyPropertyChanged(BR.serviceStarted)
-            notifyPropertyChanged(BR.addresses)
+            notifyChange()
         }
         fun onGroupChanged(group: WifiP2pGroup? = null) {
             this@RepeaterManager.group = group
-            notifyPropertyChanged(BR.title)
-            notifyPropertyChanged(BR.addresses)
+            notifyChange()
         }
 
         fun toggle() {

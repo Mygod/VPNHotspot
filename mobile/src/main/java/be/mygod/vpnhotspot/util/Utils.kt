@@ -20,16 +20,11 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.view.MenuItem
-import android.view.View
-import android.widget.ImageView
-import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
-import androidx.core.view.isVisible
-import androidx.databinding.BindingAdapter
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
 import be.mygod.librootkotlinx.useParcel
@@ -115,14 +110,6 @@ fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastR
 }
 
 fun intentFilter(vararg actions: String) = IntentFilter().also { actions.forEach(it::addAction) }
-
-@BindingAdapter("android:src")
-fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
-
-@BindingAdapter("android:visibility")
-fun setVisibility(view: View, value: Boolean) {
-    view.isVisible = value
-}
 
 fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
                                   limit: Int = -1, truncated: CharSequence = "...",
