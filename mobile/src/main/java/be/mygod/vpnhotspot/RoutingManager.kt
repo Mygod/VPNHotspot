@@ -32,7 +32,14 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
                 } else DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
             }
-            set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
+            set(value) = app.pref.edit {
+                putString(KEY_MASQUERADE_MODE, when (value) {
+                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
+                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
+                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_NETD -> "Netd"
+                    DaemonProto.MasqueradeMode.UNRECOGNIZED -> throw IllegalArgumentException("Invalid masquerade mode")
+                })
+            }
         var ipv6Mode: Ipv6Mode
             get() = app.pref.run {
                 getString(KEY_IPV6_MODE, null)?.let { return@run Ipv6Mode.valueOf(it) }
