@@ -13,7 +13,6 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonProto
-import be.mygod.vpnhotspot.root.daemon.DaemonProto.MasqueradeMode
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -69,7 +68,7 @@ class Routing(private val caller: Any, private val downstream: String) {
      */
     var ipForward = false
     var ipv6Mode = Ipv6Mode.System
-    var masqueradeMode = MasqueradeMode.MASQUERADE_MODE_NONE
+    var masqueradeMode = DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()

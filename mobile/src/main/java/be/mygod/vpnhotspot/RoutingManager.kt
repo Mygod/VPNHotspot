@@ -7,7 +7,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.root.daemon.DaemonProto.MasqueradeMode
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
@@ -18,19 +18,19 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
         private const val KEY_IPV6_MODE = "service.ipv6Mode"
-        var masqueradeMode: MasqueradeMode
+        var masqueradeMode: DaemonProto.MasqueradeMode
             get() = app.pref.run {
                 getString(KEY_MASQUERADE_MODE, null)?.let {
                     return@run when (it) {
-                        "None" -> MasqueradeMode.MASQUERADE_MODE_NONE
-                        "Simple" -> MasqueradeMode.MASQUERADE_MODE_SIMPLE
-                        "Netd" -> MasqueradeMode.MASQUERADE_MODE_NETD
-                        else -> MasqueradeMode.valueOf(it)
+                        "None" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
+                        "Simple" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
+                        "Netd" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NETD
+                        else -> DaemonProto.MasqueradeMode.valueOf(it)
                     }
                 }
                 if (getBoolean("service.masquerade", true)) {   // legacy settings
-                    MasqueradeMode.MASQUERADE_MODE_SIMPLE
-                } else MasqueradeMode.MASQUERADE_MODE_NONE
+                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
+                } else DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
             }
             set(value) = app.pref.edit { putString(KEY_MASQUERADE_MODE, value.name) }
         var ipv6Mode: Ipv6Mode
