@@ -14,18 +14,18 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import timber.log.Timber
 import java.util.regex.PatternSyntaxException
 
@@ -95,39 +95,19 @@ object Upstreams {
         )
     }
 
-    val primary: StateFlow<Upstream?> = Role(KEY_PRIMARY, vpn).value
-    val fallback: StateFlow<Upstream?> = Role(KEY_FALLBACK, default).value
-    private class Role(private val preferenceKey: String, private val defaultSource: Flow<Upstream?>) {
-        private val _value = MutableStateFlow<Upstream?>(null)
-        val value: StateFlow<Upstream?> = _value
-        private var worker: Job? = null
+    val primary: StateFlow<Upstream?> = role(KEY_PRIMARY, vpn)
+    val fallback: StateFlow<Upstream?> = role(KEY_FALLBACK, default)
 
-        init {
-            scope.launch {
-                _value.subscriptionCount.collect { count ->
-                    if (count == 0) {
-                        worker?.cancelAndJoin()
-                        worker = null
-                        _value.value = null
-                    } else if (worker?.isActive != true) worker = scope.launch {
-                        try {
-                            preferenceFlow(preferenceKey).collectLatest { upstream ->
-                                (if (upstream.isNullOrEmpty()) defaultSource else iface(upstream)).collect {
-                                    _value.value = it
-                                }
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            Timber.w(e)
-                            SmartSnackbar.make(e).show()
-                        }
-                        _value.value = null
-                    }
-                }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun role(preferenceKey: String, defaultSource: Flow<Upstream?>) = preferenceFlow(preferenceKey)
+            .flatMapLatest { upstream -> if (upstream.isNullOrEmpty()) defaultSource else iface(upstream) }
+            .catch { e ->
+                if (e is CancellationException) throw e
+                Timber.w(e)
+                SmartSnackbar.make(e).show()
+                emit(null)
             }
-        }
-    }
+            .stateIn(scope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), null)
 
     private class Emission(val upstream: Upstream?)
 

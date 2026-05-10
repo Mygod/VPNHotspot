@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.manage
 import android.service.quicksettings.Tile
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.util.KillableTileService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +21,7 @@ abstract class NetlinkNeighbourMonitoringTileService : KillableTileService() {
     override fun onStartListening() {
         super.onStartListening()
         neighboursJob = scope.launch {
-            NetlinkNeighbours.snapshots.collect {
+            NetlinkNeighbour.snapshots.collect {
                 neighbours = it
                 updateTile()
             }

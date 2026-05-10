@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot
 
 import android.app.Service
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -17,7 +16,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
 
     protected fun startNetlinkNeighbours() {
         if (neighboursJob == null) neighboursJob = launch {
-            NetlinkNeighbours.snapshots.collect { onNetlinkNeighboursChanged(it) }
+            NetlinkNeighbour.snapshots.collect { onNetlinkNeighboursChanged(it) }
         }
     }
     protected fun stopNetlinkNeighbours() {

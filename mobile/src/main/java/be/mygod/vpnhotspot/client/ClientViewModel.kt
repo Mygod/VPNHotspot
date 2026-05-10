@@ -24,7 +24,6 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
@@ -158,7 +157,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     override fun onCreate(owner: LifecycleOwner) {
         owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                NetlinkNeighbours.snapshots.collect {
+                NetlinkNeighbour.snapshots.collect {
                     neighbours = it
                     populateClients()
                 }

@@ -6,7 +6,6 @@ import android.net.RouteInfo
 import android.os.Build
 import android.provider.Settings
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.monitor.NetlinkNeighbours
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.Upstream
 import be.mygod.vpnhotspot.net.monitor.Upstreams
@@ -108,7 +107,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 launch {
                     Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
                 }
-                launch { NetlinkNeighbours.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
+                launch { NetlinkNeighbour.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
                 val initialBlockedMacs = CompletableDeferred<Set<MacAddress>>()
                 launch {
                     var first = true
