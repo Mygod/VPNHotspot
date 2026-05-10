@@ -5,7 +5,7 @@ import java.net.InetAddress
 
 data class NetlinkNeighbour(val ip: InetAddress, val dev: String, val lladdr: MacAddress?, val state: State) {
     enum class State {
-        UNSET, INCOMPLETE, VALID, FAILED, DELETING
+        UNSET, INCOMPLETE, VALID, FAILED
     }
 }
 

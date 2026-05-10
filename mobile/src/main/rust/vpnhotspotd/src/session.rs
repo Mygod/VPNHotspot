@@ -73,9 +73,20 @@ impl Session {
             dns_udp: dns.udp_port,
             ipv6_nat: nat66.as_ref().map(|runtime| runtime.ports),
         };
-        let routing =
-            routing::Runtime::start(call_id, &config, downstream_ipv4, ports, netlink.handle())
-                .await;
+        let routing = match routing::Runtime::start(
+            &config,
+            downstream_ipv4,
+            ports,
+            netlink.handle(),
+        )
+        .await
+        {
+            Ok(runtime) => runtime,
+            Err(e) => {
+                stop.cancel();
+                return Err(e);
+            }
+        };
         Ok(Self {
             config: shared,
             _dns: dns,

@@ -46,7 +46,6 @@ pub enum NeighbourState {
     Incomplete = 1,
     Valid = 2,
     Failed = 3,
-    Deleting = 4,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
