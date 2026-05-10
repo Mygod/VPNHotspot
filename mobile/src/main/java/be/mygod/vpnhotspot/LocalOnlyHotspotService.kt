@@ -34,6 +34,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -171,7 +172,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
                 }
             }
             waitingForIface = true
-            TetherStates.registerCallback(this@LocalOnlyHotspotService)
+            withContext(Dispatchers.Main.immediate) {
+                TetherStates.registerCallback(this@LocalOnlyHotspotService)
+            }
         }
         if (closeReservation) reservation.close()
     }
@@ -188,7 +191,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     }
 
     private suspend fun onIfaceAvailable(iface: String) {
-        TetherStates.unregisterCallback(this)
+        withContext(Dispatchers.Main.immediate) {
+            TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
+        }
         binder.iface = iface
         BootReceiver.add<LocalOnlyHotspotService>(Starter())
         check(routingManager == null)
@@ -333,7 +338,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
                 if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
                 binder.iface = null
                 waitingForIface = false
-                TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
+                withContext(Dispatchers.Main.immediate) {
+                    TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
+                }
                 stopNetlinkNeighbours()
                 timeoutMonitor?.close()
                 timeoutMonitor = null

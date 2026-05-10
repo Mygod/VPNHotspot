@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
@@ -97,7 +98,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
         else -> Timber.w(IllegalStateException("Unknown onOffloadStatusChanged $status"))
     }
 
-    private fun onDownstreamsChangedLocked() {
+    private suspend fun onDownstreamsChangedLocked() {
         if (downstreams.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
@@ -108,7 +109,9 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                 else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
             }
             if (!tetherStatesRegistered) {
-                TetherStates.registerCallback(this)
+                withContext(Dispatchers.Main.immediate) {
+                    TetherStates.registerCallback(this@TetheringService)
+                }
                 tetherStatesRegistered = true
             }
             if (activeIfaces.isEmpty()) stopNetlinkNeighbours() else startNetlinkNeighbours()
@@ -167,9 +170,11 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
         super.onDestroy()
     }
 
-    private fun unregisterReceiver() {
+    private suspend fun unregisterReceiver() {
         if (tetherStatesRegistered) {
-            TetherStates.unregisterCallback(this)
+            withContext(Dispatchers.Main.immediate) {
+                TetherStates.unregisterCallback(this@TetheringService)
+            }
             tetherStatesRegistered = false
         }
         tetheredIfaces = null
