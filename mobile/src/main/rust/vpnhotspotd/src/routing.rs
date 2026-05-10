@@ -1163,7 +1163,7 @@ async fn add_ip_forward(downstream: &str) -> io::Result<()> {
     )
     .await
     {
-        eprintln!("ndc ipfwd enable failed: {e}");
+        report::stderr!("ndc ipfwd enable failed: {e}");
         tokio::fs::write("/proc/sys/net/ipv4/ip_forward", b"1").await?;
     }
     Ok(())
@@ -1718,7 +1718,7 @@ async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
     let suffix = format!("200 0 {name} operation succeeded\n");
     if output.status.success() && stdout.ends_with(&suffix) {
         if stdout.len() > suffix.len() {
-            eprintln!("ndc {}: {}", args.join(" "), stdout.trim_end());
+            report::stderr!("ndc {}: {}", args.join(" "), stdout.trim_end());
         }
         Ok(())
     } else {

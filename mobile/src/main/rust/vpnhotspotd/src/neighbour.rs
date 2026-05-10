@@ -75,7 +75,7 @@ impl Monitor {
                             ))
                             .is_err()
                         {
-                            eprintln!(
+                            report::stderr!(
                                 "neighbour monitor frame send failed: controller disconnected"
                             );
                             break;

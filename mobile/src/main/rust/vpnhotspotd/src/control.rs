@@ -33,7 +33,7 @@ const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
 pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let controller = connect_control_socket(&socket_name).await?;
-    eprintln!("connected to {socket_name}");
+    report::stderr!("connected to {socket_name}");
     let (mut controller_read, controller_write) = controller.into_split();
     let (sender, writer) = spawn_writer(controller_write);
     report::init(sender.clone())?;
@@ -80,7 +80,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
             Err(e) => {
                 let report = DaemonErrorReport::from_io_error("control.parse_command", e);
                 if sender.send(error_frame(id, report)).is_err() {
-                    eprintln!("controller send failed");
+                    report::stderr!("controller send failed");
                     break;
                 }
                 continue;
@@ -99,7 +99,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                     [("id", id.to_string())],
                 );
                 if sender.send(error_frame(id, report)).is_err() {
-                    eprintln!("controller send failed");
+                    report::stderr!("controller send failed");
                     break;
                 }
                 continue;
@@ -126,7 +126,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     state.stop(false).await;
     drop(sender);
     if let Err(e) = writer.await {
-        eprintln!("controller writer task failed: {e}");
+        report::stderr!("controller writer task failed: {e}");
     }
     Ok(())
 }
@@ -484,7 +484,7 @@ async fn send_terminal_frame(
 ) {
     let cancelled = call.cancel.is_cancelled();
     if remove_call(id, active_calls, call).await && !cancelled && sender.send(frame).is_err() {
-        eprintln!("controller send failed");
+        report::stderr!("controller send failed");
     }
 }
 
@@ -500,7 +500,7 @@ async fn detach_call(id: u64, active_calls: &Mutex<HashMap<u64, Arc<CallState>>>
 
 fn send_complete(id: u64, sender: &UnboundedSender<Vec<u8>>) {
     if sender.send(complete_frame(id)).is_err() {
-        eprintln!("controller send failed");
+        report::stderr!("controller send failed");
     }
 }
 
@@ -529,7 +529,7 @@ where
     let task = tokio::spawn(async move {
         while let Some(packet) = receiver.recv().await {
             if let Err(e) = send_packet(&mut writer, &packet).await {
-                eprintln!("controller send failed: {e}");
+                report::stderr!("controller send failed: {e}");
                 break;
             }
         }

@@ -35,7 +35,7 @@ pub(crate) fn spawn_loop(
                                     _ = connection_stop.cancelled() => {}
                                     result = handle_connection(socket, client, config) => if let Err(e) = result {
                                         if is_connection_closed(&e) {
-                                            println!("tcp proxy connection closed: client={client}: {e}");
+                                            report::stdout!("tcp proxy connection closed: client={client}: {e}");
                                         } else {
                                             report::io("nat66.tcp_connection", e);
                                         }
@@ -75,7 +75,9 @@ async fn handle_connection(
     if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
         if let Err(e) = dns::handle_tcp_connection(inbound, snapshot).await {
             if is_connection_closed(&e) {
-                println!("tcp proxy dns closed: client={client} destination={destination}: {e}");
+                report::stdout!(
+                    "tcp proxy dns closed: client={client} destination={destination}: {e}"
+                );
             } else {
                 return Err(e);
             }
@@ -83,7 +85,7 @@ async fn handle_connection(
         return Ok(());
     }
     let Some(selection) = select_upstream_network(&snapshot, *destination.ip()) else {
-        println!("tcp proxy connect failed: client={client} destination={destination}: no upstream route");
+        report::stdout!("tcp proxy connect failed: client={client} destination={destination}: no upstream route");
         return Ok(());
     };
     let outbound = match connect_tcp(selection.network, destination).await {
@@ -122,7 +124,7 @@ fn log_connection_error(
     } else {
         "failed"
     };
-    println!(
+    report::stdout!(
         "tcp proxy {operation} {outcome}: client={client} destination={destination} network={} role={:?}: {error}",
         selection.network, selection.role
     );

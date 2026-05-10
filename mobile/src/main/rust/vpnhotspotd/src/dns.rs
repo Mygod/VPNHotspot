@@ -146,7 +146,7 @@ fn spawn_tcp_loop(
                                     handle_tcp_connection(socket, snapshot).await
                                 } => if let Err(e) = result {
                                     if is_connection_closed(&e) {
-                                        eprintln!("dns tcp connection closed: {e}");
+                                        report::stderr!("dns tcp connection closed: {e}");
                                     } else {
                                         report::io("dns.tcp_connection", e);
                                     }
@@ -246,7 +246,7 @@ pub(crate) async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Op
     match resolve_query(config, query).await {
         Ok(response) => Some(response),
         Err(e) => {
-            eprintln!("dns resolve failed: {e}");
+            report::stderr!("dns resolve failed: {e}");
             dns_wire::servfail_response(query)
         }
     }
