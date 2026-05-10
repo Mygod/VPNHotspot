@@ -8,11 +8,16 @@ import android.service.quicksettings.Tile
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
 
 class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
 
     private var binder: LocalOnlyHotspotService.Binder? = null
+    private var serviceJob: Job? = null
 
     override fun onStartListening() {
         super.onStartListening()
@@ -29,13 +34,13 @@ class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
         qsTile?.run {
             icon = tile
             subtitle = null
-            val iface = binder.iface
+            val iface = binder.iface.value
             if (iface.isNullOrEmpty()) {
                 state = Tile.STATE_INACTIVE
                 label = getText(R.string.tethering_temp_hotspot)
             } else {
                 state = Tile.STATE_ACTIVE
-                label = binder.configuration?.ssid?.toString() ?: getText(R.string.tethering_temp_hotspot)
+                label = binder.configuration.value?.ssid?.toString() ?: getText(R.string.tethering_temp_hotspot)
                 subtitleDevices { it == iface }
             }
             updateTile()
@@ -46,7 +51,7 @@ class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
         val binder = binder
         when {
             binder == null -> tapPending = true
-            binder.iface == null -> {
+            binder.iface.value == null -> {
                 LocalOnlyHotspotService.dismissHandle = dismissHandle
                 startForegroundServiceCompat(Intent(this, LocalOnlyHotspotService::class.java))
             }
@@ -56,12 +61,15 @@ class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as LocalOnlyHotspotService.Binder
-        service.ifaceChanged[this] = { updateTile() }
+        serviceJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            merge(service.iface, service.configuration).collect { updateTile() }
+        }
         super.onServiceConnected(name, service)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        binder?.ifaceChanged?.remove(this)
         binder = null
+        serviceJob?.cancel()
+        serviceJob = null
     }
 }

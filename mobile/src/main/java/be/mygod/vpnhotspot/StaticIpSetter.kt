@@ -5,13 +5,14 @@ import android.net.InetAddresses
 import android.text.SpannableStringBuilder
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -25,8 +26,6 @@ class StaticIpSetter : BootReceiver.Startable {
     companion object {
         private const val KEY = "service.staticIp"
 
-        val ifaceEvent = Event0()
-
         val iface get() = try {
             NetworkInterface.getByName("lo")
         } catch (_: SocketException) {
@@ -36,8 +35,8 @@ class StaticIpSetter : BootReceiver.Startable {
             null
         }
 
-        val active get() = iface?.interfaceAddresses?.any { !it.address.isLoopbackAddress } == true
-        val addresses get() = SpannableStringBuilder().apply {
+        private val currentActive get() = iface?.interfaceAddresses?.any { !it.address.isLoopbackAddress } == true
+        private val currentAddresses get() = SpannableStringBuilder().apply {
             for (address in iface?.interfaceAddresses.orEmpty()) if (!address.address.isLoopbackAddress) {
                 append(makeIpSpan(address.address))
                 address.networkPrefixLength.also {
@@ -65,19 +64,27 @@ class StaticIpSetter : BootReceiver.Startable {
             }
             set(value) = app.pref.edit { putString(KEY, value) }
 
-        var applying = false
-            private set
+        private val activeState = MutableStateFlow(currentActive)
+        val active = activeState.asStateFlow()
+        private val addressesState = MutableStateFlow(currentAddresses)
+        val addresses = addressesState.asStateFlow()
+        private val applyingState = MutableStateFlow(false)
+        val applying = applyingState.asStateFlow()
+        private fun refreshInterfaceState() {
+            activeState.value = currentActive
+            addressesState.value = currentAddresses
+        }
         private var pendingEnabled: Boolean? = null
 
         fun enable(enabled: Boolean) {
             GlobalScope.launch(Dispatchers.Main.immediate) {
                 pendingEnabled = enabled
-                if (applying) {
-                    ifaceEvent()
+                if (applying.value) {
+                    refreshInterfaceState()
                     return@launch
                 }
-                applying = true
-                ifaceEvent()
+                applyingState.value = true
+                refreshInterfaceState()
                 try {
                     while (true) {
                         val next = pendingEnabled ?: break
@@ -111,11 +118,11 @@ class StaticIpSetter : BootReceiver.Startable {
                             false -> BootReceiver.delete<StaticIpSetter>()
                             null -> { }
                         }
-                        ifaceEvent()
+                        refreshInterfaceState()
                     }
                 } finally {
-                    applying = false
-                    ifaceEvent()
+                    applyingState.value = false
+                    refreshInterfaceState()
                 }
             }
         }

@@ -10,12 +10,15 @@ import androidx.appcompat.app.AlertDialog
 import androidx.databinding.BaseObservable
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.StaticIpSetter
 import be.mygod.vpnhotspot.databinding.ListitemStaticIpBinding
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 
 class StaticIpManager(private val parent: TetheringFragment) : Manager(), DefaultLifecycleObserver {
@@ -26,13 +29,9 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     }
 
     inner class Data : BaseObservable() {
-        val active: Boolean get() = StaticIpSetter.active
-        val addresses: CharSequence get() = StaticIpSetter.addresses
-        val applying: Boolean get() = StaticIpSetter.applying
-
-        fun onChanged() {
-            notifyChange()
-        }
+        val active: Boolean get() = StaticIpSetter.active.value
+        val addresses: CharSequence get() = StaticIpSetter.addresses.value
+        val applying: Boolean get() = StaticIpSetter.applying.value
 
         fun configure() = ConfigureDialogFragment().apply {
             key()
@@ -41,7 +40,7 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
 
         fun toggle() {
             StaticIpSetter.enable(!active)
-            onChanged()
+            notifyChange()
         }
     }
 
@@ -75,14 +74,15 @@ class StaticIpManager(private val parent: TetheringFragment) : Manager(), Defaul
     }
 
     override fun onCreate(owner: LifecycleOwner) {
-        StaticIpSetter.ifaceEvent[this] = data::onChanged
+        owner.lifecycleScope.launch {
+            merge(StaticIpSetter.active, StaticIpSetter.addresses, StaticIpSetter.applying).collect {
+                data.notifyChange()
+            }
+        }
     }
 
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).binding.data = data
     }
 
-    override fun onDestroy(owner: LifecycleOwner) {
-        StaticIpSetter.ifaceEvent -= this
-    }
 }

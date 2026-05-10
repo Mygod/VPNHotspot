@@ -33,6 +33,9 @@ import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -57,7 +60,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         populateClients()
     }
 
-    private var repeater: RepeaterService.Binder? = null
+    private val repeater = MutableStateFlow<RepeaterService.Binder?>(null)
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var wifiAp = emptyList<Pair<String, MacAddress>>()
     private var neighbours: Collection<NetlinkNeighbour> = emptyList()
@@ -105,7 +108,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     private fun populateClients() {
         val clients = HashMap<Pair<String?, MacAddress>, Client>()
-        repeater?.group?.`interface`?.let { p2pInterface ->
+        repeater.value?.group?.value?.`interface`?.let { p2pInterface ->
             for (client in p2p) {
                 val addr = MacAddress.fromString(client.deviceAddress!!)
                 clients[p2pInterface to addr] = Client(addr, p2pInterface, TetherType.WIFI_P2P).apply {
@@ -154,17 +157,25 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     private fun refreshP2p() {
-        val repeater = repeater
-        p2p = (if (repeater?.active != true) null else repeater.group?.clientList) ?: emptyList()
+        val repeater = repeater.value
+        p2p = (if (repeater?.active != true) null else repeater.group.value?.clientList) ?: emptyList()
         populateClients()
     }
 
     override fun onCreate(owner: LifecycleOwner) {
         owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                NetlinkNeighbour.snapshots.collect {
-                    neighbours = it
-                    populateClients()
+                launch {
+                    NetlinkNeighbour.snapshots.collect {
+                        neighbours = it
+                        populateClients()
+                    }
+                }
+                launch {
+                    repeater.collectLatest { service ->
+                        service ?: return@collectLatest
+                        merge(service.status, service.group).collect { refreshP2p() }
+                    }
                 }
             }
         }
@@ -181,16 +192,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         val binder = service as RepeaterService.Binder
-        repeater = binder
-        binder.statusChanged[this] = this::refreshP2p
-        binder.groupChanged[this] = { refreshP2p() }
+        repeater.value = binder
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        val binder = repeater ?: return
-        repeater = null
-        binder.statusChanged -= this
-        binder.groupChanged -= this
+        repeater.value = null
     }
 
     @RequiresApi(31)

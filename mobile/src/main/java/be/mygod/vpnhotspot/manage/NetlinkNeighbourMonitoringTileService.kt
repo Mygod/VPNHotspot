@@ -12,7 +12,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 abstract class NetlinkNeighbourMonitoringTileService : KillableTileService() {
-    private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    protected val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private var neighboursJob: Job? = null
     private var neighbours: Collection<NetlinkNeighbour> = emptyList()
     abstract fun updateTile()

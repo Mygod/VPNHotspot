@@ -7,8 +7,10 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.findIdentifier
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import timber.log.Timber
 import java.util.regex.Pattern
 
@@ -45,7 +47,12 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private var ignoreRegexpsOnce = false
 
         @RequiresApi(30)    // unused on lower APIs
-        val listener = Event0()
+        private val changesState = MutableSharedFlow<Unit>(
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
+        @RequiresApi(30)    // unused on lower APIs
+        val changes = changesState.asSharedFlow()
 
         private fun Pair<String, Resources>.getRegexs(name: String, alternativePackage: String? = null): List<Pattern> {
             val id = second.findIdentifier(name, "array", first, alternativePackage)
@@ -90,7 +97,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
             Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
             TetheringManagerCompat.unregisterTetheringEventCallback(this)
             requiresUpdate = true
-            listener()
+            changesState.tryEmit(Unit)
         }
 
         /**

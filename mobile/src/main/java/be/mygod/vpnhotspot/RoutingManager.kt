@@ -10,6 +10,11 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
@@ -122,6 +127,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
      */
     private var routing: Routing? = null
     private var isWifi = forceWifi || TetherType.ofInterface(downstream).isWifi
+    private var tetherTypeJob: Job? = null
 
     suspend fun start(): Boolean {
         while (true) {
@@ -159,16 +165,27 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
 
     private fun acquireLocked() {
         if (isWifi) WifiDoubleLock.acquire(this)
-        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-            val isWifiNow = TetherType.ofInterface(downstream).isWifi
-            if (isWifi != isWifiNow) {
-                if (isWifi) WifiDoubleLock.release(this) else WifiDoubleLock.acquire(this)
-                isWifi = isWifiNow
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) {
+            tetherTypeJob = CoroutineScope(Dispatchers.Default).launch(start = CoroutineStart.UNDISPATCHED) {
+                TetherType.changes.collect {
+                    monitor.withLock {
+                        if (active[downstream] !== this@RoutingManager || !started) return@withLock
+                        val isWifiNow = TetherType.ofInterface(downstream).isWifi
+                        if (isWifi != isWifiNow) {
+                            if (isWifi) WifiDoubleLock.release(this@RoutingManager)
+                            else WifiDoubleLock.acquire(this@RoutingManager)
+                            isWifi = isWifiNow
+                        }
+                    }
+                }
             }
         }
     }
     private fun releaseLocked() {
-        if (!forceWifi && Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
+        if (!forceWifi && Build.VERSION.SDK_INT >= 30) {
+            tetherTypeJob?.cancel()
+            tetherTypeJob = null
+        }
         if (isWifi) WifiDoubleLock.release(this)
     }
 

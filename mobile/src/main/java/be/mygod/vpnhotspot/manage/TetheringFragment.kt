@@ -18,7 +18,9 @@ import androidx.annotation.RequiresApi
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.getSystemService
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -50,6 +52,10 @@ import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -117,8 +123,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (Services.p2p != null) list.add(repeaterManager)
             list.add(localOnlyHotspotManager)
             list.add(staticIpManager)
-            val monitoredIfaces = binder?.monitoredIfaces ?: emptyList()
-            updateMonitorList(tetherStates.tethered - monitoredIfaces.toSet())
+            val monitoredIfaces = binder.value?.monitoredIfaces?.value ?: emptySet()
+            updateMonitorList(tetherStates.tethered - monitoredIfaces)
             list.addAll((tetherStates.tethered + monitoredIfaces).toSortedSet()
                     .map { InterfaceManager(this@TetheringFragment, it) })
             list.add(ManageBar)
@@ -154,7 +160,8 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     var ifaceLookup: Map<String, NetworkInterface> = emptyMap()
     var tetheredTypes = emptySet<TetherType>()
     private lateinit var binding: FragmentTetheringBinding
-    var binder: TetheringService.Binder? = null
+    private val mutableBinder = MutableStateFlow<TetheringService.Binder?>(null)
+    val binder = mutableBinder.asStateFlow()
     private val adapter = ManagerAdapter()
 
     private fun updateMonitorList(canMonitor: Collection<String> = emptySet()) {
@@ -177,7 +184,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             R.id.configuration -> item.subMenu!!.run {
                 findItem(R.id.configuration_repeater).isNotGone = Services.p2p != null
                 findItem(R.id.configuration_temp_hotspot).isNotGone =
-                    adapter.localOnlyHotspotManager.binder?.configuration != null
+                    adapter.localOnlyHotspotManager.binder.value?.configuration?.value != null
                 true
             }
             R.id.configuration_repeater -> {
@@ -185,9 +192,9 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
                 true
             }
             R.id.configuration_temp_hotspot -> {
+                val configuration = adapter.localOnlyHotspotManager.binder.value?.configuration?.value ?: return false
                 WifiApDialogFragment().apply {
-                    arg(WifiApDialogFragment.Arg(adapter.localOnlyHotspotManager.binder?.configuration ?: return false,
-                            readOnly = true))
+                    arg(WifiApDialogFragment.Arg(configuration, readOnly = true))
                     // no need for callback
                 }.showAllowingStateLoss(parentFragmentManager)
                 true
@@ -292,6 +299,24 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
         binding.interfaces.adapter = adapter
         adapter.update()
         ServiceForegroundConnector(this, this, TetheringService::class)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                launch {
+                    binder.collectLatest { service ->
+                        if (service == null) {
+                            adapter.update()
+                            return@collectLatest
+                        }
+                        merge(service.managedIfaces, service.inactiveIfaces, service.monitoredIfaces).collect {
+                            adapter.update()
+                        }
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= 30) launch {
+                    TetherType.changes.collect { adapter.notifyTetherTypeChanged() }
+                }
+            }
+        }
         (activity as MainActivity).binding.toolbar.apply {
             inflateMenu(R.menu.toolbar_tethering)
             setOnMenuItemClickListener(this@TetheringFragment)
@@ -313,26 +338,13 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        binder = service as TetheringService.Binder
-        service.routingsChanged[this] = {
-            lifecycleScope.launch {
-                withStarted { adapter.update() }
-            }
-        }
-        if (Build.VERSION.SDK_INT >= 30) {
-            TetherType.listener[this] = {
-                lifecycleScope.launch { adapter.notifyTetherTypeChanged() }
-            }
-        }
+        mutableBinder.value = service as TetheringService.Binder
         TetherStates.registerCallback(adapter)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        (binder ?: return).routingsChanged -= this
-        binder = null
-        if (Build.VERSION.SDK_INT >= 30) {
-            TetherType.listener -= this
-        }
+        if (binder.value == null) return
+        mutableBinder.value = null
         TetherStates.unregisterCallback(adapter)
     }
 }

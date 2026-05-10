@@ -42,8 +42,6 @@ import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RepeaterCommands
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.StickyEvent0
-import be.mygod.vpnhotspot.util.StickyEvent1
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.broadcastReceiver
@@ -59,6 +57,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -174,16 +174,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     }
 
     inner class Binder : android.os.Binder() {
-        val service get() = this@RepeaterService
-        val active get() = status == Status.ACTIVE
-        val statusChanged = StickyEvent0()
-        var group: WifiP2pGroup? = null
-            set(value) {
-                field = value
-                groupChanged(value)
-                value?.clientList?.let { timeoutMonitor?.onClientsChanged(it.isEmpty()) }
-            }
-        val groupChanged = StickyEvent1 { group }
+        val active get() = status.value == Status.ACTIVE
+        val status = this@RepeaterService.status.asStateFlow()
+        val group = this@RepeaterService.group.asStateFlow()
+        fun clearGroup() = updateGroup(null)
 
         suspend fun obtainDeviceAddress(): MacAddress? {
             return p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
@@ -213,7 +207,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                 }
                 val main = ownedGroups.minByOrNull { it.networkId }
                 // do not replace current group if it's better
-                if (binder.group?.passphrase == null) binder.group = main
+                if (this@RepeaterService.group.value?.passphrase == null) updateGroup(main)
                 return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()
             }
             fun Int?.print(group: WifiP2pGroup) {
@@ -277,6 +271,8 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
 
     private val p2pManager get() = Services.p2p!!
     private var channel: WifiP2pManager.Channel? = null
+    private val status = MutableStateFlow(Status.IDLE)
+    private val group = MutableStateFlow<WifiP2pGroup?>(null)
     private val binder = Binder()
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
@@ -304,12 +300,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private val deinitPending = AtomicBoolean(true)
     private val lifecycleGeneration = AtomicInteger()
 
-    var status = Status.IDLE
-        private set(value) {
-            if (field == value) return
-            field = value
-            binder.statusChanged()
-        }
+    private fun updateGroup(value: WifiP2pGroup?) {
+        group.value = value
+        value?.clientList?.let { timeoutMonitor?.onClientsChanged(it.isEmpty()) }
+    }
 
     private fun formatReason(@StringRes resId: Int, reason: Int) = getString(resId, when (reason) {
         WifiP2pManager.ERROR -> getString(R.string.repeater_failure_reason_error)
@@ -393,7 +387,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private fun initializeChannel() {
         channel = null
         deinitPending.set(true)
-        if (status != Status.DESTROYED) try {
+        if (status.value != Status.DESTROYED) try {
             // WifiP2pManager.Channel uses AsyncChannel which is leaky, prevent holding onto the Context
             val ref = WeakReference(this)
             channel = p2pManager.initialize(app, Looper.getMainLooper()) { ref.get()?.initializeChannel() }
@@ -443,10 +437,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         BootReceiver.startIfEnabled()
-        if (status != Status.IDLE) return START_NOT_STICKY
+        if (status.value != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         lifecycleGeneration.incrementAndGet()
-        status = Status.STARTING
+        status.value = Status.STARTING
         // bump self to foreground location service to use location later, also to avoid getting killed
         showNotification()
         launch {
@@ -538,14 +532,14 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     private fun onP2pConnectionChanged(info: WifiP2pInfo?, group: WifiP2pGroup?) = launch {
         Timber.d("P2P connection changed: $info\n$group")
-        if (status != Status.STARTING && status != Status.ACTIVE) return@launch
+        if (status.value != Status.STARTING && status.value != Status.ACTIVE) return@launch
         when {
             info?.groupFormed != true || !info.isGroupOwner || group?.isGroupOwner != true -> {
                 if (routingManager != null) cleanLocked()
                 // P2P shutdown, else other groups changing before start, ignore
             }
             routingManager != null -> {
-                binder.group = group
+                updateGroup(group)
                 showNotification(group)
             }
             else -> doStartLocked(group)
@@ -558,7 +552,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         if (isAutoShutdownEnabled) timeoutMonitor = TetherTimeoutMonitor(shutdownTimeoutMillis, coroutineContext) {
             binder.shutdown()
         }
-        binder.group = group
+        updateGroup(group)
         if (persistNextGroup) {
             networkName = WifiSsidCompat.fromUtf8Text(group.networkName)
             passphrase = group.passphrase
@@ -569,7 +563,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         routingManager = manager
         manager.start()
         if (routingManager !== manager) return
-        status = Status.ACTIVE
+        status.value = Status.ACTIVE
         showNotification(group)
         BootReceiver.add<RepeaterService>(Starter())
     }
@@ -606,8 +600,8 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     }
     private suspend fun cleanLocked(shouldDisable: Boolean = true, generation: Int = lifecycleGeneration.get()) {
         cleanupMutex.withLock {
-            if (status != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
-            if (status != Status.DESTROYED) status = Status.STOPPING
+            if (status.value != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
+            if (status.value != Status.DESTROYED) status.value = Status.STOPPING
             if (shouldDisable) BootReceiver.delete<RepeaterService>()
             if (receiverRegistered) {
                 ensureReceiverUnregistered(receiver)
@@ -619,21 +613,21 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             val manager = routingManager
             routingManager = null
             manager?.stop()
-            if (status != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
-            if (status != Status.DESTROYED) status = Status.IDLE
+            if (status.value != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
+            if (status.value != Status.DESTROYED) status.value = Status.IDLE
             ServiceNotification.stopForeground(this)
             stopSelf()
         }
     }
 
     override fun onDestroy() {
-        if (status != Status.IDLE) binder.shutdown()
+        if (status.value != Status.IDLE) binder.shutdown()
         launch {    // force clean to prevent leakage
             cleanLocked(false)
             cancel()
         }
         app.pref.unregisterOnSharedPreferenceChangeListener(this)
-        status = Status.DESTROYED
+        status.value = Status.DESTROYED
         channel?.close()
         super.onDestroy()
     }

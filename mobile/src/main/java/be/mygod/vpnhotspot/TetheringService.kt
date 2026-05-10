@@ -7,12 +7,13 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
@@ -34,12 +35,13 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     }
 
     inner class Binder : android.os.Binder() {
-        val routingsChanged = Event0()
-        val monitoredIfaces get() = downstreams.values.filter { it.monitor }.map { it.downstream }
+        val managedIfaces = this@TetheringService.managedIfaces.asStateFlow()
+        val inactiveIfaces = inactiveIfaceSet.asStateFlow()
+        val monitoredIfaces = monitoredIfaceSet.asStateFlow()
 
-        fun isActive(iface: String) = downstreams.containsKey(iface)
-        fun isInactive(iface: String) = downstreams[iface]?.run { !started && monitor }
-        fun monitored(iface: String) = downstreams[iface]?.monitor
+        fun isActive(iface: String) = this@TetheringService.managedIfaces.value.contains(iface)
+        fun isInactive(iface: String) = inactiveIfaceSet.value.contains(iface)
+        fun monitored(iface: String) = monitoredIfaceSet.value.contains(iface)
     }
 
     private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
@@ -63,6 +65,9 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
      */
     private val dispatcher = Dispatchers.Default.limitedParallelism(1, "TetheringService")
     override val coroutineContext = dispatcher + Job()
+    private val managedIfaces = MutableStateFlow(emptySet<String>())
+    private val inactiveIfaceSet = MutableStateFlow(emptySet<String>())
+    private val monitoredIfaceSet = MutableStateFlow(emptySet<String>())
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
     private var tetherStatesRegistered = false
@@ -99,12 +104,16 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     }
 
     private suspend fun onDownstreamsChangedLocked() {
-        if (downstreams.isEmpty()) {
+        val downstreams = downstreams.values
+        val monitoredIfaces = downstreams.filter { it.monitor }.mapTo(mutableSetOf()) { it.downstream }
+        val inactiveIfaces = downstreams.filter { !it.started && it.monitor }.mapTo(mutableSetOf()) { it.downstream }
+        val managedIfaces = downstreams.mapTo(mutableSetOf()) { it.downstream }
+        if (managedIfaces.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
-            binder.monitoredIfaces.also {
+            monitoredIfaces.also {
                 if (it.isEmpty()) BootReceiver.delete<TetheringService>()
                 else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
             }
@@ -117,8 +126,10 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
             if (activeIfaces.isEmpty()) stopNetlinkNeighbours() else startNetlinkNeighbours()
             super.updateNotification()
         }
-        launch(Dispatchers.Main) {
-            binder.routingsChanged()
+        withContext(Dispatchers.Main) {
+            monitoredIfaceSet.value = monitoredIfaces
+            inactiveIfaceSet.value = inactiveIfaces
+            this@TetheringService.managedIfaces.value = managedIfaces
         }
     }
 

@@ -30,14 +30,15 @@ class InterfaceManager(private val parent: TetheringFragment, val iface: String)
     }
     private inner class Data : be.mygod.vpnhotspot.manage.Data() {
         override val icon get() = TetherType.ofInterface(iface).icon
-        override val title get() = if (parent.binder?.monitored(iface) == true) {
+        override val title get() = if (parent.binder.value?.monitored(iface) == true) {
             parent.getString(R.string.tethering_state_monitored, iface)
         } else iface
         override val text get() = addresses
-        override val active get() = parent.binder?.isActive(iface) == true
+        override val active get() = parent.binder.value?.isActive(iface) == true
     }
 
-    private val addresses = parent.ifaceLookup[iface] ?.formatAddresses(parent.binder?.isInactive(iface) == true) ?: ""
+    private val addresses = parent.ifaceLookup[iface]
+            ?.formatAddresses(parent.binder.value?.isInactive(iface) == true) ?: ""
     override val type get() = VIEW_TYPE_INTERFACE
     private val data = Data()
 

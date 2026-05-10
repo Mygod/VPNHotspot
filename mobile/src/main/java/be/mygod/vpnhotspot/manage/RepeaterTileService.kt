@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.manage
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.drawable.Icon
-import android.net.wifi.p2p.WifiP2pGroup
 import android.os.IBinder
 import android.service.quicksettings.Tile
 import be.mygod.vpnhotspot.R
@@ -11,11 +10,21 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.launch
 
 class RepeaterTileService : KillableTileService() {
     private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_settings_input_antenna) }
 
+    private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private var binder: RepeaterService.Binder? = null
+    private var serviceJob: Job? = null
 
     override fun onStartListening() {
         super.onStartListening()
@@ -31,7 +40,7 @@ class RepeaterTileService : KillableTileService() {
 
     override fun onClick() {
         val binder = binder
-        if (binder == null) tapPending = true else when (binder.service.status) {
+        if (binder == null) tapPending = true else when (binder.status.value) {
             RepeaterService.Status.ACTIVE -> {
                 RepeaterService.dismissHandle = dismissHandle
                 binder.shutdown()
@@ -46,28 +55,36 @@ class RepeaterTileService : KillableTileService() {
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
         binder = service as RepeaterService.Binder
-        service.statusChanged[this] = { updateTile() }
-        service.groupChanged[this] = this::updateTile
+        serviceJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            merge(service.status, service.group).collect { updateTile() }
+        }
         super.onServiceConnected(name, service)
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        val binder = binder ?: return
+        if (binder == null) return
         this.binder = null
-        binder.statusChanged -= this
-        binder.groupChanged -= this
+        serviceJob?.cancel()
+        serviceJob = null
     }
 
-    private fun updateTile(group: WifiP2pGroup? = binder?.group) {
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    private fun updateTile() {
+        val binder = binder ?: return
         qsTile?.run {
             subtitle = null
-            when ((binder ?: return).service.status) {
+            when (binder.status.value) {
                 RepeaterService.Status.IDLE -> {
                     state = Tile.STATE_INACTIVE
                     label = getText(R.string.title_repeater)
                 }
                 RepeaterService.Status.ACTIVE -> {
                     state = Tile.STATE_ACTIVE
+                    val group = binder.group.value
                     label = group?.networkName
                     val size = group?.clientList?.size ?: 0
                     if (size > 0) subtitle = resources.getQuantityString(

@@ -7,14 +7,16 @@ import androidx.collection.set
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.util.Event2
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,10 +28,19 @@ object TrafficRecorder {
     private const val ANYWHERE = "0.0.0.0/0"
     private const val FOREGROUND_POLL_MS = 1015L
 
+    data class ForegroundUpdate(
+        val newRecords: Collection<TrafficRecord>,
+        val oldRecords: LongSparseArray<TrafficRecord>,
+    )
+
     private var lastUpdate = 0L
     private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
     private val updateMutex = Mutex()
-    val foregroundListeners = Event2<Collection<TrafficRecord>, LongSparseArray<TrafficRecord>>()
+    private val foregroundUpdatesState = MutableSharedFlow<ForegroundUpdate>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val foregroundUpdates = foregroundUpdatesState.asSharedFlow()
 
     fun register(ip: InetAddress, downstream: String, mac: MacAddress) {
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
@@ -60,7 +71,9 @@ object TrafficRecorder {
         val now = System.currentTimeMillis()
         val minute = TimeUnit.MINUTES.toMillis(1)
         var timeout = minute - now % minute
-        if (foregroundListeners.isNotEmpty() && timeout > FOREGROUND_POLL_MS) timeout = FOREGROUND_POLL_MS
+        if (foregroundUpdatesState.subscriptionCount.value > 0 && timeout > FOREGROUND_POLL_MS) {
+            timeout = FOREGROUND_POLL_MS
+        }
         updateJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
             delay(timeout)
             update(true)
@@ -134,7 +147,7 @@ object TrafficRecorder {
                 check(record.receivedBytes >= 0)
                 AppDatabase.instance.trafficRecordDao.insert(record)
             }
-            foregroundListeners(records.values.toList(), oldRecords)
+            foregroundUpdatesState.tryEmit(ForegroundUpdate(records.values.toList(), oldRecords))
         }
     }
     suspend fun update(timeout: Boolean = false) {

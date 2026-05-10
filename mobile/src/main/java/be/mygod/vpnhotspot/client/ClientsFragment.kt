@@ -20,8 +20,10 @@ import androidx.core.view.isVisible
 import androidx.databinding.BaseObservable
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.findViewTreeLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.DefaultItemAnimator
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -231,34 +233,25 @@ class ClientsFragment : Fragment() {
             lifecycle.addObserver(clientsFragmentObserver)
             clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }
         }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // icon might be changed due to TetherType changes
+                if (Build.VERSION.SDK_INT >= 30) launch {
+                    TetherType.changes.collect {
+                        val size = adapter.size.await()
+                        adapter.notifyItemRangeChanged(0, size)
+                    }
+                }
+                launch {
+                    TrafficRecorder.foregroundUpdates.collect { (newRecords, oldRecords) ->
+                        adapter.updateTraffic(newRecords, oldRecords)
+                    }
+                }
+                withContext(Dispatchers.Default) {
+                    TrafficRecorder.rescheduleUpdate()  // next schedule time might be 1 min, force reschedule to <= 1s
+                }
+            }
+        }
         return binding.root
-    }
-
-    override fun onStart() {
-        // icon might be changed due to TetherType changes
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener[this] = {
-            lifecycleScope.launch {
-                val size = adapter.size.await()
-                withStarted { adapter.notifyItemRangeChanged(0, size) }
-            }
-        }
-        super.onStart()
-        // we just put these two thing together as this is the only place we need to use this event for now
-        TrafficRecorder.foregroundListeners[this] = { newRecords, oldRecords ->
-            lifecycleScope.launch {
-                withStarted { adapter.updateTraffic(newRecords, oldRecords) }
-            }
-        }
-        lifecycleScope.launch {
-            withContext(Dispatchers.Default) {
-                TrafficRecorder.rescheduleUpdate()  // next schedule time might be 1 min, force reschedule to <= 1s
-            }
-        }
-    }
-
-    override fun onStop() {
-        TrafficRecorder.foregroundListeners -= this
-        super.onStop()
-        if (Build.VERSION.SDK_INT >= 30) TetherType.listener -= this
     }
 }

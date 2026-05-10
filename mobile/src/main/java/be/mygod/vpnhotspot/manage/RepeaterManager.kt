@@ -21,9 +21,11 @@ import androidx.annotation.MainThread
 import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.databinding.BaseObservable
+import androidx.lifecycle.Lifecycle
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.withStarted
 import androidx.recyclerview.widget.RecyclerView
 import be.mygod.vpnhotspot.AlertDialogFragment
@@ -44,6 +46,10 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
@@ -61,17 +67,17 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
     inner class Data : BaseObservable() {
-        val switchEnabled: Boolean get() = when (binder?.service?.status) {
+        val switchEnabled: Boolean get() = when (binder.value?.status?.value) {
                 RepeaterService.Status.IDLE, RepeaterService.Status.ACTIVE -> true
                 else -> false
             }
-        val serviceStarted: Boolean get() = when (binder?.service?.status) {
+        val serviceStarted: Boolean get() = when (binder.value?.status?.value) {
                 RepeaterService.Status.STARTING, RepeaterService.Status.ACTIVE -> true
                 else -> false
             }
 
         val title: CharSequence get() {
-            binder?.group?.frequency?.let {
+            binder.value?.group?.value?.frequency?.let {
                 if (it != 0) return parent.getString(R.string.repeater_channel,
                         it, SoftApConfigurationCompat.frequencyToChannel(it))
             }
@@ -95,7 +101,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                 test(R.string.repeater_feature_pcc_mode, 36) { isPccModeSupported }
                 test(R.string.repeater_feature_wifi_direct_r2, 36) { isWiFiDirectR2Supported }
             }
-            val addresses = group?.let { group ->
+            val addresses = binder.value?.group?.value?.let { group ->
                 try {
                     NetworkInterface.getByName(group.`interface`)
                 } catch (_: SocketException) {
@@ -114,17 +120,9 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             result.append(addresses)
         }
 
-        fun onStatusChanged() {
-            notifyChange()
-        }
-        fun onGroupChanged(group: WifiP2pGroup? = null) {
-            this@RepeaterManager.group = group
-            notifyChange()
-        }
-
         fun toggle() {
-            val binder = binder
-            when (binder?.service?.status) {
+            val binder = binder.value
+            when (binder?.status?.value) {
                 RepeaterService.Status.IDLE -> parent.startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
                     Manifest.permission.NEARBY_WIFI_DEVICES
                 } else Manifest.permission.ACCESS_FINE_LOCATION)
@@ -134,7 +132,7 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
 
         fun wps() {
-            if (binder?.active == true) WpsDialogFragment().apply {
+            if (binder.value?.active == true) WpsDialogFragment().apply {
                 key()
             }.showAllowingStateLoss(parent.parentFragmentManager)
         }
@@ -162,8 +160,25 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         var config: P2pSupplicantConfiguration? = null
     }
 
+    override val type get() = VIEW_TYPE_REPEATER
+    private val data = Data()
+    private val mutableBinder = MutableStateFlow<RepeaterService.Binder?>(null)
+    val binder = mutableBinder.asStateFlow()
+    private val holder by parent.viewModels<ConfigHolder>()
+
     init {
         ServiceForegroundConnector(parent, this, RepeaterService::class)
+        parent.viewLifecycleOwner.lifecycleScope.launch {
+            parent.viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                binder.collectLatest { service ->
+                    if (service == null) {
+                        data.notifyChange()
+                        return@collectLatest
+                    }
+                    merge(service.status, service.group).collect { data.notifyChange() }
+                }
+            }
+        }
         AlertDialogFragment.setResultListener<WifiApDialogFragment.Arg>(parent, javaClass.name) { which, ret ->
             if (which == DialogInterface.BUTTON_POSITIVE) GlobalScope.launch(Dispatchers.Main.immediate) {
                 updateConfiguration(ret!!.configuration)
@@ -171,8 +186,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
         AlertDialogFragment.setResultListener<WpsDialogFragment, WpsRet>(parent) { which, ret ->
             when (which) {
-                DialogInterface.BUTTON_POSITIVE -> binder!!.startWps(ret!!.pin)
-                DialogInterface.BUTTON_NEUTRAL -> binder!!.startWps(null)
+                DialogInterface.BUTTON_POSITIVE -> binder.value!!.startWps(ret!!.pin)
+                DialogInterface.BUTTON_NEUTRAL -> binder.value!!.startWps(null)
             }
         }
     }
@@ -194,29 +209,19 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
         }
     }
 
-    override val type get() = VIEW_TYPE_REPEATER
-    private val data = Data()
-    var binder: RepeaterService.Binder? = null
-    private var group: WifiP2pGroup? = null
-    private val holder by parent.viewModels<ConfigHolder>()
-
     override fun bindTo(viewHolder: RecyclerView.ViewHolder) {
         (viewHolder as ViewHolder).binding.data = data
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        binder = service as RepeaterService.Binder
-        service.statusChanged[this] = data::onStatusChanged
-        service.groupChanged[this] = data::onGroupChanged
+        mutableBinder.value = service as RepeaterService.Binder
         data.notifyChange()
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
-        val binder = binder ?: return
-        this.binder = null
-        binder.statusChanged -= this
-        binder.groupChanged -= this
-        data.onStatusChanged()
+        if (binder.value == null) return
+        mutableBinder.value = null
+        data.notifyChange()
     }
 
     @MainThread
@@ -240,8 +245,8 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
                     setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
                 } to false
             }
-        } else binder?.let { binder ->
-            val group = binder.group ?: binder.fetchPersistentGroup().let { binder.group }
+        } else binder.value?.let { binder ->
+            val group = binder.group.value ?: binder.fetchPersistentGroup().let { binder.group.value }
             if (group != null) return SoftApConfigurationCompat(
                 ssid = WifiSsidCompat.fromUtf8Text(group.networkName),
                 securityType = if (Build.VERSION.SDK_INT >= 36) when (group.securityType) {
@@ -286,15 +291,15 @@ class RepeaterManager(private val parent: TetheringFragment) : Manager(), Servic
             RepeaterService.passphrase = config.passphrase
             RepeaterService.securityType = config.securityType
         } else holder.config?.let { master ->
-            val binder = binder
+            val binder = binder.value
             val mayBeModified = master.psk != config.passphrase || master.bssid != config.bssid || config.ssid.run {
                 if (this != null) decode().let {
-                    it == null || binder?.group?.networkName != it
-                } else binder?.group?.networkName != null
+                    it == null || binder?.group?.value?.networkName != it
+                } else binder?.group?.value?.networkName != null
             }
             if (mayBeModified) try {
                 withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid) }
-                (this.binder ?: binder)?.group = null
+                (this.binder.value ?: binder)?.clearGroup()
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
