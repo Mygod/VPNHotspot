@@ -23,7 +23,8 @@ use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, SessionConfig, SessionPorts,
     UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE,
-    DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
+    DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, DAEMON_UDP_TPROXY_ADDRESS,
+    LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::{
     CleanRoutingCommand, MasqueradeMode, ReplaceStaticAddressesCommand,
@@ -922,23 +923,25 @@ impl Runtime {
         [("tcp", ports.tcp), ("udp", ports.udp)]
             .into_iter()
             .map(|(protocol, port)| {
-                IptablesRule::new(
-                    IptablesTarget::Ipv6,
-                    "mangle",
-                    "vpnhotspot_v6_tproxy",
-                    vec![
-                        "-i".into(),
-                        config.downstream.clone(),
-                        "-p".into(),
-                        protocol.into(),
-                        "-j".into(),
-                        "TPROXY".into(),
-                        "--on-port".into(),
-                        port.to_string(),
-                        "--tproxy-mark".into(),
-                        "0x10000000/0x10000000".into(),
-                    ],
-                )
+                let mut args = vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-p".into(),
+                    protocol.into(),
+                    "-j".into(),
+                    "TPROXY".into(),
+                ];
+                if protocol == "udp" {
+                    // Keep listener socket lookup disjoint from exact-bound UDP reply sockets.
+                    args.extend(["--on-ip".into(), DAEMON_UDP_TPROXY_ADDRESS.to_string()]);
+                }
+                args.extend([
+                    "--on-port".into(),
+                    port.to_string(),
+                    "--tproxy-mark".into(),
+                    "0x10000000/0x10000000".into(),
+                ]);
+                IptablesRule::new(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy", args)
             })
             .collect()
     }

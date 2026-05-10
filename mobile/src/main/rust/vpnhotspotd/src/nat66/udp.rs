@@ -4,7 +4,7 @@ use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use libc::{
@@ -44,6 +44,192 @@ enum UdpAssociationEvent {
     Closed(AssociationKey, u64),
 }
 
+struct AssociationTask {
+    key: AssociationKey,
+    id: u64,
+    socket: Arc<TokioUdpSocket>,
+    reply_sockets: Arc<ReplySocketPool>,
+    reply_key: ReplySocketKey,
+    reply_socket: Option<Arc<TokioUdpSocket>>,
+    stop: CancellationToken,
+    association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct ReplySocketKey {
+    source: SocketAddrV6,
+    mark: u32,
+}
+
+struct ReplySocketEntry {
+    socket: Option<Arc<TokioUdpSocket>>,
+    users: usize,
+}
+
+#[derive(Default)]
+struct ReplySocketState {
+    retained_dns: Option<ReplySocketKey>,
+    sockets: HashMap<ReplySocketKey, ReplySocketEntry>,
+}
+
+#[derive(Default)]
+struct ReplySocketPool {
+    state: StdMutex<ReplySocketState>,
+}
+
+impl ReplySocketPool {
+    fn reserve_user(&self, key: ReplySocketKey) -> io::Result<()> {
+        self.with_state(|state| match state.sockets.entry(key) {
+            Entry::Occupied(mut entry) => {
+                entry.get_mut().users += 1;
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(ReplySocketEntry {
+                    socket: None,
+                    users: 1,
+                });
+            }
+        })
+    }
+
+    fn acquire_reserved(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self.with_state(|state| {
+            state
+                .sockets
+                .get(&key)
+                .and_then(|entry| entry.socket.clone())
+        })? {
+            return Ok(socket);
+        }
+        let socket = create_reply_socket(key)?;
+        self.with_state(|state| match state.sockets.entry(key) {
+            Entry::Occupied(mut entry) => {
+                if let Some(socket) = &entry.get().socket {
+                    socket.clone()
+                } else {
+                    entry.get_mut().socket = Some(socket.clone());
+                    socket
+                }
+            }
+            Entry::Vacant(_) => socket,
+        })
+    }
+
+    fn retain_dns(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self.with_state(|state| {
+            if state.retained_dns != Some(key) {
+                if let Some(previous) = state.retained_dns.replace(key) {
+                    if state
+                        .sockets
+                        .get(&previous)
+                        .is_some_and(|entry| entry.users == 0)
+                    {
+                        state.sockets.remove(&previous);
+                    }
+                }
+            }
+            state
+                .sockets
+                .get(&key)
+                .and_then(|entry| entry.socket.clone())
+        })? {
+            return Ok(socket);
+        }
+        let socket = create_reply_socket(key)?;
+        self.with_state(|state| {
+            if state.retained_dns != Some(key) {
+                if let Some(previous) = state.retained_dns.replace(key) {
+                    if state
+                        .sockets
+                        .get(&previous)
+                        .is_some_and(|entry| entry.users == 0)
+                    {
+                        state.sockets.remove(&previous);
+                    }
+                }
+            }
+            match state.sockets.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    if let Some(socket) = &entry.get().socket {
+                        socket.clone()
+                    } else {
+                        entry.get_mut().socket = Some(socket.clone());
+                        socket
+                    }
+                }
+                Entry::Vacant(entry) => {
+                    entry.insert(ReplySocketEntry {
+                        socket: Some(socket.clone()),
+                        users: 0,
+                    });
+                    socket
+                }
+            }
+        })
+    }
+
+    fn release_user(&self, key: ReplySocketKey) -> io::Result<()> {
+        self.with_state(|state| -> io::Result<()> {
+            let entry = state
+                .sockets
+                .get_mut(&key)
+                .ok_or_else(|| io::Error::other("reply socket reservation missing"))?;
+            if entry.users == 0 {
+                return Err(io::Error::other("reply socket users underflow"));
+            }
+            entry.users -= 1;
+            let remove = entry.users == 0 && state.retained_dns != Some(key);
+            if remove {
+                state.sockets.remove(&key);
+            }
+            Ok(())
+        })?
+    }
+
+    fn replace_socket(
+        &self,
+        key: ReplySocketKey,
+        previous: &Arc<TokioUdpSocket>,
+    ) -> io::Result<Arc<TokioUdpSocket>> {
+        let socket = create_reply_socket(key)?;
+        self.with_state(|state| {
+            let retained = state.retained_dns == Some(key);
+            match state.sockets.entry(key) {
+                Entry::Occupied(mut entry) => {
+                    if entry
+                        .get()
+                        .socket
+                        .as_ref()
+                        .is_some_and(|socket| Arc::ptr_eq(socket, previous))
+                    {
+                        entry.get_mut().socket = Some(socket.clone());
+                    }
+                    entry.get().socket.clone().unwrap_or(socket)
+                }
+                Entry::Vacant(entry) if retained => {
+                    entry.insert(ReplySocketEntry {
+                        socket: Some(socket.clone()),
+                        users: 0,
+                    });
+                    socket
+                }
+                Entry::Vacant(_) => socket,
+            }
+        })
+    }
+
+    fn with_state<T>(&self, f: impl FnOnce(&mut ReplySocketState) -> T) -> io::Result<T> {
+        let mut state = self.lock_state()?;
+        Ok(f(&mut state))
+    }
+
+    fn lock_state(&self) -> io::Result<MutexGuard<'_, ReplySocketState>> {
+        self.state
+            .lock()
+            .map_err(|_| io::Error::other("reply socket state poisoned"))
+    }
+}
+
 pub(crate) fn spawn_loop(
     listener: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
@@ -52,6 +238,7 @@ pub(crate) fn spawn_loop(
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
         let listener_fd = listener.get_ref().as_raw_fd();
+        let reply_sockets = Arc::new(ReplySocketPool::default());
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
         let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
         let mut next_association_id = 0u64;
@@ -124,25 +311,44 @@ pub(crate) fn spawn_loop(
                                 };
                                 if *destination.ip() == ipv6_nat.gateway.address() && destination.port() == DNS_PORT {
                                     let query = buffer[..size].to_vec();
+                                    let reply_key = ReplySocketKey {
+                                        source: destination,
+                                        mark: snapshot.reply_mark,
+                                    };
+                                    let reply_socket = match reply_sockets.retain_dns(reply_key) {
+                                        Ok(socket) => socket,
+                                        Err(e) => {
+                                            report::io_with_details(
+                                                "nat66.dns_udp_reply_socket",
+                                                e,
+                                                [
+                                                    ("client", client.to_string()),
+                                                    ("destination", destination.to_string()),
+                                                ],
+                                            );
+                                            continue;
+                                        }
+                                    };
+                                    let reply_sockets = reply_sockets.clone();
                                     let query_stop = stop.child_token();
                                     spawn(async move {
+                                        let mut reply_socket = Some(reply_socket);
                                         select! {
                                             _ = query_stop.cancelled() => {}
                                             response = resolve_or_error(&snapshot, &query) => {
                                                 if let Some(response) = response {
                                                     if let Err(e) = send_response(
-                                                        destination,
+                                                        &reply_sockets,
+                                                        reply_key,
+                                                        &mut reply_socket,
                                                         client,
-                                                        snapshot.reply_mark,
                                                         &response,
                                                     ).await {
-                                                        report::io_with_details(
+                                                        report_send_response_error(
                                                             "nat66.dns_udp_response",
                                                             e,
-                                                            [
-                                                                ("client", client.to_string()),
-                                                                ("destination", destination.to_string()),
-                                                            ],
+                                                            client,
+                                                            destination,
                                                         );
                                                     }
                                                 }
@@ -163,44 +369,77 @@ pub(crate) fn spawn_loop(
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
-                                let association = match associations.entry(key) {
-                                    Entry::Occupied(entry) => entry.into_mut(),
-                                    Entry::Vacant(entry) => {
-                                        let upstream = match connect_udp(network, destination).await {
-                                            Ok(socket) => Arc::new(socket),
-                                            Err(e) => {
-                                                report::io_with_details(
-                                                    "nat66.udp_connect",
-                                                    e,
-                                                    [
-                                                        ("client", client.to_string()),
-                                                        ("destination", destination.to_string()),
-                                                    ],
-                                                );
-                                                continue;
-                                            }
-                                        };
-                                        let association_stop = stop.child_token();
-                                        let association_id = next_association_id;
-                                        next_association_id = next_association_id.wrapping_add(1);
-                                        spawn(run_association(
-                                            key,
-                                            association_id,
-                                            upstream.clone(),
-                                            config.clone(),
-                                            association_stop.clone(),
-                                            association_event_tx.clone(),
-                                        ));
-                                        entry.insert(UdpAssociation {
-                                            id: association_id,
-                                            socket: upstream,
-                                            last_active: activity,
-                                            stop: association_stop,
-                                        })
+                                if let Some(socket) = associations.get_mut(&key).map(|association| {
+                                    association.last_active = activity;
+                                    association.socket.clone()
+                                }) {
+                                    if let Err(e) = socket.send(&buffer[..size]).await {
+                                        report::io_with_details(
+                                            "nat66.udp_send",
+                                            e,
+                                            [
+                                                ("client", client.to_string()),
+                                                ("destination", destination.to_string()),
+                                            ],
+                                        );
+                                        if let Some(association) = associations.remove(&key) {
+                                            association.stop.cancel();
+                                        }
+                                    }
+                                    continue;
+                                }
+                                let upstream = match connect_udp(network, destination).await {
+                                    Ok(socket) => Arc::new(socket),
+                                    Err(e) => {
+                                        report::io_with_details(
+                                            "nat66.udp_connect",
+                                            e,
+                                            [
+                                                ("client", client.to_string()),
+                                                ("destination", destination.to_string()),
+                                            ],
+                                        );
+                                        continue;
                                     }
                                 };
-                                association.last_active = activity;
-                                if let Err(e) = association.socket.send(&buffer[..size]).await {
+                                let reply_key = ReplySocketKey {
+                                    source: destination,
+                                    mark: snapshot.reply_mark,
+                                };
+                                if let Err(e) = reply_sockets.reserve_user(reply_key) {
+                                    report::io_with_details(
+                                        "nat66.udp_reply_reserve",
+                                        e,
+                                        [
+                                            ("client", client.to_string()),
+                                            ("destination", destination.to_string()),
+                                        ],
+                                    );
+                                    continue;
+                                }
+                                let association_stop = stop.child_token();
+                                let association_id = next_association_id;
+                                next_association_id = next_association_id.wrapping_add(1);
+                                spawn(AssociationTask {
+                                    key,
+                                    id: association_id,
+                                    socket: upstream.clone(),
+                                    reply_sockets: reply_sockets.clone(),
+                                    reply_key,
+                                    reply_socket: None,
+                                    stop: association_stop.clone(),
+                                    association_event_tx: association_event_tx.clone(),
+                                }.run());
+                                associations.insert(
+                                    key,
+                                    UdpAssociation {
+                                        id: association_id,
+                                        socket: upstream.clone(),
+                                        last_active: activity,
+                                        stop: association_stop,
+                                    },
+                                );
+                                if let Err(e) = upstream.send(&buffer[..size]).await {
                                     report::io_with_details(
                                         "nat66.udp_send",
                                         e,
@@ -235,90 +474,162 @@ pub(crate) fn spawn_loop(
     Ok(())
 }
 
-async fn run_association(
-    key: AssociationKey,
-    id: u64,
-    socket: Arc<TokioUdpSocket>,
-    config: Arc<Mutex<SessionConfig>>,
-    stop: CancellationToken,
-    association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
-) {
-    let mut buffer = [0u8; 65535];
-    loop {
-        select! {
-            _ = stop.cancelled() => break,
-            result = socket.recv(&mut buffer) => match result {
-                Ok(size) => {
-                    let mark = config.lock().await.reply_mark;
-                    if let Err(e) = send_response(key.destination, key.client, mark, &buffer[..size]).await {
+impl AssociationTask {
+    async fn run(mut self) {
+        let mut buffer = [0u8; 65535];
+        loop {
+            select! {
+                _ = self.stop.cancelled() => break,
+                result = self.socket.recv(&mut buffer) => match result {
+                    Ok(size) => {
+                        if let Err(e) = send_response(
+                            &self.reply_sockets,
+                            self.reply_key,
+                            &mut self.reply_socket,
+                            self.key.client,
+                            &buffer[..size],
+                        ).await {
+                            report_send_response_error(
+                                "nat66.udp_response",
+                                e,
+                                self.key.client,
+                                self.key.destination,
+                            );
+                            break;
+                        }
+                        if self.association_event_tx
+                            .send(UdpAssociationEvent::Active(self.key, self.id))
+                            .is_err()
+                            && !self.stop.is_cancelled()
+                        {
+                            report::message(
+                                "nat66.udp_association_active",
+                                "association event receiver closed",
+                                "ChannelClosed",
+                            );
+                        }
+                    }
+                    Err(e) => {
                         report::io_with_details(
-                            "nat66.udp_response",
+                            "nat66.udp_upstream_recv",
                             e,
                             [
-                                ("client", key.client.to_string()),
-                                ("destination", key.destination.to_string()),
+                                ("client", self.key.client.to_string()),
+                                ("destination", self.key.destination.to_string()),
                             ],
                         );
                         break;
                     }
-                    if association_event_tx.send(UdpAssociationEvent::Active(key, id)).is_err()
-                        && !stop.is_cancelled()
-                    {
-                        report::message(
-                            "nat66.udp_association_active",
-                            "association event receiver closed",
-                            "ChannelClosed",
-                        );
-                    }
-                }
-                Err(e) => {
-                    report::io_with_details(
-                        "nat66.udp_upstream_recv",
-                        e,
-                        [
-                            ("client", key.client.to_string()),
-                            ("destination", key.destination.to_string()),
-                        ],
-                    );
-                    break;
                 }
             }
         }
-    }
-    let cancelled = stop.is_cancelled();
-    stop.cancel();
-    if association_event_tx
-        .send(UdpAssociationEvent::Closed(key, id))
-        .is_err()
-        && !cancelled
-    {
-        report::message(
-            "nat66.udp_association_closed",
-            "association event receiver closed",
-            "ChannelClosed",
-        );
+        let cancelled = self.stop.is_cancelled();
+        self.stop.cancel();
+        if let Err(e) = self.reply_sockets.release_user(self.reply_key) {
+            report::io("nat66.udp_reply_release", e);
+        }
+        if self
+            .association_event_tx
+            .send(UdpAssociationEvent::Closed(self.key, self.id))
+            .is_err()
+            && !cancelled
+        {
+            report::message(
+                "nat66.udp_association_closed",
+                "association event receiver closed",
+                "ChannelClosed",
+            );
+        }
     }
 }
 
 async fn send_response(
-    source: SocketAddrV6,
+    reply_sockets: &ReplySocketPool,
+    key: ReplySocketKey,
+    socket: &mut Option<Arc<TokioUdpSocket>>,
     target: SocketAddrV6,
-    mark: u32,
     payload: &[u8],
-) -> io::Result<()> {
-    let socket = TokioUdpSocket::from_std(create_reply_socket(source, mark)?)?;
-    socket.send_to(payload, SocketAddr::V6(target)).await?;
+) -> Result<(), SendResponseError> {
+    let current = match socket {
+        Some(socket) => socket.clone(),
+        None => {
+            let acquired = reply_sockets
+                .acquire_reserved(key)
+                .map_err(SendResponseError::Acquire)?;
+            *socket = Some(acquired.clone());
+            acquired
+        }
+    };
+    if let Err(initial) = current.send_to(payload, SocketAddr::V6(target)).await {
+        let retry = match reply_sockets.replace_socket(key, &current) {
+            Ok(socket) => socket,
+            Err(error) => return Err(SendResponseError::Replace { initial, error }),
+        };
+        *socket = Some(retry.clone());
+        retry
+            .send_to(payload, SocketAddr::V6(target))
+            .await
+            .map_err(|error| SendResponseError::Retry { initial, error })?;
+    }
     Ok(())
 }
 
-fn create_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<UdpSocket> {
+enum SendResponseError {
+    Acquire(io::Error),
+    Replace {
+        initial: io::Error,
+        error: io::Error,
+    },
+    Retry {
+        initial: io::Error,
+        error: io::Error,
+    },
+}
+
+impl SendResponseError {
+    fn into_report_parts(self) -> (io::Error, Option<io::Error>, &'static str) {
+        match self {
+            Self::Acquire(error) => (error, None, "acquire_socket"),
+            Self::Replace { initial, error } => (error, Some(initial), "replace_socket"),
+            Self::Retry { initial, error } => (error, Some(initial), "retry_send"),
+        }
+    }
+}
+
+#[track_caller]
+fn report_send_response_error(
+    context: &'static str,
+    error: SendResponseError,
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+) {
+    let (error, initial, stage) = error.into_report_parts();
+    let mut details = vec![
+        ("client", client.to_string()),
+        ("destination", destination.to_string()),
+        ("reply_socket_stage", stage.to_owned()),
+    ];
+    if let Some(initial) = initial {
+        let initial_errno = initial.raw_os_error();
+        details.extend([
+            ("initial_send_kind", format!("{:?}", initial.kind())),
+            ("initial_send_error", initial.to_string()),
+        ]);
+        if let Some(errno) = initial_errno {
+            details.push(("initial_send_errno", errno.to_string()));
+        }
+    }
+    report::io_with_details(context, error, details);
+}
+
+fn create_reply_socket(key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
     let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
-    socket.set_mark(mark)?;
+    socket.set_mark(key.mark)?;
     socket.set_ip_transparent_v6(true)?;
-    socket.bind(&SockAddr::from(source))?;
+    socket.bind(&SockAddr::from(key.source))?;
     socket.set_nonblocking(true)?;
-    Ok(socket.into())
+    Ok(Arc::new(TokioUdpSocket::from_std(socket.into())?))
 }
 
 fn socket_addr_v6_from_raw(address: sockaddr_in6) -> SocketAddrV6 {
