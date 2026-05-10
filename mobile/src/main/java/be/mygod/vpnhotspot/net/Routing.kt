@@ -155,13 +155,10 @@ class Routing(private val caller: Any, private val downstream: String) {
                             val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
                             val candidateAllowedMacs = linkedSetOf<MacAddress>()
                             for (neighbour in neighbours) {
-                                val lladdr = neighbour.lladdr ?: continue
-                                if (neighbour.dev != downstream ||
-                                    neighbour.state != DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID ||
-                                    lladdr in blockedMacs) continue
+                                val lladdr = neighbour.validIpv4ClientMac ?: continue
+                                if (neighbour.dev != downstream || lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
-                                val ip = neighbour.ip
-                                if (ip is Inet4Address) candidateClients[ip] = lladdr
+                                candidateClients[neighbour.ip as Inet4Address] = lladdr
                             }
                             if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {
                                 removed = clients.keys - candidateClients.keys
