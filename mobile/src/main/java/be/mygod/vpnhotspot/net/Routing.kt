@@ -256,44 +256,36 @@ class Routing(private val caller: Any, private val downstream: String) {
     private fun nextConfig(
         clientSnapshot: Map<Inet4Address, MacAddress> = clients,
         allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-    ): DaemonProto.SessionConfig {
-        val seen = HashSet<String>()
-        val primaryUpstreamInterfaces = buildList {
-            primaryUpstream.appendInterfaces(this, seen)
-        }
-        val fallbackUpstreamInterfaces = buildList {
-            fallbackUpstream.appendInterfaces(this, seen)
-        }
-        return DaemonProto.SessionConfig.newBuilder().also { config ->
-            config.downstream = downstream
-            config.ipForward = ipForward
-            config.masquerade = masqueradeMode
-            config.ipv6Block = ipv6Mode == Ipv6Mode.Block
-            primaryUpstream.upstream?.network?.let { config.primaryNetwork = it.networkHandle }
-            config.addAllPrimaryRoutes((primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
-                val destination = route.destination
-                val address = destination.address
-                if (route.type == RouteInfo.RTN_UNICAST && address is Inet6Address) {
-                    DaemonProto.Ipv6Prefix.newBuilder()
-                        .setAddress(ByteString.copyFrom(address.address))
-                        .setPrefixLength(destination.prefixLength)
-                        .build()
-                } else null
-            } ?: emptyList()))
-            fallbackUpstream.upstream?.network?.let { config.fallbackNetwork = it.networkHandle }
-            config.addAllPrimaryUpstreamInterfaces(primaryUpstreamInterfaces)
-            config.addAllFallbackUpstreamInterfaces(fallbackUpstreamInterfaces)
-            config.addAllClients(allowedMacSnapshot.map { mac ->
-                DaemonProto.ClientConfig.newBuilder()
-                    .setMac(ByteString.copyFrom(mac.toByteArray()))
-                    .addAllIpv4(clientSnapshot.filterValues { it == mac }.keys.map { ByteString.copyFrom(it.address) })
+    ) = DaemonProto.SessionConfig.newBuilder().also { config ->
+        config.downstream = downstream
+        config.ipForward = ipForward
+        config.masquerade = masqueradeMode
+        config.ipv6Block = ipv6Mode == Ipv6Mode.Block
+        primaryUpstream.upstream?.network?.let { config.primaryNetwork = it.networkHandle }
+        config.addAllPrimaryRoutes((primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
+            val destination = route.destination
+            val address = destination.address
+            if (route.type == RouteInfo.RTN_UNICAST && address is Inet6Address) {
+                DaemonProto.Ipv6Prefix.newBuilder()
+                    .setAddress(ByteString.copyFrom(address.address))
+                    .setPrefixLength(destination.prefixLength)
                     .build()
-            })
-            if (ipv6Mode == Ipv6Mode.Nat) {
-                config.ipv6Nat = DaemonProto.Ipv6NatConfig.newBuilder().setPrefixSeed(ipv6NatPrefixSeed).build()
-            }
-        }.build()
-    }
+            } else null
+        } ?: emptyList()))
+        fallbackUpstream.upstream?.network?.let { config.fallbackNetwork = it.networkHandle }
+        val seen = HashSet<String>()
+        config.addAllPrimaryUpstreamInterfaces(buildList { primaryUpstream.appendInterfaces(this, seen) })
+        config.addAllFallbackUpstreamInterfaces(buildList { fallbackUpstream.appendInterfaces(this, seen) })
+        config.addAllClients(allowedMacSnapshot.map { mac ->
+            DaemonProto.ClientConfig.newBuilder()
+                .setMac(ByteString.copyFrom(mac.toByteArray()))
+                .addAllIpv4(clientSnapshot.filterValues { it == mac }.keys.map { ByteString.copyFrom(it.address) })
+                .build()
+        })
+        if (ipv6Mode == Ipv6Mode.Nat) {
+            config.ipv6Nat = DaemonProto.Ipv6NatConfig.newBuilder().setPrefixSeed(ipv6NatPrefixSeed).build()
+        }
+    }.build()
 
     suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }
 
