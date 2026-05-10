@@ -37,7 +37,7 @@ abstract class NetlinkNeighbourMonitoringTileService : KillableTileService() {
 
     protected fun Tile.subtitleDevices(filter: (String) -> Boolean) {
         val size = neighbours
-                .mapNotNull { if (filter(it.`interface`)) it.validIpv4ClientMac() else null }
+                .mapNotNull { if (filter(it.dev)) it.validIpv4ClientMac() else null }
                 .distinct()
                 .size
         if (size > 0) subtitle = resources.getQuantityString(

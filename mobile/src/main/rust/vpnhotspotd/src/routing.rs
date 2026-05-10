@@ -1201,11 +1201,11 @@ pub(crate) async fn replace_static_addresses(
     handle: &netlink::Handle,
     command: &ReplaceStaticAddressesCommand,
 ) -> io::Result<()> {
-    let index = netlink::link_index(handle, &command.interface)
+    let index = netlink::link_index(handle, &command.dev)
         .await
         .with_report_context_details(
             "routing.static_addresses.link_index",
-            [("interface", command.interface.clone())],
+            [("dev", command.dev.clone())],
         )?;
     for address in &command.addresses {
         let (address, prefix_len) = read_ip_address_entry(address)?;
@@ -1213,7 +1213,7 @@ pub(crate) async fn replace_static_addresses(
             operation: IpOperation::Replace,
             address,
             prefix_len,
-            interface: command.interface.clone(),
+            interface: command.dev.clone(),
         };
         match apply_address_command_with_index(handle, &command, index).await {
             Ok(()) => {}
@@ -1224,15 +1224,12 @@ pub(crate) async fn replace_static_addresses(
     Ok(())
 }
 
-pub(crate) async fn delete_static_addresses(
-    handle: &netlink::Handle,
-    interface: &str,
-) -> io::Result<()> {
-    let index = netlink::link_index(handle, interface)
+pub(crate) async fn delete_static_addresses(handle: &netlink::Handle, dev: &str) -> io::Result<()> {
+    let index = netlink::link_index(handle, dev)
         .await
         .with_report_context_details(
             "routing.static_addresses.link_index",
-            [("interface", interface.to_owned())],
+            [("dev", dev.to_owned())],
         )?;
     let _dump = handle.lock_dump().await;
     let addresses = handle
@@ -1246,10 +1243,7 @@ pub(crate) async fn delete_static_addresses(
         .try_next()
         .await
         .map_err(netlink::to_io_error)
-        .with_report_context_details(
-            "routing.static_addresses.dump",
-            [("interface", interface.to_owned())],
-        )?
+        .with_report_context_details("routing.static_addresses.dump", [("dev", dev.to_owned())])?
     {
         let mut address = None;
         for attribute in &message.attributes {
@@ -1274,7 +1268,7 @@ pub(crate) async fn delete_static_addresses(
             operation: IpOperation::Delete,
             address,
             prefix_len: message.header.prefix_len,
-            interface: interface.to_owned(),
+            interface: dev.to_owned(),
         };
         match apply_address_command_with_index(handle, &command, index).await {
             Ok(()) => {}

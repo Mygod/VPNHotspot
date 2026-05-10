@@ -156,7 +156,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                             val candidateAllowedMacs = linkedSetOf<MacAddress>()
                             for (neighbour in neighbours) {
                                 val lladdr = neighbour.macAddress() ?: continue
-                                if (neighbour.`interface` != downstream ||
+                                if (neighbour.dev != downstream ||
                                     neighbour.state != DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID ||
                                     lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)

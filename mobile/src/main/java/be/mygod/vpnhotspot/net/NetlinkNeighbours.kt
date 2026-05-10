@@ -34,12 +34,12 @@ val netlinkNeighbours = DaemonController.neighbourMonitor()
                         throw IOException("Invalid neighbour state ${neighbour.stateValue}")
                     }
                     neighbour.macAddress()
-                    it[neighbour.address to neighbour.`interface`] = neighbour
+                    it[neighbour.address to neighbour.dev] = neighbour
                 }
                 DaemonProto.NeighbourDelta.DeltaCase.DELETE -> {
                     val delete = delta.delete
                     delete.address.toInetAddress()
-                    it.remove(delete.address to delete.`interface`)
+                    it.remove(delete.address to delete.dev)
                 }
                 DaemonProto.NeighbourDelta.DeltaCase.DELTA_NOT_SET -> throw IOException("Missing neighbour delta")
             }

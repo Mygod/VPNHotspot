@@ -124,11 +124,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         for (client in wifiAp) clients[client] = Client(client.second, client.first, TetherType.WIFI)
         for (neighbour in neighbours) {
             val lladdr = neighbour.macAddress() ?: continue
-            val key = neighbour.`interface` to lladdr
+            val key = neighbour.dev to lladdr
             var client = clients[key]
             if (client == null) {
-                if (!tetheredInterfaces.contains(neighbour.`interface`)) continue
-                client = Client(lladdr, neighbour.`interface`)
+                if (!tetheredInterfaces.contains(neighbour.dev)) continue
+                client = Client(lladdr, neighbour.dev)
                 clients[key] = client
             }
             client.ip.compute(neighbour.address.toInetAddress()) { _, info ->

@@ -291,7 +291,7 @@ async fn handle_command(
                 .with_report_context_details(
                     "control.replace_static_addresses",
                     [
-                        ("interface", command.interface.clone()),
+                        ("dev", command.dev.clone()),
                         ("count", command.addresses.len().to_string()),
                     ],
                 )?;
@@ -299,11 +299,11 @@ async fn handle_command(
         }
         daemon::client_envelope::Command::DeleteStaticAddresses(command) => {
             let handle = state.netlink.handle();
-            routing::delete_static_addresses(&handle, &command.interface)
+            routing::delete_static_addresses(&handle, &command.dev)
                 .await
                 .with_report_context_details(
                     "control.delete_static_addresses",
-                    [("interface", command.interface)],
+                    [("dev", command.dev)],
                 )?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }

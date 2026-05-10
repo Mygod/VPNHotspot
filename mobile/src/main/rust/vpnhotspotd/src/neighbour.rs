@@ -191,7 +191,7 @@ fn neighbour_from_message(
                 [
                     ("state", format!("0x{raw_state:04x}")),
                     ("unknown", format!("0x{unknown_state_bits:04x}")),
-                    ("interface", interface.clone()),
+                    ("dev", interface.clone()),
                     ("address", address.to_string()),
                     ("deleting", deleting.to_string()),
                 ],
@@ -203,7 +203,7 @@ fn neighbour_from_message(
             delta: Some(daemon::neighbour_delta::Delta::Delete(
                 daemon::NeighbourDelete {
                     address: ip_address_bytes(address),
-                    interface,
+                    dev: interface,
                 },
             )),
         });
@@ -228,7 +228,7 @@ fn neighbour_from_message(
     Some(daemon::NeighbourDelta {
         delta: Some(daemon::neighbour_delta::Delta::Upsert(daemon::Neighbour {
             address: ip_address_bytes(address),
-            interface,
+            dev: interface,
             lladdr: lladdr.map(Vec::from),
             state: state as i32,
         })),

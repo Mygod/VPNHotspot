@@ -40,12 +40,12 @@ message CleanRoutingCommand {
 }
 
 message ReplaceStaticAddressesCommand {
-  string interface = 1;
+  string dev = 1;
   repeated IpAddressEntry addresses = 2;
 }
 
 message DeleteStaticAddressesCommand {
-  string interface = 1;
+  string dev = 1;
 }
 
 message SessionConfig {
@@ -146,14 +146,14 @@ message NeighbourDelta {
 
 message Neighbour {
   bytes address = 1;
-  string interface = 2;
+  string dev = 2;
   optional bytes lladdr = 3;
   NeighbourState state = 4;
 }
 
 message NeighbourDelete {
   bytes address = 1;
-  string interface = 2;
+  string dev = 2;
 }
 
 enum NeighbourState {

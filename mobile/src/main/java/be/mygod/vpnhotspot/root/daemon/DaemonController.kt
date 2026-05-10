@@ -139,7 +139,7 @@ object DaemonController {
     suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) {
         request(DaemonProto.ClientEnvelope.newBuilder()
             .setReplaceStaticAddresses(DaemonProto.ReplaceStaticAddressesCommand.newBuilder()
-                .setInterface(dev)
+                .setDev(dev)
                 .addAllAddresses(addresses.map { (address, prefixLength) ->
                     DaemonProto.IpAddressEntry.newBuilder()
                         .setAddress(ByteString.copyFrom(address.address))
@@ -151,7 +151,7 @@ object DaemonController {
 
     suspend fun deleteStaticAddresses(dev: String) {
         request(DaemonProto.ClientEnvelope.newBuilder()
-            .setDeleteStaticAddresses(DaemonProto.DeleteStaticAddressesCommand.newBuilder().setInterface(dev))
+            .setDeleteStaticAddresses(DaemonProto.DeleteStaticAddressesCommand.newBuilder().setDev(dev))
             .build()).requireAck()
     }
 
