@@ -266,7 +266,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        BootReceiver.startIfEnabled()
+        launch { BootReceiver.startIfEnabled() }
         if (iface.value != null) return START_STICKY
         val generation = lifecycleGeneration.incrementAndGet()
         updateIface("")

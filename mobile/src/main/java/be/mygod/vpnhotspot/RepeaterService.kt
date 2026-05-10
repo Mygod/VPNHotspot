@@ -278,9 +278,11 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
         when (intent.action) {
-            WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION ->
-                if (intent.getIntExtra(WifiP2pManager.EXTRA_WIFI_STATE, 0) ==
-                        WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean()    // ignore P2P enabled
+            WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> when (intent.getIntExtra(
+                WifiP2pManager.EXTRA_WIFI_STATE, 0)) {
+                WifiP2pManager.WIFI_P2P_STATE_DISABLED -> clean()
+                WifiP2pManager.WIFI_P2P_STATE_ENABLED -> if (channel == null) initializeChannel()
+            }
             WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> onP2pConnectionChanged(
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_INFO),
                     intent.getParcelableExtra(WifiP2pManager.EXTRA_WIFI_P2P_GROUP))
@@ -384,19 +386,18 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         } else SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
     }
 
-    private fun initializeChannel() {
+    private fun initializeChannel(): Boolean {
         channel = null
         deinitPending.set(true)
-        if (status.value != Status.DESTROYED) try {
+        if (status.value == Status.DESTROYED) return false
+        return try {
             // WifiP2pManager.Channel uses AsyncChannel which is leaky, prevent holding onto the Context
             val ref = WeakReference(this)
             channel = p2pManager.initialize(app, Looper.getMainLooper()) { ref.get()?.initializeChannel() }
+            channel != null
         } catch (e: RuntimeException) {
             Timber.w(e)
-            launch(Dispatchers.Main) {
-                delay(1000)
-                initializeChannel()
-            }
+            false
         }
     }
 
@@ -436,7 +437,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      * startService Step 1
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        BootReceiver.startIfEnabled()
+        launch { BootReceiver.startIfEnabled() }
         if (status.value != Status.IDLE) return START_NOT_STICKY
         val channel = channel ?: return START_NOT_STICKY.also { stopSelf() }
         lifecycleGeneration.incrementAndGet()

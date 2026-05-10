@@ -136,7 +136,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     override fun onBind(intent: Intent?) = binder
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        BootReceiver.startIfEnabled()
+        launch { BootReceiver.startIfEnabled() }
         ServiceNotification.startForeground(this)   // call this first just in case we are shutting down immediately
         launch {
             if (intent != null) {

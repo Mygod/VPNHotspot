@@ -9,6 +9,7 @@ import android.system.Os
 import android.system.OsConstants
 import android.text.TextUtils
 import androidx.annotation.RequiresApi
+import androidx.core.text.isDigitsOnly
 import be.mygod.librootkotlinx.*
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
@@ -16,10 +17,11 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupI
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.io.File
 import java.io.IOException
-import androidx.core.text.isDigitsOnly
 
 object RepeaterCommands {
     @Parcelize
@@ -66,7 +68,7 @@ object RepeaterCommands {
 
     @Parcelize
     data class WriteP2pConfig(val data: String, val legacy: Boolean) : RootCommandNoResult {
-        override suspend fun execute(): Parcelable? {
+        override suspend fun execute(): Parcelable? = withContext(Dispatchers.IO) {
             File(if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE).writeText(data)
             for (process in File("/proc").listFiles { _, name -> name.isDigitsOnly() }!!) {
                 val cmdline = try {
@@ -78,7 +80,7 @@ object RepeaterCommands {
                     Os.kill(process.name.toInt(), OsConstants.SIGTERM)
                 }
             }
-            return null
+            null
         }
     }
 
@@ -88,10 +90,10 @@ object RepeaterCommands {
             if (canRead()) readText() else null
         }
 
-        override suspend fun execute(): WriteP2pConfig {
-            test(CONF_PATH_TREBLE)?.let { return WriteP2pConfig(it, false) }
-            test(CONF_PATH_LEGACY)?.let { return WriteP2pConfig(it, true) }
-            error("p2p config file not found")
+        override suspend fun execute(): WriteP2pConfig = withContext(Dispatchers.IO) {
+            test(CONF_PATH_TREBLE)?.let { WriteP2pConfig(it, false) }
+                    ?: test(CONF_PATH_LEGACY)?.let { WriteP2pConfig(it, true) }
+                    ?: error("p2p config file not found")
         }
     }
 

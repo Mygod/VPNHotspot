@@ -58,7 +58,6 @@ class App : Application() {
         // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
         deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
-        BootReceiver.migrateIfNecessary()
         Services.init { this }
 
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode

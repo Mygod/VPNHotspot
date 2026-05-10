@@ -63,7 +63,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             }
         }
         findPreference<TwoStatePreference>(BootReceiver.KEY)!!.setOnPreferenceChangeListener { _, value ->
-            BootReceiver.onUserSettingUpdated(value as Boolean)
+            viewLifecycleOwner.lifecycleScope.launch { BootReceiver.onUserSettingUpdated(value as Boolean) }
             true
         }
         if (Services.p2p == null || !RepeaterService.safeModeConfigurable) {
