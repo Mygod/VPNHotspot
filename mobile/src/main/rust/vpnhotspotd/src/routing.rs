@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -384,51 +385,59 @@ impl Runtime {
             );
             // Upstream-specific MASQUERADE rules are added from upstream snapshots.
         }
-        let mut upstreams = Vec::new();
-        for upstream in &config.upstreams {
-            if upstreams.contains(upstream) {
-                continue;
-            }
-            let ifindex = match netlink::link_index(&self.netlink, &upstream.ifname).await {
-                Ok(ifindex) => ifindex,
-                Err(e) if netlink::is_missing_link(&e) => continue,
-                Err(e) => {
-                    return Err(e).with_report_context_details(
-                        "routing.resolve_upstream_index",
-                        [("upstream", upstream.ifname.as_str())],
-                    );
+        let mut seen_upstream_interfaces = HashSet::new();
+        for (interfaces, role) in [
+            (&config.primary_upstream_interfaces, UpstreamRole::Primary),
+            (&config.fallback_upstream_interfaces, UpstreamRole::Fallback),
+        ] {
+            for ifname in interfaces {
+                if !seen_upstream_interfaces.insert(ifname.as_str()) {
+                    continue;
                 }
-            };
-            upstreams.push(upstream.clone());
-            push_unique(
-                &mut mutations,
-                RoutingMutation::IpRule(IpRuleCommand {
-                    operation: IpOperation::Replace,
-                    family: IpFamily::Ipv4,
-                    iif: config.downstream.clone(),
-                    priority: rule_priority(match upstream.role {
-                        UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                        UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                let ifindex = match netlink::link_index(&self.netlink, ifname).await {
+                    Ok(ifindex) => ifindex,
+                    Err(e) if netlink::is_missing_link(&e) => continue,
+                    Err(e) => {
+                        return Err(e).with_report_context_details(
+                            "routing.resolve_upstream_index",
+                            [("upstream", ifname.as_str())],
+                        );
+                    }
+                };
+                let upstream = UpstreamConfig {
+                    ifname: ifname.clone(),
+                    role,
+                };
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::IpRule(IpRuleCommand {
+                        operation: IpOperation::Replace,
+                        family: IpFamily::Ipv4,
+                        iif: config.downstream.clone(),
+                        priority: rule_priority(match upstream.role {
+                            UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
+                            UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                        }),
+                        action: RuleAction::Lookup,
+                        // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
+                        table: 1000 + ifindex,
+                        fwmark: None,
                     }),
-                    action: RuleAction::Lookup,
-                    // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
-                    table: 1000 + ifindex,
-                    fwmark: None,
-                }),
-            );
-            match config.masquerade {
-                MasqueradeMode::None => {}
-                MasqueradeMode::Simple => push_unique(
-                    &mut mutations,
-                    RoutingMutation::Iptables(self.upstream_masquerade_rule(upstream)),
-                ),
-                MasqueradeMode::Netd => push_unique(
-                    &mut mutations,
-                    RoutingMutation::NetdNat {
-                        downstream: config.downstream.clone(),
-                        upstream: upstream.ifname.clone(),
-                    },
-                ),
+                );
+                match config.masquerade {
+                    MasqueradeMode::None => {}
+                    MasqueradeMode::Simple => push_unique(
+                        &mut mutations,
+                        RoutingMutation::Iptables(self.upstream_masquerade_rule(&upstream)),
+                    ),
+                    MasqueradeMode::Netd => push_unique(
+                        &mut mutations,
+                        RoutingMutation::NetdNat {
+                            downstream: config.downstream.clone(),
+                            upstream: upstream.ifname,
+                        },
+                    ),
+                }
             }
         }
         if config.ipv6_block {

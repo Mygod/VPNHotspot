@@ -15,9 +15,8 @@ use tokio::{spawn, task::JoinHandle};
 
 use crate::{netlink, report};
 use vpnhotspotd::shared::protocol::{
-    neighbour_deltas_packet, DaemonErrorReport, Neighbour, NeighbourDelta, NeighbourState,
+    neighbour_deltas_frame, DaemonErrorReport, Neighbour, NeighbourDelta, NeighbourState,
 };
-use vpnhotspotd::shared::transport::event_frame;
 
 const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
 
@@ -52,9 +51,9 @@ impl Monitor {
         let handle = netlink.handle();
         let neighbours = dump(&handle, call_id).await?;
         if sender
-            .send(event_frame(
+            .send(neighbour_deltas_frame(
                 call_id,
-                neighbour_deltas_packet(neighbours.into_iter().map(NeighbourDelta::Upsert)),
+                neighbours.into_iter().map(NeighbourDelta::Upsert),
             ))
             .is_err()
         {
@@ -69,10 +68,7 @@ impl Monitor {
                 while let Some(message) = events.recv().await {
                     if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
                         if sender
-                            .send(event_frame(
-                                call_id,
-                                neighbour_deltas_packet(std::iter::once(delta)),
-                            ))
+                            .send(neighbour_deltas_frame(call_id, std::iter::once(delta)))
                             .is_err()
                         {
                             report::stderr!(

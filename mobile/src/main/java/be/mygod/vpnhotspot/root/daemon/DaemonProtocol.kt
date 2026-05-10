@@ -5,29 +5,14 @@ import android.net.MacAddress
 import android.net.Network
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.Routing
-import kotlinx.io.Buffer
-import kotlinx.io.Sink
-import kotlinx.io.Source
-import kotlinx.io.readByteArray
-import kotlinx.io.readString
+import be.mygod.vpnhotspot.root.daemon.proto.DaemonProto
+import com.google.protobuf.ByteString
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 
 object DaemonProtocol {
-    const val CMD_CANCEL = 0
-    const val CMD_START_SESSION = 1
-    const val CMD_REPLACE_SESSION = 2
-    const val CMD_READ_TRAFFIC_COUNTERS = 5
-    const val CMD_START_NEIGHBOUR_MONITOR = 6
-    const val CMD_CLEAN_ROUTING = 12
-    const val CMD_REPLACE_STATIC_ADDRESSES = 13
-    const val CMD_DELETE_STATIC_ADDRESSES = 14
-
-    private const val NEIGHBOUR_DELTA_UPSERT = 0
-    private const val NEIGHBOUR_DELTA_DELETE = 1
-
     data class SessionConfig(
         val downstream: String,
         val ipForward: Boolean,
@@ -36,19 +21,10 @@ object DaemonProtocol {
         val primaryNetwork: Network?,
         val primaryRoutes: List<IpPrefix>,
         val fallbackNetwork: Network?,
-        val upstreams: List<UpstreamConfig>,
+        val primaryUpstreamInterfaces: List<String>,
+        val fallbackUpstreamInterfaces: List<String>,
         val clients: List<ClientConfig>,
         val ipv6Nat: Ipv6NatConfig?,
-    )
-
-    enum class UpstreamRole(val protocolValue: Byte) {
-        Primary(0),
-        Fallback(1),
-    }
-
-    data class UpstreamConfig(
-        val role: UpstreamRole,
-        val ifname: String,
     )
 
     data class ClientConfig(
@@ -65,142 +41,152 @@ object DaemonProtocol {
         data class Delete(val ip: InetAddress, val dev: String) : NeighbourDelta()
     }
 
-    class Command internal constructor(val packet: ByteArray, private val description: String) {
+    class Command internal constructor(
+        private val build: DaemonProto.ClientEnvelope.Builder.() -> Unit,
+        private val description: String,
+    ) {
+        fun packet(callId: Long): ByteArray {
+            require(callId > 0) { "Invalid daemon call id $callId" }
+            return DaemonProto.ClientEnvelope.newBuilder().apply {
+                setCallId(callId)
+                build()
+            }.build().toByteArray()
+        }
+
         override fun toString() = description
     }
 
-    fun cancel() = writePacket(CMD_CANCEL, "Cancel") { }
-    fun startSession(config: SessionConfig) = writePacket(CMD_START_SESSION, "StartSession(config=$config)") {
-        writeSession(config)
+    fun cancel() = command("Cancel") {
+        cancel = DaemonProto.CancelCommand.getDefaultInstance()
+    }
+    fun startSession(config: SessionConfig) = command("StartSession(config=$config)") {
+        startSession = DaemonProto.StartSessionCommand.newBuilder().setConfig(config.toProto()).build()
     }
     fun replaceSession(sessionId: Long, config: SessionConfig) =
-            writePacket(CMD_REPLACE_SESSION, "ReplaceSession(sessionId=$sessionId, config=$config)") {
-        writeLong(sessionId)
-        writeSession(config)
+            command("ReplaceSession(sessionId=$sessionId, config=$config)") {
+        replaceSession = DaemonProto.ReplaceSessionCommand.newBuilder()
+            .setSessionId(sessionId)
+            .setConfig(config.toProto())
+            .build()
     }
-    fun readTrafficCounters() = writePacket(CMD_READ_TRAFFIC_COUNTERS, "ReadTrafficCounters") { }
-    fun startNeighbourMonitor() = writePacket(CMD_START_NEIGHBOUR_MONITOR, "StartNeighbourMonitor") { }
+    fun readTrafficCounters() = command("ReadTrafficCounters") {
+        readTrafficCounters = DaemonProto.ReadTrafficCountersCommand.getDefaultInstance()
+    }
+    fun startNeighbourMonitor() = command("StartNeighbourMonitor") {
+        startNeighbourMonitor = DaemonProto.StartNeighbourMonitorCommand.getDefaultInstance()
+    }
     fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) =
-            writePacket(CMD_REPLACE_STATIC_ADDRESSES, "ReplaceStaticAddresses(dev=$dev, addresses=$addresses)") {
-                writeUtf(dev)
-                writeInt(addresses.size)
-                for ((address, prefixLength) in addresses) {
-                    writeInetAddress(address)
-                    writeInt(prefixLength)
-                }
-            }
-    fun deleteStaticAddresses(dev: String) = writePacket(CMD_DELETE_STATIC_ADDRESSES,
-            "DeleteStaticAddresses(dev=$dev)") {
-        writeUtf(dev)
+            command("ReplaceStaticAddresses(dev=$dev, addresses=$addresses)") {
+        replaceStaticAddresses = DaemonProto.ReplaceStaticAddressesCommand.newBuilder()
+            .setInterface(dev)
+            .addAllAddresses(addresses.map { (address, prefixLength) ->
+                DaemonProto.IpAddressEntry.newBuilder()
+                    .setAddress(address.toByteString())
+                    .setPrefixLength(prefixLength)
+                    .build()
+            })
+            .build()
     }
-    fun cleanRouting(ipv6NatPrefixSeed: String) = writePacket(CMD_CLEAN_ROUTING,
-            "CleanRouting(ipv6NatPrefixSeed=$ipv6NatPrefixSeed)") {
-        writeUtf(ipv6NatPrefixSeed)
+    fun deleteStaticAddresses(dev: String) = command("DeleteStaticAddresses(dev=$dev)") {
+        deleteStaticAddresses = DaemonProto.DeleteStaticAddressesCommand.newBuilder().setInterface(dev).build()
     }
-
-    fun readAck(packet: ByteArray) {
-        if (packet.isNotEmpty()) throw IOException("Unexpected daemon ACK payload length ${packet.size}")
+    fun cleanRouting(ipv6NatPrefixSeed: String) = command("CleanRouting(ipv6NatPrefixSeed=$ipv6NatPrefixSeed)") {
+        cleanRouting = DaemonProto.CleanRoutingCommand.newBuilder().setIpv6NatPrefixSeed(ipv6NatPrefixSeed).build()
     }
 
-    fun readTrafficCounterLines(packet: ByteArray): List<String> {
-        val input = Buffer().apply { write(packet) }
-        return List(input.readCount("traffic counter line")) { input.readUtf() }
+    fun readAck(payload: DaemonTransport.ReplyPayload) {
+        if (payload !is DaemonTransport.ReplyPayload.Ack) throw IOException("Unexpected daemon reply $payload")
     }
 
-    fun readNeighbourDeltas(packet: ByteArray): List<NeighbourDelta> {
-        return readNeighbourDeltas(Buffer().apply { write(packet) })
+    fun readAck(payload: DaemonTransport.EventPayload) {
+        if (payload !is DaemonTransport.EventPayload.Ack) throw IOException("Unexpected daemon event $payload")
     }
 
-    private fun writePacket(command: Int, description: String, block: Sink.() -> Unit): Command {
-        val output = Buffer()
-        output.writeInt(command)
-        output.block()
-        return Command(output.readByteArray(), description)
-    }
-
-    private fun Sink.writeSession(config: SessionConfig) {
-        writeUtf(config.downstream)
-        writeByte((if (config.ipForward) 1 else 0).toByte())
-        writeByte(config.masquerade.protocolValue)
-        writeByte((if (config.ipv6Block) 1 else 0).toByte())
-        writeNetwork(config.primaryNetwork)
-        writeInt(config.primaryRoutes.size)
-        for (route in config.primaryRoutes) writeIpv6Prefix(route)
-        writeNetwork(config.fallbackNetwork)
-        writeInt(config.upstreams.size)
-        for (upstream in config.upstreams) {
-            writeByte(upstream.role.protocolValue)
-            writeUtf(upstream.ifname)
+    fun readTrafficCounterLines(payload: DaemonTransport.ReplyPayload): List<String> {
+        if (payload !is DaemonTransport.ReplyPayload.TrafficCounterLines) {
+            throw IOException("Unexpected daemon reply $payload")
         }
-        writeInt(config.clients.size)
-        for (client in config.clients) {
-            write(client.mac.toByteArray())
-            writeInt(client.ipv4.size)
-            for (address in client.ipv4) writeInet4Address(address)
+        return payload.lines
+    }
+
+    fun readNeighbourDeltas(payload: DaemonTransport.EventPayload): List<NeighbourDelta> {
+        if (payload !is DaemonTransport.EventPayload.NeighbourDeltas) {
+            throw IOException("Unexpected daemon event $payload")
         }
-        val ipv6Nat = config.ipv6Nat
-        writeByte((if (ipv6Nat != null) 1 else 0).toByte())
-        if (ipv6Nat == null) return
-        writeUtf(ipv6Nat.prefixSeed)
-    }
-
-    private fun Sink.writeNetwork(network: Network?) = writeLong(network?.networkHandle ?: 0L)
-
-    private fun Sink.writeUtf(value: String) {
-        val bytes = value.encodeToByteArray()
-        writeInt(bytes.size)
-        write(bytes)
-    }
-
-    private fun Sink.writeInet4Address(address: Inet4Address) = write(address.address)
-
-    private fun Sink.writeInet6Address(address: Inet6Address) = write(address.address)
-
-    private fun Sink.writeInetAddress(address: InetAddress) {
-        writeInt(address.address.size)
-        write(address.address)
-    }
-
-    private fun Sink.writeIpv6Prefix(prefix: IpPrefix) {
-        val address = prefix.address
-        require(address is Inet6Address) { "IPv6 prefix expected: $prefix" }
-        writeInet6Address(address)
-        writeInt(prefix.prefixLength)
-    }
-
-    private fun readNeighbourDeltas(input: Source): List<NeighbourDelta> {
-        val states = NetlinkNeighbour.State.values()
-        return List(input.readCount("neighbour")) {
-            when (val type = input.readByte().toInt() and 0xFF) {
-                NEIGHBOUR_DELTA_UPSERT -> {
-                    val state = input.readByte().toInt() and 0xFF
-                    if (state !in states.indices) throw IOException("Invalid neighbour state $state")
-                    val ip = InetAddress.getByAddress(input.readByteArray(input.readCount("address byte")))
-                    val dev = input.readUtf()
-                    val lladdr = when (val present = input.readByte().toInt() and 0xFF) {
-                        0 -> null
-                        1 -> MacAddress.fromBytes(input.readByteArray(6))
-                        else -> throw IOException("Invalid neighbour link-layer marker $present")
+        return payload.deltas.deltasList.map { delta ->
+            when (delta.deltaCase) {
+                DaemonProto.NeighbourDelta.DeltaCase.UPSERT -> {
+                    val neighbour = delta.upsert
+                    val state = when (neighbour.state) {
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_UNSET -> NetlinkNeighbour.State.UNSET
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_INCOMPLETE -> NetlinkNeighbour.State.INCOMPLETE
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID -> NetlinkNeighbour.State.VALID
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_FAILED -> NetlinkNeighbour.State.FAILED
+                        DaemonProto.NeighbourState.UNRECOGNIZED ->
+                            throw IOException("Invalid neighbour state ${neighbour.stateValue}")
                     }
-                    NeighbourDelta.Upsert(NetlinkNeighbour(ip, dev, lladdr, states[state]))
+                    val lladdr = if (neighbour.hasLladdr()) {
+                        neighbour.lladdr.toByteArray().also {
+                            if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
+                        }.let(MacAddress::fromBytes)
+                    } else null
+                    NeighbourDelta.Upsert(NetlinkNeighbour(neighbour.address.toInetAddress(), neighbour.`interface`,
+                        lladdr, state))
                 }
-                NEIGHBOUR_DELTA_DELETE ->
-                    NeighbourDelta.Delete(InetAddress.getByAddress(input.readByteArray(input.readCount("address byte"))),
-                        input.readUtf())
-                else -> throw IOException("Invalid neighbour delta type $type")
+                DaemonProto.NeighbourDelta.DeltaCase.DELETE -> {
+                    val delete = delta.delete
+                    NeighbourDelta.Delete(delete.address.toInetAddress(), delete.`interface`)
+                }
+                DaemonProto.NeighbourDelta.DeltaCase.DELTA_NOT_SET -> throw IOException("Missing neighbour delta")
             }
         }
     }
 
-    private fun Source.readUtf(): String {
-        val length = readInt()
-        if (length < 0) throw IOException("Invalid string length $length")
-        return readString(length.toLong())
+    private fun command(description: String, build: DaemonProto.ClientEnvelope.Builder.() -> Unit) =
+        Command(build, description)
+
+    private fun SessionConfig.toProto() = DaemonProto.SessionConfig.newBuilder().also { proto ->
+        proto.downstream = downstream
+        proto.ipForward = ipForward
+        proto.masquerade = when (masquerade) {
+            Routing.MasqueradeMode.None -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
+            Routing.MasqueradeMode.Simple -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
+            Routing.MasqueradeMode.Netd -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NETD
+        }
+        proto.ipv6Block = ipv6Block
+        primaryNetwork?.let { proto.primaryNetwork = it.networkHandle }
+        proto.addAllPrimaryRoutes(primaryRoutes.map { it.toIpv6PrefixProto() })
+        fallbackNetwork?.let { proto.fallbackNetwork = it.networkHandle }
+        proto.addAllPrimaryUpstreamInterfaces(primaryUpstreamInterfaces)
+        proto.addAllFallbackUpstreamInterfaces(fallbackUpstreamInterfaces)
+        proto.addAllClients(clients.map { client ->
+            DaemonProto.ClientConfig.newBuilder()
+                .setMac(client.mac.toByteArray().toByteString())
+                .addAllIpv4(client.ipv4.map { it.toByteString() })
+                .build()
+        })
+        ipv6Nat?.let {
+            proto.ipv6Nat = DaemonProto.Ipv6NatConfig.newBuilder().setPrefixSeed(it.prefixSeed).build()
+        }
+    }.build()
+
+    private fun IpPrefix.toIpv6PrefixProto(): DaemonProto.Ipv6Prefix {
+        val address = address
+        require(address is Inet6Address) { "IPv6 prefix expected: $this" }
+        return DaemonProto.Ipv6Prefix.newBuilder()
+            .setAddress(address.toByteString())
+            .setPrefixLength(prefixLength)
+            .build()
     }
 
-    private fun Source.readCount(name: String): Int {
-        val count = readInt()
-        if (count < 0) throw IOException("Invalid $name count $count")
-        return count
+    private fun InetAddress.toByteString() = address.toByteString()
+
+    private fun ByteArray.toByteString() = ByteString.copyFrom(this)
+
+    private fun ByteString.toInetAddress() = toByteArray().let { bytes ->
+        when (bytes.size) {
+            4, 16 -> InetAddress.getByAddress(bytes)
+            else -> throw IOException("Invalid IP address length ${bytes.size}")
+        }
     }
 }

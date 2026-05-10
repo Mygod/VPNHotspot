@@ -1,5 +1,6 @@
 [versions]
 lifecycle = "2.10.0"
+protobuf = "4.34.1"
 room = "2.8.4"
 
 [libraries]
@@ -25,6 +26,7 @@ material = "com.google.android.material:material:1.13.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
 preferencex-simplemenu = "com.takisoft.preferencex:preferencex-simplemenu:1.1.0"
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
@@ -39,3 +41,4 @@ crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
 kotlin-parcelize = "org.jetbrains.kotlin.plugin.parcelize:2.3.21"
 ksp = "com.google.devtools.ksp:2.3.7"
+protobuf = "com.google.protobuf:0.10.0"

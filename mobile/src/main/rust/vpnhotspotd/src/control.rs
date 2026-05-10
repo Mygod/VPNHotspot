@@ -21,11 +21,8 @@ use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
 use vpnhotspotd::shared::protocol::{
-    ok_packet, parse_command, traffic_counter_lines_packet, Command, DaemonErrorReport,
-    IoErrorReportExt, IoResultReportExt,
-};
-use vpnhotspotd::shared::transport::{
-    complete_frame, error_frame, event_frame, parse_client_packet, reply_frame,
+    ack_event_frame, ack_reply_frame, complete_frame, error_frame, parse_client_packet,
+    traffic_counter_lines_frame, Command, DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
 };
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
@@ -62,14 +59,14 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                 }
             },
         };
-        let (id, packet) = match parse_client_packet(&packet) {
+        let (id, command) = match parse_client_packet(&packet) {
             Ok(parsed) => parsed,
             Err(e) => {
                 report::io("control.parse_frame", e);
                 break;
             }
         };
-        let command = match parse_command(packet) {
+        let command = match command {
             Ok(Command::Cancel) => {
                 if let Some(call) = active_calls.lock().await.get(&id) {
                     call.cancel.cancel();
@@ -205,7 +202,7 @@ async fn handle_call(
     .await
     {
         Ok(CallOutput::Reply(packet)) => {
-            send_terminal_frame(id, &active_calls, &call, &sender, reply_frame(id, packet)).await;
+            send_terminal_frame(id, &active_calls, &call, &sender, packet).await;
         }
         Ok(CallOutput::NoFrame) => {
             remove_call(id, &active_calls, &call).await;
@@ -245,13 +242,13 @@ async fn handle_command(
         }
         Command::ReplaceSession { session_id, config } => {
             replace_session(&state, session_id, config).await?;
-            Ok(CallOutput::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
         Command::ReadTrafficCounters => {
             let lines = crate::traffic::read_counter_lines()
                 .await
                 .with_report_context("control.read_traffic_counters")?;
-            Ok(CallOutput::Reply(traffic_counter_lines_packet(&lines)))
+            Ok(CallOutput::Reply(traffic_counter_lines_frame(id, &lines)))
         }
         Command::StartNeighbourMonitor => {
             start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
@@ -268,7 +265,7 @@ async fn handle_command(
                         ("count", command.addresses.len().to_string()),
                     ],
                 )?;
-            Ok(CallOutput::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
         Command::DeleteStaticAddresses { interface } => {
             let handle = state.netlink.handle();
@@ -278,7 +275,7 @@ async fn handle_command(
                     "control.delete_static_addresses",
                     [("interface", interface)],
                 )?;
-            Ok(CallOutput::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
         Command::CleanRouting(command) => {
             let sessions = state.drain_sessions().await;
@@ -299,7 +296,7 @@ async fn handle_command(
             routing::clean(&handle, &command)
                 .await
                 .with_report_context("control.clean_routing")?;
-            Ok(CallOutput::Reply(ok_packet()))
+            Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
     }
 }
@@ -351,7 +348,7 @@ async fn start_session(
         }
     }
     drop(guard);
-    if sender.send(event_frame(id, ok_packet())).is_err() {
+    if sender.send(ack_event_frame(id)).is_err() {
         remove_session(state, &slot, false).await;
         return Err(io::Error::new(
             io::ErrorKind::BrokenPipe,

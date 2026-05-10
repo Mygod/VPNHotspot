@@ -15,10 +15,15 @@ test = false
 cidr = "0.3.2"
 futures-util = "0.3.32"
 libc = "0.2.186"
+prost = "0.14.3"
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 socket2 = { version = "0.6.3", features = ["all"] }
 tokio = { version = "1.52.3", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.18"
+
+[build-dependencies]
+prost-build = "0.14.3"
+protoc-bin-vendored = "3.2.0"
 
 [profile.release]
 panic = "abort"

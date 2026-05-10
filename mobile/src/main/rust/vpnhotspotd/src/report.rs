@@ -6,8 +6,7 @@ use std::sync::OnceLock;
 
 use libc::{c_char, c_int};
 use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
-use vpnhotspotd::shared::protocol::DaemonErrorReport;
-use vpnhotspotd::shared::transport::nonfatal_frame;
+use vpnhotspotd::shared::protocol::{nonfatal_frame, DaemonErrorReport};
 
 static REPORTER: OnceLock<WeakUnboundedSender<Vec<u8>>> = OnceLock::new();
 const ANDROID_LOG_INFO: c_int = 4;

@@ -1,22 +1,12 @@
 package be.mygod.vpnhotspot.root.daemon
 
 import android.os.RemoteException
+import be.mygod.vpnhotspot.root.daemon.proto.DaemonProto
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import com.google.firebase.crashlytics.CustomKeysAndValues
-import kotlinx.io.Buffer
-import kotlinx.io.Source
-import kotlinx.io.readByteArray
-import kotlinx.io.readString
 import java.io.IOException
 
 object DaemonTransport {
-    private const val FRAME_REPLY = 0
-    private const val FRAME_EVENT = 1
-    private const val FRAME_ERROR = 2
-    private const val FRAME_NON_FATAL = 3
-    private const val FRAME_COMPLETE = 4
-
-    private const val NO_CALL_ID = 0L
     private val INVALID_CRASHLYTICS_KEY_CHAR = Regex("[^A-Za-z0-9_.-]")
 
     private fun sanitizeCrashlyticsKey(key: String) =
@@ -61,65 +51,81 @@ object DaemonTransport {
         }
     }
 
+    sealed class ReplyPayload {
+        data object Ack : ReplyPayload()
+        data class TrafficCounterLines(val lines: List<String>) : ReplyPayload()
+    }
+
+    sealed class EventPayload {
+        data object Ack : EventPayload()
+        data class NeighbourDeltas(val deltas: DaemonProto.NeighbourDeltas) : EventPayload()
+    }
+
     sealed class Frame {
-        data class Reply(val id: Long, val packet: ByteArray) : Frame()
-        data class Event(val id: Long, val packet: ByteArray) : Frame()
+        data class Reply(val id: Long, val payload: ReplyPayload) : Frame()
+        data class Event(val id: Long, val payload: EventPayload) : Frame()
         data class Error(val id: Long, val exception: DaemonException) : Frame()
         data class NonFatal(val id: Long?, val exception: DaemonException) : Frame()
         data class Complete(val id: Long) : Frame()
     }
 
-    fun call(id: Long, packet: ByteArray): ByteArray {
-        require(id > 0) { "Invalid daemon call id $id" }
-        val output = Buffer()
-        output.writeLong(id)
-        output.write(packet)
-        return output.readByteArray()
-    }
+    fun call(id: Long, command: DaemonProtocol.Command) = command.packet(id)
 
     fun readFrame(packet: ByteArray): Frame {
-        val input = Buffer().apply { write(packet) }
-        return when (val type = input.readByte().toInt() and 0xFF) {
-            FRAME_REPLY -> Frame.Reply(input.readCallId(), input.readByteArray())
-            FRAME_EVENT -> Frame.Event(input.readCallId(), input.readByteArray())
-            FRAME_ERROR -> {
-                val id = input.readCallId()
-                Frame.Error(id, DaemonException(input.readErrorReport(), id))
+        val envelope = DaemonProto.DaemonEnvelope.parseFrom(packet)
+        return when (envelope.frameCase) {
+            DaemonProto.DaemonEnvelope.FrameCase.REPLY -> envelope.reply.let {
+                Frame.Reply(it.callId.readCallId(), it.readPayload())
             }
-            FRAME_NON_FATAL -> {
-                val id = input.readLong().let { if (it == NO_CALL_ID) null else it }
-                if (id != null && id < 0) throw IOException("Invalid daemon nonfatal call id $id")
-                Frame.NonFatal(id, DaemonException(input.readErrorReport(), id))
+            DaemonProto.DaemonEnvelope.FrameCase.EVENT -> envelope.event.let {
+                Frame.Event(it.callId.readCallId(), it.readPayload())
             }
-            FRAME_COMPLETE -> {
-                val id = input.readCallId()
-                if (input.readByteArray().isNotEmpty()) throw IOException("Unexpected daemon complete payload")
-                Frame.Complete(id)
+            DaemonProto.DaemonEnvelope.FrameCase.ERROR -> envelope.error.let {
+                val id = it.callId.readCallId()
+                if (!it.hasReport()) throw IOException("Missing daemon error report")
+                Frame.Error(id, DaemonException(it.report.toDaemonErrorReport(), id))
             }
-            else -> throw IOException("Unknown daemon frame type $type")
+            DaemonProto.DaemonEnvelope.FrameCase.NON_FATAL -> envelope.nonFatal.let {
+                val id = if (it.hasCallId()) it.callId.readCallId() else null
+                if (!it.hasReport()) throw IOException("Missing daemon nonfatal report")
+                Frame.NonFatal(id, DaemonException(it.report.toDaemonErrorReport(), id))
+            }
+            DaemonProto.DaemonEnvelope.FrameCase.COMPLETE -> envelope.complete.let {
+                Frame.Complete(it.callId.readCallId())
+            }
+            DaemonProto.DaemonEnvelope.FrameCase.FRAME_NOT_SET -> throw IOException("Missing daemon frame")
         }
     }
 
-    private fun Source.readCallId(): Long {
-        val id = readLong()
-        if (id <= 0) throw IOException("Invalid daemon call id $id")
-        return id
+    private fun DaemonProto.ReplyFrame.readPayload() = when (payloadCase) {
+        DaemonProto.ReplyFrame.PayloadCase.ACK -> ReplyPayload.Ack
+        DaemonProto.ReplyFrame.PayloadCase.TRAFFIC_COUNTER_LINES ->
+            ReplyPayload.TrafficCounterLines(trafficCounterLines.linesList)
+        DaemonProto.ReplyFrame.PayloadCase.PAYLOAD_NOT_SET -> throw IOException("Missing daemon reply payload")
     }
 
-    private fun Source.readErrorReport(): DaemonErrorReport {
-        val context = readUtf()
-        val message = readUtf()
-        val errno = readInt().let { if (it < 0) null else it }
-        val kind = readUtf()
-        val file = readUtf()
-        val line = readInt()
-        val column = readInt()
-        val pid = readInt()
-        val detailCount = readCount("error detail")
-        return DaemonErrorReport(context, message, errno, kind, file, line, column, pid, buildMap {
-            repeat(detailCount) { put(readUtf(), readUtf()) }
-        })
+    private fun DaemonProto.EventFrame.readPayload() = when (payloadCase) {
+        DaemonProto.EventFrame.PayloadCase.ACK -> EventPayload.Ack
+        DaemonProto.EventFrame.PayloadCase.NEIGHBOUR_DELTAS -> EventPayload.NeighbourDeltas(neighbourDeltas)
+        DaemonProto.EventFrame.PayloadCase.PAYLOAD_NOT_SET -> throw IOException("Missing daemon event payload")
     }
+
+    private fun Long.readCallId(): Long {
+        if (this <= 0) throw IOException("Invalid daemon call id $this")
+        return this
+    }
+
+    private fun DaemonProto.DaemonErrorReport.toDaemonErrorReport() = DaemonErrorReport(
+        context = context,
+        message = message,
+        errno = if (hasErrno()) errno else null,
+        kind = kind,
+        file = file,
+        line = line,
+        column = column,
+        pid = pid,
+        details = detailsList.associate { it.key to it.value },
+    )
 
     private fun DaemonErrorReport.toExceptionMessage() = buildString {
         append(context).append(": ").append(message)
@@ -128,17 +134,5 @@ object DaemonTransport {
         if (errno == null || kind != "Uncategorized") append(kind).append(" at ")
         append(file).append(':').append(line).append(':')
             .append(column).append(", pid=").append(pid).append(']')
-    }
-
-    private fun Source.readUtf(): String {
-        val length = readInt()
-        if (length < 0) throw IOException("Invalid string length $length")
-        return readString(length.toLong())
-    }
-
-    private fun Source.readCount(name: String): Int {
-        val count = readInt()
-        if (count < 0) throw IOException("Invalid $name count $count")
-        return count
     }
 }

@@ -98,8 +98,8 @@ object DaemonController {
             throw e
         }
         return SessionCall(call.id, flow {
-            eventFlow(call, cancelOnClose = false).collect { packet ->
-                throw IOException("Unexpected $BINARY_NAME session event payload length ${packet.size}")
+            eventFlow(call, cancelOnClose = false).collect { event ->
+                throw IOException("Unexpected $BINARY_NAME session event $event")
             }
         })
     }
@@ -130,11 +130,11 @@ object DaemonController {
     }
 
     private sealed class Call {
-        class OneShot(val reply: CompletableDeferred<ByteArray>) : Call()
-        class Event(val channel: Channel<ByteArray>) : Call()
+        class OneShot(val reply: CompletableDeferred<DaemonTransport.ReplyPayload>) : Call()
+        class Event(val channel: Channel<DaemonTransport.EventPayload>) : Call()
     }
 
-    private class EventCall(val id: Long, val channel: Channel<ByteArray>)
+    private class EventCall(val id: Long, val channel: Channel<DaemonTransport.EventPayload>)
 
     private class DaemonStdioEofException(message: String) : EOFException(message)
 
@@ -232,15 +232,15 @@ object DaemonController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private suspend fun request(command: DaemonProtocol.Command): ByteArray {
+    private suspend fun request(command: DaemonProtocol.Command): DaemonTransport.ReplyPayload {
         var id = 0L
         val reply = lock.withLock {
             id = nextCallIdLocked()
-            val reply = CompletableDeferred<ByteArray>()
+            val reply = CompletableDeferred<DaemonTransport.ReplyPayload>()
             try {
                 ensureDaemonLocked()
                 calls[id] = Call.OneShot(reply)
-                writePacketLocked(DaemonTransport.call(id, command.packet))
+                writePacketLocked(DaemonTransport.call(id, command))
                 Timber.d("Sent #$id: $command")
             } catch (e: Exception) {
                 calls.remove(id)
@@ -265,13 +265,13 @@ object DaemonController {
     }
 
     private suspend fun eventCall(command: DaemonProtocol.Command): EventCall {
-        val channel = Channel<ByteArray>(Channel.UNLIMITED)
+        val channel = Channel<DaemonTransport.EventPayload>(Channel.UNLIMITED)
         val id = lock.withLock {
             val id = nextCallIdLocked()
             try {
                 ensureDaemonLocked()
                 calls[id] = Call.Event(channel)
-                writePacketLocked(DaemonTransport.call(id, command.packet))
+                writePacketLocked(DaemonTransport.call(id, command))
                 Timber.d("Sent #$id: $command")
                 id
             } catch (e: Exception) {
@@ -322,12 +322,12 @@ object DaemonController {
                                 }
                             }
                         }
-                        reply?.complete(frame.packet)
+                        reply?.complete(frame.payload)
                     }
                     is DaemonTransport.Frame.Event -> {
                         val call = lock.withLock { calls[frame.id] as? Call.Event }
                         if (call != null) {
-                            val result = call.channel.trySend(frame.packet)
+                            val result = call.channel.trySend(frame.payload)
                             if (result.isFailure) {
                                 result.exceptionOrNull()?.let { call.channel.close(it) }
                                 lock.withLock {
@@ -405,7 +405,7 @@ object DaemonController {
         if (call is Call.Event) call.channel.close()
         if (output == null) return
         try {
-            writePacketLocked(DaemonTransport.call(id, DaemonProtocol.cancel().packet))
+            writePacketLocked(DaemonTransport.call(id, DaemonProtocol.cancel()))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

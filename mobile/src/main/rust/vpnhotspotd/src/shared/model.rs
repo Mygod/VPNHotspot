@@ -40,7 +40,8 @@ pub struct SessionConfig {
     pub primary_network: Option<Network>,
     pub primary_routes: Vec<Ipv6Cidr>,
     pub fallback_network: Option<Network>,
-    pub upstreams: Vec<UpstreamConfig>,
+    pub primary_upstream_interfaces: Vec<String>,
+    pub fallback_upstream_interfaces: Vec<String>,
     pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
 }
@@ -240,7 +241,8 @@ mod tests {
             primary_network,
             primary_routes,
             fallback_network,
-            upstreams: Vec::new(),
+            primary_upstream_interfaces: Vec::new(),
+            fallback_upstream_interfaces: Vec::new(),
             clients: Vec::new(),
             ipv6_nat: None,
         }

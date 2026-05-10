@@ -1,0 +1,181 @@
+syntax = "proto3";
+
+package vpnhotspot.daemon;
+
+option java_package = "be.mygod.vpnhotspot.root.daemon.proto";
+option java_outer_classname = "DaemonProto";
+option optimize_for = LITE_RUNTIME;
+
+message ClientEnvelope {
+  uint64 call_id = 1;
+  oneof command {
+    CancelCommand cancel = 2;
+    StartSessionCommand start_session = 3;
+    ReplaceSessionCommand replace_session = 4;
+    ReadTrafficCountersCommand read_traffic_counters = 5;
+    StartNeighbourMonitorCommand start_neighbour_monitor = 6;
+    CleanRoutingCommand clean_routing = 7;
+    ReplaceStaticAddressesCommand replace_static_addresses = 8;
+    DeleteStaticAddressesCommand delete_static_addresses = 9;
+  }
+}
+
+message CancelCommand {}
+
+message StartSessionCommand {
+  SessionConfig config = 1;
+}
+
+message ReplaceSessionCommand {
+  uint64 session_id = 1;
+  SessionConfig config = 2;
+}
+
+message ReadTrafficCountersCommand {}
+
+message StartNeighbourMonitorCommand {}
+
+message CleanRoutingCommand {
+  string ipv6_nat_prefix_seed = 1;
+}
+
+message ReplaceStaticAddressesCommand {
+  string interface = 1;
+  repeated IpAddressEntry addresses = 2;
+}
+
+message DeleteStaticAddressesCommand {
+  string interface = 1;
+}
+
+message SessionConfig {
+  string downstream = 1;
+  bool ip_forward = 2;
+  MasqueradeMode masquerade = 3;
+  bool ipv6_block = 4;
+  optional uint64 primary_network = 5;
+  repeated Ipv6Prefix primary_routes = 6;
+  optional uint64 fallback_network = 7;
+  repeated string primary_upstream_interfaces = 8;
+  repeated string fallback_upstream_interfaces = 9;
+  repeated ClientConfig clients = 10;
+  optional Ipv6NatConfig ipv6_nat = 11;
+}
+
+enum MasqueradeMode {
+  MASQUERADE_MODE_NONE = 0;
+  MASQUERADE_MODE_SIMPLE = 1;
+  MASQUERADE_MODE_NETD = 2;
+}
+
+message ClientConfig {
+  bytes mac = 1;
+  repeated bytes ipv4 = 2;
+}
+
+message Ipv6NatConfig {
+  string prefix_seed = 1;
+}
+
+message Ipv6Prefix {
+  bytes address = 1;
+  uint32 prefix_length = 2;
+}
+
+message IpAddressEntry {
+  bytes address = 1;
+  uint32 prefix_length = 2;
+}
+
+message DaemonEnvelope {
+  oneof frame {
+    ReplyFrame reply = 1;
+    EventFrame event = 2;
+    ErrorFrame error = 3;
+    NonFatalFrame non_fatal = 4;
+    CompleteFrame complete = 5;
+  }
+}
+
+message ReplyFrame {
+  uint64 call_id = 1;
+  oneof payload {
+    Ack ack = 2;
+    TrafficCounterLines traffic_counter_lines = 3;
+  }
+}
+
+message EventFrame {
+  uint64 call_id = 1;
+  oneof payload {
+    Ack ack = 2;
+    NeighbourDeltas neighbour_deltas = 3;
+  }
+}
+
+message ErrorFrame {
+  uint64 call_id = 1;
+  DaemonErrorReport report = 2;
+}
+
+message NonFatalFrame {
+  optional uint64 call_id = 1;
+  DaemonErrorReport report = 2;
+}
+
+message CompleteFrame {
+  uint64 call_id = 1;
+}
+
+message Ack {}
+
+message TrafficCounterLines {
+  repeated string lines = 1;
+}
+
+message NeighbourDeltas {
+  repeated NeighbourDelta deltas = 1;
+}
+
+message NeighbourDelta {
+  oneof delta {
+    Neighbour upsert = 1;
+    NeighbourDelete delete = 2;
+  }
+}
+
+message Neighbour {
+  bytes address = 1;
+  string interface = 2;
+  optional bytes lladdr = 3;
+  NeighbourState state = 4;
+}
+
+message NeighbourDelete {
+  bytes address = 1;
+  string interface = 2;
+}
+
+enum NeighbourState {
+  NEIGHBOUR_STATE_UNSET = 0;
+  NEIGHBOUR_STATE_INCOMPLETE = 1;
+  NEIGHBOUR_STATE_VALID = 2;
+  NEIGHBOUR_STATE_FAILED = 3;
+}
+
+message DaemonErrorReport {
+  string context = 1;
+  string message = 2;
+  optional int32 errno = 3;
+  string kind = 4;
+  string file = 5;
+  uint32 line = 6;
+  uint32 column = 7;
+  uint32 pid = 8;
+  repeated ErrorDetail details = 9;
+}
+
+message ErrorDetail {
+  string key = 1;
+  string value = 2;
+}

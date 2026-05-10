@@ -75,8 +75,8 @@ class Routing(private val caller: Any, private val downstream: String) {
     var ipv6Mode = Ipv6Mode.System
     var masqueradeMode = MasqueradeMode.None
 
-    private val fallbackUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Fallback)
-    private val primaryUpstream = UpstreamTracker(DaemonProtocol.UpstreamRole.Primary)
+    private val fallbackUpstream = UpstreamTracker()
+    private val primaryUpstream = UpstreamTracker()
     private val clients = linkedMapOf<Inet4Address, MacAddress>()
     private val allowedMacs = linkedSetOf<MacAddress>()
     private val started = AtomicBoolean()
@@ -230,7 +230,7 @@ class Routing(private val caller: Any, private val downstream: String) {
         return true
     }
 
-    private class UpstreamTracker(private val role: DaemonProtocol.UpstreamRole) {
+    private class UpstreamTracker {
         private var interfaces = linkedSetOf<String>()
         var upstream: Upstream? = null
             private set
@@ -254,36 +254,42 @@ class Routing(private val caller: Any, private val downstream: String) {
             return true
         }
 
-        fun appendConfig(target: MutableList<DaemonProtocol.UpstreamConfig>, seen: MutableSet<String>) {
-            for (ifname in interfaces) if (seen.add(ifname)) target += DaemonProtocol.UpstreamConfig(role, ifname)
+        fun appendInterfaces(target: MutableList<String>, seen: MutableSet<String>) {
+            for (ifname in interfaces) if (seen.add(ifname)) target += ifname
         }
     }
 
     private fun nextConfig(
         clientSnapshot: Map<Inet4Address, MacAddress> = clients,
         allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-    ) = DaemonProtocol.SessionConfig(
-        downstream = downstream,
-        ipForward = ipForward,
-        masquerade = masqueradeMode,
-        ipv6Block = ipv6Mode == Ipv6Mode.Block,
-        primaryNetwork = primaryUpstream.upstream?.network,
-        primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
-            val destination = route.destination
-            if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
-        } ?: emptyList(),
-        fallbackNetwork = fallbackUpstream.upstream?.network,
-        upstreams = buildList {
-            val seen = HashSet<String>()
-            primaryUpstream.appendConfig(this, seen)
-            fallbackUpstream.appendConfig(this, seen)
-        },
-        clients = buildList {
-            for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
-                clientSnapshot.filterValues { it == mac }.keys.toList()))
-        },
-        ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
-    )
+    ): DaemonProtocol.SessionConfig {
+        val seen = HashSet<String>()
+        val primaryUpstreamInterfaces = buildList {
+            primaryUpstream.appendInterfaces(this, seen)
+        }
+        val fallbackUpstreamInterfaces = buildList {
+            fallbackUpstream.appendInterfaces(this, seen)
+        }
+        return DaemonProtocol.SessionConfig(
+            downstream = downstream,
+            ipForward = ipForward,
+            masquerade = masqueradeMode,
+            ipv6Block = ipv6Mode == Ipv6Mode.Block,
+            primaryNetwork = primaryUpstream.upstream?.network,
+            primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
+                val destination = route.destination
+                if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
+            } ?: emptyList(),
+            fallbackNetwork = fallbackUpstream.upstream?.network,
+            primaryUpstreamInterfaces = primaryUpstreamInterfaces,
+            fallbackUpstreamInterfaces = fallbackUpstreamInterfaces,
+            clients = buildList {
+                for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
+                    clientSnapshot.filterValues { it == mac }.keys.toList()))
+            },
+            ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
+        )
+    }
 
     suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }
 
