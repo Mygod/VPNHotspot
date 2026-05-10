@@ -16,7 +16,6 @@ import be.mygod.vpnhotspot.io.openWriteChannel
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.protobuf.ByteString
 import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
@@ -43,6 +42,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import okio.ByteString.Companion.toByteString
 import java.io.EOFException
 import java.io.IOException
 import java.net.InetAddress
@@ -83,10 +83,8 @@ object DaemonController {
         suspend fun close() = closeEventCall(id)
     }
 
-    suspend fun startSession(config: DaemonProto.SessionConfig): SessionCall {
-        val call = eventCall(DaemonProto.ClientEnvelope.newBuilder()
-            .setStartSession(DaemonProto.StartSessionCommand.newBuilder().setConfig(config))
-            .build())
+    suspend fun startSession(config: SessionConfig): SessionCall {
+        val call = eventCall(ClientEnvelope(start_session = StartSessionCommand(config)))
         try {
             val event = try {
                 call.channel.receive()
@@ -107,66 +105,44 @@ object DaemonController {
         })
     }
 
-    suspend fun replaceSession(sessionId: Long, config: DaemonProto.SessionConfig) {
-        request(DaemonProto.ClientEnvelope.newBuilder()
-            .setReplaceSession(DaemonProto.ReplaceSessionCommand.newBuilder()
-                .setSessionId(sessionId)
-                .setConfig(config))
-            .build()).requireAck()
+    suspend fun replaceSession(sessionId: Long, config: SessionConfig) {
+        request(ClientEnvelope(replace_session = ReplaceSessionCommand(sessionId, config))).requireAck()
     }
 
     suspend fun readTrafficCounterLines(): List<String> {
-        val reply = request(DaemonProto.ClientEnvelope.newBuilder()
-            .setReadTrafficCounters(DaemonProto.ReadTrafficCountersCommand.getDefaultInstance())
-            .build())
-        if (reply.payloadCase != DaemonProto.ReplyFrame.PayloadCase.TRAFFIC_COUNTER_LINES) {
-            throw IOException("Unexpected daemon reply ${reply.payloadCase}")
-        }
-        return reply.trafficCounterLines.linesList
+        val reply = request(ClientEnvelope(read_traffic_counters = ReadTrafficCountersCommand()))
+        return reply.traffic_counter_lines?.lines ?: throw IOException("Unexpected daemon reply $reply")
     }
 
-    fun neighbourMonitor(): Flow<List<DaemonProto.NeighbourDelta>> = flow {
-        eventFlow(eventCall(DaemonProto.ClientEnvelope.newBuilder()
-            .setStartNeighbourMonitor(DaemonProto.StartNeighbourMonitorCommand.getDefaultInstance())
-            .build())).collect {
-            if (it.payloadCase != DaemonProto.EventFrame.PayloadCase.NEIGHBOUR_DELTAS) {
-                throw IOException("Unexpected daemon event ${it.payloadCase}")
-            }
-            emit(it.neighbourDeltas.deltasList)
+    fun neighbourMonitor(): Flow<List<NeighbourDelta>> = flow {
+        eventFlow(eventCall(ClientEnvelope(start_neighbour_monitor = StartNeighbourMonitorCommand()))).collect {
+            emit(it.neighbour_deltas?.deltas ?: throw IOException("Unexpected daemon event $it"))
         }
     }
 
     suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) {
-        request(DaemonProto.ClientEnvelope.newBuilder()
-            .setReplaceStaticAddresses(DaemonProto.ReplaceStaticAddressesCommand.newBuilder()
-                .setDev(dev)
-                .addAllAddresses(addresses.map { (address, prefixLength) ->
-                    DaemonProto.IpAddressEntry.newBuilder()
-                        .setAddress(ByteString.copyFrom(address.address))
-                        .setPrefixLength(prefixLength)
-                        .build()
-                }))
-            .build()).requireAck()
+        request(ClientEnvelope(replace_static_addresses = ReplaceStaticAddressesCommand(
+            dev = dev,
+            addresses = addresses.map { (address, prefixLength) ->
+                IpAddressEntry(address.address.toByteString(), prefixLength)
+            },
+        ))).requireAck()
     }
 
     suspend fun deleteStaticAddresses(dev: String) {
-        request(DaemonProto.ClientEnvelope.newBuilder()
-            .setDeleteStaticAddresses(DaemonProto.DeleteStaticAddressesCommand.newBuilder().setDev(dev))
-            .build()).requireAck()
+        request(ClientEnvelope(delete_static_addresses = DeleteStaticAddressesCommand(dev))).requireAck()
     }
 
     suspend fun cleanRouting(ipv6NatPrefixSeed: String) {
-        request(DaemonProto.ClientEnvelope.newBuilder()
-            .setCleanRouting(DaemonProto.CleanRoutingCommand.newBuilder().setIpv6NatPrefixSeed(ipv6NatPrefixSeed))
-            .build()).requireAck()
+        request(ClientEnvelope(clean_routing = CleanRoutingCommand(ipv6NatPrefixSeed))).requireAck()
     }
 
     private sealed class Call {
-        class OneShot(val reply: CompletableDeferred<DaemonProto.ReplyFrame>) : Call()
-        class Event(val channel: Channel<DaemonProto.EventFrame>) : Call()
+        class OneShot(val reply: CompletableDeferred<ReplyFrame>) : Call()
+        class Event(val channel: Channel<EventFrame>) : Call()
     }
 
-    private class EventCall(val id: Long, val channel: Channel<DaemonProto.EventFrame>)
+    private class EventCall(val id: Long, val channel: Channel<EventFrame>)
 
     private class DaemonStdioEofException(message: String) : EOFException(message)
 
@@ -264,16 +240,16 @@ object DaemonController {
         } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
-    private suspend fun request(command: DaemonProto.ClientEnvelope): DaemonProto.ReplyFrame {
+    private suspend fun request(command: ClientEnvelope): ReplyFrame {
         var id = 0L
         val reply = lock.withLock {
             id = nextCallIdLocked()
-            val reply = CompletableDeferred<DaemonProto.ReplyFrame>()
+            val reply = CompletableDeferred<ReplyFrame>()
             try {
                 ensureDaemonLocked()
                 calls[id] = Call.OneShot(reply)
                 writeCommandLocked(id, command)
-                Timber.d("Sent #$id: ${command.commandCase}")
+                Timber.d("Sent #$id: $command")
             } catch (e: Exception) {
                 calls.remove(id)
                 closeConnectionLocked()
@@ -296,15 +272,15 @@ object DaemonController {
         }
     }
 
-    private suspend fun eventCall(command: DaemonProto.ClientEnvelope): EventCall {
-        val channel = Channel<DaemonProto.EventFrame>(Channel.UNLIMITED)
+    private suspend fun eventCall(command: ClientEnvelope): EventCall {
+        val channel = Channel<EventFrame>(Channel.UNLIMITED)
         val id = lock.withLock {
             val id = nextCallIdLocked()
             try {
                 ensureDaemonLocked()
                 calls[id] = Call.Event(channel)
                 writeCommandLocked(id, command)
-                Timber.d("Sent #$id: ${command.commandCase}")
+                Timber.d("Sent #$id: $command")
                 id
             } catch (e: Exception) {
                 calls.remove(id)
@@ -339,11 +315,11 @@ object DaemonController {
         readerJob = logScope.launch {
             try {
                 while (currentCoroutineContext().isActive) {
-                    val envelope = DaemonProto.DaemonEnvelope.parseFrom(DaemonIpc.readFrame(input))
-                    when (envelope.frameCase) {
-                        DaemonProto.DaemonEnvelope.FrameCase.REPLY -> {
+                    val envelope = DaemonEnvelope.ADAPTER.decode(DaemonIpc.readFrame(input))
+                    when {
+                        envelope.reply != null -> {
                             val frame = envelope.reply
-                            val id = frame.callId.readCallId()
+                            val id = frame.call_id.readCallId()
                             val reply = lock.withLock {
                                 when (val call = calls[id]) {
                                     is Call.OneShot -> {
@@ -359,9 +335,9 @@ object DaemonController {
                             }
                             reply?.complete(frame)
                         }
-                        DaemonProto.DaemonEnvelope.FrameCase.EVENT -> {
+                        envelope.event != null -> {
                             val frame = envelope.event
-                            val id = frame.callId.readCallId()
+                            val id = frame.call_id.readCallId()
                             val call = lock.withLock { calls[id] as? Call.Event }
                             if (call != null) {
                                 val result = call.channel.trySend(frame)
@@ -376,11 +352,11 @@ object DaemonController {
                                 }
                             } else Timber.w("Dropping event for unknown $BINARY_NAME call $id")
                         }
-                        DaemonProto.DaemonEnvelope.FrameCase.ERROR -> {
+                        envelope.error != null -> {
                             val frame = envelope.error
-                            val id = frame.callId.readCallId()
-                            if (!frame.hasReport()) throw IOException("Missing daemon error report")
-                            val exception = DaemonException(frame.report, id)
+                            val id = frame.call_id.readCallId()
+                            val report = frame.report ?: throw IOException("Missing daemon error report")
+                            val exception = DaemonException(report, id)
                             val call = lock.withLock {
                                 val call = calls.remove(id)
                                 if (call == null) Timber.w("Unexpected $BINARY_NAME error for call $id")
@@ -393,18 +369,18 @@ object DaemonController {
                                 null -> { }
                             }
                         }
-                        DaemonProto.DaemonEnvelope.FrameCase.NON_FATAL -> {
-                            val frame = envelope.nonFatal
-                            if (!frame.hasReport()) throw IOException("Missing daemon nonfatal report")
+                        envelope.non_fatal != null -> {
+                            val frame = envelope.non_fatal
+                            val report = frame.report ?: throw IOException("Missing daemon nonfatal report")
                             val traced = DaemonException(
-                                frame.report,
-                                if (frame.hasCallId()) frame.callId.readCallId() else null,
+                                report,
+                                frame.call_id?.readCallId(),
                             ).withCurrentTrace()
                             Timber.tag(BINARY_NAME).w(traced)
                             SmartSnackbar.make(traced).show()
                         }
-                        DaemonProto.DaemonEnvelope.FrameCase.COMPLETE -> {
-                            val id = envelope.complete.callId.readCallId()
+                        envelope.complete != null -> {
+                            val id = envelope.complete.call_id.readCallId()
                             val protocolError = lock.withLock {
                                 when (val call = calls.remove(id)) {
                                     is Call.Event -> {
@@ -428,7 +404,7 @@ object DaemonController {
                                 closeAndClearStateLocked(cause = protocolError)
                             }
                         }
-                        DaemonProto.DaemonEnvelope.FrameCase.FRAME_NOT_SET -> throw IOException("Missing daemon frame")
+                        else -> throw IOException("Missing daemon frame")
                     }
                 }
             } catch (_: CancellationException) {
@@ -446,15 +422,15 @@ object DaemonController {
         return this
     }
 
-    private fun DaemonProto.ReplyFrame.requireAck() {
-        if (payloadCase != DaemonProto.ReplyFrame.PayloadCase.ACK) {
-            throw IOException("Unexpected daemon reply $payloadCase")
+    private fun ReplyFrame.requireAck() {
+        if (ack == null) {
+            throw IOException("Unexpected daemon reply $this")
         }
     }
 
-    private fun DaemonProto.EventFrame.requireAck() {
-        if (payloadCase != DaemonProto.EventFrame.PayloadCase.ACK) {
-            throw IOException("Unexpected daemon event $payloadCase")
+    private fun EventFrame.requireAck() {
+        if (ack == null) {
+            throw IOException("Unexpected daemon event $this")
         }
     }
 
@@ -471,9 +447,7 @@ object DaemonController {
         if (call is Call.Event) call.channel.close()
         if (output == null) return
         try {
-            writeCommandLocked(id, DaemonProto.ClientEnvelope.newBuilder()
-                .setCancel(DaemonProto.CancelCommand.getDefaultInstance())
-                .build())
+            writeCommandLocked(id, ClientEnvelope(cancel = CancelCommand()))
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -495,9 +469,9 @@ object DaemonController {
         closeConnectionLocked(cancelReader)
     }
 
-    private suspend fun writeCommandLocked(id: Long, command: DaemonProto.ClientEnvelope) {
+    private suspend fun writeCommandLocked(id: Long, command: ClientEnvelope) {
         require(id > 0) { "Invalid daemon call id $id" }
-        DaemonIpc.writeFrame(output!!, command.toBuilder().setCallId(id).build().toByteArray())
+        DaemonIpc.writeFrame(output!!, ClientEnvelope.ADAPTER.encode(command.copy(call_id = id)))
     }
 
     private suspend fun closeConnectionLocked(cancelReader: Boolean = true) = withContext(NonCancellable) {

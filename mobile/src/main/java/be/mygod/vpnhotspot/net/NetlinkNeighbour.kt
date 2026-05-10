@@ -2,9 +2,9 @@ package be.mygod.vpnhotspot.net
 
 import android.net.MacAddress
 import be.mygod.vpnhotspot.root.daemon.DaemonController
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.Neighbour
+import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.protobuf.ByteString
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
@@ -19,28 +19,27 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.flow.shareIn
 import timber.log.Timber
+import okio.ByteString
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
 
-data class NetlinkNeighbour(val proto: DaemonProto.Neighbour) {
+data class NetlinkNeighbour(val proto: Neighbour) {
     val ip = proto.address.toInetAddress()
     inline val dev get() = proto.dev
-    val lladdr = if (proto.hasLladdr()) {
-        proto.lladdr.toByteArray().also {
+    val lladdr = proto.lladdr?.let { lladdr ->
+        lladdr.toByteArray().also {
             if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
         }.let(MacAddress::fromBytes)
-    } else null
+    }
     inline val state get() = proto.state
     val validIpv4ClientMac: MacAddress? get() {
-        if (state != DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID || ip !is Inet4Address) return null
+        if (state != NeighbourState.NEIGHBOUR_STATE_VALID || ip !is Inet4Address) return null
         return lladdr
     }
 
     init {
-        if (state == DaemonProto.NeighbourState.UNRECOGNIZED) {
-            throw IOException("Invalid neighbour state ${proto.stateValue}")
-        }
+        if (state is NeighbourState.Unrecognized) throw IOException("Invalid neighbour state ${state.value}")
     }
 
     companion object {
@@ -54,17 +53,17 @@ data class NetlinkNeighbour(val proto: DaemonProto.Neighbour) {
         val snapshots = DaemonController.neighbourMonitor()
             .runningFold(persistentMapOf<Pair<ByteString, String>, NetlinkNeighbour>()) { neighbours, deltas ->
                 neighbours.mutate {
-                    for (delta in deltas) when (delta.deltaCase) {
-                        DaemonProto.NeighbourDelta.DeltaCase.UPSERT -> {
+                    for (delta in deltas) when {
+                        delta.upsert != null -> {
                             val neighbour = NetlinkNeighbour(delta.upsert)
                             it[delta.upsert.address to neighbour.dev] = neighbour
                         }
-                        DaemonProto.NeighbourDelta.DeltaCase.DELETE -> {
+                        delta.delete != null -> {
                             val address = delta.delete.address
                             address.toInetAddress()
                             it.remove(address to delta.delete.dev)
                         }
-                        DaemonProto.NeighbourDelta.DeltaCase.DELTA_NOT_SET -> throw IOException("Missing neighbour delta")
+                        else -> throw IOException("Missing neighbour delta")
                     }
                 }
             }

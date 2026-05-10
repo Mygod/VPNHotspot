@@ -1,4 +1,3 @@
-import com.google.protobuf.gradle.id
 import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
@@ -16,7 +15,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.parcelize)
-    alias(libs.plugins.protobuf)
+    alias(libs.plugins.wire)
     id("com.google.android.gms.oss-licenses-plugin")
 }
 
@@ -164,18 +163,10 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
-protobuf {
-    protoc {
-        artifact = libs.protobuf.protoc.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }
-    }
-    generateProtoTasks {
-        all().configureEach {
-            builtins {
-                id("java") {
-                    option("lite")
-                }
-            }
-        }
+wire {
+    kotlin {
+        enumMode = "sealed_class"
+        rpcRole = "none"
     }
 }
 androidComponents.onVariants { variant ->
@@ -222,9 +213,9 @@ dependencies {
     implementation(libs.play.services.oss.licenses)
     implementation(libs.preference)
     implementation(libs.preferencex.simplemenu)
-    implementation(libs.protobuf.javalite)
     implementation(libs.room.ktx)
     implementation(libs.timber)
+    implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.espresso.core)

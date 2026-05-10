@@ -1,7 +1,7 @@
 [versions]
 lifecycle = "2.10.0"
-protobuf = "4.34.1"
 room = "2.8.4"
+wire = "6.2.0"
 
 [libraries]
 browser = "androidx.browser:browser:1.10.0"
@@ -26,13 +26,12 @@ material = "com.google.android.material:material:1.13.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
 preferencex-simplemenu = "com.takisoft.preferencex:preferencex-simplemenu:1.1.0"
-protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
-protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 test-runner = "androidx.test:runner:1.7.0"
 timber = "com.jakewharton.timber:timber:5.0.1"
+wire-runtime = { module = "com.squareup.wire:wire-runtime", version.ref = "wire" }
 zxing-core = "com.google.zxing:core:3.5.4"
 
 [plugins]
@@ -42,4 +41,4 @@ crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
 kotlin-parcelize = "org.jetbrains.kotlin.plugin.parcelize:2.3.21"
 ksp = "com.google.devtools.ksp:2.3.7"
-protobuf = "com.google.protobuf:0.10.0"
+wire = { id = "com.squareup.wire", version.ref = "wire" }

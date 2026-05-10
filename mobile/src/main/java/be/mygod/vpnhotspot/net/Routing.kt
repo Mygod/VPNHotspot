@@ -11,12 +11,15 @@ import be.mygod.vpnhotspot.net.monitor.Upstream
 import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.daemon.ClientConfig
 import be.mygod.vpnhotspot.root.daemon.DaemonController
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.Ipv6NatConfig
+import be.mygod.vpnhotspot.root.daemon.Ipv6Prefix
+import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.root.daemon.SessionConfig
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import com.google.protobuf.ByteString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -29,6 +32,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import okio.ByteString.Companion.toByteString
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.util.concurrent.atomic.AtomicBoolean
@@ -68,7 +72,7 @@ class Routing(private val caller: Any, private val downstream: String) {
      */
     var ipForward = false
     var ipv6Mode = Ipv6Mode.System
-    var masqueradeMode = DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
+    var masqueradeMode: MasqueradeMode = MasqueradeMode.MASQUERADE_MODE_NONE
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()
@@ -255,36 +259,32 @@ class Routing(private val caller: Any, private val downstream: String) {
     private fun nextConfig(
         clientSnapshot: Map<Inet4Address, MacAddress> = clients,
         allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-    ) = DaemonProto.SessionConfig.newBuilder().also { config ->
-        config.downstream = downstream
-        config.ipForward = ipForward
-        config.masquerade = masqueradeMode
-        config.ipv6Block = ipv6Mode == Ipv6Mode.Block
-        primaryUpstream.upstream?.network?.let { config.primaryNetwork = it.networkHandle }
-        config.addAllPrimaryRoutes((primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
-            val destination = route.destination
-            val address = destination.address
-            if (route.type == RouteInfo.RTN_UNICAST && address is Inet6Address) {
-                DaemonProto.Ipv6Prefix.newBuilder()
-                    .setAddress(ByteString.copyFrom(address.address))
-                    .setPrefixLength(destination.prefixLength)
-                    .build()
-            } else null
-        } ?: emptyList()))
-        fallbackUpstream.upstream?.network?.let { config.fallbackNetwork = it.networkHandle }
-        val seen = HashSet<String>()
-        config.addAllPrimaryUpstreamInterfaces(buildList { primaryUpstream.appendInterfaces(this, seen) })
-        config.addAllFallbackUpstreamInterfaces(buildList { fallbackUpstream.appendInterfaces(this, seen) })
-        config.addAllClients(allowedMacSnapshot.map { mac ->
-            DaemonProto.ClientConfig.newBuilder()
-                .setMac(ByteString.copyFrom(mac.toByteArray()))
-                .addAllIpv4(clientSnapshot.filterValues { it == mac }.keys.map { ByteString.copyFrom(it.address) })
-                .build()
-        })
-        if (ipv6Mode == Ipv6Mode.Nat) {
-            config.ipv6Nat = DaemonProto.Ipv6NatConfig.newBuilder().setPrefixSeed(ipv6NatPrefixSeed).build()
-        }
-    }.build()
+    ) = HashSet<String>().let { seen ->
+        SessionConfig(
+            downstream = downstream,
+            ip_forward = ipForward,
+            masquerade = masqueradeMode,
+            ipv6_block = ipv6Mode == Ipv6Mode.Block,
+            primary_network = primaryUpstream.upstream?.network?.networkHandle,
+            primary_routes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
+                val destination = route.destination
+                val address = destination.address
+                if (route.type == RouteInfo.RTN_UNICAST && address is Inet6Address) {
+                    Ipv6Prefix(address.address.toByteString(), destination.prefixLength)
+                } else null
+            } ?: emptyList(),
+            fallback_network = fallbackUpstream.upstream?.network?.networkHandle,
+            primary_upstream_interfaces = buildList { primaryUpstream.appendInterfaces(this, seen) },
+            fallback_upstream_interfaces = buildList { fallbackUpstream.appendInterfaces(this, seen) },
+            clients = allowedMacSnapshot.map { mac ->
+                ClientConfig(
+                    mac = mac.toByteArray().toByteString(),
+                    ipv4 = clientSnapshot.filterValues { it == mac }.keys.map { it.address.toByteString() },
+                )
+            },
+            ipv6_nat = if (ipv6Mode == Ipv6Mode.Nat) Ipv6NatConfig(ipv6NatPrefixSeed) else null,
+        )
+    }
 
     suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }
 

@@ -32,17 +32,17 @@ class DaemonExceptionTest {
         message: String = "Device or resource busy",
         errno: Int? = 16,
         kind: String = "ResourceBusy",
-    ) = DaemonProto.DaemonErrorReport.newBuilder().also {
-        it.context = "routing.command"
-        it.message = message
-        errno?.let(it::setErrno)
-        it.kind = kind
-        it.file = "routing.rs"
-        it.line = 123
-        it.column = 45
-        it.pid = 2345
-        it.addDetails(DaemonProto.ErrorDetail.newBuilder().setKey("command").setValue("iptables-restore"))
-    }.build()
+    ) = DaemonErrorReport(
+        context = "routing.command",
+        message = message,
+        errno = errno,
+        kind = kind,
+        file_ = "routing.rs",
+        line = 123,
+        column = 45,
+        pid = 2345,
+        details = listOf(ErrorDetail("command", "iptables-restore")),
+    )
 
     private fun assertDaemonReportCause(e: DaemonException, message: String) {
         assertNotNull(e.cause)

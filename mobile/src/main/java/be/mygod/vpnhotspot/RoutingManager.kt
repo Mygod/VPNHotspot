@@ -7,7 +7,7 @@ import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -23,26 +23,29 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
     companion object {
         private const val KEY_MASQUERADE_MODE = "service.masqueradeMode"
         private const val KEY_IPV6_MODE = "service.ipv6Mode"
-        var masqueradeMode: DaemonProto.MasqueradeMode
+        var masqueradeMode: MasqueradeMode
             get() = app.pref.run {
                 getString(KEY_MASQUERADE_MODE, null)?.let {
                     return@run when (it) {
-                        "None" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
-                        "Simple" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
-                        "Netd" -> DaemonProto.MasqueradeMode.MASQUERADE_MODE_NETD
-                        else -> DaemonProto.MasqueradeMode.valueOf(it)
+                        "None" -> MasqueradeMode.MASQUERADE_MODE_NONE
+                        "Simple" -> MasqueradeMode.MASQUERADE_MODE_SIMPLE
+                        "Netd" -> MasqueradeMode.MASQUERADE_MODE_NETD
+                        "MASQUERADE_MODE_NONE" -> MasqueradeMode.MASQUERADE_MODE_NONE
+                        "MASQUERADE_MODE_SIMPLE" -> MasqueradeMode.MASQUERADE_MODE_SIMPLE
+                        "MASQUERADE_MODE_NETD" -> MasqueradeMode.MASQUERADE_MODE_NETD
+                        else -> throw IllegalArgumentException("Invalid masquerade mode $it")
                     }
                 }
                 if (getBoolean("service.masquerade", true)) {   // legacy settings
-                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE
-                } else DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE
+                    MasqueradeMode.MASQUERADE_MODE_SIMPLE
+                } else MasqueradeMode.MASQUERADE_MODE_NONE
             }
             set(value) = app.pref.edit {
                 putString(KEY_MASQUERADE_MODE, when (value) {
-                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
-                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
-                    DaemonProto.MasqueradeMode.MASQUERADE_MODE_NETD -> "Netd"
-                    DaemonProto.MasqueradeMode.UNRECOGNIZED -> throw IllegalArgumentException("Invalid masquerade mode")
+                    MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
+                    MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
+                    MasqueradeMode.MASQUERADE_MODE_NETD -> "Netd"
+                    is MasqueradeMode.Unrecognized -> throw IllegalArgumentException("Invalid masquerade mode")
                 })
             }
         var ipv6Mode: Ipv6Mode

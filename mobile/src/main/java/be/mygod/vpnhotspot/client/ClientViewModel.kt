@@ -29,7 +29,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -90,7 +90,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {
                     val address = getAddress(it) as LinkAddress
                     ClientAddressInfo(
-                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_UNSET,
+                        NeighbourState.NEIGHBOUR_STATE_UNSET,
                         address,
                         getHostname(it) as String?,
                     ).also { info ->

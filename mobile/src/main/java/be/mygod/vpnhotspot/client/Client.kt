@@ -13,7 +13,7 @@ import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.util.makeMacSpan
@@ -62,12 +62,12 @@ class Client(val mac: MacAddress, val iface: String? = null, val type: TetherTyp
                 append(makeIpSpan(ip))
                 info.address?.let { append("/${it.prefixLength}") }
                 append(when (info.state) {
-                    DaemonProto.NeighbourState.NEIGHBOUR_STATE_UNSET -> ""
-                    DaemonProto.NeighbourState.NEIGHBOUR_STATE_INCOMPLETE ->
+                    NeighbourState.NEIGHBOUR_STATE_UNSET -> ""
+                    NeighbourState.NEIGHBOUR_STATE_INCOMPLETE ->
                         app.getText(R.string.connected_state_incomplete)
-                    DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID -> app.getText(R.string.connected_state_valid)
-                    DaemonProto.NeighbourState.NEIGHBOUR_STATE_FAILED -> app.getText(R.string.connected_state_failed)
-                    DaemonProto.NeighbourState.UNRECOGNIZED -> error("Invalid neighbour state ${info.state}")
+                    NeighbourState.NEIGHBOUR_STATE_VALID -> app.getText(R.string.connected_state_valid)
+                    NeighbourState.NEIGHBOUR_STATE_FAILED -> app.getText(R.string.connected_state_failed)
+                    is NeighbourState.Unrecognized -> error("Invalid neighbour state ${info.state.value}")
                 })
                 if (info.address != null) {
                     info.hostname?.let { append(" →“$it”") }
