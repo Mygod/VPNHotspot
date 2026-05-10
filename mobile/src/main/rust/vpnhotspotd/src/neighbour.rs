@@ -19,6 +19,8 @@ use vpnhotspotd::shared::protocol::{
 };
 use vpnhotspotd::shared::transport::event_frame;
 
+const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
+
 pub(crate) async fn dump(handle: &netlink::Handle, call_id: u64) -> io::Result<Vec<Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
     let _dump = handle.lock_dump().await;
@@ -172,6 +174,25 @@ fn neighbour_from_message(
         }
     }
     let address = address?;
+    let raw_state = u16::from(message.header.state);
+    let unknown_state_bits = raw_state & !KNOWN_NEIGHBOUR_STATE_BITS;
+    if unknown_state_bits != 0 {
+        report::report_for(
+            Some(call_id),
+            DaemonErrorReport::from_message_with_details(
+                "neighbour.state",
+                "unrecognized neighbour state bits",
+                "InvalidData",
+                [
+                    ("state", format!("0x{raw_state:04x}")),
+                    ("unknown", format!("0x{unknown_state_bits:04x}")),
+                    ("interface", interface.clone()),
+                    ("address", address.to_string()),
+                    ("deleting", deleting.to_string()),
+                ],
+            ),
+        );
+    }
     if deleting {
         return Some(NeighbourDelta::Delete { address, interface });
     }
