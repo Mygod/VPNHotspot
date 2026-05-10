@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Route {
     pub prefix: u128,
     pub prefix_len: u8,
@@ -8,24 +8,82 @@ pub struct Route {
 
 pub type Network = u64;
 
-#[derive(Clone)]
+/// Daemon reply sockets use Android's local-network fwmark so AOSP routes them through
+/// local_network before VPN UID rules. This is LOCAL_NET_ID 99 plus explicitlySelected and
+/// protectedFromVpn.
+///
+/// Sources:
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/binder/android/net/INetd.aidl#768
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#653
+/// https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-15.0.0_r1/service-t/src/com/android/server/NsdService.java#1761
+/// https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/server/RouteController.cpp#605
+pub const DAEMON_REPLY_MARK: u32 = 0x0003_0063;
+pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
+/// Android fwmark uses the low bits for netId and platform routing metadata. Keep IPv6 NAT
+/// TPROXY marks in the high-bit reserved area and always match through the mask.
+///
+/// Sources:
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
+/// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
+pub const DAEMON_INTERCEPT_FWMARK_VALUE: u32 = 0x1000_0000;
+pub const DAEMON_INTERCEPT_FWMARK_MASK: u32 = 0x1000_0000;
+/// Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
+/// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
+pub const DAEMON_TABLE: u32 = 900;
+pub const LOCAL_NETWORK_TABLE: u32 = 99;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionConfig {
     pub downstream: String,
-    pub dns_bind_address: Ipv4Addr,
     pub reply_mark: u32,
+    pub ip_forward: bool,
+    pub masquerade: MasqueradeMode,
+    pub ipv6_block: bool,
     pub primary_network: Option<Network>,
     pub primary_routes: Vec<Route>,
     pub fallback_network: Option<Network>,
+    pub upstreams: Vec<UpstreamConfig>,
+    pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MasqueradeMode {
+    None,
+    Simple,
+    Netd,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum UpstreamRole {
+    Primary,
+    Fallback,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct UpstreamConfig {
+    pub ifname: String,
+    pub role: UpstreamRole,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SelectedNetwork {
+    pub role: UpstreamRole,
+    pub network: Network,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct ClientConfig {
+    pub mac: [u8; 6],
+    pub ipv4: Vec<Ipv4Addr>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ipv6NatConfig {
     pub gateway: Ipv6Addr,
     pub prefix_len: u8,
-    pub mtu: u32,
-    pub suppressed_prefixes: Vec<Route>,
-    pub cleanup_prefixes: Vec<Route>,
 }
 
 #[derive(Clone, Copy)]
@@ -42,16 +100,68 @@ pub struct Ipv6NatPorts {
 }
 
 pub fn network_prefix(address: Ipv6Addr, prefix_len: u8) -> [u8; 16] {
-    let shift = 128u32.saturating_sub(prefix_len as u32);
-    (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
+    if prefix_len == 0 {
+        [0; 16]
+    } else {
+        let shift = 128u32.saturating_sub(prefix_len as u32);
+        (ipv6_to_u128(address) & (!0u128 << shift)).to_be_bytes()
+    }
+}
+
+pub fn ipv6_nat_prefix(seed: &str, interface: &str) -> Route {
+    const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+    const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+    // This only needs stable local address selection, not cryptographic unpredictability.
+    fn update(mut hash: u64, bytes: &[u8]) -> u64 {
+        for byte in bytes {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(FNV_PRIME);
+        }
+        hash
+    }
+
+    let hash = update(
+        update(update(FNV_OFFSET_BASIS, seed.as_bytes()), b"\0"),
+        interface.as_bytes(),
+    );
+    let mut raw = [0u8; 16];
+    raw[0] = 0xfd;
+    raw[1..8].copy_from_slice(&hash.to_be_bytes()[..7]);
+    Route {
+        prefix: u128::from_be_bytes(raw),
+        prefix_len: 64,
+    }
+}
+
+pub fn ipv6_nat_gateway(prefix: Route) -> Ipv6Addr {
+    let mut raw = prefix.prefix.to_be_bytes();
+    raw[15] = 1;
+    Ipv6Addr::from(raw)
 }
 
 pub fn select_network(config: &SessionConfig, destination: Ipv6Addr) -> Option<Network> {
+    select_upstream_network(config, destination).map(|selection| selection.network)
+}
+
+pub fn select_upstream_network(
+    config: &SessionConfig,
+    destination: Ipv6Addr,
+) -> Option<SelectedNetwork> {
     let destination = ipv6_to_u128(destination);
-    if config.primary_network.is_some() && route_matches(&config.primary_routes, destination) {
-        config.primary_network
+    if let Some(network) = config
+        .primary_network
+        .filter(|_| route_matches(&config.primary_routes, destination))
+    {
+        Some(SelectedNetwork {
+            role: UpstreamRole::Primary,
+            network,
+        })
     } else {
-        config.fallback_network
+        config.fallback_network.map(|network| SelectedNetwork {
+            role: UpstreamRole::Fallback,
+            network,
+        })
     }
 }
 
@@ -85,6 +195,13 @@ mod tests {
             select_network(&config, "2001:db8:1::1".parse().unwrap()),
             Some(123)
         );
+        assert_eq!(
+            select_upstream_network(&config, "2001:db8:1::1".parse().unwrap()),
+            Some(SelectedNetwork {
+                role: UpstreamRole::Primary,
+                network: 123
+            })
+        );
     }
 
     #[test]
@@ -93,6 +210,13 @@ mod tests {
         assert_eq!(
             select_network(&config, "fd00::1".parse().unwrap()),
             Some(456)
+        );
+        assert_eq!(
+            select_upstream_network(&config, "fd00::1".parse().unwrap()),
+            Some(SelectedNetwork {
+                role: UpstreamRole::Fallback,
+                network: 456
+            })
         );
     }
 
@@ -111,6 +235,25 @@ mod tests {
         );
     }
 
+    #[test]
+    fn network_prefix_handles_default_route() {
+        assert_eq!(network_prefix("2001:db8::1".parse().unwrap(), 0), [0; 16]);
+    }
+
+    #[test]
+    fn ipv6_nat_prefix_matches_ula_shape() {
+        let prefix = ipv6_nat_prefix("be.mygod.vpnhotspot\0android-id", "wlan0");
+        assert_eq!(prefix.prefix_len, 64);
+        assert_eq!(
+            Ipv6Addr::from(prefix.prefix.to_be_bytes()),
+            "fd8d:32f9:31e3:b417::".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(
+            ipv6_nat_gateway(prefix),
+            "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
+        );
+    }
+
     fn config(
         primary_network: Option<Network>,
         primary_routes: Vec<Route>,
@@ -118,11 +261,15 @@ mod tests {
     ) -> SessionConfig {
         SessionConfig {
             downstream: "wlan0".to_string(),
-            dns_bind_address: Ipv4Addr::new(192, 0, 2, 1),
             reply_mark: 0,
+            ip_forward: false,
+            masquerade: MasqueradeMode::None,
+            ipv6_block: false,
             primary_network,
             primary_routes,
             fallback_network,
+            upstreams: Vec::new(),
+            clients: Vec::new(),
             ipv6_nat: None,
         }
     }

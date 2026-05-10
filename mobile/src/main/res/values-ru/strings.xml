@@ -38,7 +38,7 @@
     <string name="clients_mac_lookup_unexpected_error">Сервер вернул ошибку для %1$s: %2$s</string>
     <string name="clients_nickname_title">Никнэйм  для %s</string>
     <string name="clients_nickname_set_to_vendor">Имя вендора</string>
-    <string name="clients_stats_title">Статистика для %s</string>
+    <string name="clients_stats_title">Статистика для ^1</string>
 
 
     <string name="notification_tethering_title">VPN-модем активен</string>
@@ -52,7 +52,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">Неизвестно #%d</string>
-    <string name="exception_interface_not_found">Ошибка: Нисходящий интерфейс не найден</string>
     <string name="noisy_su_failure">Что-то пошло не так, пожалуйста, проверьте отладочную информацию.</string>
 
     <string name="configuration_view">Настройка Wi-Fi ретранслятора</string>

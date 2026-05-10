@@ -66,22 +66,22 @@
     <string name="tethering_manage_wifi">Punto de acceso Wi\u2011Fi</string>
     <string name="tethering_manage_bluetooth">Conexión compartida Bluetooth</string>
     <string name="tethering_manage_ethernet">Conexión compartida Ethernet</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz, canal %2$d, ancho de banda de %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d, ancho de banda de %3$s, tiempo de espera de inactividad de %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d,
-ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
+    <string name="tethering_manage_wifi_info">^1 MHz, canal ^2, ancho de banda de ^3</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">^4: Wi\u2011Fi ^5, ^1 MHz, canal ^2, ancho de banda de ^3, tiempo de espera de inactividad de ^6</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">^4: Wi\u2011Fi ^5, ^1 MHz, canal ^2,
+ancho de banda de ^3, tiempo de espera de inactividad desactivado</string>
     <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="one">%1$s/%2$d cliente conectado\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="many">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="other">%1$s/%2$d clientes conectados\nCaracterísticas compatibles: %3$s</item>
+        <item quantity="one">^1/^2 cliente conectado\nCaracterísticas compatibles: ^3</item>
+        <item quantity="many">^1/^2 clientes conectados\nCaracterísticas compatibles: ^3</item>
+        <item quantity="other">^1/^2 clientes conectados\nCaracterísticas compatibles: ^3</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
-        <item quantity="one">%d cliente conectado</item>
-        <item quantity="many">%1$d de clientes conectados</item>
-        <item quantity="other">%1d clientes conectados</item>
+        <item quantity="one">^1 cliente conectado</item>
+        <item quantity="many">^1 de clientes conectados</item>
+        <item quantity="other">^1 clientes conectados</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: %s</string>
-    <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: %s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: ^1</string>
+    <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: ^1</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC aleatorio de AP</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Concurrencia puenteada de AP</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">Concurrencia de STA + AP</string>
@@ -105,7 +105,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="clients_mac_lookup_unexpected_error">El servidor devolvió un error para %1$s: %2$s</string>
     <string name="clients_nickname_title">Apodo para %s</string>
     <string name="clients_nickname_set_to_vendor">← proveedor 🏳️‍🌈</string>
-    <string name="clients_stats_title">Estadísticas para %s</string>
+    <string name="clients_stats_title">Estadísticas para ^1</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Conectado 1 vez desde %2$s</item>
         <item quantity="many">Conectado %1$s de veces desde %2$s</item>
@@ -140,17 +140,11 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_service_wifi_lock_none">Sistema por defecto</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desactivar ahorro de energía</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baja latencia</string>
-    <string name="settings_service_ip_monitor">Modo de monitorización del estado de la red</string>
-    <string name="settings_service_ip_monitor_monitor">Monitorización Netlink</string>
-    <string name="settings_service_ip_monitor_monitor_root">Monitorización Netlink con root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll con root</string>
-    <string name="settings_service_upstream_monitor">Transmisiones de subida actuales</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s; retorno: %2$s</string>
     <string name="settings_service_upstream">Interfaz de red de transmisión de subida</string>
     <string name="settings_service_upstream_auto">Detección automática de VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaz de retorno de transmisión de subida</string>
     <string name="settings_upstream_fallback_auto">Detección automática de red predeterminada del sistema</string>
+    <string name="settings_upstream_current_summary">^1 (actual: ^2)</string>
     <string name="settings_service_clean">Limpiar/volver a aplicar reglas de enrutamiento</string>
     <string name="settings_service_clean_summary">Actualiza los ajustes modificados a los servicios activos actuales. También puede corregir condiciones de carrera poco frecuentes.</string>
     <string name="settings_system_tether_offload">Aceleración por hardware para conexión compartida</string>
@@ -163,8 +157,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="settings_misc_source_summary">Leer el manual, dar estrella, enviar problemas y contribuir</string>
     <string name="settings_misc_donate">Donar</string>
     <string name="settings_misc_donate_summary">Me gusta el dinero</string>
-    <string name="settings_restart_required">Reinicia esta app para aplicar esta configuración.</string>
-    <string name="settings_exit_app">Salir</string>
 
     <string name="notification_tethering_title">Conexión compartida VPN</string>
     <string name="notification_channel_tethering">Servicio de conexión compartida VPN</string>
@@ -187,7 +179,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     </plurals>
 
     <string name="failure_reason_unknown">desconocido #%d</string>
-    <string name="exception_interface_not_found">Fatal: No se ha encontrado la interfaz de transmisión de bajada</string>
     <string name="noisy_su_failure">Algo salió mal, por favor verifica la información de depuración.</string>
     <string name="permission_missing">Permiso faltante</string>
 

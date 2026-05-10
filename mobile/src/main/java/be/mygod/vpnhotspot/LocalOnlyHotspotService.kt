@@ -8,9 +8,8 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
@@ -26,13 +25,11 @@ import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -43,7 +40,7 @@ import java.lang.reflect.InvocationTargetException
 import java.net.Inet4Address
 import java.util.concurrent.atomic.AtomicInteger
 
-class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, TetherStates.Callback {
+class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
     companion object {
         const val KEY_USE_SYSTEM = "service.tempHotspot.useSystem"
 
@@ -198,9 +195,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         val manager = RoutingManager.LocalOnly(this, iface)
         routingManager = manager
         manager.start()
-        if (routingManager === manager && binder.iface == iface) {
-            IpNeighbourMonitor.registerCallback(this@LocalOnlyHotspotService)
-        }
+        if (routingManager === manager && binder.iface == iface) startNetlinkNeighbours()
     }
     private fun onFrameworkStopped(generation: Int) {
         if (reservation?.generation == generation) reservation = null
@@ -267,10 +262,8 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
     }
     private suspend fun doStart(generation: Int) {
         if (!receiverRegistered) {
-            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let {
-                receiverRegistered = true
-                updateState(it)
-            }
+            receiverRegistered = true
+            registerReceiver(receiver, IntentFilter(WifiApManager.WIFI_AP_STATE_CHANGED_ACTION))?.let(this::updateState)
         }
         if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) {
             if (Build.VERSION.SDK_INT >= 33) try {
@@ -320,10 +313,10 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
         }
     }
 
-    override fun onIpNeighbourAvailable(neighbours: Collection<IpNeighbour>) {
-        super.onIpNeighbourAvailable(neighbours)
+    override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
+        super.onNetlinkNeighboursChanged(neighbours)
         timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.ip is Inet4Address && it.state == IpNeighbour.State.VALID
+            it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
         })
     }
 
@@ -341,7 +334,7 @@ class LocalOnlyHotspotService : IpNeighbourMonitoringService(), CoroutineScope, 
                 binder.iface = null
                 waitingForIface = false
                 TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
-                IpNeighbourMonitor.unregisterCallback(this@LocalOnlyHotspotService)
+                stopNetlinkNeighbours()
                 timeoutMonitor?.close()
                 timeoutMonitor = null
                 val manager = routingManager

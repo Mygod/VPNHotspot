@@ -7,12 +7,9 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.Ipv6Mode
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -21,7 +18,7 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.ConcurrentHashMap
 
-class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, CoroutineScope {
+class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
     companion object {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
@@ -46,14 +43,8 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
 
     private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
             RoutingManager(caller, downstream) {
-        override suspend fun Routing.configure() {
-            forward()
-            masquerade(masqueradeMode)
-            when (ipv6Mode) {
-                Ipv6Mode.Block -> disableIpv6()
-                Ipv6Mode.System -> { }
-                Ipv6Mode.Nat -> ipv6Nat()
-            }
+        override fun Routing.configure() {
+            ipv6Mode = RoutingManager.ipv6Mode
         }
     }
 
@@ -73,16 +64,19 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
     override val coroutineContext = dispatcher + Job()
     private val binder = Binder()
     private val downstreams = ConcurrentHashMap<String, Downstream>()
-    private var callbackRegistered = false
+    private var tetherStatesRegistered = false
+    private var tetheredIfaces: Set<String>? = null
     override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
     override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
 
     override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
         launch {
+            val tethered = interfaces.filterNotNull().toSet()
+            tetheredIfaces = tethered
             val toRemove = downstreams.toMutableMap()   // make a copy
-            for (iface in interfaces) {
+            for (iface in tethered) {
                 val downstream = toRemove.remove(iface) ?: continue
-                if (downstream.monitor && !downstream.start()) downstream.stop()
+                if (downstream.monitor && !downstream.start()) dismissIfApplicable()
             }
             for ((iface, downstream) in toRemove) {
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
@@ -113,11 +107,11 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
                 if (it.isEmpty()) BootReceiver.delete<TetheringService>()
                 else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
             }
-            if (!callbackRegistered) {
-                callbackRegistered = true
+            if (!tetherStatesRegistered) {
                 TetherStates.registerCallback(this)
-                IpNeighbourMonitor.registerCallback(this)
+                tetherStatesRegistered = true
             }
+            if (activeIfaces.isEmpty()) stopNetlinkNeighbours() else startNetlinkNeighbours()
             super.updateNotification()
         }
         launch(Dispatchers.Main) {
@@ -138,8 +132,6 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
                         check(downstreams.put(iface, downstream) == null)
                         if (!downstream.start()) {
                             dismissIfApplicable()
-                            downstreams.remove(iface, downstream)
-                            downstream.stop()
                         }
                     }
                 }
@@ -147,14 +139,15 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
                     intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
                 if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
                     val downstream = downstreams[iface]
+                    val isTethered = tetheredIfaces?.contains(iface) == true
                     if (downstream == null) {
                         val monitored = Downstream(this@TetheringService, iface, true)
                         check(downstreams.put(iface, monitored) == null)
-                        if (!monitored.start(true)) {
-                            dismissIfApplicable()
-                            monitored.stop()
-                        }
-                    } else downstream.monitor = true
+                        if (isTethered && !monitored.start()) dismissIfApplicable()
+                    } else {
+                        downstream.monitor = true
+                        if (isTethered && !downstream.started && !downstream.start()) dismissIfApplicable()
+                    }
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
                 onDownstreamsChangedLocked()
@@ -175,11 +168,12 @@ class TetheringService : IpNeighbourMonitoringService(), TetherStates.Callback, 
     }
 
     private fun unregisterReceiver() {
-        if (callbackRegistered) {
+        if (tetherStatesRegistered) {
             TetherStates.unregisterCallback(this)
-            IpNeighbourMonitor.unregisterCallback(this)
-            callbackRegistered = false
+            tetherStatesRegistered = false
         }
+        tetheredIfaces = null
+        stopNetlinkNeighbours()
     }
 
     override fun updateNotification() {

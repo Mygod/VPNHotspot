@@ -4,8 +4,9 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Arc;
 
 use libc::{c_int, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+use socket2::SockRef;
 use tokio::io::unix::AsyncFd;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, Interest, Ready};
 use tokio::net::{
     TcpListener as TokioTcpListener, TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket,
 };
@@ -13,6 +14,8 @@ use tokio::sync::Mutex;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
+use crate::report;
+use crate::socket::is_connection_closed;
 use vpnhotspotd::shared::dns_wire;
 use vpnhotspotd::shared::model::{Network, SessionConfig};
 
@@ -30,12 +33,13 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn start(
         bind_address: Ipv4Addr,
+        reply_mark: u32,
         config: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
     ) -> io::Result<Self> {
-        let tcp_listener = create_tcp_listener(bind_address)?;
+        let tcp_listener = create_tcp_listener(bind_address, reply_mark)?;
         let tcp_port = tcp_listener.local_addr()?.port();
-        let udp_socket = create_udp_listener(bind_address)?;
+        let udp_socket = create_udp_listener(bind_address, reply_mark)?;
         let udp_port = udp_socket.local_addr()?.port();
         spawn_tcp_loop(tcp_listener, config.clone(), stop.clone())?;
         if let Err(e) = spawn_udp_loop(udp_socket, config, stop.clone()) {
@@ -51,14 +55,22 @@ struct ResolverQuery {
 }
 
 impl ResolverQuery {
-    fn finish(mut self, rcode: &mut c_int, answer: &mut [u8]) -> c_int {
-        unsafe {
+    fn finish(mut self) -> io::Result<Vec<u8>> {
+        let mut rcode = 0;
+        let mut response = vec![0u8; DNS_MAX_PACKET];
+        let size = unsafe {
             android_res_nresult(
                 self.fd.take().unwrap(),
-                rcode,
-                answer.as_mut_ptr(),
-                answer.len(),
+                &mut rcode,
+                response.as_mut_ptr(),
+                response.len(),
             )
+        };
+        if size < 0 {
+            Err(io::Error::from_raw_os_error(-size))
+        } else {
+            response.truncate(size as usize);
+            Ok(response)
         }
     }
 }
@@ -98,14 +110,16 @@ unsafe extern "C" {
     fn android_res_cancel(nsend_fd: c_int);
 }
 
-fn create_tcp_listener(bind_address: Ipv4Addr) -> io::Result<TcpListener> {
+fn create_tcp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<TcpListener> {
     let listener = TcpListener::bind((bind_address, 0))?;
+    SockRef::from(&listener).set_mark(reply_mark)?;
     listener.set_nonblocking(true)?;
     Ok(listener)
 }
 
-fn create_udp_listener(bind_address: Ipv4Addr) -> io::Result<UdpSocket> {
+fn create_udp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<UdpSocket> {
     let socket = UdpSocket::bind((bind_address, 0))?;
+    SockRef::from(&socket).set_mark(reply_mark)?;
     socket.set_nonblocking(true)?;
     Ok(socket)
 }
@@ -131,12 +145,16 @@ fn spawn_tcp_loop(
                                     let snapshot = config.lock().await.clone();
                                     handle_tcp_connection(socket, snapshot).await
                                 } => if let Err(e) = result {
-                                    eprintln!("dns tcp failed: {e}");
+                                    if is_connection_closed(&e) {
+                                        eprintln!("dns tcp connection closed: {e}");
+                                    } else {
+                                        report::io("dns.tcp_connection", e);
+                                    }
                                 }
                             }
                         });
                     }
-                    Err(e) => eprintln!("dns tcp accept failed: {e}"),
+                    Err(e) => report::io("dns.tcp_accept", e),
                 }
             }
         }
@@ -191,13 +209,19 @@ fn spawn_udp_loop(
                                 _ = query_stop.cancelled() => {}
                                 response = resolve_or_error(&snapshot, &query) => {
                                     if let Some(response) = response {
-                                        let _ = socket.send_to(&response, source).await;
+                                        if let Err(e) = socket.send_to(&response, source).await {
+                                            report::io_with_details(
+                                                "dns.udp_response",
+                                                e,
+                                                [("source", source.to_string())],
+                                            );
+                                        }
                                     }
                                 }
                             }
                         });
                     },
-                    Err(e) => eprintln!("dns udp recv failed: {e}"),
+                    Err(e) => report::io("dns.udp_recv", e),
                 }
             };
         }
@@ -242,14 +266,20 @@ async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
     }
     let fd = ResolverQuery { fd: Some(fd) };
     set_nonblocking(fd.as_raw_fd())?;
-    let fd = AsyncFd::new(fd)?;
-    let _ = fd.readable().await?;
-    let mut response = vec![0u8; DNS_MAX_PACKET];
-    let mut rcode = 0;
-    let size = fd.into_inner().finish(&mut rcode, &mut response);
-    if size < 0 {
-        return Err(io::Error::from_raw_os_error(-size));
+    read_resolver_result(AsyncFd::new(fd)?).await
+}
+
+async fn read_resolver_result(fd: AsyncFd<ResolverQuery>) -> io::Result<Vec<u8>> {
+    // android_res_nresult is the public result reader/closer, but it performs synchronous reads.
+    // dnsproxyd's resnsend handler writes one result and then drops the client socket, so wait for
+    // peer close before handing the nonblocking fd back to the NDK reader.
+    loop {
+        let mut ready = fd.ready(Interest::READABLE | Interest::ERROR).await?;
+        let state = ready.ready();
+        if state.is_read_closed() || state.is_error() {
+            drop(ready);
+            return fd.into_inner().finish();
+        }
+        ready.clear_ready_matching(Ready::READABLE);
     }
-    response.truncate(size as usize);
-    Ok(response)
 }

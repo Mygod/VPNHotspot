@@ -20,6 +20,7 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{resolve_or_error, DNS_PORT};
+use crate::report;
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
@@ -106,8 +107,12 @@ pub(crate) fn spawn_loop(
                     None => break,
                 },
                 ready = listener.readable() => {
-                    let Ok(mut ready) = ready else {
-                        break;
+                    let mut ready = match ready {
+                        Ok(ready) => ready,
+                        Err(e) => {
+                            report::io("nat66.udp_readable", e);
+                            break;
+                        }
                     };
                     loop {
                         match recv_packet(listener_fd, &mut buffer) {
@@ -131,7 +136,14 @@ pub(crate) fn spawn_loop(
                                                         snapshot.reply_mark,
                                                         &response,
                                                     ).await {
-                                                        eprintln!("dns udp response failed: {e}");
+                                                        report::io_with_details(
+                                                            "nat66.dns_udp_response",
+                                                            e,
+                                                            [
+                                                                ("client", client.to_string()),
+                                                                ("destination", destination.to_string()),
+                                                            ],
+                                                        );
                                                     }
                                                 }
                                             }
@@ -157,7 +169,14 @@ pub(crate) fn spawn_loop(
                                         let upstream = match connect_udp(network, destination).await {
                                             Ok(socket) => Arc::new(socket),
                                             Err(e) => {
-                                                eprintln!("udp connect failed: {e}");
+                                                report::io_with_details(
+                                                    "nat66.udp_connect",
+                                                    e,
+                                                    [
+                                                        ("client", client.to_string()),
+                                                        ("destination", destination.to_string()),
+                                                    ],
+                                                );
                                                 continue;
                                             }
                                         };
@@ -182,7 +201,14 @@ pub(crate) fn spawn_loop(
                                 };
                                 association.last_active = activity;
                                 if let Err(e) = association.socket.send(&buffer[..size]).await {
-                                    eprintln!("udp send failed: {e}");
+                                    report::io_with_details(
+                                        "nat66.udp_send",
+                                        e,
+                                        [
+                                            ("client", client.to_string()),
+                                            ("destination", destination.to_string()),
+                                        ],
+                                    );
                                     if let Some(association) = associations.remove(&key) {
                                         association.stop.cancel();
                                     }
@@ -194,7 +220,7 @@ pub(crate) fn spawn_loop(
                             }
                             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                             Err(e) => {
-                                eprintln!("udp recv failed: {e}");
+                                report::io("nat66.udp_recv", e);
                                 break;
                             }
                         }
@@ -225,20 +251,53 @@ async fn run_association(
                 Ok(size) => {
                     let mark = config.lock().await.reply_mark;
                     if let Err(e) = send_response(key.destination, key.client, mark, &buffer[..size]).await {
-                        eprintln!("udp response failed: {e}");
+                        report::io_with_details(
+                            "nat66.udp_response",
+                            e,
+                            [
+                                ("client", key.client.to_string()),
+                                ("destination", key.destination.to_string()),
+                            ],
+                        );
                         break;
                     }
-                    let _ = association_event_tx.send(UdpAssociationEvent::Active(key, id));
+                    if association_event_tx.send(UdpAssociationEvent::Active(key, id)).is_err()
+                        && !stop.is_cancelled()
+                    {
+                        report::message(
+                            "nat66.udp_association_active",
+                            "association event receiver closed",
+                            "ChannelClosed",
+                        );
+                    }
                 }
                 Err(e) => {
-                    eprintln!("udp upstream recv failed: {e}");
+                    report::io_with_details(
+                        "nat66.udp_upstream_recv",
+                        e,
+                        [
+                            ("client", key.client.to_string()),
+                            ("destination", key.destination.to_string()),
+                        ],
+                    );
                     break;
                 }
             }
         }
     }
+    let cancelled = stop.is_cancelled();
     stop.cancel();
-    let _ = association_event_tx.send(UdpAssociationEvent::Closed(key, id));
+    if association_event_tx
+        .send(UdpAssociationEvent::Closed(key, id))
+        .is_err()
+        && !cancelled
+    {
+        report::message(
+            "nat66.udp_association_closed",
+            "association event receiver closed",
+            "ChannelClosed",
+        );
+    }
 }
 
 async fn send_response(

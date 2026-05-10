@@ -24,12 +24,24 @@ Follow existing Kotlin style: 4-space indentation, concise expression bodies onl
 - Do not suppress unexpected exceptions. Best-effort cleanup should catch only the expected failure mode and rethrow the rest.
 - Preserve existing comments; do not casually shorten or rewrite them.
 
+## Kotlin Concurrency Design
+Prefer resource-owner concurrency over broad locks or global serialization.
+
+- For UI-backed state and lightweight suspending operations, prefer a Main-confined owner using `Dispatchers.Main.immediate`, with explicit in-flight and pending state when operations must run to completion.
+- For ordered command or state transitions, prefer a single owner worker, channel, or pending-state loop over launching independent jobs that can interleave.
+- Use `Dispatchers.Default.limitedParallelism(1, "...")` for non-UI owner-local mutable state confinement when multiple coroutine entry points need a shared lane, but do not rely on it for run-to-completion ordering across suspensions.
+- Use `Mutex` for narrow, local critical sections where the protected invariant is clear. Do not use a daemon/global mutex to hide caller-owned lifecycle races.
+- Do not run blocking work on Main. Main-confined owners may call suspending/nonblocking APIs, but blocking I/O, sleeps, or CPU-heavy work must stay off Main.
+
 ## Rust Daemon Code Hygiene
 Rust daemon code should be event-driven and async-first. Prefer Tokio readiness, cancellation tokens, notifications, channels, and deadline timers over polling loops, fixed sleeps, or manually managed worker threads.
 
 - Do not use `std::thread`, blocking worker loops, `spawn_blocking`, or blocking `std::sync::mpsc` patterns unless a blocking platform API leaves no practical alternative. If one is unavoidable, keep it isolated and document why async readiness cannot be used.
 - Do not add retry loops with fixed sleeps for steady-state work. Use socket readiness, `AsyncFd`, `Notify`, channels, or `sleep_until` deadlines tied to real protocol timers. Short startup-only retries are acceptable only when no readiness source exists yet.
 - Set file descriptors and sockets non-blocking before handing them to Tokio or `AsyncFd`. Do not call blocking `accept`, `recv`, `read`, `write`, DNS, or socket APIs from async tasks.
+- Do not silently discard fallible Rust daemon operations. Do not use `let _ = ...`, `.ok()`, `.unwrap_or(...)`, stderr-only logging, or equivalent to hide errors from network I/O, resolver calls, socket sends, netlink, routing, firewall, fd, process, or cleanup operations. If an operation is intentionally best-effort, handle only the expected benign failure mode explicitly.
+- Unexpected Rust daemon background failures must be raised to the JVM as structured non-fatal daemon reports. Expected errors may be logged or consumed when the caller intentionally preserves daemon operation.
+- Explicit Rust daemon errors returned over IPC must carry structured daemon report context, including useful command/task details, errno when available, and Rust source location. Bare errno/message responses are not sufficient.
 - Keep raw `libc` and unsafe code at the owner module boundary that needs it. Prefer `socket2`/Tokio/std APIs when they expose the required behavior, but do not create broad `sys`/`utils` modules just to hide one call site.
 - Avoid arbitrary concurrency caps, queue sizes, or timeouts. If a limit is required for resource protection, name it by the resource being limited and justify the chosen value from behavior or platform constraints.
 - Local Rust tests are permitted only when they do not introduce non-Android scaffolding into daemon code. If a test needs fake non-Android platform behavior, remove it or refactor the logic under test so the test stays platform-neutral without production fallbacks.

@@ -5,6 +5,7 @@ import android.net.MacAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.text.TextUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
@@ -33,12 +34,10 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.databinding.FragmentClientsBinding
 import be.mygod.vpnhotspot.databinding.ListitemClientBinding
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.IpNeighbourMonitor
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
-import be.mygod.vpnhotspot.util.format
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
@@ -91,7 +90,7 @@ class ClientsFragment : Fragment() {
             val context = context
             val resources = resources
             val locale = resources.configuration.locales[0]
-            setTitle(getText(R.string.clients_stats_title).format(locale, arg.title))
+            setTitle(TextUtils.expandTemplate(getText(R.string.clients_stats_title), arg.title))
             val format = NumberFormat.getIntegerInstance(locale)
             setMessage("%s\n%s\n%s".format(
                     resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),
@@ -153,7 +152,6 @@ class ClientsFragment : Fragment() {
                             AppDatabase.instance.clientRecordDao.update(this@apply)
                         }
                     }
-                    IpNeighbourMonitor.instance?.flushAsync()
                     if (!wasWorking && item.itemId == R.id.block) {
                         SmartSnackbar.make(R.string.clients_popup_block_service_inactive).show()
                     }
@@ -187,7 +185,6 @@ class ClientsFragment : Fragment() {
             val deferred = CompletableDeferred<Int>()
             size = deferred
             super.submitList(list) { deferred.complete(list?.size ?: 0) }
-            binding.swipeRefresher.isRefreshing = false
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = ClientViewHolder(parent)
@@ -230,10 +227,8 @@ class ClientsFragment : Fragment() {
         binding.clients.layoutManager = LinearLayoutManager(context, RecyclerView.VERTICAL, false)
         binding.clients.itemAnimator = DefaultItemAnimator()
         binding.clients.adapter = adapter
-        binding.swipeRefresher.setColorSchemeResources(R.color.colorSecondary)
-        binding.swipeRefresher.setOnRefreshListener { IpNeighbourMonitor.instance?.flushAsync() }
         activityViewModels<ClientViewModel>().value.apply {
-            lifecycle.addObserver(fullMode)
+            lifecycle.addObserver(clientsFragmentObserver)
             clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }
         }
         return binding.root

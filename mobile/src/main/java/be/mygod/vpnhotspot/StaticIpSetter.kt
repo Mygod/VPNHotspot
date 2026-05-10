@@ -1,21 +1,20 @@
 package be.mygod.vpnhotspot
 
 import android.content.Context
+import android.net.InetAddresses
 import android.text.SpannableStringBuilder
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing
-import be.mygod.vpnhotspot.root.RoutingCommands
 import be.mygod.vpnhotspot.util.Event0
 import be.mygod.vpnhotspot.util.makeIpSpan
-import be.mygod.vpnhotspot.util.RootSession
+import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import java.io.IOException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -66,41 +65,59 @@ class StaticIpSetter : BootReceiver.Startable {
             }
             set(value) = app.pref.edit { putString(KEY, value) }
 
-        fun enable(enabled: Boolean) = GlobalScope.launch {
-            val success = try {
-                RootSession.use {
-                    try {
-                        if (enabled) {
-                            ips.lineSequence().forEach { ip -> it.exec("${Routing.IP} addr replace $ip dev lo") }
-                            true
-                        } else {
-                            val addresses = iface?.interfaceAddresses
-                            if (addresses != null) for (address in addresses) if (!address.address.isLoopbackAddress) {
-                                it.exec("${Routing.IP} addr del ${address.address.hostAddress}/${
-                                    address.networkPrefixLength} dev lo")
-                            }
-                            false
-                        }
-                    } catch (e: RoutingCommands.UnexpectedOutputException) {
-                        if (Routing.shouldSuppressIpError(e, enabled)) return@use null
-                        Timber.w(IOException("Failed to modify link", e))
-                        SmartSnackbar.make(e).show()
-                        null
-                    }
+        var applying = false
+            private set
+        private var pendingEnabled: Boolean? = null
+
+        fun enable(enabled: Boolean) {
+            GlobalScope.launch(Dispatchers.Main.immediate) {
+                pendingEnabled = enabled
+                if (applying) {
+                    ifaceEvent()
+                    return@launch
                 }
-            } catch (_: CancellationException) {
-                null
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-                null
+                applying = true
+                ifaceEvent()
+                try {
+                    while (true) {
+                        val next = pendingEnabled ?: break
+                        pendingEnabled = null
+                        val success = try {
+                            if (next) {
+                                val addresses = ArrayList<Pair<InetAddress, Int>>()
+                                for (line in ips.lineSequence()) {
+                                    val value = line.trim()
+                                    if (value.isBlank()) continue
+                                    addresses += value.split('/', limit = 2).let {
+                                        val parsed = InetAddresses.parseNumericAddress(it[0])
+                                        parsed to if (it.size == 1) parsed.address.size * 8 else it[1].toInt()
+                                    }
+                                }
+                                DaemonController.replaceStaticAddresses("lo", addresses)
+                                true
+                            } else {
+                                DaemonController.deleteStaticAddresses("lo")
+                                false
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            SmartSnackbar.make(e).show()
+                            null
+                        }
+                        when (success) {
+                            true -> BootReceiver.add<StaticIpSetter>(StaticIpSetter())
+                            false -> BootReceiver.delete<StaticIpSetter>()
+                            null -> { }
+                        }
+                        ifaceEvent()
+                    }
+                } finally {
+                    applying = false
+                    ifaceEvent()
+                }
             }
-            when (success) {
-                true -> BootReceiver.add<StaticIpSetter>(StaticIpSetter())
-                false -> BootReceiver.delete<StaticIpSetter>()
-                null -> { }
-            }
-            ifaceEvent()
         }
     }
 

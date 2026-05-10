@@ -12,10 +12,11 @@ path = "src/main.rs"
 test = false
 
 [dependencies]
+futures-util = "0.3.31"
 libc = "0.2.186"
-linux-raw-sys = { version = "0.12.1", default-features = false, features = ["no_std", "netlink"] }
+rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 socket2 = { version = "0.6.3", features = ["all"] }
-tokio = { version = "1.51.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.51.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.18"
 
 [profile.release]

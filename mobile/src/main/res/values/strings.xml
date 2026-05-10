@@ -75,21 +75,21 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz, channel %2$d, width %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
-        width %3$s, idle timeout in %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, channel %2$d,
-        width %3$s, idle timeout disabled</string>
+    <string name="tethering_manage_wifi_info">^1 MHz, channel ^2, width ^3</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">^4: Wi\u2011Fi ^5, ^1 MHz, channel ^2,
+        width ^3, idle timeout in ^6</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">^4: Wi\u2011Fi ^5, ^1 MHz, channel ^2,
+        width ^3, idle timeout disabled</string>
     <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="one">%1$s/%2$d client connected\nSupported features: %3$s</item>
-        <item quantity="other">%1$s/%2$d clients connected\nSupported features: %3$s</item>
+        <item quantity="one">^1/^2 client connected\nSupported features: ^3</item>
+        <item quantity="other">^1/^2 clients connected\nSupported features: ^3</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
-        <item quantity="one">%d client connected</item>
-        <item quantity="other">%1d clients connected</item>
+        <item quantity="one">^1 client connected</item>
+        <item quantity="other">^1 clients connected</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %s</string>
-    <string name="tethering_manage_wifi_country_code">\nDriver country code: %s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nSupported channels: ^1</string>
+    <string name="tethering_manage_wifi_country_code">\nDriver country code: ^1</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP concurrency</string>
@@ -114,7 +114,7 @@
     <string name="clients_mac_lookup_unexpected_error">Server returned error for %1$s: %2$s</string>
     <string name="clients_nickname_title">Nickname for %s</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Vendor</string>
-    <string name="clients_stats_title">Stats for %s</string>
+    <string name="clients_stats_title">Stats for ^1</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Connected 1 time since %2$s</item>
         <item quantity="other">Connected %1$s times since %2$s</item>
@@ -130,7 +130,7 @@
 
     <string name="settings_upstream">Upstream</string>
     <string name="settings_downstream">Downstream</string>
-    <string name="settings_service_masquerade">IP Masquerade Mode</string>
+    <string name="settings_service_masquerade">IPv4 masquerade mode</string>
     <string name="settings_service_masquerade_none">None</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
@@ -138,7 +138,6 @@
     <string name="settings_service_ipv6_mode_block">Block</string>
     <string name="settings_service_ipv6_mode_system">System</string>
     <string name="settings_service_ipv6_mode_nat">NAT (Userspace)</string>
-    <string name="warn_ipv6_nat_failed">NAT66 setup failed: %s</string>
     <string name="settings_service_auto_start">Auto start services</string>
     <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
         update</string>
@@ -154,17 +153,11 @@
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
     <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
-    <string name="settings_service_ip_monitor">Network status monitor mode</string>
-    <string name="settings_service_ip_monitor_monitor">Netlink monitor</string>
-    <string name="settings_service_ip_monitor_monitor_root">Netlink monitor with root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll with root</string>
-    <string name="settings_service_upstream_monitor">Current upstreams</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s; fallback: %2$s</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_upstream_fallback">Fallback upstream interface</string>
     <string name="settings_upstream_fallback_auto">Auto detect system default network</string>
+    <string name="settings_upstream_current_summary">^1 (current: ^2)</string>
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions.</string>
@@ -178,8 +171,6 @@
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
-    <string name="settings_restart_required">Restart this app to apply this setting.</string>
-    <string name="settings_exit_app">Exit</string>
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
@@ -199,7 +190,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">unknown #%d</string>
-    <string name="exception_interface_not_found">Fatal: Downstream interface not found</string>
     <string name="noisy_su_failure">Something went wrong, please check the debug information.</string>
     <string name="permission_missing">Permission missing</string>
 

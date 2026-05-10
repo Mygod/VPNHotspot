@@ -54,7 +54,7 @@ class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFrag
     override fun onBindDialogView(view: View) {
         super.onBindDialogView(view)
         editText = view.findViewById(android.R.id.edit)
-        editText.hint = (preference.summaryProvider as SummaryFallbackProvider).fallback
+        editText.hint = (preference.summaryProvider as UpstreamSummaryProvider).fallback
     }
 
     override fun onStart() {

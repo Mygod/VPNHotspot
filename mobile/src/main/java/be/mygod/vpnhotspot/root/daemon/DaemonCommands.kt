@@ -1,8 +1,7 @@
 package be.mygod.vpnhotspot.root.daemon
 
 import android.os.ParcelFileDescriptor
-import android.os.Parcelable
-import be.mygod.librootkotlinx.RootCommand
+import be.mygod.librootkotlinx.RootCommandNoResult
 import kotlinx.parcelize.Parcelize
 import java.io.File
 
@@ -12,7 +11,7 @@ data class RunDaemon(
     private val socketName: String,
     private val stdout: ParcelFileDescriptor,
     private val stderr: ParcelFileDescriptor,
-) : RootCommand<Parcelable?> {
+) : RootCommandNoResult {
     override suspend fun execute() = null.also {
         stdout.use { stdout ->
             stderr.use { stderr ->

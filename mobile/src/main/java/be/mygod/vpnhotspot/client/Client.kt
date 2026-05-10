@@ -10,7 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.InetAddressComparator
-import be.mygod.vpnhotspot.net.IpNeighbour
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientRecord
@@ -62,11 +62,11 @@ class Client(val mac: MacAddress, val iface: String? = null, val type: TetherTyp
                 append(makeIpSpan(ip))
                 info.address?.let { append("/${it.prefixLength}") }
                 append(when (info.state) {
-                    IpNeighbour.State.UNSET -> ""
-                    IpNeighbour.State.INCOMPLETE -> app.getText(R.string.connected_state_incomplete)
-                    IpNeighbour.State.VALID -> app.getText(R.string.connected_state_valid)
-                    IpNeighbour.State.FAILED -> app.getText(R.string.connected_state_failed)
-                    else -> error("Invalid IpNeighbour.State: ${info.state}")
+                    NetlinkNeighbour.State.UNSET -> ""
+                    NetlinkNeighbour.State.INCOMPLETE -> app.getText(R.string.connected_state_incomplete)
+                    NetlinkNeighbour.State.VALID -> app.getText(R.string.connected_state_valid)
+                    NetlinkNeighbour.State.FAILED -> app.getText(R.string.connected_state_failed)
+                    else -> error("Invalid NetlinkNeighbour.State: ${info.state}")
                 })
                 if (info.address != null) {
                     info.hostname?.let { append(" →“$it”") }

@@ -11,14 +11,11 @@ import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.TwoStatePreference
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetherOffloadManager
-import be.mygod.vpnhotspot.net.monitor.FallbackUpstreamMonitor
-import be.mygod.vpnhotspot.net.monitor.IpMonitor
-import be.mygod.vpnhotspot.net.monitor.UpstreamMonitor
+import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.preference.AutoCompleteNetworkPreferenceDialogFragment
 import be.mygod.vpnhotspot.preference.SharedPreferenceDataStore
-import be.mygod.vpnhotspot.preference.SummaryFallbackProvider
-import be.mygod.vpnhotspot.preference.UpstreamsPreference
+import be.mygod.vpnhotspot.preference.UpstreamSummaryProvider
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
@@ -26,7 +23,6 @@ import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -36,7 +32,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.PrintWriter
-import kotlin.system.exitProcess
 
 class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     private fun Preference.remove() = parent!!.removePreference(this)
@@ -45,12 +40,10 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
         WifiDoubleLock.mode = WifiDoubleLock.mode
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
-        IpMonitor.currentMode = IpMonitor.currentMode
         preferenceManager.preferenceDataStore = SharedPreferenceDataStore(app.pref)
         addPreferencesFromResource(R.xml.pref_settings)
-        findPreference<UpstreamsPreference>("service.upstream.monitor")!!.attachListener(lifecycle)
-        SummaryFallbackProvider(findPreference(UpstreamMonitor.KEY)!!)
-        SummaryFallbackProvider(findPreference(FallbackUpstreamMonitor.KEY)!!)
+        UpstreamSummaryProvider(findPreference(Upstreams.KEY_PRIMARY)!!, lifecycle, Upstreams.primary)
+        UpstreamSummaryProvider(findPreference(Upstreams.KEY_FALLBACK)!!, lifecycle, Upstreams.fallback)
         findPreference<TwoStatePreference>("system.enableTetherOffload")!!.apply {
             isChecked = TetherOffloadManager.enabled
             setOnPreferenceChangeListener { _, newValue ->
@@ -82,17 +75,6 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
             GlobalScope.launch { RoutingManager.clean() }
             true
         }
-        findPreference<Preference>(IpMonitor.KEY)!!.setOnPreferenceChangeListener { _, _ ->
-            Snackbar.make(requireView(), R.string.settings_restart_required, Snackbar.LENGTH_LONG).apply {
-                setAction(R.string.settings_exit_app) {
-                    GlobalScope.launch {
-                        RoutingManager.clean(false)
-                        exitProcess(0)
-                    }
-                }
-            }.show()
-            true
-        }
         findPreference<Preference>("misc.logcat")!!.setOnPreferenceClickListener {
             GlobalScope.launch(Dispatchers.IO) {
                 val context = requireContext()
@@ -105,15 +87,16 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) writer.println(
                             "S extension ${SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S)}")
                         writer.println()
-                        writer.flush()
-                        try {
-                            Runtime.getRuntime().exec(arrayOf("logcat", "-d")).inputStream.use { it.copyTo(out) }
-                        } catch (e: IOException) {
-                            Timber.w(e)
-                            e.printStackTrace(writer)
-                        }
-                        writer.println()
                     }
+                }
+                try {
+                    ProcessBuilder(Dump.LOGCAT, "-d").apply {
+                        redirectErrorStream(true)
+                        redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+                    }.start().waitFor()
+                } catch (e: IOException) {
+                    Timber.w(e)
+                    logFile.appendText(e.stackTraceToString())
                 }
                 try {
                     RootManager.use {
@@ -147,7 +130,7 @@ class SettingsPreferenceFragment : PreferenceFragmentCompat() {
     }
 
     override fun onDisplayPreferenceDialog(preference: Preference) = when (preference.key) {
-        UpstreamMonitor.KEY, FallbackUpstreamMonitor.KEY ->
+        Upstreams.KEY_PRIMARY, Upstreams.KEY_FALLBACK ->
             AutoCompleteNetworkPreferenceDialogFragment().apply {
                 setArguments(preference.key)
                 setTargetFragment(this@SettingsPreferenceFragment, 0)

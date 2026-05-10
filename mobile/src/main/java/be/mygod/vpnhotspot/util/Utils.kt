@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
-import android.net.InetAddresses
 import android.net.LinkProperties
 import android.net.MacAddress
 import android.net.NetworkRequest
@@ -20,7 +19,6 @@ import android.os.ext.SdkExtensions
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
-import android.text.Spanned
 import android.view.MenuItem
 import android.view.View
 import android.widget.ImageView
@@ -54,7 +52,6 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.net.URL
-import java.util.Locale
 import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
@@ -125,52 +122,6 @@ fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageVi
 @BindingAdapter("android:visibility")
 fun setVisibility(view: View, value: Boolean) {
     view.isVisible = value
-}
-
-private val formatSequence = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[tT][a-zA-Z])".toPattern()
-/**
- * Version of [String.format] that works on [Spanned] strings to preserve rich text formatting.
- * Both the `format` as well as any `%s args` can be Spanned and will have their formatting preserved.
- * Due to the way [Spannable]s work, any argument's spans will can only be included **once** in the result.
- * Any duplicates will appear as text only.
- *
- * See also: https://github.com/george-steel/android-utils/blob/289aff11e53593a55d780f9f5986e49343a79e55/src/org/oshkimaadziig/george/androidutils/SpanFormatter.java
- *
- * @param locale
- * the locale to apply; `null` value means no localization.
- * @param args
- * the list of arguments passed to the formatter.
- * @return the formatted string (with spans).
- * @see String.format
- * @author George T. Steel
- */
-fun CharSequence.format(locale: Locale, vararg args: Any) = SpannableStringBuilder(this).apply {
-    var i = 0
-    var argAt = -1
-    while (i < length) {
-        val m = formatSequence.matcher(this)
-        if (!m.find(i)) break
-        i = m.start()
-        val exprEnd = m.end()
-        val argTerm = m.group(1)!!
-        val modTerm = m.group(2)
-        val cookedArg = when (val typeTerm = m.group(3)) {
-            "%" -> "%"
-            "n" -> "\n"
-            else -> {
-                val argItem = args[when (argTerm) {
-                    "" -> ++argAt
-                    "<" -> argAt
-                    else -> Integer.parseInt(argTerm.substring(0, argTerm.length - 1)) - 1
-                }]
-                if (typeTerm == "s" && argItem is Spanned) argItem else {
-                    String.format(locale, "%$modTerm$typeTerm", argItem)
-                }
-            }
-        }
-        replace(i, exprEnd, cookedArg)
-        i += cookedArg.length
-    }
 }
 
 fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",

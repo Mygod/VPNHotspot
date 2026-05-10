@@ -51,23 +51,23 @@
     <string name="tethering_manage_wifi">Ponto de acesso Wi\u2011Fi</string>
     <string name="tethering_manage_bluetooth">Tethering Bluetooth</string>
     <string name="tethering_manage_ethernet">Tethering Ethernet</string>
-    <string name="tethering_manage_wifi_info">%1$d MHz, canal %2$d, largura %3$s</string>
-    <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, canal %2$d,
-        largura %3$s, tempo ocioso em %6$s</string>
-    <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$d, %1$d MHz, largura %2$d,
-        largura %3$s, tempo ocioso desabilitado</string>
+    <string name="tethering_manage_wifi_info">^1 MHz, canal ^2, largura ^3</string>
+    <string name="tethering_manage_wifi_info_timeout_enabled">^4: Wi\u2011Fi ^5, ^1 MHz, canal ^2,
+        largura ^3, tempo ocioso em ^6</string>
+    <string name="tethering_manage_wifi_info_timeout_disabled">^4: Wi\u2011Fi ^5, ^1 MHz, largura ^2,
+        largura ^3, tempo ocioso desabilitado</string>
     <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="one">%1$s/%2$d cliente conectado\nFunções suportadas: %3$s</item>
-        <item quantity="many">%1$s/%2$d clientes conectados\nFunções suportadas: %3$s</item>
-        <item quantity="other">%1$s/%2$d clientes conectados\nFunções suportadas: %3$s</item>
+        <item quantity="one">^1/^2 cliente conectado\nFunções suportadas: ^3</item>
+        <item quantity="many">^1/^2 clientes conectados\nFunções suportadas: ^3</item>
+        <item quantity="other">^1/^2 clientes conectados\nFunções suportadas: ^3</item>
     </plurals>
     <plurals name="tethering_manage_wifi_clients">
-        <item quantity="one">%d cliente conectado</item>
-        <item quantity="many">%1$d de clientes conectados</item>
-        <item quantity="other">%1d clientes conectados</item>
+        <item quantity="one">^1 cliente conectado</item>
+        <item quantity="many">^1 de clientes conectados</item>
+        <item quantity="other">^1 clientes conectados</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nCanais suportados: %s</string>
-    <string name="tethering_manage_wifi_country_code">\nCódigo do país do Driver: %s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nCanais suportados: ^1</string>
+    <string name="tethering_manage_wifi_country_code">\nCódigo do país do Driver: ^1</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP aleatório</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Simultaneidade de AP em ponte</string>
     <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP simultâneos</string>
@@ -90,7 +90,7 @@
     <string name="clients_mac_lookup_unexpected_error">O servidor retornou um erro para %1$s: %2$s</string>
     <string name="clients_nickname_title">Apelido para %s</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Fornecedor</string>
-    <string name="clients_stats_title">Status para %s</string>
+    <string name="clients_stats_title">Status para ^1</string>
     <plurals name="clients_stats_message_1">
         <item quantity="one">Conectado 1 vez desde %2$s</item>
         <item quantity="many">Conectado %1$s de vezes desde %2$s</item>
@@ -123,17 +123,11 @@
     <string name="settings_service_wifi_lock_none">Padrão do sistema</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Desativar o modo de economia de energia</string>
     <string name="settings_service_wifi_lock_low_latency">Modo de baixa latência</string>
-    <string name="settings_service_ip_monitor">Modo de monitoramento de rede</string>
-    <string name="settings_service_ip_monitor_monitor">Monitor netlink</string>
-    <string name="settings_service_ip_monitor_monitor_root">Monitor netlink com root</string>
-    <string name="settings_service_ip_monitor_poll">Poll</string>
-    <string name="settings_service_ip_monitor_poll_root">Poll com root</string>
-    <string name="settings_service_upstream_monitor">Upstreams atuais</string>
-    <string name="settings_service_upstream_monitor_summary">%1$s; fallback: %2$s</string>
     <string name="settings_service_upstream">Interface de upstream de rede</string>
     <string name="settings_service_upstream_auto">Detectar automaticamente VPN de sistema</string>
     <string name="settings_upstream_fallback">Interface upstream de fallback</string>
     <string name="settings_upstream_fallback_auto">Detectar automaticamente a rede padrão do sistema</string>
+    <string name="settings_upstream_current_summary">^1 (atual: ^2)</string>
     <string name="settings_service_clean">Limpar/re-aplicar regras de roteamento</string>
     <string name="settings_service_clean_summary">Atualize as configurações alteradas para os serviços ativos atualmente. Isso pode corrigir condições raras.</string>
     <string name="settings_system_tether_offload">Aceleração de Tethering do hardware</string>
@@ -146,8 +140,6 @@
     <string name="settings_misc_source_summary">Leia o manual, marque com estrela, envie problemas e contribua (Tipo o Konny :D)</string>
     <string name="settings_misc_donate">Doe</string>
     <string name="settings_misc_donate_summary">Eu amo dinheiro!</string>
-    <string name="settings_restart_required">Reinicie o aplicativo para aplicar essa função.</string>
-    <string name="settings_exit_app">Sair</string>
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">Serviço de Tethering de VPN</string>
@@ -170,7 +162,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">desconhecido #%d</string>
-    <string name="exception_interface_not_found">Fatal: Interface de downstream não encontrada</string>
     <string name="noisy_su_failure">Algo se saiu errado. Por favor, verifique o log de depuração</string>
     <string name="permission_missing">Permissão faltando.</string>
 

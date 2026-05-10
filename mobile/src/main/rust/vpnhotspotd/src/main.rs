@@ -1,8 +1,15 @@
 mod control;
 mod dns;
+mod downstream;
+mod firewall;
 mod nat66;
+mod neighbour;
+mod netlink;
+mod report;
+mod routing;
 mod session;
 mod socket;
+mod traffic;
 mod upstream;
 
 use std::env;

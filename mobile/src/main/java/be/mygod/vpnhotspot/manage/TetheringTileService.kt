@@ -23,7 +23,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-sealed class TetheringTileService : IpNeighbourMonitoringTileService(), TetheringManagerCompat.StartTetheringCallback,
+sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), TetheringManagerCompat.StartTetheringCallback,
     TetheringManagerCompat.StopTetheringCallback, TetherStates.Callback {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }

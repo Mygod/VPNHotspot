@@ -11,6 +11,16 @@ pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {
 
 pub(crate) async fn await_writable(fd: BorrowedFd<'_>) -> io::Result<()> {
     let fd = AsyncFd::new(fd)?;
-    let _ = fd.writable().await?;
+    drop(fd.writable().await?);
     Ok(())
+}
+
+pub(crate) fn is_connection_closed(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::BrokenPipe
+            | io::ErrorKind::ConnectionAborted
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::UnexpectedEof
+    )
 }

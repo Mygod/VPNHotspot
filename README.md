@@ -64,7 +64,10 @@ Default settings are picked to suit general use cases and maximize compatibility
 * (Android 12+) Platform-managed IPsec tunnel VPNs such as Pixel VPN and some `VpnManager`/`Ikev2VpnProfile`
   profiles may need a compatibility workaround. VPN Hotspot updates the live IPv4 tunnel forwarding policy in
   place while sharing and relies on Android to recreate the stock policy when that tunnel is rebuilt.
-* IP Masquerade Mode:
+
+### Downstream
+
+* IPv4 Masquerade Mode:
   - None:
     Nothing will be done to remap address/port from downstream.
     I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
@@ -74,9 +77,6 @@ Default settings are picked to suit general use cases and maximize compatibility
     Let your system handle masquerade.
     Android system will do a few extra things to make things like FTP and tethering traffic counter work.
     You should probably not use this if you are trying to hide your tethering activity from your carrier.
-
-### Downstream
-
 * IPv6 mode:
   - System:
     Leave IPv6 handling to the platform/system routing setup.
@@ -118,18 +118,6 @@ Default settings are picked to suit general use cases and maximize compatibility
   Attempt to start a temporary hotspot using system Wi-Fi hotspot configuration.
   This feature is most likely only functional on Android 12 or newer.
   Enabling this switch will also prevent other apps from using the [local-only hotspot](https://developer.android.com/guide/topics/connectivity/localonlyhotspot) functionality.
-* Network status monitor mode: This option controls how the app monitors connected devices as well as interface changes
-  (when custom upstream is used).
-  Requires restarting the app to take effects. (best way is to go to app info and force stop)
-   - Netlink monitor: Use Linux netlink mechanism, most battery efficient but may not work with SELinux enforcing mode.
-     Sometimes auto fallbacks to Netlink monitor with root and Poll.
-   - Netlink monitor with root: Same as above but runs netlink as root. This option works well with SELinux enforcing mode
-     but might still be bugged on devices heavily modified by OEM and/or carriers. Sometimes auto fallbacks to Poll.
-   - Poll: (default) Update network information manually every second. Least battery efficient but it should work on most
-     devices. Recommended to switch to other modes if possible.
-   - Poll with root: Same as Poll but polling is done using a root shell.
-
-
 ## Q & A
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
@@ -389,6 +377,12 @@ Other:
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in
   `onTetherStatesChanged`.
+* The Rust DNS proxy submits upstream queries through `android_res_nsend`/`android_res_nresult`.
+  To keep daemon tasks nonblocking while still using `android_res_nresult` as the public result
+  reader/closer, it waits for `dnsproxyd` to close the one-shot `resnsend` client socket before
+  reading the result. This assumes `resnsend` writes the complete resolver result before returning
+  and the socket receive buffer can hold that result until the framework socket listener closes the
+  client socket.
 * For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
 on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
 gap between them.
@@ -396,26 +390,29 @@ For route-table numbers, Android interface tables are assumed to start at ifinde
 TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
 deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
-and only deletes VPNHotspot prefixes reconstructed from current interface names. Clean batches
-one-shot deterministic `ip` cleanup commands with `/system/bin/ip -force -batch -` and one-shot
-iptables cleanup with `iptables-restore -w --noflush` and `ip6tables-restore -w --noflush`, which
-are assumed to be supported by Android's bundled iproute2 and iptables on API 29+.
+and only deletes VPNHotspot prefixes reconstructed from current interface names. Background routing
+state is owned by the Rust root daemon: address, route, rule, and neighbour work uses rtnetlink
+instead of `/system/bin/ip`; firewall work runs through Android's bundled `/system/bin/iptables-restore`
+and `/system/bin/ip6tables-restore`; and netd forwarding/NAT requests run through native
+`/system/bin/ndc`. Clean batches one-shot iptables cleanup with `iptables-restore -w --noflush` and
+`ip6tables-restore -w --noflush`, which are assumed to be supported by Android's bundled iptables on
+API 29+. Traffic counters are read through `iptables-restore -w --noflush` with a read-only
+`*filter`/`-nvx -L <chain>` restore command.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
 TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sockets use the
 AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
 `explicitlySelected` and `protectedFromVpn` fwmark bits.
 
-Undocumented system binaries are all bundled and executable:
+System/root command assumptions:
 
-* `iptables-save`, `ip6tables-save`;
-* `iptables-restore`, `ip6tables-restore` (`-w --noflush`);
-* `echo`;
-* `/system/bin/ip` (`address link monitor neigh rule unreachable`);
-* `ndc` (`ipfwd nat network`);
-* `iptables`, `ip6tables` (with correct version corresponding to API level, `-nvx -L <chain>`);
-* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`);
-* `sh`;
-* `su`.
+The following Android system binaries are assumed to be bundled and executable:
+
+* `/system/bin/dumpsys` (`ipsec`);
+* `/system/bin/iptables-restore`, `/system/bin/ip6tables-restore` (`-w --noflush`, restore input
+  commands including `-I`, `-D`, `-N`, `-nvx -L <chain>`);
+* `/system/bin/ndc` (`ipfwd`, `nat`);
+* `/system/bin/settings` (`put global`);
+* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`).
 
 Wi-Fi driver `wpa_supplicant`:
 

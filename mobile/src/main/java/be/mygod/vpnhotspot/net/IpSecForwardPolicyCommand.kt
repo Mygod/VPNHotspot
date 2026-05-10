@@ -4,7 +4,6 @@ import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.vpnhotspot.root.fixPath
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
@@ -24,7 +23,7 @@ data class IpSecForwardPolicyCommand(private val upstream: String) : RootCommand
             // Existing tunnel/transform state is only exposed via IIpSecService.dump():
             // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/core/java/android/net/IIpSecService.aidl#33
             // https://android.googlesource.com/platform/frameworks/base/+/android-9.0.0_r1/services/core/java/com/android/server/IpSecService.java#1731
-            val process = ProcessBuilder("dumpsys", "ipsec").fixPath(true).start()
+            val process = ProcessBuilder("/system/bin/dumpsys", "ipsec").redirectErrorStream(true).start()
             process.inputStream.bufferedReader().use { it.readText() }.also {
                 check(process.waitFor() == 0) { "dumpsys ipsec failed" }
             }

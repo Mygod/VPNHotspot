@@ -9,6 +9,11 @@ use tokio::net::{TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket};
 use crate::socket::await_connect;
 use vpnhotspotd::shared::model::Network;
 
+pub(crate) enum TcpConnectError {
+    Setup(io::Error),
+    Connect(io::Error),
+}
+
 #[link(name = "android")]
 unsafe extern "C" {
     fn android_setsocknetwork(network: u64, fd: c_int) -> c_int;
@@ -17,18 +22,23 @@ unsafe extern "C" {
 pub(crate) async fn connect_tcp(
     network: Network,
     destination: SocketAddrV6,
-) -> io::Result<TokioTcpStream> {
-    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))?;
-    set_socket_network(network, socket.as_raw_fd())?;
-    socket.set_nonblocking(true)?;
+) -> Result<TokioTcpStream, TcpConnectError> {
+    let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))
+        .map_err(TcpConnectError::Setup)?;
+    set_socket_network(network, socket.as_raw_fd()).map_err(TcpConnectError::Setup)?;
+    socket
+        .set_nonblocking(true)
+        .map_err(TcpConnectError::Setup)?;
     if let Err(error) = socket.connect(&SockAddr::from(destination)) {
         let raw_os_error = error.raw_os_error();
         if error.kind() != io::ErrorKind::WouldBlock && raw_os_error != Some(EINPROGRESS) {
-            return Err(error);
+            return Err(TcpConnectError::Connect(error));
         }
-        await_connect(&socket).await?;
+        await_connect(&socket)
+            .await
+            .map_err(TcpConnectError::Connect)?;
     }
-    TokioTcpStream::from_std(socket.into())
+    TokioTcpStream::from_std(socket.into()).map_err(TcpConnectError::Setup)
 }
 
 pub(crate) async fn connect_udp(
