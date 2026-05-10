@@ -1207,30 +1207,25 @@ pub(crate) async fn replace_static_addresses(
             "routing.static_addresses.link_index",
             [("dev", command.dev.clone())],
         )?;
-    for address in &command.addresses {
-        let (address, prefix_len) = read_ip_address_entry(address)?;
-        let command = IpAddressCommand {
+    let requested_addresses = command
+        .addresses
+        .iter()
+        .map(read_ip_address_entry)
+        .collect::<io::Result<Vec<_>>>()?;
+    let requested = requested_addresses.iter().copied().collect::<HashSet<_>>();
+    for (address, prefix_len) in requested_addresses {
+        let address_command = IpAddressCommand {
             operation: IpOperation::Replace,
             address,
             prefix_len,
             interface: command.dev.clone(),
         };
-        match apply_address_command_with_index(handle, &command, index).await {
+        match apply_address_command_with_index(handle, &address_command, index).await {
             Ok(()) => {}
             Err(e) if error_errno(&e) == Some(libc::EEXIST) => {}
             Err(e) => return Err(e),
         }
     }
-    Ok(())
-}
-
-pub(crate) async fn delete_static_addresses(handle: &netlink::Handle, dev: &str) -> io::Result<()> {
-    let index = netlink::link_index(handle, dev)
-        .await
-        .with_report_context_details(
-            "routing.static_addresses.link_index",
-            [("dev", dev.to_owned())],
-        )?;
     let _dump = handle.lock_dump().await;
     let addresses = handle
         .raw()
@@ -1243,7 +1238,10 @@ pub(crate) async fn delete_static_addresses(handle: &netlink::Handle, dev: &str)
         .try_next()
         .await
         .map_err(netlink::to_io_error)
-        .with_report_context_details("routing.static_addresses.dump", [("dev", dev.to_owned())])?
+        .with_report_context_details(
+            "routing.static_addresses.dump",
+            [("dev", command.dev.clone())],
+        )?
     {
         let mut address = None;
         for attribute in &message.attributes {
@@ -1261,16 +1259,17 @@ pub(crate) async fn delete_static_addresses(handle: &netlink::Handle, dev: &str)
         let Some(address) = address else {
             continue;
         };
-        if address.is_loopback() {
+        let prefix_len = message.header.prefix_len;
+        if address.is_loopback() || requested.contains(&(address, prefix_len)) {
             continue;
         }
-        let command = IpAddressCommand {
+        let address_command = IpAddressCommand {
             operation: IpOperation::Delete,
             address,
-            prefix_len: message.header.prefix_len,
-            interface: dev.to_owned(),
+            prefix_len,
+            interface: command.dev.clone(),
         };
-        match apply_address_command_with_index(handle, &command, index).await {
+        match apply_address_command_with_index(handle, &address_command, index).await {
             Ok(()) => {}
             Err(e) if is_missing_address(&e) => {}
             Err(e) => return Err(e),

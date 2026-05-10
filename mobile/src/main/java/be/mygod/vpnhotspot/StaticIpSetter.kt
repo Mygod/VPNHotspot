@@ -103,7 +103,7 @@ class StaticIpSetter : BootReceiver.Startable {
                                 DaemonController.replaceStaticAddresses("lo", addresses)
                                 true
                             } else {
-                                DaemonController.deleteStaticAddresses("lo")
+                                DaemonController.replaceStaticAddresses("lo", emptyList())
                                 false
                             }
                         } catch (e: CancellationException) {

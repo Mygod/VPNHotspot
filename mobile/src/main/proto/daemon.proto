@@ -16,7 +16,6 @@ message ClientEnvelope {
     StartNeighbourMonitorCommand start_neighbour_monitor = 6;
     CleanRoutingCommand clean_routing = 7;
     ReplaceStaticAddressesCommand replace_static_addresses = 8;
-    DeleteStaticAddressesCommand delete_static_addresses = 9;
   }
 }
 
@@ -42,10 +41,6 @@ message CleanRoutingCommand {
 message ReplaceStaticAddressesCommand {
   string dev = 1;
   repeated IpAddressEntry addresses = 2;
-}
-
-message DeleteStaticAddressesCommand {
-  string dev = 1;
 }
 
 message SessionConfig {

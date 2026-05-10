@@ -297,16 +297,6 @@ async fn handle_command(
                 )?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
-        daemon::client_envelope::Command::DeleteStaticAddresses(command) => {
-            let handle = state.netlink.handle();
-            routing::delete_static_addresses(&handle, &command.dev)
-                .await
-                .with_report_context_details(
-                    "control.delete_static_addresses",
-                    [("dev", command.dev)],
-                )?;
-            Ok(CallOutput::Reply(ack_reply_frame(id)))
-        }
         daemon::client_envelope::Command::CleanRouting(command) => {
             let sessions = state.drain_sessions().await;
             let mut complete_ids = Vec::new();

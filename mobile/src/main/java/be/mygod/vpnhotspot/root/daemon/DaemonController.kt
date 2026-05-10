@@ -129,10 +129,6 @@ object DaemonController {
         ))).requireAck()
     }
 
-    suspend fun deleteStaticAddresses(dev: String) {
-        request(ClientEnvelope(delete_static_addresses = DeleteStaticAddressesCommand(dev))).requireAck()
-    }
-
     suspend fun cleanRouting(ipv6NatPrefixSeed: String) {
         request(ClientEnvelope(clean_routing = CleanRoutingCommand(ipv6NatPrefixSeed))).requireAck()
     }
