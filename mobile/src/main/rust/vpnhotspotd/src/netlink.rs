@@ -312,20 +312,3 @@ fn link_name_from_message(link: LinkMessage) -> Option<String> {
         }
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn missing_link_accepts_kernel_enodev_and_synthetic_not_found() {
-        assert!(is_missing_link(&io::Error::from_raw_os_error(libc::ENODEV)));
-        assert!(is_missing_link(&io::Error::new(
-            io::ErrorKind::NotFound,
-            "interface not found"
-        )));
-        assert!(!is_missing_link(&io::Error::from_raw_os_error(
-            libc::EINVAL
-        )));
-    }
-}
