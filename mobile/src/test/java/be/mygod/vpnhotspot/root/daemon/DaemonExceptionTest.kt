@@ -28,6 +28,18 @@ class DaemonExceptionTest {
         assertEquals("Uncategorized", e.report.kind)
     }
 
+    @Test
+    fun daemonExceptionMessageDoesNotRepeatOsErrorCode() {
+        val e = DaemonException(daemonErrorReport(
+            message = "Connection timed out (os error 110)",
+            errno = 110,
+            kind = "TimedOut",
+        ))
+
+        assertDaemonReportCause(e, "routing.command: Connection timed out (os error 110) " +
+                "[TimedOut at routing.rs:123:45, pid=2345]")
+    }
+
     private fun daemonErrorReport(
         message: String = "Device or resource busy",
         errno: Int? = 16,

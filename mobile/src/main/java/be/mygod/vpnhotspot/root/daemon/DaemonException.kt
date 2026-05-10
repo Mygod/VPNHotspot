@@ -18,7 +18,9 @@ class DaemonException(
 
         private fun DaemonErrorReport.toExceptionMessage() = buildString {
             append(context).append(": ").append(message)
-            if (errno != null) append(" (errno=").append(errno).append(')')
+            if (errno != null && "(os error $errno)" !in message) {
+                append(" (errno=").append(errno).append(')')
+            }
             append(" [")
             if (errno == null || kind != "Uncategorized") append(kind).append(" at ")
             append(file_).append(':').append(line).append(':')

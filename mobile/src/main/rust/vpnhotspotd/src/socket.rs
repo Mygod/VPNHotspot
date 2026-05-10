@@ -21,6 +21,7 @@ pub(crate) fn is_connection_closed(error: &io::Error) -> bool {
         io::ErrorKind::BrokenPipe
             | io::ErrorKind::ConnectionAborted
             | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::TimedOut
             | io::ErrorKind::UnexpectedEof
     )
 }

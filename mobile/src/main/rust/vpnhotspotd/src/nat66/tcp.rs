@@ -119,10 +119,10 @@ fn log_connection_error(
     selection: SelectedNetwork,
     error: &io::Error,
 ) {
-    let outcome = if is_connection_closed(error) {
-        "closed"
-    } else {
-        "failed"
+    let outcome = match error.kind() {
+        io::ErrorKind::TimedOut => "timed out",
+        _ if is_connection_closed(error) => "closed",
+        _ => "failed",
     };
     report::stdout!(
         "tcp proxy {operation} {outcome}: client={client} destination={destination} network={} role={:?}: {error}",
