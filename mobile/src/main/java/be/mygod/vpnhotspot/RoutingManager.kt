@@ -71,13 +71,13 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                         }
                     }
                 }
+                for ((manager, routing) in restarts) monitor.withLock {
+                    if (manager.routing === routing) manager.startRoutingLocked(routing)
+                }
                 monitor.withLock {
                     if (cleaning === clean) cleaning = null
                 }
                 clean.complete(Unit)
-                for ((manager, routing) in restarts) monitor.withLock {
-                    if (manager.routing === routing) manager.startRoutingLocked(routing)
-                }
             } finally {
                 monitor.withLock {
                     if (cleaning === clean) cleaning = null
