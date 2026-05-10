@@ -80,7 +80,7 @@ class Routing(private val caller: Any, private val downstream: String) {
 
     private sealed class RoutingUpdate(val key: Any) {
         class UpstreamSnapshot(val upstream: UpstreamTracker, val value: Upstream?) : RoutingUpdate(upstream)
-        class NeighboursSnapshot(val neighbours: Collection<DaemonProto.Neighbour>) : RoutingUpdate(NeighboursSnapshot) {
+        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighboursSnapshot) {
             private companion object
         }
         class BlockedMacsSnapshot(val macs: Set<MacAddress>) : RoutingUpdate(BlockedMacsSnapshot) {
@@ -103,7 +103,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 launch {
                     Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
                 }
-                launch { netlinkNeighbours.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
+                launch { NetlinkNeighbour.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
                 val initialBlockedMacs = CompletableDeferred<Set<MacAddress>>()
                 launch {
                     var first = true
@@ -118,7 +118,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 session = DaemonController.startSession(nextConfig())
                 launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
                 var blockedMacs = initialBlockedMacs.await()
-                var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
+                var neighbours: Collection<NetlinkNeighbour> = emptyList()
                 Timber.i("Started routing for $downstream by $caller")
                 val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
                 for (update in updates) {
@@ -155,12 +155,12 @@ class Routing(private val caller: Any, private val downstream: String) {
                             val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
                             val candidateAllowedMacs = linkedSetOf<MacAddress>()
                             for (neighbour in neighbours) {
-                                val lladdr = neighbour.macAddress() ?: continue
+                                val lladdr = neighbour.lladdr ?: continue
                                 if (neighbour.dev != downstream ||
                                     neighbour.state != DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID ||
                                     lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
-                                val ip = neighbour.address.toInetAddress()
+                                val ip = neighbour.ip
                                 if (ip is Inet4Address) candidateClients[ip] = lladdr
                             }
                             if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {

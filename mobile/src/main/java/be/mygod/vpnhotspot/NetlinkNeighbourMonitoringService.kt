@@ -1,23 +1,21 @@
 package be.mygod.vpnhotspot
 
 import android.app.Service
-import be.mygod.vpnhotspot.net.netlinkNeighbours
-import be.mygod.vpnhotspot.net.validIpv4ClientMac
-import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     private var neighboursJob: Job? = null
-    private var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
+    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
 
     protected abstract val activeIfaces: List<String>
     protected open val inactiveIfaces get() = emptyList<String>()
 
     protected fun startNetlinkNeighbours() {
         if (neighboursJob == null) neighboursJob = launch {
-            netlinkNeighbours.collect { onNetlinkNeighboursChanged(it) }
+            NetlinkNeighbour.snapshots.collect { onNetlinkNeighboursChanged(it) }
         }
     }
     protected fun stopNetlinkNeighbours() {
@@ -26,14 +24,14 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
         neighbours = emptyList()
     }
 
-    protected open fun onNetlinkNeighboursChanged(neighbours: Collection<DaemonProto.Neighbour>) {
+    protected open fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
         this.neighbours = neighbours
         updateNotification()
     }
     protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .mapNotNull { it.validIpv4ClientMac() }
+                    .mapNotNull { it.validIpv4ClientMac }
                     .distinct()
                     .size
         }

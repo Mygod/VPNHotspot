@@ -21,11 +21,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.macAddress
-import be.mygod.vpnhotspot.net.netlinkNeighbours
-import be.mygod.vpnhotspot.net.toInetAddress
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
@@ -62,7 +60,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var repeater: RepeaterService.Binder? = null
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var wifiAp = emptyList<Pair<String, MacAddress>>()
-    private var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
+    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
     private var tetheringClients = emptyMap<MacAddress, TetheredClient>()
     val clients = MutableLiveData<List<Client>>()
     val clientsFragmentObserver = object : DefaultLifecycleObserver {
@@ -123,7 +121,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         }
         for (client in wifiAp) clients[client] = Client(client.second, client.first, TetherType.WIFI)
         for (neighbour in neighbours) {
-            val lladdr = neighbour.macAddress() ?: continue
+            val lladdr = neighbour.lladdr ?: continue
             val key = neighbour.dev to lladdr
             var client = clients[key]
             if (client == null) {
@@ -131,7 +129,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 client = Client(lladdr, neighbour.dev)
                 clients[key] = client
             }
-            client.ip.compute(neighbour.address.toInetAddress()) { _, info ->
+            client.ip.compute(neighbour.ip) { _, info ->
                 info?.apply { state = neighbour.state } ?: ClientAddressInfo(neighbour.state)
             }
         }
@@ -164,7 +162,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     override fun onCreate(owner: LifecycleOwner) {
         owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                netlinkNeighbours.collect {
+                NetlinkNeighbour.snapshots.collect {
                     neighbours = it
                     populateClients()
                 }
