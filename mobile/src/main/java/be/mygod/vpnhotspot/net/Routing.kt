@@ -12,10 +12,12 @@ import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.DaemonController
-import be.mygod.vpnhotspot.root.daemon.DaemonProtocol
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
+import be.mygod.vpnhotspot.root.daemon.DaemonProto.MasqueradeMode
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import com.google.protobuf.ByteString
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -55,12 +57,6 @@ class Routing(private val caller: Any, private val downstream: String) {
         Nat,
     }
 
-    enum class MasqueradeMode(val protocolValue: Byte) {
-        None(0),
-        Simple(1),
-        Netd(2),
-    }
-
     /**
      * This command is available since API 23 and also handles IPv6 forwarding.
      * https://android.googlesource.com/platform/system/netd/+/android-6.0.0_r1/server/CommandListener.cpp#527
@@ -73,7 +69,7 @@ class Routing(private val caller: Any, private val downstream: String) {
      */
     var ipForward = false
     var ipv6Mode = Ipv6Mode.System
-    var masqueradeMode = MasqueradeMode.None
+    var masqueradeMode = MasqueradeMode.MASQUERADE_MODE_NONE
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()
@@ -84,7 +80,7 @@ class Routing(private val caller: Any, private val downstream: String) {
 
     private sealed class RoutingUpdate(val key: Any) {
         class UpstreamSnapshot(val upstream: UpstreamTracker, val value: Upstream?) : RoutingUpdate(upstream)
-        class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighboursSnapshot) {
+        class NeighboursSnapshot(val neighbours: Collection<DaemonProto.Neighbour>) : RoutingUpdate(NeighboursSnapshot) {
             private companion object
         }
         class BlockedMacsSnapshot(val macs: Set<MacAddress>) : RoutingUpdate(BlockedMacsSnapshot) {
@@ -107,7 +103,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 launch {
                     Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
                 }
-                launch { NetlinkNeighbour.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
+                launch { netlinkNeighbours.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
                 val initialBlockedMacs = CompletableDeferred<Set<MacAddress>>()
                 launch {
                     var first = true
@@ -122,7 +118,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 session = DaemonController.startSession(nextConfig())
                 launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
                 var blockedMacs = initialBlockedMacs.await()
-                var neighbours: Collection<NetlinkNeighbour> = emptyList()
+                var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
                 Timber.i("Started routing for $downstream by $caller")
                 val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
                 for (update in updates) {
@@ -159,11 +155,12 @@ class Routing(private val caller: Any, private val downstream: String) {
                             val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
                             val candidateAllowedMacs = linkedSetOf<MacAddress>()
                             for (neighbour in neighbours) {
-                                val lladdr = neighbour.lladdr ?: continue
-                                if (neighbour.dev != downstream || neighbour.state != NetlinkNeighbour.State.VALID ||
+                                val lladdr = neighbour.macAddress() ?: continue
+                                if (neighbour.`interface` != downstream ||
+                                    neighbour.state != DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID ||
                                     lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
-                                val ip = neighbour.ip
+                                val ip = neighbour.address.toInetAddress()
                                 if (ip is Inet4Address) candidateClients[ip] = lladdr
                             }
                             if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {
@@ -262,7 +259,7 @@ class Routing(private val caller: Any, private val downstream: String) {
     private fun nextConfig(
         clientSnapshot: Map<Inet4Address, MacAddress> = clients,
         allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-    ): DaemonProtocol.SessionConfig {
+    ): DaemonProto.SessionConfig {
         val seen = HashSet<String>()
         val primaryUpstreamInterfaces = buildList {
             primaryUpstream.appendInterfaces(this, seen)
@@ -270,25 +267,35 @@ class Routing(private val caller: Any, private val downstream: String) {
         val fallbackUpstreamInterfaces = buildList {
             fallbackUpstream.appendInterfaces(this, seen)
         }
-        return DaemonProtocol.SessionConfig(
-            downstream = downstream,
-            ipForward = ipForward,
-            masquerade = masqueradeMode,
-            ipv6Block = ipv6Mode == Ipv6Mode.Block,
-            primaryNetwork = primaryUpstream.upstream?.network,
-            primaryRoutes = primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
+        return DaemonProto.SessionConfig.newBuilder().also { config ->
+            config.downstream = downstream
+            config.ipForward = ipForward
+            config.masquerade = masqueradeMode
+            config.ipv6Block = ipv6Mode == Ipv6Mode.Block
+            primaryUpstream.upstream?.network?.let { config.primaryNetwork = it.networkHandle }
+            config.addAllPrimaryRoutes((primaryUpstream.upstream?.properties?.allRoutes?.mapNotNull { route ->
                 val destination = route.destination
-                if (route.type == RouteInfo.RTN_UNICAST && destination.address is Inet6Address) destination else null
-            } ?: emptyList(),
-            fallbackNetwork = fallbackUpstream.upstream?.network,
-            primaryUpstreamInterfaces = primaryUpstreamInterfaces,
-            fallbackUpstreamInterfaces = fallbackUpstreamInterfaces,
-            clients = buildList {
-                for (mac in allowedMacSnapshot) add(DaemonProtocol.ClientConfig(mac,
-                    clientSnapshot.filterValues { it == mac }.keys.toList()))
-            },
-            ipv6Nat = if (ipv6Mode == Ipv6Mode.Nat) DaemonProtocol.Ipv6NatConfig(ipv6NatPrefixSeed) else null,
-        )
+                val address = destination.address
+                if (route.type == RouteInfo.RTN_UNICAST && address is Inet6Address) {
+                    DaemonProto.Ipv6Prefix.newBuilder()
+                        .setAddress(ByteString.copyFrom(address.address))
+                        .setPrefixLength(destination.prefixLength)
+                        .build()
+                } else null
+            } ?: emptyList()))
+            fallbackUpstream.upstream?.network?.let { config.fallbackNetwork = it.networkHandle }
+            config.addAllPrimaryUpstreamInterfaces(primaryUpstreamInterfaces)
+            config.addAllFallbackUpstreamInterfaces(fallbackUpstreamInterfaces)
+            config.addAllClients(allowedMacSnapshot.map { mac ->
+                DaemonProto.ClientConfig.newBuilder()
+                    .setMac(ByteString.copyFrom(mac.toByteArray()))
+                    .addAllIpv4(clientSnapshot.filterValues { it == mac }.keys.map { ByteString.copyFrom(it.address) })
+                    .build()
+            })
+            if (ipv6Mode == Ipv6Mode.Nat) {
+                config.ipv6Nat = DaemonProto.Ipv6NatConfig.newBuilder().setPrefixSeed(ipv6NatPrefixSeed).build()
+            }
+        }.build()
     }
 
     suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }

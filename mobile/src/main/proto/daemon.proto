@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package vpnhotspot.daemon;
 
-option java_package = "be.mygod.vpnhotspot.root.daemon.proto";
+option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 

@@ -27,6 +27,7 @@ play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:
 preference = "androidx.preference:preference:1.2.1"
 preferencex-simplemenu = "com.takisoft.preferencex:preferencex-simplemenu:1.1.0"
 protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }

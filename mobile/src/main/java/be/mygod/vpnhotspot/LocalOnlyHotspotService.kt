@@ -8,8 +8,8 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
+import be.mygod.vpnhotspot.net.validIpv4ClientMac
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.root.LocalOnlyHotspotCallbacks
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.StickyEvent1
@@ -38,7 +39,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
-import java.net.Inet4Address
 import java.util.concurrent.atomic.AtomicInteger
 
 class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
@@ -318,11 +318,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         }
     }
 
-    override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
+    override fun onNetlinkNeighboursChanged(neighbours: Collection<DaemonProto.Neighbour>) {
         super.onNetlinkNeighboursChanged(neighbours)
-        timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
-        })
+        timeoutMonitor?.onClientsChanged(neighbours.none { it.validIpv4ClientMac() != null })
     }
 
     override fun onDestroy() {

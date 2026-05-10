@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use libc::EINPROGRESS;
+use prost::Message;
 use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
@@ -20,9 +21,11 @@ use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
 use crate::{netlink, report, routing};
+use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
-    ack_event_frame, ack_reply_frame, complete_frame, error_frame, parse_client_packet,
-    traffic_counter_lines_frame, Command, DaemonErrorReport, IoErrorReportExt, IoResultReportExt,
+    ack_event_frame, ack_reply_frame, complete_frame, daemon_error_report_with_details,
+    daemon_io_error_report, error_frame, read_session_config, traffic_counter_lines_frame,
+    IoErrorReportExt, IoResultReportExt,
 };
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
@@ -59,23 +62,38 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
                 }
             },
         };
-        let (id, command) = match parse_client_packet(&packet) {
-            Ok(parsed) => parsed,
+        let envelope = match daemon::ClientEnvelope::decode(packet.as_slice()) {
+            Ok(envelope) => envelope,
             Err(e) => {
-                report::io("control.parse_frame", e);
+                report::io(
+                    "control.parse_frame",
+                    io::Error::new(io::ErrorKind::InvalidData, e.to_string()),
+                );
                 break;
             }
         };
-        let command = match command {
-            Ok(Command::Cancel) => {
+        let id = if envelope.call_id == 0 {
+            report::io(
+                "control.parse_frame",
+                io::Error::new(io::ErrorKind::InvalidData, "invalid daemon call id 0"),
+            );
+            break;
+        } else {
+            envelope.call_id
+        };
+        let command = match envelope.command {
+            Some(daemon::client_envelope::Command::Cancel(_)) => {
                 if let Some(call) = active_calls.lock().await.get(&id) {
                     call.cancel.cancel();
                 }
                 continue;
             }
-            Ok(command) => command,
-            Err(e) => {
-                let report = DaemonErrorReport::from_io_error("control.parse_command", e);
+            Some(command) => command,
+            None => {
+                let report = daemon_io_error_report(
+                    "control.parse_command",
+                    io::Error::new(io::ErrorKind::InvalidData, "missing command"),
+                );
                 if sender.send(error_frame(id, report)).is_err() {
                     report::stderr!("controller send failed");
                     break;
@@ -89,7 +107,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         {
             let mut active = active_calls.lock().await;
             if active.contains_key(&id) {
-                let report = DaemonErrorReport::from_message_with_details(
+                let report = daemon_error_report_with_details(
                     "control.call",
                     "call already active",
                     "AlreadyExists",
@@ -185,7 +203,7 @@ enum CallOutput {
 
 async fn handle_call(
     id: u64,
-    command: Command,
+    command: daemon::client_envelope::Command,
     state: Arc<State>,
     sender: UnboundedSender<Vec<u8>>,
     active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
@@ -208,7 +226,7 @@ async fn handle_call(
             remove_call(id, &active_calls, &call).await;
         }
         Err(e) => {
-            let report = DaemonErrorReport::from_io_error("control.handle_call", e);
+            let report = daemon_io_error_report("control.handle_call", e);
             if call.cancel.is_cancelled() {
                 if remove_call(id, &active_calls, &call).await {
                     report::report_for(Some(id), report);
@@ -223,15 +241,20 @@ async fn handle_call(
 
 async fn handle_command(
     id: u64,
-    command: Command,
+    command: daemon::client_envelope::Command,
     state: Arc<State>,
     sender: &UnboundedSender<Vec<u8>>,
     active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
     cancel: CancellationToken,
 ) -> io::Result<CallOutput> {
     match command {
-        Command::Cancel => unreachable!("cancel commands are handled before call dispatch"),
-        Command::StartSession(config) => {
+        daemon::client_envelope::Command::Cancel(_) => {
+            unreachable!("cancel commands are handled before call dispatch")
+        }
+        daemon::client_envelope::Command::StartSession(command) => {
+            let config = read_session_config(command.config.ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "missing start session config")
+            })?)?;
             match start_session(id, &state, config, sender, &cancel).await {
                 Ok(()) => Ok(CallOutput::NoFrame),
                 Err(e) if cancel.is_cancelled() && e.kind() == io::ErrorKind::Interrupted => {
@@ -240,21 +263,28 @@ async fn handle_command(
                 Err(e) => Err(e),
             }
         }
-        Command::ReplaceSession { session_id, config } => {
-            replace_session(&state, session_id, config).await?;
+        daemon::client_envelope::Command::ReplaceSession(command) => {
+            replace_session(
+                &state,
+                command.session_id,
+                read_session_config(command.config.ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "missing replace session config")
+                })?)?,
+            )
+            .await?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
-        Command::ReadTrafficCounters => {
+        daemon::client_envelope::Command::ReadTrafficCounters(_) => {
             let lines = crate::traffic::read_counter_lines()
                 .await
                 .with_report_context("control.read_traffic_counters")?;
             Ok(CallOutput::Reply(traffic_counter_lines_frame(id, &lines)))
         }
-        Command::StartNeighbourMonitor => {
+        daemon::client_envelope::Command::StartNeighbourMonitor(_) => {
             start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
             Ok(CallOutput::NoFrame)
         }
-        Command::ReplaceStaticAddresses(command) => {
+        daemon::client_envelope::Command::ReplaceStaticAddresses(command) => {
             let handle = state.netlink.handle();
             routing::replace_static_addresses(&handle, &command)
                 .await
@@ -267,17 +297,17 @@ async fn handle_command(
                 )?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
-        Command::DeleteStaticAddresses { interface } => {
+        daemon::client_envelope::Command::DeleteStaticAddresses(command) => {
             let handle = state.netlink.handle();
-            routing::delete_static_addresses(&handle, &interface)
+            routing::delete_static_addresses(&handle, &command.interface)
                 .await
                 .with_report_context_details(
                     "control.delete_static_addresses",
-                    [("interface", interface)],
+                    [("interface", command.interface)],
                 )?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
-        Command::CleanRouting(command) => {
+        daemon::client_envelope::Command::CleanRouting(command) => {
             let sessions = state.drain_sessions().await;
             let mut complete_ids = Vec::new();
             for session in &sessions {

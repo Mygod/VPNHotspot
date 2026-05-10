@@ -21,14 +21,14 @@ use crate::{
 };
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, MasqueradeMode, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
-    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
-    LOCAL_NETWORK_TABLE,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, SessionConfig, SessionPorts,
+    UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE,
+    DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
 };
-use vpnhotspotd::shared::protocol::{
-    error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
+use vpnhotspotd::shared::proto::daemon::{
+    CleanRoutingCommand, MasqueradeMode, ReplaceStaticAddressesCommand,
 };
+use vpnhotspotd::shared::protocol::{error_errno, read_ip_address_entry, IoResultReportExt};
 
 // AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
 // on API 29..30. Keep VPNHotspot rules inside that gap.
@@ -1199,7 +1199,7 @@ async fn remove_ip_forward(downstream: &str) -> bool {
 
 pub(crate) async fn replace_static_addresses(
     handle: &netlink::Handle,
-    command: &StaticAddressesCommand,
+    command: &ReplaceStaticAddressesCommand,
 ) -> io::Result<()> {
     let index = netlink::link_index(handle, &command.interface)
         .await
@@ -1208,10 +1208,11 @@ pub(crate) async fn replace_static_addresses(
             [("interface", command.interface.clone())],
         )?;
     for address in &command.addresses {
+        let (address, prefix_len) = read_ip_address_entry(address)?;
         let command = IpAddressCommand {
             operation: IpOperation::Replace,
-            address: address.address,
-            prefix_len: address.prefix_len,
+            address,
+            prefix_len,
             interface: command.interface.clone(),
         };
         match apply_address_command_with_index(handle, &command, index).await {

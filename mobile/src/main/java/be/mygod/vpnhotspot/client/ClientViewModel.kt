@@ -21,14 +21,17 @@ import androidx.lifecycle.repeatOnLifecycle
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.macAddress
+import be.mygod.vpnhotspot.net.netlinkNeighbours
+import be.mygod.vpnhotspot.net.toInetAddress
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -59,7 +62,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var repeater: RepeaterService.Binder? = null
     private var p2p: Collection<WifiP2pDevice> = emptyList()
     private var wifiAp = emptyList<Pair<String, MacAddress>>()
-    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
+    private var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
     private var tetheringClients = emptyMap<MacAddress, TetheredClient>()
     val clients = MutableLiveData<List<Client>>()
     val clientsFragmentObserver = object : DefaultLifecycleObserver {
@@ -85,7 +88,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
             getMacAddress(client) as MacAddress to TetheredClient(
                 TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {
                     val address = getAddress(it) as LinkAddress
-                    ClientAddressInfo(NetlinkNeighbour.State.UNSET, address, getHostname(it) as String?).also { info ->
+                    ClientAddressInfo(
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_UNSET,
+                        address,
+                        getHostname(it) as String?,
+                    ).also { info ->
                         // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/android/net/ip/IpServer.java;l=516;drc=efb735f4d5a2f04550e33e8aa9485f906018fe4e
                         if (address.flags != 0 || address.scope != OsConstants.RT_SCOPE_UNIVERSE ||
                             info.deprecationTime != info.expirationTime) {
@@ -116,15 +123,15 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         }
         for (client in wifiAp) clients[client] = Client(client.second, client.first, TetherType.WIFI)
         for (neighbour in neighbours) {
-            val lladdr = neighbour.lladdr ?: continue
-            val key = neighbour.dev to lladdr
+            val lladdr = neighbour.macAddress() ?: continue
+            val key = neighbour.`interface` to lladdr
             var client = clients[key]
             if (client == null) {
-                if (!tetheredInterfaces.contains(neighbour.dev)) continue
-                client = Client(lladdr, neighbour.dev)
+                if (!tetheredInterfaces.contains(neighbour.`interface`)) continue
+                client = Client(lladdr, neighbour.`interface`)
                 clients[key] = client
             }
-            client.ip.compute(neighbour.ip) { _, info ->
+            client.ip.compute(neighbour.address.toInetAddress()) { _, info ->
                 info?.apply { state = neighbour.state } ?: ClientAddressInfo(neighbour.state)
             }
         }
@@ -157,7 +164,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     override fun onCreate(owner: LifecycleOwner) {
         owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                NetlinkNeighbour.snapshots.collect {
+                netlinkNeighbours.collect {
                     neighbours = it
                     populateClients()
                 }

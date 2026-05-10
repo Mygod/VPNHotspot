@@ -2,6 +2,8 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use cidr::{Ipv6Cidr, Ipv6Inet};
 
+use crate::shared::proto::daemon::MasqueradeMode;
+
 pub type Network = u64;
 
 /// Daemon reply sockets use Android's local-network fwmark so AOSP routes them through
@@ -44,13 +46,6 @@ pub struct SessionConfig {
     pub fallback_upstream_interfaces: Vec<String>,
     pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MasqueradeMode {
-    None,
-    Simple,
-    Netd,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

@@ -15,8 +15,8 @@ import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.client.ClientsFragment
 import be.mygod.vpnhotspot.databinding.ActivityMainBinding
 import be.mygod.vpnhotspot.manage.TetheringFragment
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.util.ServiceForegroundConnector
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -51,7 +51,9 @@ class MainActivity : AppCompatActivity(), NavigationBarView.OnItemSelectedListen
         if (Services.p2p != null) ServiceForegroundConnector(this, model, RepeaterService::class)
         model.clients.observe(this) { clients ->
             val count = clients.count {
-                it.ip.any { (ip, info) -> ip is Inet4Address && info.state == NetlinkNeighbour.State.VALID }
+                it.ip.any { (ip, info) ->
+                    ip is Inet4Address && info.state == DaemonProto.NeighbourState.NEIGHBOUR_STATE_VALID
+                }
             }
             badge.isVisible = count > 0
             badge.number = count

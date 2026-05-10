@@ -166,7 +166,7 @@ android {
 }
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:${libs.versions.protobuf.get()}"
+        artifact = libs.protobuf.protoc.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }
     }
     generateProtoTasks {
         all().configureEach {

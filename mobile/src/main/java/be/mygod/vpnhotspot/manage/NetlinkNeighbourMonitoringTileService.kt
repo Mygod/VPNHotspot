@@ -2,7 +2,9 @@ package be.mygod.vpnhotspot.manage
 
 import android.service.quicksettings.Tile
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
+import be.mygod.vpnhotspot.net.netlinkNeighbours
+import be.mygod.vpnhotspot.net.validIpv4ClientMac
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.util.KillableTileService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -10,18 +12,17 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import java.net.Inet4Address
 
 abstract class NetlinkNeighbourMonitoringTileService : KillableTileService() {
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private var neighboursJob: Job? = null
-    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
+    private var neighbours: Collection<DaemonProto.Neighbour> = emptyList()
     abstract fun updateTile()
 
     override fun onStartListening() {
         super.onStartListening()
         neighboursJob = scope.launch {
-            NetlinkNeighbour.snapshots.collect {
+            netlinkNeighbours.collect {
                 neighbours = it
                 updateTile()
             }
@@ -36,9 +37,8 @@ abstract class NetlinkNeighbourMonitoringTileService : KillableTileService() {
 
     protected fun Tile.subtitleDevices(filter: (String) -> Boolean) {
         val size = neighbours
-                .filter { it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID &&
-                        filter(it.dev) }
-                .distinctBy { it.lladdr }
+                .mapNotNull { if (filter(it.`interface`)) it.validIpv4ClientMac() else null }
+                .distinct()
                 .size
         if (size > 0) subtitle = resources.getQuantityString(
                 R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)
