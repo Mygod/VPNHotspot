@@ -25,7 +25,7 @@ use vpnhotspotd::shared::model::{
     LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::protocol::{
-    error_errno, CleanRoutingCommand, DaemonErrorReport, IoResultReportExt, StaticAddressesCommand,
+    error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
 };
 
 // AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
@@ -232,29 +232,25 @@ pub(crate) struct Runtime {
 
 impl Runtime {
     pub(crate) async fn start(
-        call_id: u64,
         config: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
-    ) -> Self {
+    ) -> io::Result<Self> {
         let mut runtime = Self {
             ports,
             downstream_ipv4,
             netlink,
             applied: Vec::new(),
         };
-        if let Err(e) = runtime.setup(config).await {
-            report::report_for(
-                Some(call_id),
-                DaemonErrorReport::from_io_error_with_details(
-                    "routing.start",
-                    e,
-                    [("downstream", config.downstream.as_str())],
-                ),
-            );
+        if let Err(e) = runtime.setup(config).await.with_report_context_details(
+            "routing.start",
+            [("downstream", config.downstream.as_str())],
+        ) {
+            runtime.drain_applied().await;
+            return Err(e);
         }
-        runtime
+        Ok(runtime)
     }
 
     pub(crate) async fn replace(
