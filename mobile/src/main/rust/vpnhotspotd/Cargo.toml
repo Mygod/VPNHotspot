@@ -12,6 +12,7 @@ path = "src/main.rs"
 test = false
 
 [dependencies]
+cidr = "0.3.2"
 futures-util = "0.3.32"
 libc = "0.2.186"
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }

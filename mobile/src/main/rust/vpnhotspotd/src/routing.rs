@@ -1,6 +1,7 @@
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
+use cidr::Ipv4Inet;
 use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
@@ -453,8 +454,8 @@ impl Runtime {
                 RoutingMutation::IpRoute(IpRouteCommand {
                     operation: IpOperation::Replace,
                     route_type: RouteType::Unicast,
-                    destination: IpAddr::V6(route_address(ipv6_nat.gateway, ipv6_nat.prefix_len)),
-                    prefix_len: ipv6_nat.prefix_len,
+                    destination: IpAddr::V6(ipv6_nat.gateway.first_address()),
+                    prefix_len: ipv6_nat.gateway.network_length(),
                     interface: config.downstream.clone(),
                     table: LOCAL_NETWORK_TABLE,
                 }),
@@ -463,8 +464,8 @@ impl Runtime {
                 &mut mutations,
                 RoutingMutation::IpAddress(IpAddressCommand {
                     operation: IpOperation::Replace,
-                    address: IpAddr::V6(ipv6_nat.gateway),
-                    prefix_len: ipv6_nat.prefix_len,
+                    address: IpAddr::V6(ipv6_nat.gateway.address()),
+                    prefix_len: ipv6_nat.gateway.network_length(),
                     interface: config.downstream.clone(),
                 }),
             );
@@ -1278,10 +1279,11 @@ async fn clean_ip(handle: &netlink::Handle, command: &CleanRoutingCommand) -> io
     flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
     for interface in netlink::link_names(handle).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
+        let gateway = ipv6_nat_gateway(prefix);
         let address = IpAddressCommand {
             operation: IpOperation::Delete,
-            address: IpAddr::V6(ipv6_nat_gateway(prefix)),
-            prefix_len: prefix.prefix_len,
+            address: IpAddr::V6(gateway.address()),
+            prefix_len: gateway.network_length(),
             interface: interface.clone(),
         };
         if let Err(e) = apply_address_command(handle, &address).await {
@@ -1292,8 +1294,8 @@ async fn clean_ip(handle: &netlink::Handle, command: &CleanRoutingCommand) -> io
         let route = IpRouteCommand {
             operation: IpOperation::Delete,
             route_type: RouteType::Unicast,
-            destination: IpAddr::V6(Ipv6Addr::from(prefix.prefix.to_be_bytes())),
-            prefix_len: prefix.prefix_len,
+            destination: IpAddr::V6(prefix.first_address()),
+            prefix_len: prefix.network_length(),
             interface,
             table: LOCAL_NETWORK_TABLE,
         };
@@ -1734,26 +1736,9 @@ async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
 }
 
 fn host_subnet(downstream_ipv4: DownstreamIpv4) -> String {
-    let raw = u32::from(downstream_ipv4.address);
-    let mask = if downstream_ipv4.prefix_len == 0 {
-        0
-    } else {
-        u32::MAX << (32 - downstream_ipv4.prefix_len)
-    };
-    format!(
-        "{}/{}",
-        Ipv4Addr::from(raw & mask),
-        downstream_ipv4.prefix_len
-    )
-}
-
-fn route_address(address: Ipv6Addr, prefix_len: u8) -> Ipv6Addr {
-    if prefix_len == 0 {
-        Ipv6Addr::UNSPECIFIED
-    } else {
-        let shift = 128u32.saturating_sub(prefix_len as u32);
-        Ipv6Addr::from((u128::from(address) & (!0u128 << shift)).to_be_bytes())
-    }
+    let subnet = Ipv4Inet::new(downstream_ipv4.address, downstream_ipv4.prefix_len)
+        .expect("downstream IPv4 prefix length must be <= 32");
+    format!("{}/{}", subnet.first_address(), subnet.network_length())
 }
 
 fn mac_string(mac: &[u8; 6]) -> String {
@@ -1794,10 +1779,13 @@ mod tests {
     }
 
     #[test]
-    fn route_address_handles_default_route() {
+    fn host_subnet_handles_default_route() {
         assert_eq!(
-            route_address("2001:db8::1".parse().unwrap(), 0),
-            Ipv6Addr::UNSPECIFIED
+            host_subnet(DownstreamIpv4 {
+                address: Ipv4Addr::new(192, 168, 43, 1),
+                prefix_len: 0,
+            }),
+            "0.0.0.0/0"
         );
     }
 

@@ -5,9 +5,11 @@ use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use cidr::Ipv6Inet;
+
 use crate::netlink;
 use crate::report;
-use vpnhotspotd::shared::model::{ipv6_to_u128, Ipv6NatPorts, Route, SessionConfig};
+use vpnhotspotd::shared::model::{Ipv6NatPorts, SessionConfig};
 
 mod ra;
 mod tcp;
@@ -16,7 +18,7 @@ mod udp;
 
 pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,
-    cleanup_prefixes: Vec<Route>,
+    cleanup_prefixes: Vec<Ipv6Inet>,
     netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: JoinHandle<()>,
@@ -75,14 +77,10 @@ impl Runtime {
             return;
         };
         if let Some(previous) = previous.ipv6_nat.as_ref() {
-            if previous.gateway != next.gateway || previous.prefix_len != next.prefix_len {
-                let previous_prefix = Route {
-                    prefix: ipv6_to_u128(previous.gateway),
-                    prefix_len: previous.prefix_len,
-                };
-                if !self.cleanup_prefixes.contains(&previous_prefix) {
-                    self.cleanup_prefixes.push(previous_prefix);
-                }
+            if previous.gateway != next.gateway
+                && !self.cleanup_prefixes.contains(&previous.gateway)
+            {
+                self.cleanup_prefixes.push(previous.gateway);
             }
         }
     }
@@ -103,10 +101,7 @@ impl Runtime {
         } else {
             Vec::new()
         };
-        prefixes.push(Route {
-            prefix: ipv6_to_u128(ipv6_nat.gateway),
-            prefix_len: ipv6_nat.prefix_len,
-        });
+        prefixes.push(ipv6_nat.gateway);
         ra::withdraw_prefixes_once(&self.netlink, snapshot, &prefixes, false).await;
     }
 }

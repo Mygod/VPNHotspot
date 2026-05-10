@@ -122,7 +122,7 @@ pub(crate) fn spawn_loop(
                                 let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
                                     continue;
                                 };
-                                if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
+                                if *destination.ip() == ipv6_nat.gateway.address() && destination.port() == DNS_PORT {
                                     let query = buffer[..size].to_vec();
                                     let query_stop = stop.child_token();
                                     spawn(async move {

@@ -19,10 +19,12 @@ use tokio::time::{sleep_until, Instant as TokioInstant};
 use tokio::{select, spawn, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
+use cidr::Ipv6Inet;
+
 use crate::netlink;
 use crate::report;
 use crate::socket::await_writable;
-use vpnhotspotd::shared::model::{ipv6_to_u128, Route, SessionConfig};
+use vpnhotspotd::shared::model::SessionConfig;
 use vpnhotspotd::shared::ra_wire::{
     is_router_link_local, make_current_ra_packet, make_zero_lifetime_ra_packet,
 };
@@ -57,7 +59,7 @@ pub(crate) fn spawn_loop(
     Ok(spawn(async move {
         let mut next_ra = Instant::now();
         let mut next_suppressed_ra = None;
-        let mut suppressed_prefixes = HashMap::<Route, Instant>::new();
+        let mut suppressed_prefixes = HashMap::<Ipv6Inet, Instant>::new();
         let mut buffer = [MaybeUninit::<u8>::uninit(); 1500];
         let mut last_router = None;
         let mut address_changed = false;
@@ -88,12 +90,8 @@ pub(crate) fn spawn_loop(
                         }
                     };
                 if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
-                    let current_prefix = Route {
-                        prefix: ipv6_to_u128(ipv6_nat.gateway),
-                        prefix_len: ipv6_nat.prefix_len,
-                    };
                     for prefix in mtu_prefixes {
-                        if prefix != current_prefix {
+                        if prefix != ipv6_nat.gateway {
                             suppressed_prefixes.insert(prefix, now + SUPPRESSED_RA_WINDOW);
                             send_current = true;
                         }
@@ -231,7 +229,7 @@ pub(crate) fn spawn_loop(
 pub(crate) async fn withdraw_prefixes_once(
     netlink: &netlink::Handle,
     config: &SessionConfig,
-    prefixes: &[Route],
+    prefixes: &[Ipv6Inet],
     keep_router: bool,
 ) {
     if config.ipv6_nat.is_none() {
@@ -262,7 +260,7 @@ pub(crate) async fn withdraw_prefixes_once(
 
 async fn withdraw_prefixes_once_with_router(
     config: &SessionConfig,
-    prefixes: &[Route],
+    prefixes: &[Ipv6Inet],
     keep_router: bool,
     router: Router,
     mtu: u32,
@@ -288,10 +286,7 @@ async fn withdraw_prefixes_once_with_router(
                 e,
                 [
                     ("interface", config.downstream.clone()),
-                    (
-                        "prefix",
-                        format!("{:x}/{}", prefix.prefix, prefix.prefix_len),
-                    ),
+                    ("prefix", prefix.to_string()),
                 ],
             );
         }
@@ -343,7 +338,7 @@ async fn downstream_mtu(handle: &netlink::Handle, interface: &str, context: &str
 async fn downstream_ipv6_prefixes(
     handle: &netlink::Handle,
     interface: &str,
-) -> io::Result<Vec<Route>> {
+) -> io::Result<Vec<Ipv6Inet>> {
     let interface_index = match netlink::link_index(handle, interface).await {
         Ok(index) => index,
         Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
@@ -377,7 +372,7 @@ async fn downstream_ipv6_prefixes(
     Ok(prefixes)
 }
 
-fn downstream_ipv6_prefix(message: &AddressMessage) -> Option<Route> {
+fn downstream_ipv6_prefix(message: &AddressMessage) -> Option<Ipv6Inet> {
     let mut fallback = None;
     for attribute in &message.attributes {
         match attribute {
@@ -393,14 +388,11 @@ fn downstream_ipv6_prefix(message: &AddressMessage) -> Option<Route> {
     fallback
 }
 
-fn routable_ipv6_prefix(address: Ipv6Addr, prefix_len: u8) -> Option<Route> {
+fn routable_ipv6_prefix(address: Ipv6Addr, prefix_len: u8) -> Option<Ipv6Inet> {
     if address.is_unicast_link_local() || address.is_loopback() || address.is_multicast() {
         None
     } else {
-        Some(Route {
-            prefix: ipv6_to_u128(address),
-            prefix_len,
-        })
+        Some(Ipv6Inet::new(address, prefix_len).expect("kernel IPv6 prefix length must be <= 128"))
     }
 }
 
@@ -482,14 +474,14 @@ async fn send_ra(
     let fd = create_send_socket(&config.downstream, config.reply_mark, router)?;
     let destination =
         target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index));
-    let packet = make_current_ra_packet(ipv6_nat.gateway, ipv6_nat.prefix_len, mtu);
+    let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
     sendto_all(&fd, &packet, SockAddr::from(destination)).await
 }
 
 async fn send_zero_lifetime_ra(
     socket: &Socket,
     router: Router,
-    prefix: Route,
+    prefix: Ipv6Inet,
     keep_router: bool,
     mtu: u32,
 ) -> io::Result<()> {

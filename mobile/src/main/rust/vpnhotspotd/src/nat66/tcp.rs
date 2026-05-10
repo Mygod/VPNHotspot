@@ -72,7 +72,7 @@ async fn handle_connection(
         .ipv6_nat
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
-    if destination.ip() == &ipv6_nat.gateway && destination.port() == DNS_PORT {
+    if *destination.ip() == ipv6_nat.gateway.address() && destination.port() == DNS_PORT {
         if let Err(e) = dns::handle_tcp_connection(inbound, snapshot).await {
             if is_connection_closed(&e) {
                 report::stdout!(

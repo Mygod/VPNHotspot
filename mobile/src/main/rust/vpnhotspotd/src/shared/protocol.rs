@@ -5,9 +5,11 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::panic::Location;
 use std::process;
 
+use cidr::{Ipv6Cidr, Ipv6Inet};
+
 use crate::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ipv6_to_u128, ClientConfig, Ipv6NatConfig, MasqueradeMode,
-    Network, Route, SessionConfig, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, MasqueradeMode, Network,
+    SessionConfig, UpstreamConfig, UpstreamRole, DAEMON_REPLY_MARK,
 };
 
 const MAX_ERROR_DETAILS: usize = 32;
@@ -441,10 +443,7 @@ impl<'a> Parser<'a> {
         let ipv6_nat = if self.read_bool()? {
             let prefix = ipv6_nat_prefix(&self.read_utf()?, &downstream);
             let gateway = ipv6_nat_gateway(prefix);
-            Some(Ipv6NatConfig {
-                gateway,
-                prefix_len: prefix.prefix_len,
-            })
+            Some(Ipv6NatConfig { gateway })
         } else {
             None
         };
@@ -541,7 +540,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn read_routes(&mut self) -> io::Result<Vec<Route>> {
+    fn read_routes(&mut self) -> io::Result<Vec<Ipv6Cidr>> {
         let routes = self.read_count("route")?;
         let remaining = self.packet.len() - self.offset;
         if routes > remaining / ROUTE_WIRE_LEN {
@@ -557,13 +556,12 @@ impl<'a> Parser<'a> {
         Ok(parsed)
     }
 
-    fn read_route(&mut self) -> io::Result<Route> {
+    fn read_route(&mut self) -> io::Result<Ipv6Cidr> {
         let address = self.read_ipv6()?;
         let prefix_len = self.read_ipv6_prefix_len()?;
-        Ok(Route {
-            prefix: ipv6_to_u128(address),
-            prefix_len,
-        })
+        Ok(Ipv6Inet::new(address, prefix_len)
+            .expect("route prefix length was already validated")
+            .network())
     }
 
     fn read_ipv4(&mut self) -> io::Result<Ipv4Addr> {
@@ -676,7 +674,7 @@ mod tests {
         write_session_flags(&mut packet);
         packet.extend_from_slice(&123u64.to_be_bytes());
         packet.extend_from_slice(&2i32.to_be_bytes());
-        write_route(&mut packet, "2001:db8::".parse().unwrap(), 32);
+        write_route(&mut packet, "2001:db8::1".parse().unwrap(), 32);
         write_route(&mut packet, "fd00::".parse().unwrap(), 8);
         packet.extend_from_slice(&456u64.to_be_bytes());
         packet.extend_from_slice(&1i32.to_be_bytes());
@@ -696,8 +694,12 @@ mod tests {
         assert_eq!(config.masquerade, MasqueradeMode::Simple);
         assert_eq!(config.primary_network, Some(123));
         assert_eq!(config.primary_routes.len(), 2);
-        assert_eq!(config.primary_routes[0].prefix_len, 32);
-        assert_eq!(config.primary_routes[1].prefix_len, 8);
+        assert_eq!(
+            config.primary_routes[0].first_address(),
+            "2001:db8::".parse::<Ipv6Addr>().unwrap()
+        );
+        assert_eq!(config.primary_routes[0].network_length(), 32);
+        assert_eq!(config.primary_routes[1].network_length(), 8);
         assert_eq!(config.fallback_network, Some(456));
         assert_eq!(config.upstreams.len(), 1);
         assert_eq!(config.upstreams[0].role, UpstreamRole::Primary);
@@ -750,10 +752,10 @@ mod tests {
         };
         let ipv6_nat = config.ipv6_nat.unwrap();
         assert_eq!(
-            ipv6_nat.gateway,
+            ipv6_nat.gateway.address(),
             "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
         );
-        assert_eq!(ipv6_nat.prefix_len, 64);
+        assert_eq!(ipv6_nat.gateway.network_length(), 64);
     }
 
     #[test]

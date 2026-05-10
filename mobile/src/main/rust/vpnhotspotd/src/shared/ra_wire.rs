@@ -1,12 +1,11 @@
 use std::net::Ipv6Addr;
 
-use crate::shared::model::{network_prefix, Route};
+use cidr::{Ipv6Cidr, Ipv6Inet};
 
-pub fn make_current_ra_packet(gateway: Ipv6Addr, prefix_len: u8, mtu: u32) -> Vec<u8> {
+pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
     RaAdvertisement {
-        dns_server: gateway,
-        advertised_prefix: gateway,
-        prefix_len,
+        dns_server: gateway.address(),
+        advertised_prefix: gateway.network(),
         mtu,
         router_lifetime: 1800,
         valid_lifetime: 3600,
@@ -16,12 +15,10 @@ pub fn make_current_ra_packet(gateway: Ipv6Addr, prefix_len: u8, mtu: u32) -> Ve
     .encode()
 }
 
-pub fn make_zero_lifetime_ra_packet(prefix: Route, mtu: u32, keep_router: bool) -> Vec<u8> {
-    let gateway = Ipv6Addr::from(prefix.prefix);
+pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: bool) -> Vec<u8> {
     RaAdvertisement {
-        dns_server: gateway,
-        advertised_prefix: gateway,
-        prefix_len: prefix.prefix_len,
+        dns_server: prefix.address(),
+        advertised_prefix: prefix.network(),
         mtu,
         router_lifetime: if keep_router { 1800 } else { 0 },
         valid_lifetime: 0,
@@ -37,8 +34,7 @@ pub fn is_router_link_local(address: Ipv6Addr) -> bool {
 
 struct RaAdvertisement {
     dns_server: Ipv6Addr,
-    advertised_prefix: Ipv6Addr,
-    prefix_len: u8,
+    advertised_prefix: Ipv6Cidr,
     mtu: u32,
     router_lifetime: u16,
     valid_lifetime: u32,
@@ -60,12 +56,12 @@ impl RaAdvertisement {
 
         packet.push(3);
         packet.push(4);
-        packet.push(self.prefix_len);
+        packet.push(self.advertised_prefix.network_length());
         packet.push(0xc0);
         packet.extend_from_slice(&self.valid_lifetime.to_be_bytes());
         packet.extend_from_slice(&self.preferred_lifetime.to_be_bytes());
         packet.extend_from_slice(&0u32.to_be_bytes());
-        packet.extend_from_slice(&network_prefix(self.advertised_prefix, self.prefix_len));
+        packet.extend_from_slice(&self.advertised_prefix.first_address().octets());
 
         packet.push(5);
         packet.push(1);
@@ -90,8 +86,7 @@ mod tests {
         let dns_server: Ipv6Addr = "fd47:6b7c:2186:b452::1".parse().unwrap();
         let packet = RaAdvertisement {
             dns_server,
-            advertised_prefix: dns_server,
-            prefix_len: 64,
+            advertised_prefix: Ipv6Inet::new(dns_server, 64).unwrap().network(),
             mtu: 1500,
             router_lifetime: 0,
             valid_lifetime: 0,
@@ -99,8 +94,23 @@ mod tests {
             rdnss_lifetime: 0,
         }
         .encode();
-        assert_eq!(&packet[40..44], &0u32.to_be_bytes());
+        assert_eq!(&packet[20..24], &0u32.to_be_bytes());
+        assert_eq!(&packet[24..28], &0u32.to_be_bytes());
         assert_eq!(&packet[packet.len() - 16..], &dns_server.octets());
+    }
+
+    #[test]
+    fn current_ra_masks_gateway_to_advertised_prefix() {
+        let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
+        let packet = make_current_ra_packet(gateway, 1500);
+        assert_eq!(
+            &packet[32..48],
+            &"fd47:6b7c:2186:b452::"
+                .parse::<Ipv6Addr>()
+                .unwrap()
+                .octets()
+        );
+        assert_eq!(&packet[64..80], &gateway.address().octets());
     }
 
     #[test]
