@@ -5,7 +5,6 @@ import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.net.Inet4Address
 
 abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     private var neighboursJob: Job? = null
@@ -32,8 +31,8 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .filter { it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID }
-                    .distinctBy { it.lladdr }
+                    .mapNotNull { it.validIpv4ClientMac }
+                    .distinct()
                     .size
         }
         ServiceNotification.startForeground(this, activeIfaces.associateWith { sizeLookup[it] ?: 0 }, inactiveIfaces,

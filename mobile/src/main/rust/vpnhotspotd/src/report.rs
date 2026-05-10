@@ -6,8 +6,11 @@ use std::sync::OnceLock;
 
 use libc::{c_char, c_int};
 use tokio::sync::mpsc::{UnboundedSender, WeakUnboundedSender};
-use vpnhotspotd::shared::protocol::DaemonErrorReport;
-use vpnhotspotd::shared::transport::nonfatal_frame;
+use vpnhotspotd::shared::proto::daemon::DaemonErrorReport;
+use vpnhotspotd::shared::protocol::{
+    daemon_error_report, daemon_io_error_report, daemon_io_error_report_with_details,
+    nonfatal_frame,
+};
 
 static REPORTER: OnceLock<WeakUnboundedSender<Vec<u8>>> = OnceLock::new();
 const ANDROID_LOG_INFO: c_int = 4;
@@ -55,7 +58,7 @@ pub(crate) fn report_for(call_id: Option<u64>, report: DaemonErrorReport) {
 
 #[track_caller]
 pub(crate) fn io(context: impl Into<String>, error: io::Error) {
-    report(DaemonErrorReport::from_io_error(context, error));
+    report(daemon_io_error_report(context, error));
 }
 
 #[track_caller]
@@ -64,7 +67,7 @@ pub(crate) fn message(
     message: impl Into<String>,
     kind: impl Into<String>,
 ) {
-    report(DaemonErrorReport::from_message(context, message, kind));
+    report(daemon_error_report(context, message, kind));
 }
 
 #[track_caller]
@@ -74,9 +77,7 @@ where
     K: ToString,
     V: ToString,
 {
-    report(DaemonErrorReport::from_io_error_with_details(
-        context, error, details,
-    ));
+    report(daemon_io_error_report_with_details(context, error, details));
 }
 
 pub(crate) fn write_stdout(message: fmt::Arguments<'_>) {

@@ -14,22 +14,26 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::{spawn, task::JoinHandle};
 
 use crate::{netlink, report};
-use vpnhotspotd::shared::protocol::{
-    neighbour_deltas_packet, DaemonErrorReport, Neighbour, NeighbourDelta, NeighbourState,
-};
-use vpnhotspotd::shared::transport::event_frame;
+use vpnhotspotd::shared::proto::daemon::{self, NeighbourState};
+use vpnhotspotd::shared::protocol::{daemon_error_report_with_details, neighbour_deltas_frame};
 
 const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
 
-pub(crate) async fn dump(handle: &netlink::Handle, call_id: u64) -> io::Result<Vec<Neighbour>> {
+pub(crate) async fn dump(
+    handle: &netlink::Handle,
+    call_id: u64,
+) -> io::Result<Vec<daemon::Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
     let _dump = handle.lock_dump().await;
     let mut messages = handle.raw().neighbours().get().execute();
     let mut neighbours = Vec::new();
     while let Some(message) = messages.try_next().await.map_err(netlink::to_io_error)? {
         let interface = interface_name_from_map(&interfaces, message.header.ifindex);
-        if let Some(NeighbourDelta::Upsert(neighbour)) =
-            neighbour_from_message(call_id, false, message, interface)
+        if let Some(neighbour) = neighbour_from_message(call_id, false, message, interface)
+            .and_then(|delta| match delta.delta {
+                Some(daemon::neighbour_delta::Delta::Upsert(neighbour)) => Some(neighbour),
+                _ => None,
+            })
         {
             neighbours.push(neighbour);
         }
@@ -52,9 +56,13 @@ impl Monitor {
         let handle = netlink.handle();
         let neighbours = dump(&handle, call_id).await?;
         if sender
-            .send(event_frame(
+            .send(neighbour_deltas_frame(
                 call_id,
-                neighbour_deltas_packet(neighbours.into_iter().map(NeighbourDelta::Upsert)),
+                neighbours
+                    .into_iter()
+                    .map(|neighbour| daemon::NeighbourDelta {
+                        delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
+                    }),
             ))
             .is_err()
         {
@@ -69,10 +77,7 @@ impl Monitor {
                 while let Some(message) = events.recv().await {
                     if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
                         if sender
-                            .send(event_frame(
-                                call_id,
-                                neighbour_deltas_packet(std::iter::once(delta)),
-                            ))
+                            .send(neighbour_deltas_frame(call_id, std::iter::once(delta)))
                             .is_err()
                         {
                             report::stderr!(
@@ -99,7 +104,7 @@ async fn neighbour_from_event(
     call_id: u64,
     handle: &netlink::Handle,
     message: RouteNetlinkMessage,
-) -> Option<NeighbourDelta> {
+) -> Option<daemon::NeighbourDelta> {
     let (deleting, message) = match message {
         RouteNetlinkMessage::NewNeighbour(message) => (false, message),
         RouteNetlinkMessage::DelNeighbour(message) => (true, message),
@@ -135,7 +140,7 @@ fn neighbour_from_message(
     deleting: bool,
     message: NeighbourMessage,
     interface: String,
-) -> Option<NeighbourDelta> {
+) -> Option<daemon::NeighbourDelta> {
     if has_state(message.header.state, NetlinkNeighbourState::Noarp) || message.header.ifindex == 0
     {
         return None;
@@ -161,7 +166,7 @@ fn neighbour_from_message(
                 } else {
                     report::report_for(
                         Some(call_id),
-                        DaemonErrorReport::from_message_with_details(
+                        daemon_error_report_with_details(
                             "neighbour.lladdr",
                             "invalid link-layer address length",
                             "InvalidData",
@@ -179,14 +184,14 @@ fn neighbour_from_message(
     if unknown_state_bits != 0 {
         report::report_for(
             Some(call_id),
-            DaemonErrorReport::from_message_with_details(
+            daemon_error_report_with_details(
                 "neighbour.state",
                 "unrecognized neighbour state bits",
                 "InvalidData",
                 [
                     ("state", format!("0x{raw_state:04x}")),
                     ("unknown", format!("0x{unknown_state_bits:04x}")),
-                    ("interface", interface.clone()),
+                    ("dev", interface.clone()),
                     ("address", address.to_string()),
                     ("deleting", deleting.to_string()),
                 ],
@@ -194,7 +199,14 @@ fn neighbour_from_message(
         );
     }
     if deleting {
-        return Some(NeighbourDelta::Delete { address, interface });
+        return Some(daemon::NeighbourDelta {
+            delta: Some(daemon::neighbour_delta::Delta::Delete(
+                daemon::NeighbourDelete {
+                    address: ip_address_bytes(address),
+                    dev: interface,
+                },
+            )),
+        });
     }
     let state = {
         let state = message.header.state;
@@ -213,12 +225,21 @@ fn neighbour_from_message(
             NeighbourState::Unset
         }
     };
-    Some(NeighbourDelta::Upsert(Neighbour {
-        address,
-        interface,
-        lladdr,
-        state,
-    }))
+    Some(daemon::NeighbourDelta {
+        delta: Some(daemon::neighbour_delta::Delta::Upsert(daemon::Neighbour {
+            address: ip_address_bytes(address),
+            dev: interface,
+            lladdr: lladdr.map(Vec::from),
+            state: state as i32,
+        })),
+    })
+}
+
+fn ip_address_bytes(address: IpAddr) -> Vec<u8> {
+    match address {
+        IpAddr::V4(address) => address.octets().to_vec(),
+        IpAddr::V6(address) => address.octets().to_vec(),
+    }
 }
 
 fn has_state(state: NetlinkNeighbourState, flag: NetlinkNeighbourState) -> bool {

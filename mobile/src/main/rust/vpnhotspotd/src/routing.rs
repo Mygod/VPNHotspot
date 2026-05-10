@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -20,14 +21,14 @@ use crate::{
 };
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, MasqueradeMode, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
-    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
-    LOCAL_NETWORK_TABLE,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, SessionConfig, SessionPorts,
+    UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE,
+    DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
 };
-use vpnhotspotd::shared::protocol::{
-    error_errno, CleanRoutingCommand, IoResultReportExt, StaticAddressesCommand,
+use vpnhotspotd::shared::proto::daemon::{
+    CleanRoutingCommand, MasqueradeMode, ReplaceStaticAddressesCommand,
 };
+use vpnhotspotd::shared::protocol::{error_errno, read_ip_address_entry, IoResultReportExt};
 
 // AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
 // on API 29..30. Keep VPNHotspot rules inside that gap.
@@ -384,51 +385,59 @@ impl Runtime {
             );
             // Upstream-specific MASQUERADE rules are added from upstream snapshots.
         }
-        let mut upstreams = Vec::new();
-        for upstream in &config.upstreams {
-            if upstreams.contains(upstream) {
-                continue;
-            }
-            let ifindex = match netlink::link_index(&self.netlink, &upstream.ifname).await {
-                Ok(ifindex) => ifindex,
-                Err(e) if netlink::is_missing_link(&e) => continue,
-                Err(e) => {
-                    return Err(e).with_report_context_details(
-                        "routing.resolve_upstream_index",
-                        [("upstream", upstream.ifname.as_str())],
-                    );
+        let mut seen_upstream_interfaces = HashSet::new();
+        for (interfaces, role) in [
+            (&config.primary_upstream_interfaces, UpstreamRole::Primary),
+            (&config.fallback_upstream_interfaces, UpstreamRole::Fallback),
+        ] {
+            for ifname in interfaces {
+                if !seen_upstream_interfaces.insert(ifname.as_str()) {
+                    continue;
                 }
-            };
-            upstreams.push(upstream.clone());
-            push_unique(
-                &mut mutations,
-                RoutingMutation::IpRule(IpRuleCommand {
-                    operation: IpOperation::Replace,
-                    family: IpFamily::Ipv4,
-                    iif: config.downstream.clone(),
-                    priority: rule_priority(match upstream.role {
-                        UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
-                        UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                let ifindex = match netlink::link_index(&self.netlink, ifname).await {
+                    Ok(ifindex) => ifindex,
+                    Err(e) if netlink::is_missing_link(&e) => continue,
+                    Err(e) => {
+                        return Err(e).with_report_context_details(
+                            "routing.resolve_upstream_index",
+                            [("upstream", ifname.as_str())],
+                        );
+                    }
+                };
+                let upstream = UpstreamConfig {
+                    ifname: ifname.clone(),
+                    role,
+                };
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::IpRule(IpRuleCommand {
+                        operation: IpOperation::Replace,
+                        family: IpFamily::Ipv4,
+                        iif: config.downstream.clone(),
+                        priority: rule_priority(match upstream.role {
+                            UpstreamRole::Primary => RULE_PRIORITY_UPSTREAM_BASE,
+                            UpstreamRole::Fallback => RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+                        }),
+                        action: RuleAction::Lookup,
+                        // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
+                        table: 1000 + ifindex,
+                        fwmark: None,
                     }),
-                    action: RuleAction::Lookup,
-                    // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
-                    table: 1000 + ifindex,
-                    fwmark: None,
-                }),
-            );
-            match config.masquerade {
-                MasqueradeMode::None => {}
-                MasqueradeMode::Simple => push_unique(
-                    &mut mutations,
-                    RoutingMutation::Iptables(self.upstream_masquerade_rule(upstream)),
-                ),
-                MasqueradeMode::Netd => push_unique(
-                    &mut mutations,
-                    RoutingMutation::NetdNat {
-                        downstream: config.downstream.clone(),
-                        upstream: upstream.ifname.clone(),
-                    },
-                ),
+                );
+                match config.masquerade {
+                    MasqueradeMode::None => {}
+                    MasqueradeMode::Simple => push_unique(
+                        &mut mutations,
+                        RoutingMutation::Iptables(self.upstream_masquerade_rule(&upstream)),
+                    ),
+                    MasqueradeMode::Netd => push_unique(
+                        &mut mutations,
+                        RoutingMutation::NetdNat {
+                            downstream: config.downstream.clone(),
+                            upstream: upstream.ifname,
+                        },
+                    ),
+                }
             }
         }
         if config.ipv6_block {
@@ -1190,20 +1199,21 @@ async fn remove_ip_forward(downstream: &str) -> bool {
 
 pub(crate) async fn replace_static_addresses(
     handle: &netlink::Handle,
-    command: &StaticAddressesCommand,
+    command: &ReplaceStaticAddressesCommand,
 ) -> io::Result<()> {
-    let index = netlink::link_index(handle, &command.interface)
+    let index = netlink::link_index(handle, &command.dev)
         .await
         .with_report_context_details(
             "routing.static_addresses.link_index",
-            [("interface", command.interface.clone())],
+            [("dev", command.dev.clone())],
         )?;
     for address in &command.addresses {
+        let (address, prefix_len) = read_ip_address_entry(address)?;
         let command = IpAddressCommand {
             operation: IpOperation::Replace,
-            address: address.address,
-            prefix_len: address.prefix_len,
-            interface: command.interface.clone(),
+            address,
+            prefix_len,
+            interface: command.dev.clone(),
         };
         match apply_address_command_with_index(handle, &command, index).await {
             Ok(()) => {}
@@ -1214,15 +1224,12 @@ pub(crate) async fn replace_static_addresses(
     Ok(())
 }
 
-pub(crate) async fn delete_static_addresses(
-    handle: &netlink::Handle,
-    interface: &str,
-) -> io::Result<()> {
-    let index = netlink::link_index(handle, interface)
+pub(crate) async fn delete_static_addresses(handle: &netlink::Handle, dev: &str) -> io::Result<()> {
+    let index = netlink::link_index(handle, dev)
         .await
         .with_report_context_details(
             "routing.static_addresses.link_index",
-            [("interface", interface.to_owned())],
+            [("dev", dev.to_owned())],
         )?;
     let _dump = handle.lock_dump().await;
     let addresses = handle
@@ -1236,10 +1243,7 @@ pub(crate) async fn delete_static_addresses(
         .try_next()
         .await
         .map_err(netlink::to_io_error)
-        .with_report_context_details(
-            "routing.static_addresses.dump",
-            [("interface", interface.to_owned())],
-        )?
+        .with_report_context_details("routing.static_addresses.dump", [("dev", dev.to_owned())])?
     {
         let mut address = None;
         for attribute in &message.attributes {
@@ -1264,7 +1268,7 @@ pub(crate) async fn delete_static_addresses(
             operation: IpOperation::Delete,
             address,
             prefix_len: message.header.prefix_len,
-            interface: interface.to_owned(),
+            interface: dev.to_owned(),
         };
         match apply_address_command_with_index(handle, &command, index).await {
             Ok(()) => {}

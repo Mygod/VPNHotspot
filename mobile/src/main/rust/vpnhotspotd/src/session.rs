@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{dns, downstream, nat66, netlink, report, routing};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
-use vpnhotspotd::shared::protocol::DaemonErrorReport;
+use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
 
 pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
@@ -57,7 +57,7 @@ impl Session {
             Err(e) => {
                 report::report_for(
                     Some(call_id),
-                    DaemonErrorReport::from_io_error_with_details(
+                    daemon_io_error_report_with_details(
                         "session.start_ipv6_nat",
                         e,
                         [("downstream", config.downstream.as_str())],

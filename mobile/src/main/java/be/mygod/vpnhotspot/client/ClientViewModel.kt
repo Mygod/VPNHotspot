@@ -29,6 +29,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.DaemonProto
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -85,7 +86,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
             getMacAddress(client) as MacAddress to TetheredClient(
                 TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {
                     val address = getAddress(it) as LinkAddress
-                    ClientAddressInfo(NetlinkNeighbour.State.UNSET, address, getHostname(it) as String?).also { info ->
+                    ClientAddressInfo(
+                        DaemonProto.NeighbourState.NEIGHBOUR_STATE_UNSET,
+                        address,
+                        getHostname(it) as String?,
+                    ).also { info ->
                         // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/android/net/ip/IpServer.java;l=516;drc=efb735f4d5a2f04550e33e8aa9485f906018fe4e
                         if (address.flags != 0 || address.scope != OsConstants.RT_SCOPE_UNIVERSE ||
                             info.deprecationTime != info.expirationTime) {

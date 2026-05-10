@@ -1,3 +1,4 @@
+import com.google.protobuf.gradle.id
 import groovy.json.JsonOutput
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
@@ -15,6 +16,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
     alias(libs.plugins.kotlin.parcelize)
+    alias(libs.plugins.protobuf)
     id("com.google.android.gms.oss-licenses-plugin")
 }
 
@@ -58,6 +60,10 @@ abstract class BuildDaemonNativeLibsTask : DefaultTask() {
     @get:InputDirectory
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDir: DirectoryProperty
+
+    @get:InputDirectory
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val protoDir: DirectoryProperty
 
     @get:Input
     abstract val cargoProfile: Property<String>
@@ -158,6 +164,20 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
+protobuf {
+    protoc {
+        artifact = libs.protobuf.protoc.get().let { "${it.module}:${it.versionConstraint.requiredVersion}" }
+    }
+    generateProtoTasks {
+        all().configureEach {
+            builtins {
+                id("java") {
+                    option("lite")
+                }
+            }
+        }
+    }
+}
 androidComponents.onVariants { variant ->
     val task = tasks.register<GenerateGitJavaTask>("generate${variant.name.replaceFirstChar(Char::titlecase)}GitJava") {
         includeStatus.set(variant.buildType == "debug")
@@ -168,6 +188,7 @@ androidComponents.onVariants { variant ->
     val daemonTask = tasks.register<BuildDaemonNativeLibsTask>(
         "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonNativeLibs") {
         sourceDir.set(layout.projectDirectory.dir("src/main/rust/vpnhotspotd"))
+        protoDir.set(layout.projectDirectory.dir("src/main/proto"))
         cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
         androidPlatform.set(android.defaultConfig.minSdk!!)
         outputDir.set(layout.buildDirectory.dir("generated/nativeLibs/daemon/${variant.name}"))
@@ -201,6 +222,7 @@ dependencies {
     implementation(libs.play.services.oss.licenses)
     implementation(libs.preference)
     implementation(libs.preferencex.simplemenu)
+    implementation(libs.protobuf.javalite)
     implementation(libs.room.ktx)
     implementation(libs.timber)
     implementation(libs.zxing.core)

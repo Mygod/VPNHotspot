@@ -38,7 +38,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
-import java.net.Inet4Address
 import java.util.concurrent.atomic.AtomicInteger
 
 class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
@@ -320,9 +319,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
 
     override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
         super.onNetlinkNeighboursChanged(neighbours)
-        timeoutMonitor?.onClientsChanged(neighbours.none {
-            it.lladdr != null && it.ip is Inet4Address && it.state == NetlinkNeighbour.State.VALID
-        })
+        timeoutMonitor?.onClientsChanged(neighbours.none { it.validIpv4ClientMac != null })
     }
 
     override fun onDestroy() {
