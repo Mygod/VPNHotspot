@@ -1247,10 +1247,8 @@ pub(crate) async fn delete_static_addresses(
                     address = Some(*value);
                     break;
                 }
-                AddressAttribute::Address(value) => {
-                    if address.is_none() {
-                        address = Some(*value);
-                    }
+                AddressAttribute::Address(value) if address.is_none() => {
+                    address = Some(*value);
                 }
                 _ => {}
             }

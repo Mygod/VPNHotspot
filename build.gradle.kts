@@ -9,6 +9,6 @@ plugins {
 
 buildscript {
     dependencies {
-        classpath("com.google.android.gms:oss-licenses-plugin:0.11.0")
+        classpath("com.google.android.gms:oss-licenses-plugin:0.12.0")
     }
 }
