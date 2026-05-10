@@ -25,7 +25,6 @@ lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", v
 material = "com.google.android.material:material:1.13.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
-preferencex-simplemenu = "com.takisoft.preferencex:preferencex-simplemenu:1.1.0"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }

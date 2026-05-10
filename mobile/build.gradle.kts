@@ -212,7 +212,6 @@ dependencies {
     implementation(libs.material)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.preference)
-    implementation(libs.preferencex.simplemenu)
     implementation(libs.room.ktx)
     implementation(libs.timber)
     implementation(libs.wire.runtime)
