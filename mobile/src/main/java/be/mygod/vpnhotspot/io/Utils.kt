@@ -1,14 +1,11 @@
 package be.mygod.vpnhotspot.io
 
-import android.annotation.SuppressLint
 import android.system.ErrnoException
-import android.system.Os
 import android.system.OsConstants
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.availableForRead
 import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.readLine
-import java.io.FileDescriptor
 import java.io.IOException
 import java.util.Locale
 
@@ -28,19 +25,6 @@ suspend fun ByteReadChannel.forEachLineSafely(block: (String) -> Boolean) {
         if (!e.isEBADF) throw e
     }
 }
-
-var FileDescriptor.isNonblocking: Boolean
-    @SuppressLint("NewApi")
-    get() = Os.fcntlInt(this, OsConstants.F_GETFL, 0) and OsConstants.O_NONBLOCK != 0
-    @SuppressLint("NewApi")
-    set(value) {
-        val flags = Os.fcntlInt(this, OsConstants.F_GETFL, 0)
-        Os.fcntlInt(this, OsConstants.F_SETFL, if (value) {
-            flags or OsConstants.O_NONBLOCK
-        } else {
-            flags and OsConstants.O_NONBLOCK.inv()
-        })
-    }
 
 /**
  * Drain currently available bytes from this channel and consume complete lines.

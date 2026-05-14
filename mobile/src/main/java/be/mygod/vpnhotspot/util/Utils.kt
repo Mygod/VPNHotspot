@@ -13,6 +13,7 @@ import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.Parcel
 import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
@@ -27,7 +28,6 @@ import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
-import be.mygod.librootkotlinx.useParcel
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -68,6 +68,15 @@ fun Long.toPluralInt(): Int {
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
 inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+inline fun <T> useParcel(block: (Parcel) -> T): T {
+    val parcel = Parcel.obtain()
+    try {
+        return block(parcel)
+    } finally {
+        parcel.recycle()
+    }
+}
 
 fun Parcelable?.toByteArray(parcelableFlags: Int = 0) = useParcel { parcel ->
     parcel.writeParcelable(this, parcelableFlags)

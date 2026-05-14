@@ -25,6 +25,8 @@ import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object RootManager : RootSession(), Logger {
+    override val context get() = app.deviceStorage
+
     private var logThrowable = { priority: Int, t: Throwable ->
         if (priority >= Log.WARN) t.printStackTrace(System.err)
     }
@@ -83,7 +85,7 @@ object RootManager : RootSession(), Logger {
 
     override suspend fun initServer(server: RootServer) {
         Logger.me = this
-        server.init(app)
+        super.initServer(server)
         server.execute(RootInit())
         GlobalScope.launch {
             try {

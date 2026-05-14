@@ -11,7 +11,7 @@ import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
-import be.mygod.vpnhotspot.io.openReadChannel
+import be.mygod.librootkotlinx.io.openReadChannel
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
 import io.ktor.utils.io.ByteReadChannel
@@ -43,11 +43,11 @@ suspend fun <T> ProcessBuilder.withOutputChannels(
         redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdoutWrite!!.fd}")))
         redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderrWrite!!.fd}")))
         process = withContext(Dispatchers.IO) { start() }
-        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler.looper).also {
+        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler).also {
             stdoutRead = null
             stdoutChannel = it
         }
-        val stderr = stderrRead!!.openReadChannel(Services.mainHandler.looper).also {
+        val stderr = stderrRead!!.openReadChannel(Services.mainHandler).also {
             stderrRead = null
             stderrChannel = it
         }

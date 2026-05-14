@@ -1,18 +1,16 @@
 package be.mygod.vpnhotspot.root.daemon
 
 import android.net.LocalServerSocket
-import android.net.LocalSocket
-import android.os.MessageQueue
 import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.ErrnoException
 import android.system.OsConstants
+import be.mygod.librootkotlinx.io.FileDescriptorByteReadChannel
+import be.mygod.librootkotlinx.io.openReadChannel
+import be.mygod.librootkotlinx.net.ALocalServerSocket
+import be.mygod.librootkotlinx.net.ALocalSocket
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.io.ParcelFileDescriptorReadChannel
 import be.mygod.vpnhotspot.io.drainLines
-import be.mygod.vpnhotspot.io.isNonblocking
-import be.mygod.vpnhotspot.io.openReadChannel
-import be.mygod.vpnhotspot.io.openWriteChannel
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -36,7 +34,6 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -46,9 +43,6 @@ import okio.ByteString.Companion.toByteString
 import java.io.EOFException
 import java.io.IOException
 import java.net.InetAddress
-import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.random.Random
 import kotlin.time.Duration.Companion.seconds
 
@@ -56,7 +50,7 @@ object DaemonController {
     private const val BINARY_NAME = "vpnhotspotd"
 
     private val lock = Mutex()
-    private var socket: LocalSocket? = null
+    private var socket: ALocalSocket? = null
     private var input: ByteReadChannel? = null
     private var output: ByteWriteChannel? = null
     private var readerJob: Job? = null
@@ -153,7 +147,7 @@ object DaemonController {
         try {
             stdout = stdoutLog.openPipe(logScope)
             stderr = stderrLog.openPipe(logScope)
-            LocalServerSocket(socketName).use { serverSocket ->
+            ALocalServerSocket(LocalServerSocket(socketName), Services.mainHandler).use { serverSocket ->
                 RootManager.use { server ->
                     try {
                         server.execute(RunDaemon(daemonCommand, socketName, stdout!!, stderr!!))
@@ -168,10 +162,10 @@ object DaemonController {
                         stderr = null
                     }
                 }
-                acceptLocked(serverSocket).also {
-                    socket = it
-                    input = ParcelFileDescriptor.dup(it.fileDescriptor).openReadChannel(Services.mainHandler.looper)
-                    output = ParcelFileDescriptor.dup(it.fileDescriptor).openWriteChannel(Services.mainHandler.looper)
+                withTimeoutOrNull(10.seconds) { serverSocket.accept() }.also {
+                    socket = it ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
+                    input = it.openReadChannel()
+                    output = it.openWriteChannel()
                     startReaderLocked(input!!)
                     Timber.d("Started $BINARY_NAME")
                 }
@@ -186,54 +180,6 @@ object DaemonController {
             closeConnectionLocked()
             throw e
         }
-    }
-
-    private suspend fun acceptLocked(serverSocket: LocalServerSocket): LocalSocket {
-        val descriptor = serverSocket.fileDescriptor
-        descriptor.isNonblocking = true
-        return withTimeoutOrNull(10.seconds) {
-            suspendCancellableCoroutine { continuation ->
-                val events = MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT or
-                        MessageQueue.OnFileDescriptorEventListener.EVENT_ERROR
-                val active = AtomicBoolean(true)
-                val messageQueue = Services.mainHandler.looper.queue
-                val listener = MessageQueue.OnFileDescriptorEventListener { _, receivedEvents ->
-                    if (!active.get() || !continuation.isActive) return@OnFileDescriptorEventListener 0
-                    if ((receivedEvents and MessageQueue.OnFileDescriptorEventListener.EVENT_INPUT) == 0) {
-                        if (active.compareAndSet(true, false) && continuation.isActive) {
-                            continuation.resumeWithException(IOException("Unexpected $BINARY_NAME listener event " +
-                                    receivedEvents))
-                        }
-                        return@OnFileDescriptorEventListener 0
-                    }
-                    try {
-                        val accepted = serverSocket.accept()
-                        if (active.compareAndSet(true, false) && continuation.isActive) {
-                            continuation.resume(accepted)
-                        } else {
-                            accepted.close()
-                        }
-                        0
-                    } catch (e: IOException) {
-                        if ((e.cause as? ErrnoException)?.errno == OsConstants.EAGAIN) {
-                            events
-                        } else {
-                            if (active.compareAndSet(true, false) && continuation.isActive) {
-                                continuation.resumeWithException(e)
-                            }
-                            0
-                        }
-                    }
-                }
-                messageQueue.addOnFileDescriptorEventListener(descriptor, events, listener)
-                continuation.invokeOnCancellation {
-                    if (active.compareAndSet(true, false)) messageQueue.removeOnFileDescriptorEventListener(descriptor)
-                }
-                if (!continuation.isActive && active.compareAndSet(true, false)) {
-                    messageQueue.removeOnFileDescriptorEventListener(descriptor)
-                }
-            }
-        } ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
     }
 
     private suspend fun request(command: ClientEnvelope): ReplyFrame {
@@ -493,7 +439,7 @@ object DaemonController {
     }
 
     private class DaemonLog(private val stream: String, private val log: (String) -> Unit) {
-        private var channel: ParcelFileDescriptorReadChannel? = null
+        private var channel: FileDescriptorByteReadChannel? = null
         private val line = StringBuilder()
         private var job: Job? = null
 
@@ -502,7 +448,7 @@ object DaemonController {
             var readEnd: ParcelFileDescriptor? = pipe[0]
             var writeEnd: ParcelFileDescriptor? = pipe[1]
             try {
-                val channel = ParcelFileDescriptorReadChannel(readEnd!!, Services.mainHandler.looper)
+                val channel = readEnd!!.openReadChannel(Services.mainHandler)
                 this.channel = channel
                 readEnd = null
                 job = scope.launch {
