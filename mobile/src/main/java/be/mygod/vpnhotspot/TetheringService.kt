@@ -3,7 +3,11 @@ package be.mygod.vpnhotspot
 import android.content.Context
 import android.content.Intent
 import androidx.annotation.RequiresApi
-import be.mygod.vpnhotspot.App.Companion.app
+import androidx.collection.MutableScatterMap
+import androidx.collection.MutableScatterSet
+import androidx.collection.ScatterSet
+import androidx.collection.emptyScatterSet
+import androidx.collection.toMutableScatterMap
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
@@ -18,7 +22,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import java.util.concurrent.ConcurrentHashMap
 
 class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
     companion object {
@@ -65,26 +68,31 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
      */
     private val dispatcher = Dispatchers.Default.limitedParallelism(1, "TetheringService")
     override val coroutineContext = dispatcher + Job()
-    private val managedIfaces = MutableStateFlow(emptySet<String>())
-    private val inactiveIfaceSet = MutableStateFlow(emptySet<String>())
-    private val monitoredIfaceSet = MutableStateFlow(emptySet<String>())
+    private val managedIfaces = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
+    private val inactiveIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
+    private val monitoredIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val binder = Binder()
-    private val downstreams = ConcurrentHashMap<String, Downstream>()
+    private var downstreams = MutableScatterMap<String, Downstream>()
     private var tetherStatesRegistered = false
-    private var tetheredIfaces: Set<String>? = null
-    override val activeIfaces get() = downstreams.values.filter { it.started }.map { it.downstream }
-    override val inactiveIfaces get() = downstreams.values.filter { !it.started }.map { it.downstream }
+    private var tetheredIfaces: ScatterSet<String>? = null
+    override val activeIfaces get() = ArrayList<String>(downstreams.size).apply {
+        downstreams.forEachValue { if (it.started) add(it.downstream) }
+    }
+    override val inactiveIfaces get() = ArrayList<String>(downstreams.size).apply {
+        downstreams.forEachValue { if (!it.started) add(it.downstream) }
+    }
 
     override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
         launch {
-            val tethered = interfaces.filterNotNull().toSet()
+            val tethered = MutableScatterSet<String>(interfaces.size)
+            for (iface in interfaces) if (iface != null) tethered.add(iface)
             tetheredIfaces = tethered
-            val toRemove = downstreams.toMutableMap()   // make a copy
-            for (iface in tethered) {
-                val downstream = toRemove.remove(iface) ?: continue
-                if (downstream.monitor && !downstream.start()) dismissIfApplicable()
+            val toRemove = downstreams.toMutableScatterMap()
+            tethered.forEach { iface ->
+                val downstream = toRemove.remove(iface)
+                if (downstream != null && downstream.monitor && !downstream.start()) dismissIfApplicable()
             }
-            for ((iface, downstream) in toRemove) {
+            toRemove.forEach { iface, downstream ->
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
                 downstream.stop()
             }
@@ -104,18 +112,27 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     }
 
     private suspend fun onDownstreamsChangedLocked() {
-        val downstreams = downstreams.values
-        val monitoredIfaces = downstreams.filter { it.monitor }.mapTo(mutableSetOf()) { it.downstream }
-        val inactiveIfaces = downstreams.filter { !it.started && it.monitor }.mapTo(mutableSetOf()) { it.downstream }
-        val managedIfaces = downstreams.mapTo(mutableSetOf()) { it.downstream }
+        val monitoredIfaces = MutableScatterSet<String>()
+        val inactiveIfaces = MutableScatterSet<String>()
+        val managedIfaces = MutableScatterSet<String>()
+        downstreams.forEachValue { downstream ->
+            managedIfaces.add(downstream.downstream)
+            if (downstream.monitor) {
+                monitoredIfaces.add(downstream.downstream)
+                if (!downstream.started) inactiveIfaces.add(downstream.downstream)
+            }
+        }
         if (managedIfaces.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
-            monitoredIfaces.also {
-                if (it.isEmpty()) BootReceiver.delete<TetheringService>()
-                else BootReceiver.add<TetheringService>(Starter(ArrayList(it)))
+            monitoredIfaces.also { ifaces ->
+                if (ifaces.isEmpty()) {
+                    BootReceiver.delete<TetheringService>()
+                } else BootReceiver.add<TetheringService>(Starter(ArrayList<String>(ifaces.size).apply {
+                    ifaces.forEach { iface -> add(iface) }
+                }))
             }
             if (!tetherStatesRegistered) {
                 withContext(Dispatchers.Main.immediate) {
@@ -141,27 +158,29 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
         launch {
             if (intent != null) {
                 for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
-                    if (downstreams[iface] == null) {
-                        val downstream = Downstream(this@TetheringService, iface)
-                        check(downstreams.put(iface, downstream) == null)
-                        if (!downstream.start()) {
-                            dismissIfApplicable()
-                        }
+                    var newDownstream: Downstream? = null
+                    downstreams.compute(iface) { _, existing ->
+                        existing ?: Downstream(this@TetheringService, iface).also { newDownstream = it }
                     }
+                    if (newDownstream?.start() == false) dismissIfApplicable()
                 }
                 val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
                     intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
                 if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
-                    val downstream = downstreams[iface]
                     val isTethered = tetheredIfaces?.contains(iface) == true
-                    if (downstream == null) {
-                        val monitored = Downstream(this@TetheringService, iface, true)
-                        check(downstreams.put(iface, monitored) == null)
-                        if (isTethered && !monitored.start()) dismissIfApplicable()
-                    } else {
-                        downstream.monitor = true
-                        if (isTethered && !downstream.started && !downstream.start()) dismissIfApplicable()
+                    var downstreamToStart: Downstream? = null
+                    downstreams.compute(iface) { _, downstream ->
+                        if (downstream == null) {
+                            Downstream(this@TetheringService, iface, true).also {
+                                if (isTethered) downstreamToStart = it
+                            }
+                        } else {
+                            downstream.monitor = true
+                            if (isTethered && !downstream.started) downstreamToStart = downstream
+                            downstream
+                        }
                     }
+                    if (downstreamToStart?.start() == false) dismissIfApplicable()
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
                 onDownstreamsChangedLocked()
@@ -173,9 +192,9 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     override fun onDestroy() {
         launch {
             unregisterReceiver()
-            val downstreams = downstreams.values.toList()
-            this@TetheringService.downstreams.clear()
-            downstreams.forEach { it.stop() }    // force clean to prevent leakage
+            val oldDownstreams = downstreams
+            downstreams = MutableScatterMap()
+            oldDownstreams.forEachValue { it.stop() }    // force clean to prevent leakage
             cancel()
         }
         super.onDestroy()

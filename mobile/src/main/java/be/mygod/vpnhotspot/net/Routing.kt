@@ -5,6 +5,13 @@ import android.net.MacAddress
 import android.net.RouteInfo
 import android.os.Build
 import android.provider.Settings
+import androidx.collection.MutableOrderedScatterSet
+import androidx.collection.MutableObjectList
+import androidx.collection.MutableScatterMap
+import androidx.collection.MutableScatterSet
+import androidx.collection.ScatterMap
+import androidx.collection.ScatterSet
+import androidx.collection.toScatterSet
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.Upstream
@@ -76,8 +83,8 @@ class Routing(private val caller: Any, private val downstream: String) {
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()
-    private val clients = linkedMapOf<Inet4Address, MacAddress>()
-    private val allowedMacs = linkedSetOf<MacAddress>()
+    private val clients = MutableScatterMap<Inet4Address, MacAddress>()
+    private val allowedMacs = MutableScatterSet<MacAddress>()
     private val started = AtomicBoolean()
     private val job = Job()
 
@@ -86,7 +93,7 @@ class Routing(private val caller: Any, private val downstream: String) {
         class NeighboursSnapshot(val neighbours: Collection<NetlinkNeighbour>) : RoutingUpdate(NeighboursSnapshot) {
             private companion object
         }
-        class BlockedMacsSnapshot(val macs: Set<MacAddress>) : RoutingUpdate(BlockedMacsSnapshot) {
+        class BlockedMacsSnapshot(val macs: ScatterSet<MacAddress>) : RoutingUpdate(BlockedMacsSnapshot) {
             private companion object
         }
     }
@@ -107,11 +114,11 @@ class Routing(private val caller: Any, private val downstream: String) {
                     Upstreams.fallback.collect { updates.trySend(RoutingUpdate.UpstreamSnapshot(fallbackUpstream, it)) }
                 }
                 launch { NetlinkNeighbour.snapshots.collect { updates.trySend(RoutingUpdate.NeighboursSnapshot(it)) } }
-                val initialBlockedMacs = CompletableDeferred<Set<MacAddress>>()
+                val initialBlockedMacs = CompletableDeferred<ScatterSet<MacAddress>>()
                 launch {
                     var first = true
                     AppDatabase.instance.clientRecordDao.observeBlockedMacs().collect {
-                        val macs = it.toSet()
+                        val macs = it.toScatterSet()
                         if (first) {
                             first = false
                             initialBlockedMacs.complete(macs)
@@ -123,7 +130,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 var blockedMacs = initialBlockedMacs.await()
                 var neighbours: Collection<NetlinkNeighbour> = emptyList()
                 Timber.i("Started routing for $downstream by $caller")
-                val pendingUpdates = LinkedHashMap<Any, RoutingUpdate>()
+                val pendingUpdates = MutableScatterMap<Any, RoutingUpdate>()
                 for (update in updates) {
                     pendingUpdates[update.key] = update
                     while (true) {
@@ -133,30 +140,32 @@ class Routing(private val caller: Any, private val downstream: String) {
                     try {
                         var upstreamChanged = false
                         var clientPolicyChanged = false
-                        for (pending in pendingUpdates.values) withContext(NonCancellable) {
-                            when (pending) {
-                                is RoutingUpdate.UpstreamSnapshot -> {
-                                    upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
-                                }
-                                is RoutingUpdate.NeighboursSnapshot -> {
-                                    neighbours = pending.neighbours
-                                    clientPolicyChanged = true
-                                }
-                                is RoutingUpdate.BlockedMacsSnapshot -> if (blockedMacs != pending.macs) {
-                                    blockedMacs = pending.macs
-                                    clientPolicyChanged = true
+                        pendingUpdates.forEachValue { pending ->
+                            withContext(NonCancellable) {
+                                when (pending) {
+                                    is RoutingUpdate.UpstreamSnapshot -> {
+                                        upstreamChanged = pending.upstream.update(pending.value) || upstreamChanged
+                                    }
+                                    is RoutingUpdate.NeighboursSnapshot -> {
+                                        neighbours = pending.neighbours
+                                        clientPolicyChanged = true
+                                    }
+                                    is RoutingUpdate.BlockedMacsSnapshot -> if (blockedMacs != pending.macs) {
+                                        blockedMacs = pending.macs
+                                        clientPolicyChanged = true
+                                    }
                                 }
                             }
                         }
-                        var clientSnapshot: Map<Inet4Address, MacAddress> = clients
-                        var allowedMacSnapshot: Set<MacAddress> = allowedMacs
-                        var nextClients: LinkedHashMap<Inet4Address, MacAddress>? = null
-                        var nextAllowedMacs: LinkedHashSet<MacAddress>? = null
-                        var added = emptyMap<Inet4Address, MacAddress>()
-                        var removed = emptySet<Inet4Address>()
+                        var clientSnapshot: ScatterMap<Inet4Address, MacAddress> = clients
+                        var allowedMacSnapshot: ScatterSet<MacAddress> = allowedMacs
+                        var nextClients: ScatterMap<Inet4Address, MacAddress>? = null
+                        var nextAllowedMacs: ScatterSet<MacAddress>? = null
+                        var added = MutableObjectList<Inet4Address>(0)
+                        var removed = MutableObjectList<Inet4Address>(0)
                         val clientsChanged = if (clientPolicyChanged) {
-                            val candidateClients = linkedMapOf<Inet4Address, MacAddress>()
-                            val candidateAllowedMacs = linkedSetOf<MacAddress>()
+                            val candidateClients = MutableScatterMap<Inet4Address, MacAddress>(neighbours.size)
+                            val candidateAllowedMacs = MutableScatterSet<MacAddress>()
                             for (neighbour in neighbours) {
                                 val lladdr = neighbour.validIpv4ClientMac ?: continue
                                 if (neighbour.dev != downstream || lladdr in blockedMacs) continue
@@ -164,10 +173,12 @@ class Routing(private val caller: Any, private val downstream: String) {
                                 candidateClients[neighbour.ip as Inet4Address] = lladdr
                             }
                             if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {
-                                removed = clients.keys - candidateClients.keys
+                                removed = MutableObjectList(clients.size)
+                                clients.forEach { ip, _ -> if (!candidateClients.containsKey(ip)) removed.add(ip) }
                                 // record stats before removing rules to prevent stats losing
                                 if (removed.isNotEmpty()) withContext(NonCancellable) { TrafficRecorder.update() }
-                                added = candidateClients.filterKeys { !clients.containsKey(it) }
+                                added = MutableObjectList(candidateClients.size)
+                                candidateClients.forEach { ip, _ -> if (!clients.containsKey(ip)) added.add(ip) }
                                 clientSnapshot = candidateClients
                                 allowedMacSnapshot = candidateAllowedMacs
                                 nextClients = candidateClients
@@ -190,19 +201,22 @@ class Routing(private val caller: Any, private val downstream: String) {
                             continue
                         }
                         if (clientsChanged) {
-                            for ((ip, mac) in added) try {
-                                TrafficRecorder.register(ip, downstream, mac)
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                Timber.w(e)
-                                SmartSnackbar.make(e).show()
+                            val committedClients = nextClients!!
+                            added.forEach { ip ->
+                                try {
+                                    TrafficRecorder.register(ip, downstream, committedClients[ip]!!)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Timber.w(e)
+                                    SmartSnackbar.make(e).show()
+                                }
                             }
                             withContext(NonCancellable) {
-                                for (ip in removed) TrafficRecorder.unregister(ip, downstream)
+                                removed.forEach { TrafficRecorder.unregister(it, downstream) }
                             }
                             clients.clear()
-                            clients.putAll(nextClients!!)
+                            clients.putAll(committedClients)
                             allowedMacs.clear()
                             allowedMacs.addAll(nextAllowedMacs!!)
                         }
@@ -228,16 +242,16 @@ class Routing(private val caller: Any, private val downstream: String) {
     }
 
     private class UpstreamTracker {
-        private var interfaces = linkedSetOf<String>()
+        private var interfaces = MutableOrderedScatterSet<String>()
         var upstream: Upstream? = null
             private set
 
         suspend fun update(value: Upstream?): Boolean {
             if (upstream == value) return false
             upstream = value
-            val nextInterfaces = linkedSetOf<String>()
+            val nextInterfaces = MutableOrderedScatterSet<String>()
             for (ifname in value?.properties?.allInterfaceNames ?: emptyList()) {
-                nextInterfaces += ifname
+                nextInterfaces.add(ifname)
                 if (Build.VERSION.SDK_INT >= 31 && !interfaces.contains(ifname)) try {
                     RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
                 } catch (e: CancellationException) {
@@ -251,15 +265,15 @@ class Routing(private val caller: Any, private val downstream: String) {
             return true
         }
 
-        fun appendInterfaces(target: MutableList<String>, seen: MutableSet<String>) {
-            for (ifname in interfaces) if (seen.add(ifname)) target += ifname
+        fun appendInterfaces(seen: MutableScatterSet<String>) = buildList(interfaces.size) {
+            interfaces.forEach { if (seen.add(it)) this += it }
         }
     }
 
     private fun nextConfig(
-        clientSnapshot: Map<Inet4Address, MacAddress> = clients,
-        allowedMacSnapshot: Set<MacAddress> = allowedMacs,
-    ) = HashSet<String>().let { seen ->
+        clientSnapshot: ScatterMap<Inet4Address, MacAddress> = clients,
+        allowedMacSnapshot: ScatterSet<MacAddress> = allowedMacs,
+    ) = MutableScatterSet<String>().let { seen ->
         SessionConfig(
             downstream = downstream,
             ip_forward = ipForward,
@@ -274,13 +288,19 @@ class Routing(private val caller: Any, private val downstream: String) {
                 } else null
             } ?: emptyList(),
             fallback_network = fallbackUpstream.upstream?.network?.networkHandle,
-            primary_upstream_interfaces = buildList { primaryUpstream.appendInterfaces(this, seen) },
-            fallback_upstream_interfaces = buildList { fallbackUpstream.appendInterfaces(this, seen) },
-            clients = allowedMacSnapshot.map { mac ->
-                ClientConfig(
-                    mac = mac.toByteArray().toByteString(),
-                    ipv4 = clientSnapshot.filterValues { it == mac }.keys.map { it.address.toByteString() },
-                )
+            primary_upstream_interfaces = primaryUpstream.appendInterfaces(seen),
+            fallback_upstream_interfaces = fallbackUpstream.appendInterfaces(seen),
+            clients = buildList(allowedMacSnapshot.size) {
+                allowedMacSnapshot.forEach { mac ->
+                    add(ClientConfig(
+                        mac = mac.toByteArray().toByteString(),
+                        ipv4 = buildList(clientSnapshot.size) {
+                            clientSnapshot.forEach { ip, clientMac ->
+                                if (clientMac == mac) add(ip.address.toByteString())
+                            }
+                        },
+                    ))
+                }
             },
             ipv6_nat = if (ipv6Mode == Ipv6Mode.Nat) Ipv6NatConfig(ipv6NatPrefixSeed) else null,
         )
@@ -290,7 +310,7 @@ class Routing(private val caller: Any, private val downstream: String) {
 
     suspend fun revert() = withContext(NonCancellable) {
         job.cancelAndJoin()
-        for (ip in clients.keys) TrafficRecorder.unregister(ip, downstream)
+        clients.forEach { ip, _ -> TrafficRecorder.unregister(ip, downstream) }
         clients.clear()
         allowedMacs.clear()
     }

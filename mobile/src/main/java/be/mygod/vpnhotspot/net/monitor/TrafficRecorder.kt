@@ -2,8 +2,11 @@ package be.mygod.vpnhotspot.net.monitor
 
 import android.net.MacAddress
 import android.net.InetAddresses
-import androidx.collection.LongSparseArray
-import androidx.collection.set
+import androidx.collection.LongObjectMap
+import androidx.collection.MutableObjectList
+import androidx.collection.MutableLongObjectMap
+import androidx.collection.MutableScatterMap
+import androidx.collection.ObjectList
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
@@ -29,12 +32,12 @@ object TrafficRecorder {
     private const val FOREGROUND_POLL_MS = 1015L
 
     data class ForegroundUpdate(
-        val newRecords: Collection<TrafficRecord>,
-        val oldRecords: LongSparseArray<TrafficRecord>,
+        val newRecords: ObjectList<TrafficRecord>,
+        val oldRecords: LongObjectMap<TrafficRecord>,
     )
 
     private var lastUpdate = 0L
-    private val records = mutableMapOf<Pair<InetAddress, String>, TrafficRecord>()
+    private val records = MutableScatterMap<Pair<InetAddress, String>, TrafficRecord>()
     private val updateMutex = Mutex()
     private val foregroundUpdatesState = MutableSharedFlow<ForegroundUpdate>(
         extraBufferCapacity = 1,
@@ -48,7 +51,10 @@ object TrafficRecorder {
         synchronized(this) {
             val key = ip to downstream
             Timber.d("Registering $key")
-            check(records.putIfAbsent(key, record) == null)
+            records.compute(key) { _, old ->
+                check(old == null)
+                record
+            }
             scheduleUpdateLocked()
         }
     }
@@ -88,7 +94,7 @@ object TrafficRecorder {
     private suspend fun doUpdate(timestamp: Long) {
         val lines = DaemonController.readTrafficCounterLines()
         synchronized(this) {
-            val oldRecords = LongSparseArray<TrafficRecord>()
+            val oldRecords = MutableLongObjectMap<TrafficRecord>()
             loop@ for (line in lines) {
                 if (line.isBlank()) continue
                 val columns = line.split("\\s+".toRegex()).filter { it.isNotEmpty() }
@@ -140,14 +146,18 @@ object TrafficRecorder {
                     Timber.w(e)
                 }
             }
-            for ((_, record) in records) if (record.id == null) {
-                check(record.sentPackets >= 0)
-                check(record.sentBytes >= 0)
-                check(record.receivedPackets >= 0)
-                check(record.receivedBytes >= 0)
-                AppDatabase.instance.trafficRecordDao.insert(record)
+            records.forEachValue { record ->
+                if (record.id == null) {
+                    check(record.sentPackets >= 0)
+                    check(record.sentBytes >= 0)
+                    check(record.receivedPackets >= 0)
+                    check(record.receivedBytes >= 0)
+                    AppDatabase.instance.trafficRecordDao.insert(record)
+                }
             }
-            foregroundUpdatesState.tryEmit(ForegroundUpdate(records.values.toList(), oldRecords))
+            val newRecords = MutableObjectList<TrafficRecord>(records.size)
+            records.forEachValue { newRecords.add(it) }
+            foregroundUpdatesState.tryEmit(ForegroundUpdate(newRecords, oldRecords))
         }
     }
     suspend fun update(timeout: Boolean = false) {
@@ -186,5 +196,8 @@ object TrafficRecorder {
     /**
      * Possibly inefficient. Don't call this too often.
      */
-    fun isWorking(mac: MacAddress) = synchronized(this) { records.values.any { it.mac == mac } }
+    fun isWorking(mac: MacAddress) = synchronized(this) {
+        records.forEachValue { if (it.mac == mac) return@synchronized true }
+        false
+    }
 }

@@ -8,20 +8,25 @@ import android.net.Network
 import android.net.TetheringManager
 import android.os.Build
 import android.os.Parcelable
+import androidx.collection.MutableScatterMap
 import androidx.annotation.MainThread
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import kotlinx.collections.immutable.PersistentMap
+import kotlinx.collections.immutable.PersistentSet
+import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentSetOf
 
 /**
  * Convenience class that reassembles TetherStatesParcel from TetheringEventCallback + backfilling compat for API 30-.
  */
 data class TetherStates(
-    val available: Set<String> = emptySet(),
-    val tethered: Set<String> = emptySet(),
-    val localOnly: Set<String> = emptySet(),
-    val errored: Map<String, Int> = emptyMap(),
+    val available: PersistentSet<String> = persistentSetOf(),
+    val tethered: PersistentSet<String> = persistentSetOf(),
+    val localOnly: PersistentSet<String> = persistentSetOf(),
+    val errored: PersistentMap<String, Int> = persistentMapOf(),
 ) {
     interface Callback : TetheringManagerCompat.TetheringEventCallback {
         fun onTetherStatesChanged(states: TetherStates) {}
@@ -81,11 +86,13 @@ data class TetherStates(
             val localOnly = intent.getStringArrayListExtra(
                 if (Build.VERSION.SDK_INT >= 30) "android.net.extra.ACTIVE_LOCAL_ONLY" else
                     "localOnlyArray") ?: return
-            val errored = intent.getStringArrayListExtra("erroredArray")
-                ?.associateWith { states.errored[it] ?: 0 } ?: return
-            states = TetherStates(available.toSet(), tethered.toSet(), localOnly.toSet(), errored)
+            val errored = intent.getStringArrayListExtra("erroredArray") ?: return
+            val nextErrored = persistentMapOf<String, Int>().builder()
+            for (iface in errored) nextErrored[iface] = states.errored[iface] ?: 0
+            states = TetherStates(available.toPersistentIfaceSet(), tethered.toPersistentIfaceSet(),
+                localOnly.toPersistentIfaceSet(), nextErrored.build())
             if (fallbackToBroadcast) {
-                errored.forEach { (iface, error) -> callback.onError(iface, error) }
+                states.errored.forEach { (iface, error) -> callback.onError(iface, error) }
                 callback.onTetherableInterfacesChanged(available)
                 callback.onTetheredInterfacesChanged(tethered)
             }
@@ -105,9 +112,9 @@ data class TetherStates(
             callback.onError(ifName, error)
             states = states.copy(
                 errored = if (error == 0) {
-                    states.errored - ifName
+                    states.errored.remove(ifName)
                 } else {
-                    states.errored + (ifName to error)
+                    states.errored.put(ifName, error)
                 },
             )
             scheduleDispatch()
@@ -115,33 +122,33 @@ data class TetherStates(
 
         @MainThread
         override fun onTetherableInterfacesChanged(interfaces: List<String?>) {
-            val available = interfaces.filterNotNull().toSet()
+            val available = interfaces.toPersistentIfaceSet()
             callback.onTetherableInterfacesChanged(interfaces)
             states = states.copy(
                 available = available,
-                errored = states.errored.filterKeys { it !in available },
+                errored = states.errored.withoutKeysIn(available),
             )
             scheduleDispatch()
         }
 
         @MainThread
         override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
-            val tethered = interfaces.filterNotNull().toSet()
+            val tethered = interfaces.toPersistentIfaceSet()
             callback.onTetheredInterfacesChanged(interfaces)
             states = states.copy(
                 tethered = tethered,
-                errored = states.errored.filterKeys { it !in tethered },
+                errored = states.errored.withoutKeysIn(tethered),
             )
             scheduleDispatch()
         }
 
         @MainThread
         override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
-            val localOnly = interfaces.filterNotNull().toSet()
+            val localOnly = interfaces.toPersistentIfaceSet()
             callback.onLocalOnlyInterfacesChanged(interfaces)
             states = states.copy(
                 localOnly = localOnly,
-                errored = states.errored.filterKeys { it !in localOnly },
+                errored = states.errored.withoutKeysIn(localOnly),
             )
             scheduleDispatch()
         }
@@ -175,7 +182,7 @@ data class TetherStates(
 
     companion object {
         private const val ACTION_TETHER_STATE_CHANGED = "android.net.conn.TETHER_STATE_CHANGED"
-        private val registrations = mutableMapOf<Callback, Registration>()
+        private val registrations = MutableScatterMap<Callback, Registration>()
 
         /**
          * android-11.0.0_r1 public `TetheringEventCallback` does not expose local-only interfaces,
@@ -192,10 +199,27 @@ data class TetherStates(
 
         @MainThread
         fun registerCallback(callback: Callback) {
-            registrations.computeIfAbsent(callback) { Registration(it).apply { register() } }
+            registrations.compute(callback) { _, registration ->
+                registration ?: Registration(callback).apply { register() }
+            }
         }
 
         @MainThread
         fun unregisterCallback(callback: Callback) = registrations.remove(callback)?.unregister()
+
+        private fun Iterable<String?>.toPersistentIfaceSet(): PersistentSet<String> {
+            val builder = persistentSetOf<String>().builder()
+            for (iface in this) if (iface != null) builder.add(iface)
+            return builder.build()
+        }
+
+        private fun PersistentMap<String, Int>.withoutKeysIn(removed: PersistentSet<String>): PersistentMap<String, Int> {
+            if (isEmpty() || removed.isEmpty()) return this
+            var mapBuilder: PersistentMap.Builder<String, Int>? = null
+            for (iface in keys) if (iface in removed) {
+                (mapBuilder ?: builder().also { mapBuilder = it }).remove(iface)
+            }
+            return mapBuilder?.build() ?: this
+        }
     }
 }

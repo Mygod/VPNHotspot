@@ -5,6 +5,7 @@ import android.os.ParcelFileDescriptor
 import android.os.Process
 import android.system.ErrnoException
 import android.system.OsConstants
+import androidx.collection.MutableLongObjectMap
 import be.mygod.librootkotlinx.io.FileDescriptorByteReadChannel
 import be.mygod.librootkotlinx.io.openReadChannel
 import be.mygod.librootkotlinx.net.ALocalServerSocket
@@ -55,7 +56,7 @@ object DaemonController {
     private var output: ByteWriteChannel? = null
     private var readerJob: Job? = null
     private var nextCallId = 1L
-    private val calls = mutableMapOf<Long, Call>()
+    private val calls = MutableLongObjectMap<Call>()
     private var daemonStdioClosing = false
     private var daemonStdioEofReported = false
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -377,9 +378,11 @@ object DaemonController {
     }
 
     private fun completeCallsLocked(e: Throwable) {
-        for (call in calls.values) when (call) {
-            is Call.OneShot -> call.reply.completeExceptionally(e)
-            is Call.Event -> call.channel.close(e)
+        calls.forEachValue { call ->
+            when (call) {
+                is Call.OneShot -> call.reply.completeExceptionally(e)
+                is Call.Event -> call.channel.close(e)
+            }
         }
         calls.clear()
     }

@@ -123,7 +123,7 @@ class TetheringFragment : Fragment(), ServiceConnection, Toolbar.OnMenuItemClick
             if (Services.p2p != null) list.add(repeaterManager)
             list.add(localOnlyHotspotManager)
             list.add(staticIpManager)
-            val monitoredIfaces = binder.value?.monitoredIfaces?.value ?: emptySet()
+            val monitoredIfaces = binder.value?.monitoredIfaces?.value?.asSet() ?: emptySet()
             updateMonitorList(tetherStates.tethered - monitoredIfaces)
             list.addAll((tetherStates.tethered + monitoredIfaces).toSortedSet()
                     .map { InterfaceManager(this@TetheringFragment, it) })

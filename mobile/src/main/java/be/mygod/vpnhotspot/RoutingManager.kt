@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.os.Build
+import androidx.collection.MutableScatterMap
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
@@ -58,7 +59,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         /**
          * Thread safety: needs protection by [monitor]!
          */
-        private val active = mutableMapOf<String, RoutingManager>()
+        private val active = MutableScatterMap<String, RoutingManager>()
         private val monitor = Mutex()
         private var cleaning: CompletableDeferred<Unit>? = null
 
@@ -74,7 +75,14 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
             }
             try {
                 val routings = monitor.withLock {
-                    active.values.mapNotNull { manager -> manager.routing.also { manager.routing = null } }
+                    buildList(active.size) {
+                        active.forEachValue { manager ->
+                            manager.routing?.also {
+                                manager.routing = null
+                                add(it)
+                            }
+                        }
+                    }
                 }
                 try {
                     Routing.clean()
@@ -86,11 +94,13 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     return
                 }
                 val restarts = monitor.withLock {
-                    active.values.mapNotNull { manager ->
-                        if (!manager.started || manager.routing != null) null else {
-                            val routing = Routing(manager.caller, manager.downstream)
-                            manager.routing = routing
-                            manager to routing
+                    buildList(active.size) {
+                        active.forEachValue { manager ->
+                            if (manager.started && manager.routing == null) {
+                                val routing = Routing(manager.caller, manager.downstream)
+                                manager.routing = routing
+                                add(manager to routing)
+                            }
                         }
                     }
                 }
@@ -136,27 +146,29 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         while (true) {
             var clean: CompletableDeferred<Unit>? = null
             val routing = monitor.withLock {
-                val currentClean = cleaning
-                if (currentClean != null) {
-                    clean = currentClean
-                    null
-                } else {
-                    val routing = when (val other = active.putIfAbsent(downstream, this@RoutingManager)) {
+                clean = cleaning
+                var routing: Routing? = null
+                if (clean == null) active.compute(downstream) { _, other ->
+                    when (other) {
                         null -> {
                             started = true
                             acquireLocked()
-                            newRoutingLocked()
+                            routing = newRoutingLocked()
+                            this@RoutingManager
                         }
-                        this@RoutingManager -> if (!started) null else this@RoutingManager.routing ?: newRoutingLocked()
+                        this@RoutingManager -> {
+                            if (started) routing = this@RoutingManager.routing ?: newRoutingLocked()
+                            other
+                        }
                         else -> {
                             val msg = "Double routing detected for $downstream from $caller != ${other.caller}"
                             Timber.w(RuntimeException(msg))
                             SmartSnackbar.make(msg).show()
-                            null
+                            other
                         }
                     }
-                    routing
                 }
+                routing
             }
             clean?.let {
                 it.await()
