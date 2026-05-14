@@ -123,7 +123,6 @@ android {
     namespace = "be.mygod.vpnhotspot"
 
     compileOptions {
-        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
@@ -193,7 +192,6 @@ ksp {
 }
 
 dependencies {
-    coreLibraryDesugaring(libs.desugar.jdk.libs)
     ksp(libs.room.compiler)
     implementation(libs.browser)
     implementation(libs.core.i18n)
