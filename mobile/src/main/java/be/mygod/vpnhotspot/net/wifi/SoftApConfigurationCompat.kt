@@ -66,6 +66,8 @@ data class SoftApConfigurationCompat(
     var maxChannelBandwidth: Int = CHANNEL_WIDTH_AUTO,
     @RequiresApi(36)
     var isClientIsolationEnabled: Boolean = false,
+    @RequiresApi(30)
+    var isBandOptimizationEnabled: Boolean? = null,
     var underlying: Parcelable? = null,
 ) : Parcelable {
     companion object {
@@ -231,6 +233,23 @@ data class SoftApConfigurationCompat(
         private val isAutoShutdownEnabled by lazy @TargetApi(30) {
             SoftApConfiguration::class.java.getDeclaredMethod("isAutoShutdownEnabled")
         }
+        @get:RequiresApi(30)
+        private val isBandOptimizationEnabled by lazy @TargetApi(30) {
+            SoftApConfiguration::class.java.getDeclaredMethod("isBandOptimizationEnabled")
+        }
+        @get:RequiresApi(30)
+        val isBandOptimizationSupported by lazy @TargetApi(30) {
+            try {
+                isBandOptimizationEnabled
+                setBandOptimizationEnabled
+                true
+            } catch (e: NoSuchMethodException) {
+                if (Build.VERSION.SDK_INT >= 36 && Build.VERSION.SDK_INT_FULL >= Build.VERSION_CODES_FULL.BAKLAVA_1) {
+                    Timber.w(e)
+                }
+                false
+            }
+        }
         @get:RequiresApi(31)
         private val isBridgedModeOpportunisticShutdownEnabled by lazy @TargetApi(31) {
             SoftApConfiguration::class.java.getDeclaredMethod("isBridgedModeOpportunisticShutdownEnabled")
@@ -276,6 +295,10 @@ data class SoftApConfigurationCompat(
         @get:RequiresApi(30)
         private val setBand by lazy @TargetApi(30) {
             SoftApConfiguration.Builder::class.java.getDeclaredMethod("setBand", Int::class.java)
+        }
+        @get:RequiresApi(30)
+        private val setBandOptimizationEnabled by lazy @TargetApi(30) {
+            SoftApConfiguration.Builder::class.java.getDeclaredMethod("setBandOptimizationEnabled", Boolean::class.java)
         }
         @get:RequiresApi(30)
         private val setBlockedClientList by lazy @TargetApi(30) {
@@ -406,6 +429,7 @@ data class SoftApConfigurationCompat(
             getAllowedClientList(this) as List<MacAddress>,
             underlying = this,
         ).also {
+            if (isBandOptimizationSupported) it.isBandOptimizationEnabled = isBandOptimizationEnabled(this) as Boolean
             if (Build.VERSION.SDK_INT < 31) return@also
             it.macRandomizationSetting = getMacRandomizationSetting(this) as Int
             it.isBridgedModeOpportunisticShutdownEnabled = isBridgedModeOpportunisticShutdownEnabled(this) as Boolean
@@ -553,6 +577,9 @@ data class SoftApConfigurationCompat(
         setAutoShutdownEnabled(builder, isAutoShutdownEnabled)
         setClientControlByUserEnabled(builder, isClientControlByUserEnabled)
         setHiddenSsid(builder, isHiddenSsid)
+        if (isBandOptimizationSupported) {
+            isBandOptimizationEnabled?.let { setBandOptimizationEnabled(builder, it) }
+        }
         setAllowedClientList(builder, allowedClientList)
         setBlockedClientList(builder, blockedClientList)
         if (Build.VERSION.SDK_INT >= 31) {

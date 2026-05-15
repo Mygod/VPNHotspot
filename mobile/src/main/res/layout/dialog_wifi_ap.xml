@@ -168,6 +168,14 @@
                     android:layout_height="wrap_content"
                     style="@style/wifi_item_subhead"
                     android:text="@string/wifi_hotspot_ap_band_title" />
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/band_optimization"
+                    style="@style/wifi_item_label"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dip"
+                    android:minHeight="@dimen/touch_target_min"
+                    android:text="@string/wifi_band_optimization" />
                 <Spinner
                     android:id="@+id/band_primary"
                     style="@style/wifi_item_content"

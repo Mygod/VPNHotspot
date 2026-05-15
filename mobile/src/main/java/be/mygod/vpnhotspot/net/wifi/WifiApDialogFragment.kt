@@ -325,6 +325,11 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             dialogView.bridgedTimeoutWrapper.helperText = getString(R.string.wifi_hotspot_timeout_default,
                 TetherTimeoutMonitor.defaultTimeoutBridged)
         }
+        if (arg.p2pMode || Build.VERSION.SDK_INT < 30 || !SoftApConfigurationCompat.isBandOptimizationSupported) {
+            dialogView.bandOptimization.isGone = true
+        } else dialogView.bandOptimization.setOnClickListener {
+            base.isBandOptimizationEnabled = dialogView.bandOptimization.isChecked
+        }
         if (Build.VERSION.SDK_INT < 33) dialogView.vendorElementsWrapper.isGone = true
         else dialogView.vendorElements.addTextChangedListener(this@WifiApDialogFragment)
         if (arg.p2pMode || Build.VERSION.SDK_INT < 33) {
@@ -378,6 +383,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         dialogView.bandPrimary.setSelection(locate(0))
         if (Build.VERSION.SDK_INT >= 31 && !arg.p2pMode) {
             dialogView.bandSecondary.setSelection(if (base.channels.size() > 1) locate(1) + 1 else 0)
+        }
+        if (!arg.p2pMode && Build.VERSION.SDK_INT >= 30 && SoftApConfigurationCompat.isBandOptimizationSupported) {
+            dialogView.bandOptimization.isChecked = base.isBandOptimizationEnabled ?: true
         }
         dialogView.bssid.setText(base.bssid?.toString())
         dialogView.hiddenSsid.isChecked = base.isHiddenSsid

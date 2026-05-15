@@ -205,6 +205,7 @@
     <string name="wifi_hotspot_timeout">Inactive timeout</string>
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
+    <string name="wifi_band_optimization">Enable band optimization</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G">%s GHz Band</string>
     <string name="wifi_hotspot_acs_channel_2g">Allowed 2.4 GHz ACS channels</string>
