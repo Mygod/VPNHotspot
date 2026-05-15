@@ -4,7 +4,7 @@ use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, AsRawFd, RawFd};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice};
 use libc::{
@@ -21,22 +21,22 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::report;
-use crate::socket::{await_writable, set_nonblocking, socket_addr_v6_from_raw};
+use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
 use crate::upstream::set_socket_network;
+use vpnhotspotd::shared::icmp_nat::{
+    classify_nat66_destination, icmpv6_error_bytes, nat66_hop_limit, EchoAllocation, EchoEntry,
+    EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_TIME_EXCEEDED,
+};
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_packet_with_checksum, build_echo_packet_zero_checksum, build_icmp_error_packet,
-    build_icmp_quote, build_udp_quote, cap_error_quote, ICMPV6_ECHO_REPLY, ICMPV6_ECHO_REQUEST,
+    build_icmp_quote, build_udp_quote, build_udp_quote_with_hop_limit, ICMPV6_ECHO_REPLY,
+    ICMPV6_ECHO_REQUEST,
 };
 use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM};
 
-const ICMPV6_DESTINATION_UNREACHABLE: u8 = 1;
-const ICMPV6_PACKET_TOO_BIG: u8 = 2;
-const ICMPV6_TIME_EXCEEDED: u8 = 3;
-const ICMPV6_PARAMETER_PROBLEM: u8 = 4;
 const IPV6_RECVERR_OPT: c_int = 25;
 const MSG_ERRQUEUE_OPT: c_int = 0x2000;
 const SO_EE_ORIGIN_ICMP6: u8 = 3;
-const ECHO_ENTRY_TTL: Duration = Duration::from_secs(30);
 const NONLOCAL_PROBE_SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
 
 #[repr(C)]
@@ -49,28 +49,6 @@ struct SockExtendedErr {
     ee_pad: u8,
     ee_info: u32,
     ee_data: u32,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct EchoKey {
-    network: Network,
-    destination: Ipv6Addr,
-    id: u16,
-    seq: u16,
-}
-
-#[derive(Clone, Copy)]
-struct EchoEntry {
-    client: SocketAddrV6,
-    original_id: u16,
-    original_seq: u16,
-    created: Instant,
-}
-
-#[derive(Default)]
-struct EchoMap {
-    next_id: u16,
-    entries: HashMap<EchoKey, EchoEntry>,
 }
 
 #[derive(Default)]
@@ -98,6 +76,14 @@ struct ErrorQueueMessage {
     payload: Vec<u8>,
 }
 
+struct EchoErrorProbe<'a> {
+    destination: Ipv6Addr,
+    id: u16,
+    seq: u16,
+    hop_limit: Option<u8>,
+    payload: &'a [u8],
+}
+
 pub(crate) struct UdpErrorContext {
     pub(crate) downstream: String,
     pub(crate) reply_mark: u32,
@@ -113,32 +99,20 @@ impl EchoState {
         client: SocketAddrV6,
         original_id: u16,
         original_seq: u16,
+        upstream_hop_limit: u8,
     ) -> io::Result<(u16, u16)> {
         let mut map = self.lock_map()?;
-        map.expire();
-        for _ in 0..=u16::MAX {
-            let id = map.next_id;
-            map.next_id = map.next_id.wrapping_add(1);
-            let key = EchoKey {
+        map.allocate(
+            Instant::now(),
+            EchoAllocation {
                 network,
                 destination,
-                id,
-                seq: original_seq,
-            };
-            match map.entries.entry(key) {
-                Entry::Occupied(_) => continue,
-                Entry::Vacant(entry) => {
-                    entry.insert(EchoEntry {
-                        client,
-                        original_id,
-                        original_seq,
-                        created: Instant::now(),
-                    });
-                    return Ok((id, original_seq));
-                }
-            }
-        }
-        Err(io::Error::other("exhausted echo identifiers"))
+                client,
+                original_id,
+                original_seq,
+                upstream_hop_limit,
+            },
+        )
     }
 
     fn restore(
@@ -149,13 +123,7 @@ impl EchoState {
         seq: u16,
     ) -> io::Result<Option<EchoEntry>> {
         let mut map = self.lock_map()?;
-        map.expire();
-        Ok(map.entries.remove(&EchoKey {
-            network,
-            destination: source,
-            id,
-            seq,
-        }))
+        Ok(map.restore(Instant::now(), network, source, id, seq))
     }
 
     fn lock_map(&self) -> io::Result<MutexGuard<'_, EchoMap>> {
@@ -168,14 +136,6 @@ impl EchoState {
         self.upstream
             .lock()
             .map_err(|_| io::Error::other("echo upstream state poisoned"))
-    }
-}
-
-impl EchoMap {
-    fn expire(&mut self) {
-        let now = Instant::now();
-        self.entries
-            .retain(|_, entry| now.duration_since(entry.created) < ECHO_ENTRY_TTL);
     }
 }
 
@@ -372,6 +332,27 @@ pub(crate) async fn drain_udp_error_queue(
     }
 }
 
+pub(crate) async fn send_udp_time_exceeded(
+    downstream: &str,
+    reply_mark: u32,
+    gateway: Ipv6Addr,
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+    hop_limit: u8,
+    payload: &[u8],
+) -> io::Result<()> {
+    let quote = build_udp_quote_with_hop_limit(client, destination, hop_limit, payload)?;
+    let packet = build_icmp_error_packet(
+        ICMPV6_TIME_EXCEEDED,
+        0,
+        [0; 4],
+        gateway,
+        *client.ip(),
+        &quote,
+    )?;
+    send_downstream_icmp(downstream, reply_mark, gateway, client, &packet).await
+}
+
 async fn handle_downstream_echo(
     packet: DownstreamIcmpPacket,
     config: &SessionConfig,
@@ -387,67 +368,67 @@ async fn handle_downstream_echo(
     let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
         return;
     };
-    if packet.destination == ipv6_nat.gateway.address()
-        || packet.destination.is_multicast()
-        || packet.destination.is_unicast_link_local()
-        || packet.destination.is_loopback()
-        || packet.destination.is_unspecified()
-    {
-        return;
+    match classify_nat66_destination(packet.destination, ipv6_nat.gateway.address()) {
+        Nat66Destination::Gateway | Nat66Destination::Special => return,
+        Nat66Destination::Routable => {}
     }
-    if packet.hop_limit <= 1 {
-        let quote = match build_icmp_quote(
-            *packet.source.ip(),
-            packet.destination,
-            packet.hop_limit,
-            &packet.payload,
-        ) {
-            Ok(quote) => quote,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_time_exceeded_quote",
-                    e,
-                    [
-                        ("client", packet.source.to_string()),
-                        ("destination", packet.destination.to_string()),
-                    ],
-                );
-                return;
-            }
-        };
-        let response = match build_icmp_error_packet(
-            ICMPV6_TIME_EXCEEDED,
-            0,
-            [0; 4],
-            ipv6_nat.gateway.address(),
-            *packet.source.ip(),
-            &quote,
-        ) {
-            Ok(response) => response,
-            Err(e) => {
-                report::io("nat66.icmp_time_exceeded_packet", e);
-                return;
-            }
-        };
-        if let Err(e) = send_downstream_icmp(
-            &config.downstream,
-            config.reply_mark,
-            ipv6_nat.gateway.address(),
-            packet.source,
-            &response,
-        )
-        .await
-        {
-            report::stdout!(
-                "icmp time exceeded dropped: source={} client={} destination={}: {}",
+    let upstream_hop_limit = match nat66_hop_limit(Some(packet.hop_limit)) {
+        Nat66HopLimit::Expired => {
+            let quote = match build_icmp_quote(
+                *packet.source.ip(),
+                packet.destination,
+                packet.hop_limit,
+                &packet.payload,
+            ) {
+                Ok(quote) => quote,
+                Err(e) => {
+                    report::io_with_details(
+                        "nat66.icmp_time_exceeded_quote",
+                        e,
+                        [
+                            ("client", packet.source.to_string()),
+                            ("destination", packet.destination.to_string()),
+                        ],
+                    );
+                    return;
+                }
+            };
+            let response = match build_icmp_error_packet(
+                ICMPV6_TIME_EXCEEDED,
+                0,
+                [0; 4],
+                ipv6_nat.gateway.address(),
+                *packet.source.ip(),
+                &quote,
+            ) {
+                Ok(response) => response,
+                Err(e) => {
+                    report::io("nat66.icmp_time_exceeded_packet", e);
+                    return;
+                }
+            };
+            if let Err(e) = send_downstream_icmp(
+                &config.downstream,
+                config.reply_mark,
                 ipv6_nat.gateway.address(),
                 packet.source,
-                packet.destination,
-                e
-            );
+                &response,
+            )
+            .await
+            {
+                report::stdout!(
+                    "icmp time exceeded dropped: source={} client={} destination={}: {}",
+                    ipv6_nat.gateway.address(),
+                    packet.source,
+                    packet.destination,
+                    e
+                );
+            }
+            return;
         }
-        return;
-    }
+        Nat66HopLimit::Forward(hop_limit) => hop_limit,
+        Nat66HopLimit::Missing => return,
+    };
     let Some(network) = select_network(config, packet.destination) else {
         return;
     };
@@ -457,6 +438,7 @@ async fn handle_downstream_echo(
         packet.source,
         echo.id,
         echo.seq,
+        upstream_hop_limit,
     ) {
         Ok(ids) => ids,
         Err(e) => {
@@ -488,7 +470,7 @@ async fn handle_downstream_echo(
     if let Err(e) = send_upstream_echo(
         &socket,
         SocketAddrV6::new(packet.destination, 0, 0, 0),
-        packet.hop_limit - 1,
+        upstream_hop_limit,
         &request,
     )
     .await
@@ -699,21 +681,73 @@ async fn drain_echo_error_queue(
         if offender.ip().is_unicast_link_local() {
             continue;
         }
-        let Some((destination, id, seq)) = error_queue_echo_key(&message) else {
+        let Some(probe) = error_queue_echo_probe(&message) else {
             continue;
         };
-        let Some(entry) = state.restore(network, destination, id, seq)? else {
+        let Some(entry) = state.restore(network, probe.destination, probe.id, probe.seq)? else {
             continue;
         };
-        let quote = cap_error_quote(&message.payload);
-        let packet = build_icmp_error_packet(
+        let request = match build_echo_packet_with_checksum(
+            ICMPV6_ECHO_REQUEST,
+            *entry.client.ip(),
+            probe.destination,
+            entry.original_id,
+            entry.original_seq,
+            probe.payload,
+        ) {
+            Ok(request) => request,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_quote_request",
+                    e,
+                    [
+                        ("client", entry.client.to_string()),
+                        ("destination", probe.destination.to_string()),
+                    ],
+                );
+                continue;
+            }
+        };
+        let quote = match build_icmp_quote(
+            *entry.client.ip(),
+            probe.destination,
+            probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
+            &request,
+        ) {
+            Ok(quote) => quote,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_quote",
+                    e,
+                    [
+                        ("client", entry.client.to_string()),
+                        ("destination", probe.destination.to_string()),
+                    ],
+                );
+                continue;
+            }
+        };
+        let packet = match build_icmp_error_packet(
             icmp_type,
             message.error.ee_code,
             bytes5to8,
             *offender.ip(),
             *entry.client.ip(),
-            quote,
-        )?;
+            &quote,
+        ) {
+            Ok(packet) => packet,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_packet",
+                    e,
+                    [
+                        ("client", entry.client.to_string()),
+                        ("destination", probe.destination.to_string()),
+                    ],
+                );
+                continue;
+            }
+        };
         if let Err(e) = send_downstream_icmp(
             downstream,
             reply_mark,
@@ -735,28 +769,40 @@ async fn drain_echo_error_queue(
     }
 }
 
-fn error_queue_echo_key(message: &ErrorQueueMessage) -> Option<(Ipv6Addr, u16, u16)> {
-    if let Some(key) = quoted_echo_key(&message.payload) {
-        return Some(key);
+fn error_queue_echo_probe(message: &ErrorQueueMessage) -> Option<EchoErrorProbe<'_>> {
+    if let Some(probe) = quoted_echo_probe(&message.payload) {
+        return Some(probe);
     }
     let destination = *message.destination?.ip();
-    let (icmp, _) = Icmpv6Header::from_slice(&message.payload).ok()?;
+    let (icmp, payload) = Icmpv6Header::from_slice(&message.payload).ok()?;
     let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type else {
         return None;
     };
-    Some((destination, echo.id, echo.seq))
+    Some(EchoErrorProbe {
+        destination,
+        id: echo.id,
+        seq: echo.seq,
+        hop_limit: None,
+        payload,
+    })
 }
 
-fn quoted_echo_key(payload: &[u8]) -> Option<(Ipv6Addr, u16, u16)> {
+fn quoted_echo_probe(payload: &[u8]) -> Option<EchoErrorProbe<'_>> {
     let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
     if ip.next_header != IpNumber::IPV6_ICMP {
         return None;
     }
-    let (icmp, _) = Icmpv6Header::from_slice(rest).ok()?;
+    let (icmp, payload) = Icmpv6Header::from_slice(rest).ok()?;
     let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type else {
         return None;
     };
-    Some((ip.destination_addr(), echo.id, echo.seq))
+    Some(EchoErrorProbe {
+        destination: ip.destination_addr(),
+        id: echo.id,
+        seq: echo.seq,
+        hop_limit: Some(ip.hop_limit),
+        payload,
+    })
 }
 
 fn recv_raw_icmp_packet<'a>(
@@ -882,24 +928,6 @@ fn enable_ipv6_error_queue(fd: RawFd) -> io::Result<()> {
     set_int_sockopt(fd, IPPROTO_IPV6, IPV6_RECVERR_OPT, 1)
 }
 
-fn set_int_sockopt(fd: RawFd, level: c_int, name: c_int, value: c_int) -> io::Result<()> {
-    let value_len = size_of::<c_int>() as libc::socklen_t;
-    if unsafe {
-        libc::setsockopt(
-            fd,
-            level,
-            name,
-            &value as *const _ as *const c_void,
-            value_len,
-        )
-    } == 0
-    {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
 async fn send_upstream_echo(
     socket: &AsyncFd<Socket>,
     destination: SocketAddrV6,
@@ -923,7 +951,17 @@ async fn send_downstream_icmp(
     packet: &[u8],
 ) -> io::Result<()> {
     let socket = create_downstream_send_socket(interface, mark, source)?;
-    sendto_all(&socket, packet, SockAddr::from(target)).await
+    sendto_all(
+        &socket,
+        packet,
+        SockAddr::from(SocketAddrV6::new(
+            *target.ip(),
+            0,
+            target.flowinfo(),
+            target.scope_id(),
+        )),
+    )
+    .await
 }
 
 async fn sendto_all(socket: &Socket, mut packet: &[u8], address: SockAddr) -> io::Result<()> {
@@ -984,11 +1022,5 @@ async fn sendto_all_async(
 }
 
 fn error_type_bytes(error: &SockExtendedErr) -> Option<(u8, [u8; 4])> {
-    match error.ee_type {
-        ICMPV6_DESTINATION_UNREACHABLE => Some((error.ee_type, [0; 4])),
-        ICMPV6_PACKET_TOO_BIG => Some((error.ee_type, error.ee_info.to_be_bytes())),
-        ICMPV6_TIME_EXCEEDED => Some((error.ee_type, [0; 4])),
-        ICMPV6_PARAMETER_PROBLEM => Some((error.ee_type, error.ee_info.to_be_bytes())),
-        _ => None,
-    }
+    icmpv6_error_bytes(error.ee_type, error.ee_info)
 }

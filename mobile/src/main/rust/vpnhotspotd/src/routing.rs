@@ -20,6 +20,7 @@ use crate::{
     netlink, report,
 };
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
+use vpnhotspotd::shared::icmp_nat::{icmp_echo_rule_args, should_install_icmp_echo_rule};
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, SessionConfig, SessionPorts,
     UpstreamConfig, UpstreamRole, DAEMON_ICMP_NFQUEUE_NUM, DAEMON_INTERCEPT_FWMARK_MASK,
@@ -528,7 +529,7 @@ impl Runtime {
             for rule in Self::ipv6_nat_tproxy_port_rules(config, ports) {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
-            if ports.icmp_echo {
+            if should_install_icmp_echo_rule(ports.icmp_echo) {
                 push_unique(
                     &mut mutations,
                     RoutingMutation::Iptables(Self::ipv6_nat_icmp_echo_rule(config, ipv6_nat)),
@@ -960,21 +961,11 @@ impl Runtime {
             IptablesTarget::Ipv6,
             "mangle",
             "vpnhotspot_v6_tproxy",
-            vec![
-                "-i".into(),
+            icmp_echo_rule_args(
                 config.downstream.clone(),
-                "-p".into(),
-                "icmpv6".into(),
-                "--icmpv6-type".into(),
-                "echo-request".into(),
-                "!".into(),
-                "-d".into(),
-                ipv6_nat.gateway.address().to_string(),
-                "-j".into(),
-                "NFQUEUE".into(),
-                "--queue-num".into(),
-                DAEMON_ICMP_NFQUEUE_NUM.to_string(),
-            ],
+                ipv6_nat.gateway.address(),
+                DAEMON_ICMP_NFQUEUE_NUM,
+            ),
         )
     }
 

@@ -8,8 +8,9 @@ use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use libc::{
-    c_void, iovec, msghdr, recvmsg, sockaddr_in6, socklen_t, CMSG_DATA, CMSG_FIRSTHDR, CMSG_NXTHDR,
-    IPPROTO_IPV6, IPV6_RECVORIGDSTADDR, MSG_DONTWAIT,
+    c_int, c_void, iovec, msghdr, recvmsg, sockaddr_in6, socklen_t, CMSG_DATA, CMSG_FIRSTHDR,
+    CMSG_NXTHDR, IPPROTO_IPV6, IPV6_HOPLIMIT, IPV6_RECVHOPLIMIT, IPV6_RECVORIGDSTADDR,
+    IPV6_UNICAST_HOPS, MSG_DONTWAIT,
 };
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
@@ -22,8 +23,9 @@ use tokio_util::sync::CancellationToken;
 use crate::dns::{resolve_or_error, DNS_PORT};
 use crate::nat66::icmp;
 use crate::report;
-use crate::socket::socket_addr_v6_from_raw;
+use crate::socket::{set_int_sockopt, socket_addr_v6_from_raw};
 use crate::upstream::connect_udp;
+use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
 const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
@@ -34,9 +36,14 @@ struct AssociationKey {
     destination: SocketAddrV6,
 }
 
+struct UdpDatagram {
+    payload: Vec<u8>,
+    upstream_hop_limit: Option<u8>,
+}
+
 struct UdpAssociation {
     id: u64,
-    datagrams: mpsc::UnboundedSender<Vec<u8>>,
+    datagrams: mpsc::UnboundedSender<UdpDatagram>,
     last_active: Instant,
     stop: CancellationToken,
 }
@@ -51,7 +58,7 @@ struct AssociationTask {
     id: u64,
     downstream: String,
     socket: TokioUdpSocket,
-    datagrams: mpsc::UnboundedReceiver<Vec<u8>>,
+    datagrams: mpsc::UnboundedReceiver<UdpDatagram>,
     reply_sockets: Arc<ReplySocketPool>,
     reply_key: ReplySocketKey,
     reply_socket: Option<Arc<TokioUdpSocket>>,
@@ -243,6 +250,9 @@ pub(crate) fn spawn_loop(
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
         let listener_fd = listener.get_ref().as_raw_fd();
+        if let Err(e) = enable_recv_hop_limit(listener_fd) {
+            report::io("nat66.udp_hop_limit_setup", e);
+        }
         let reply_sockets = Arc::new(ReplySocketPool::default());
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
         let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
@@ -308,7 +318,7 @@ pub(crate) fn spawn_loop(
                     };
                     loop {
                         match recv_packet(listener_fd, &mut buffer) {
-                            Ok((size, client, destination)) => {
+                            Ok((size, client, destination, hop_limit)) => {
                                 let activity = Instant::now();
                                 let snapshot = config.lock().await.clone();
                                 let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
@@ -362,23 +372,48 @@ pub(crate) fn spawn_loop(
                                     });
                                     continue;
                                 }
-                                if destination.ip().is_multicast()
-                                    || destination.ip().is_unicast_link_local()
-                                    || destination.ip().is_loopback()
-                                    || destination.ip().is_unspecified()
-                                {
+                                if is_special_destination(*destination.ip()) {
                                     continue;
                                 }
+                                let upstream_hop_limit = match nat66_hop_limit(hop_limit) {
+                                    Nat66HopLimit::Expired => {
+                                        if let Err(e) = icmp::send_udp_time_exceeded(
+                                            &snapshot.downstream,
+                                            snapshot.reply_mark,
+                                            ipv6_nat.gateway.address(),
+                                            client,
+                                            destination,
+                                            hop_limit.unwrap_or(1),
+                                            &buffer[..size],
+                                        ).await {
+                                            report::io_with_details(
+                                                "nat66.udp_time_exceeded",
+                                                e,
+                                                [
+                                                    ("client", client.to_string()),
+                                                    ("destination", destination.to_string()),
+                                                ],
+                                            );
+                                        }
+                                        continue;
+                                    }
+                                    Nat66HopLimit::Forward(hop_limit) => Some(hop_limit),
+                                    Nat66HopLimit::Missing => None,
+                                };
                                 let network = match select_network(&snapshot, *destination.ip()) {
                                     Some(network) => network,
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
+                                let datagram = UdpDatagram {
+                                    payload: buffer[..size].to_vec(),
+                                    upstream_hop_limit,
+                                };
                                 if let Some(datagrams) = associations.get_mut(&key).map(|association| {
                                     association.last_active = activity;
                                     association.datagrams.clone()
                                 }) {
-                                    if datagrams.send(buffer[..size].to_vec()).is_err() {
+                                    if datagrams.send(datagram).is_err() {
                                         if let Some(association) = associations.remove(&key) {
                                             association.stop.cancel();
                                         }
@@ -454,7 +489,7 @@ pub(crate) fn spawn_loop(
                                         stop: association_stop,
                                     },
                                 );
-                                if datagram_tx.send(buffer[..size].to_vec()).is_err() {
+                                if datagram_tx.send(datagram).is_err() {
                                     if let Some(association) = associations.remove(&key) {
                                         association.stop.cancel();
                                     }
@@ -489,7 +524,19 @@ impl AssociationTask {
                 _ = self.stop.cancelled() => break,
                 datagram = self.datagrams.recv() => match datagram {
                     Some(datagram) => {
-                        if let Err(e) = self.socket.send(&datagram).await {
+                        if let Some(hop_limit) = datagram.upstream_hop_limit {
+                            if let Err(e) = set_upstream_hop_limit(&self.socket, hop_limit) {
+                                report::io_with_details(
+                                    "nat66.udp_hop_limit",
+                                    e,
+                                    [
+                                        ("client", self.key.client.to_string()),
+                                        ("destination", self.key.destination.to_string()),
+                                    ],
+                                );
+                            }
+                        }
+                        if let Err(e) = self.socket.send(&datagram.payload).await {
                             if !self.drain_error_queue().await {
                                 report::io_with_details(
                                     "nat66.udp_send",
@@ -699,7 +746,23 @@ fn create_reply_socket(key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
     Ok(Arc::new(TokioUdpSocket::from_std(socket.into())?))
 }
 
-fn recv_packet(fd: i32, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, SocketAddrV6)> {
+fn enable_recv_hop_limit(fd: i32) -> io::Result<()> {
+    set_int_sockopt(fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, 1)
+}
+
+fn set_upstream_hop_limit(socket: &TokioUdpSocket, hop_limit: u8) -> io::Result<()> {
+    set_int_sockopt(
+        socket.as_raw_fd(),
+        IPPROTO_IPV6,
+        IPV6_UNICAST_HOPS,
+        c_int::from(hop_limit),
+    )
+}
+
+fn recv_packet(
+    fd: i32,
+    buffer: &mut [u8],
+) -> io::Result<(usize, SocketAddrV6, SocketAddrV6, Option<u8>)> {
     let mut source: sockaddr_in6 = unsafe { zeroed() };
     let source_len = size_of::<sockaddr_in6>() as socklen_t;
     let mut control = [0u8; 128];
@@ -722,6 +785,7 @@ fn recv_packet(fd: i32, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, S
     }
     let source = socket_addr_v6_from_raw(source);
     let mut destination = None;
+    let mut hop_limit = None;
     let mut current = unsafe { CMSG_FIRSTHDR(&message) };
     while !current.is_null() {
         unsafe {
@@ -729,7 +793,12 @@ fn recv_packet(fd: i32, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, S
             {
                 let raw = CMSG_DATA(current) as *const sockaddr_in6;
                 destination = Some(socket_addr_v6_from_raw(*raw));
-                break;
+            } else if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_HOPLIMIT
+            {
+                let value = (CMSG_DATA(current) as *const c_int).read_unaligned();
+                if (0..=u8::MAX as c_int).contains(&value) {
+                    hop_limit = Some(value as u8);
+                }
             }
             current = CMSG_NXTHDR(&message, current);
         }
@@ -737,5 +806,5 @@ fn recv_packet(fd: i32, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, S
     let destination = destination.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "missing original destination")
     })?;
-    Ok((size as usize, source, destination))
+    Ok((size as usize, source, destination, hop_limit))
 }

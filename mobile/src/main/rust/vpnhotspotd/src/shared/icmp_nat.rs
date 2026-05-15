@@ -1,0 +1,310 @@
+use std::collections::{hash_map::Entry, HashMap};
+use std::io;
+use std::net::{Ipv6Addr, SocketAddrV6};
+use std::time::{Duration, Instant};
+
+use crate::shared::model::Network;
+
+pub const ICMPV6_DESTINATION_UNREACHABLE: u8 = 1;
+pub const ICMPV6_PACKET_TOO_BIG: u8 = 2;
+pub const ICMPV6_TIME_EXCEEDED: u8 = 3;
+pub const ICMPV6_PARAMETER_PROBLEM: u8 = 4;
+pub const ECHO_ENTRY_TTL: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Nat66Destination {
+    Gateway,
+    Special,
+    Routable,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Nat66HopLimit {
+    Missing,
+    Expired,
+    Forward(u8),
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct EchoKey {
+    network: Network,
+    destination: Ipv6Addr,
+    id: u16,
+    seq: u16,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct EchoEntry {
+    pub client: SocketAddrV6,
+    pub original_id: u16,
+    pub original_seq: u16,
+    pub upstream_hop_limit: u8,
+    created: Instant,
+}
+
+pub struct EchoAllocation {
+    pub network: Network,
+    pub destination: Ipv6Addr,
+    pub client: SocketAddrV6,
+    pub original_id: u16,
+    pub original_seq: u16,
+    pub upstream_hop_limit: u8,
+}
+
+#[derive(Default)]
+pub struct EchoMap {
+    next_id: u16,
+    entries: HashMap<EchoKey, EchoEntry>,
+}
+
+pub fn classify_nat66_destination(destination: Ipv6Addr, gateway: Ipv6Addr) -> Nat66Destination {
+    if destination == gateway {
+        Nat66Destination::Gateway
+    } else if is_special_destination(destination) {
+        Nat66Destination::Special
+    } else {
+        Nat66Destination::Routable
+    }
+}
+
+pub fn is_special_destination(destination: Ipv6Addr) -> bool {
+    destination.is_multicast()
+        || destination.is_unicast_link_local()
+        || destination.is_loopback()
+        || destination.is_unspecified()
+}
+
+pub fn nat66_hop_limit(hop_limit: Option<u8>) -> Nat66HopLimit {
+    match hop_limit {
+        Some(0 | 1) => Nat66HopLimit::Expired,
+        Some(hop_limit) => Nat66HopLimit::Forward(hop_limit - 1),
+        None => Nat66HopLimit::Missing,
+    }
+}
+
+pub fn icmpv6_error_bytes(type_u8: u8, info: u32) -> Option<(u8, [u8; 4])> {
+    match type_u8 {
+        ICMPV6_DESTINATION_UNREACHABLE => Some((type_u8, [0; 4])),
+        ICMPV6_PACKET_TOO_BIG => Some((type_u8, info.to_be_bytes())),
+        ICMPV6_TIME_EXCEEDED => Some((type_u8, [0; 4])),
+        ICMPV6_PARAMETER_PROBLEM => Some((type_u8, info.to_be_bytes())),
+        _ => None,
+    }
+}
+
+pub fn icmp_echo_rule_args(
+    downstream: impl Into<String>,
+    gateway: Ipv6Addr,
+    queue_num: u16,
+) -> Vec<String> {
+    vec![
+        "-i".into(),
+        downstream.into(),
+        "-p".into(),
+        "icmpv6".into(),
+        "--icmpv6-type".into(),
+        "echo-request".into(),
+        "!".into(),
+        "-d".into(),
+        gateway.to_string(),
+        "-j".into(),
+        "NFQUEUE".into(),
+        "--queue-num".into(),
+        queue_num.to_string(),
+    ]
+}
+
+pub fn should_install_icmp_echo_rule(icmp_echo: bool) -> bool {
+    icmp_echo
+}
+
+impl EchoMap {
+    pub fn allocate(&mut self, now: Instant, allocation: EchoAllocation) -> io::Result<(u16, u16)> {
+        self.expire(now);
+        for _ in 0..=u16::MAX {
+            let id = self.next_id;
+            self.next_id = self.next_id.wrapping_add(1);
+            let key = EchoKey {
+                network: allocation.network,
+                destination: allocation.destination,
+                id,
+                seq: allocation.original_seq,
+            };
+            match self.entries.entry(key) {
+                Entry::Occupied(_) => continue,
+                Entry::Vacant(entry) => {
+                    entry.insert(EchoEntry {
+                        client: allocation.client,
+                        original_id: allocation.original_id,
+                        original_seq: allocation.original_seq,
+                        upstream_hop_limit: allocation.upstream_hop_limit,
+                        created: now,
+                    });
+                    return Ok((id, allocation.original_seq));
+                }
+            }
+        }
+        Err(io::Error::other("exhausted echo identifiers"))
+    }
+
+    pub fn restore(
+        &mut self,
+        now: Instant,
+        network: Network,
+        source: Ipv6Addr,
+        id: u16,
+        seq: u16,
+    ) -> Option<EchoEntry> {
+        self.expire(now);
+        self.entries.remove(&EchoKey {
+            network,
+            destination: source,
+            id,
+            seq,
+        })
+    }
+
+    fn expire(&mut self, now: Instant) {
+        self.entries
+            .retain(|_, entry| now.duration_since(entry.created) < ECHO_ENTRY_TTL);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::model::DAEMON_ICMP_NFQUEUE_NUM;
+
+    #[test]
+    fn destination_classifier_separates_gateway_special_and_routable() {
+        let gateway = "fd00::1".parse().unwrap();
+        assert_eq!(
+            classify_nat66_destination(gateway, gateway),
+            Nat66Destination::Gateway
+        );
+        for destination in ["ff02::1", "fe80::1", "::1", "::"] {
+            assert_eq!(
+                classify_nat66_destination(destination.parse().unwrap(), gateway),
+                Nat66Destination::Special,
+                "{destination}"
+            );
+        }
+        assert_eq!(
+            classify_nat66_destination("2001:db8::1".parse().unwrap(), gateway),
+            Nat66Destination::Routable
+        );
+    }
+
+    #[test]
+    fn hop_limit_action_expires_boundary_packets_and_decrements_forwarded_packets() {
+        assert_eq!(nat66_hop_limit(None), Nat66HopLimit::Missing);
+        assert_eq!(nat66_hop_limit(Some(0)), Nat66HopLimit::Expired);
+        assert_eq!(nat66_hop_limit(Some(1)), Nat66HopLimit::Expired);
+        assert_eq!(nat66_hop_limit(Some(2)), Nat66HopLimit::Forward(1));
+        assert_eq!(nat66_hop_limit(Some(64)), Nat66HopLimit::Forward(63));
+    }
+
+    #[test]
+    fn icmpv6_error_metadata_matches_supported_types() {
+        assert_eq!(
+            icmpv6_error_bytes(ICMPV6_DESTINATION_UNREACHABLE, 1234),
+            Some((1, [0; 4]))
+        );
+        assert_eq!(
+            icmpv6_error_bytes(ICMPV6_PACKET_TOO_BIG, 1280),
+            Some((2, 1280u32.to_be_bytes()))
+        );
+        assert_eq!(
+            icmpv6_error_bytes(ICMPV6_TIME_EXCEEDED, 1234),
+            Some((3, [0; 4]))
+        );
+        assert_eq!(
+            icmpv6_error_bytes(ICMPV6_PARAMETER_PROBLEM, 9),
+            Some((4, 9u32.to_be_bytes()))
+        );
+        assert_eq!(icmpv6_error_bytes(255, 0), None);
+    }
+
+    #[test]
+    fn echo_map_restores_original_identity_once() {
+        let mut map = EchoMap::default();
+        let now = Instant::now();
+        let destination = "2001:db8::1".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+
+        let (id, seq) = map
+            .allocate(
+                now,
+                EchoAllocation {
+                    network: 12,
+                    destination,
+                    client,
+                    original_id: 345,
+                    original_seq: 678,
+                    upstream_hop_limit: 63,
+                },
+            )
+            .unwrap();
+        assert_eq!(seq, 678);
+
+        let entry = map.restore(now, 12, destination, id, seq).unwrap();
+        assert_eq!(entry.client, client);
+        assert_eq!(entry.original_id, 345);
+        assert_eq!(entry.original_seq, 678);
+        assert_eq!(entry.upstream_hop_limit, 63);
+        assert!(map.restore(now, 12, destination, id, seq).is_none());
+    }
+
+    #[test]
+    fn echo_map_expires_old_entries_before_restore() {
+        let mut map = EchoMap::default();
+        let destination = "2001:db8::1".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+        let created = Instant::now() - ECHO_ENTRY_TTL - Duration::from_secs(1);
+        let (id, seq) = map
+            .allocate(
+                created,
+                EchoAllocation {
+                    network: 12,
+                    destination,
+                    client,
+                    original_id: 1,
+                    original_seq: 2,
+                    upstream_hop_limit: 63,
+                },
+            )
+            .unwrap();
+
+        assert!(map
+            .restore(Instant::now(), 12, destination, id, seq)
+            .is_none());
+    }
+
+    #[test]
+    fn icmp_echo_rule_args_exclude_gateway_and_queue_echo_requests() {
+        assert_eq!(
+            icmp_echo_rule_args("ncm0", "fd00::1".parse().unwrap(), DAEMON_ICMP_NFQUEUE_NUM),
+            vec![
+                "-i",
+                "ncm0",
+                "-p",
+                "icmpv6",
+                "--icmpv6-type",
+                "echo-request",
+                "!",
+                "-d",
+                "fd00::1",
+                "-j",
+                "NFQUEUE",
+                "--queue-num",
+                "30063",
+            ]
+        );
+    }
+
+    #[test]
+    fn icmp_echo_route_installation_follows_startup_capability() {
+        assert!(should_install_icmp_echo_rule(true));
+        assert!(!should_install_icmp_echo_rule(false));
+    }
+}

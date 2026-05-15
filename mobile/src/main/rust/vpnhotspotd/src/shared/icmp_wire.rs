@@ -97,6 +97,15 @@ pub fn build_udp_quote(
     destination: SocketAddrV6,
     payload: &[u8],
 ) -> io::Result<Vec<u8>> {
+    build_udp_quote_with_hop_limit(client, destination, 64, payload)
+}
+
+pub fn build_udp_quote_with_hop_limit(
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+    hop_limit: u8,
+    payload: &[u8],
+) -> io::Result<Vec<u8>> {
     let max_payload =
         ICMPV6_MINIMUM_MTU - Ipv6Header::LEN - ICMPV6_HEADER_LEN - Ipv6Header::LEN - UdpHeader::LEN;
     let payload = &payload[..payload.len().min(max_payload)];
@@ -104,7 +113,7 @@ pub fn build_udp_quote(
         *client.ip(),
         *destination.ip(),
         IpNumber::UDP,
-        64,
+        hop_limit,
         UdpHeader::LEN + payload.len(),
     )?;
     let udp = UdpHeader::with_ipv6_checksum(client.port(), destination.port(), &ip, payload)
@@ -147,6 +156,28 @@ mod tests {
     use etherparse::Icmpv6Header;
 
     #[test]
+    fn echo_request_packet_can_be_parsed_from_selected_library_path() {
+        let source = "fd00::2".parse().unwrap();
+        let destination = "2001:db8::1".parse().unwrap();
+        let packet = build_echo_packet_with_checksum(
+            ICMPV6_ECHO_REQUEST,
+            source,
+            destination,
+            11,
+            22,
+            b"probe",
+        )
+        .unwrap();
+        let (header, payload) = Icmpv6Header::from_slice(&packet).unwrap();
+        assert!(header.checksum != 0);
+        assert_eq!(payload, b"probe");
+        assert_eq!(
+            header.icmp_type,
+            Icmpv6Type::EchoRequest(IcmpEchoHeader { id: 11, seq: 22 })
+        );
+    }
+
+    #[test]
     fn echo_packet_restores_identifier_with_checksum() {
         let source = "2001:db8::1".parse().unwrap();
         let destination = "fd00::2".parse().unwrap();
@@ -163,6 +194,47 @@ mod tests {
     }
 
     #[test]
+    fn icmp_error_packet_preserves_type_code_and_metadata() {
+        let source = "2001:db8::1".parse().unwrap();
+        let destination = "fd00::2".parse().unwrap();
+        for (type_u8, code_u8, bytes5to8) in [
+            (1, 4, [0; 4]),
+            (2, 0, 1280u32.to_be_bytes()),
+            (3, 0, [0; 4]),
+            (4, 1, 7u32.to_be_bytes()),
+        ] {
+            let packet =
+                build_icmp_error_packet(type_u8, code_u8, bytes5to8, source, destination, b"quote")
+                    .unwrap();
+            let (header, payload) = Icmpv6Header::from_slice(&packet).unwrap();
+            assert!(header.checksum != 0);
+            assert_eq!(payload, b"quote");
+            assert_eq!(header.icmp_type.type_u8(), type_u8);
+            assert_eq!(header.icmp_type.code_u8(), code_u8);
+            assert_eq!(&packet[4..8], &bytes5to8);
+        }
+    }
+
+    #[test]
+    fn icmp_quote_uses_original_echo_addresses_and_hop_limit() {
+        let source = "fd00::2".parse().unwrap();
+        let destination = "2001:db8::1".parse().unwrap();
+        let request = build_echo_packet_zero_checksum(ICMPV6_ECHO_REQUEST, 11, 22, b"probe");
+        let quote = build_icmp_quote(source, destination, 1, &request).unwrap();
+        let (ip, rest) = Ipv6Header::from_slice(&quote).unwrap();
+        assert_eq!(ip.source_addr(), source);
+        assert_eq!(ip.destination_addr(), destination);
+        assert_eq!(ip.next_header, IpNumber::IPV6_ICMP);
+        assert_eq!(ip.hop_limit, 1);
+        let (header, payload) = Icmpv6Header::from_slice(rest).unwrap();
+        assert_eq!(payload, b"probe");
+        assert_eq!(
+            header.icmp_type,
+            Icmpv6Type::EchoRequest(IcmpEchoHeader { id: 11, seq: 22 })
+        );
+    }
+
+    #[test]
     fn udp_quote_uses_client_view_addresses_and_ports() {
         let client = "[fd00::2]:1234".parse().unwrap();
         let destination = "[2001:db8::1]:443".parse().unwrap();
@@ -171,10 +243,32 @@ mod tests {
         assert_eq!(ip.source_addr(), *client.ip());
         assert_eq!(ip.destination_addr(), *destination.ip());
         assert_eq!(ip.next_header, IpNumber::UDP);
+        assert_eq!(ip.hop_limit, 64);
         let (udp, payload) = UdpHeader::from_slice(rest).unwrap();
         assert_eq!(udp.source_port, client.port());
         assert_eq!(udp.destination_port, destination.port());
         assert_eq!(payload, b"payload");
+        assert_ne!(udp.checksum, 0);
+    }
+
+    #[test]
+    fn udp_quote_caps_payload_to_ipv6_minimum_mtu() {
+        let client = "[fd00::2]:1234".parse().unwrap();
+        let destination = "[2001:db8::1]:443".parse().unwrap();
+        let payload = vec![0u8; 4096];
+        let quote = build_udp_quote_with_hop_limit(client, destination, 1, &payload).unwrap();
+        assert_eq!(
+            quote.len(),
+            ICMPV6_MINIMUM_MTU - Ipv6Header::LEN - ICMPV6_HEADER_LEN
+        );
+        let (ip, rest) = Ipv6Header::from_slice(&quote).unwrap();
+        assert_eq!(ip.hop_limit, 1);
+        assert_eq!(usize::from(ip.payload_length), rest.len());
+        let (udp, payload) = UdpHeader::from_slice(rest).unwrap();
+        assert_eq!(
+            payload.len(),
+            quote.len() - Ipv6Header::LEN - UdpHeader::LEN
+        );
         assert_ne!(udp.checksum, 0);
     }
 
@@ -191,5 +285,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(packet.len(), ICMPV6_MINIMUM_MTU - Ipv6Header::LEN);
+    }
+
+    #[test]
+    fn selected_library_rejects_malformed_packets() {
+        assert!(Icmpv6Header::from_slice(&[ICMPV6_ECHO_REQUEST, 0, 0]).is_err());
+        assert!(Ipv6Header::from_slice(&[0; Ipv6Header::LEN - 1]).is_err());
     }
 }

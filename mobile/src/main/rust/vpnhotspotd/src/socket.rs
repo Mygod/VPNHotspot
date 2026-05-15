@@ -1,8 +1,11 @@
 use std::io;
+use std::mem::size_of;
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
-use libc::{fcntl, sockaddr_in6, F_GETFL, F_SETFL, O_NONBLOCK};
+use libc::{
+    c_int, c_void, fcntl, setsockopt, sockaddr_in6, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK,
+};
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 
@@ -37,6 +40,29 @@ pub(crate) fn set_nonblocking(fd: RawFd) -> io::Result<()> {
         Err(io::Error::last_os_error())
     } else {
         Ok(())
+    }
+}
+
+pub(crate) fn set_int_sockopt(
+    fd: RawFd,
+    level: c_int,
+    name: c_int,
+    value: c_int,
+) -> io::Result<()> {
+    let value_len = size_of::<c_int>() as socklen_t;
+    if unsafe {
+        setsockopt(
+            fd,
+            level,
+            name,
+            &value as *const _ as *const c_void,
+            value_len,
+        )
+    } == 0
+    {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
     }
 }
 
