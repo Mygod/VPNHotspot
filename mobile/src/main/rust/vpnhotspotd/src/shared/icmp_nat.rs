@@ -39,6 +39,7 @@ pub struct EchoEntry {
     pub original_id: u16,
     pub original_seq: u16,
     pub upstream_hop_limit: u8,
+    pub gateway: Ipv6Addr,
     created: Instant,
 }
 
@@ -49,6 +50,7 @@ pub struct EchoAllocation {
     pub original_id: u16,
     pub original_seq: u16,
     pub upstream_hop_limit: u8,
+    pub gateway: Ipv6Addr,
 }
 
 #[derive(Default)]
@@ -118,6 +120,14 @@ pub fn should_install_icmp_echo_rule(icmp_echo: bool) -> bool {
     icmp_echo
 }
 
+pub fn downstream_icmp_error_source(offender: Ipv6Addr, gateway: Ipv6Addr) -> Ipv6Addr {
+    if offender.is_unicast_link_local() {
+        gateway
+    } else {
+        offender
+    }
+}
+
 impl EchoMap {
     pub fn allocate(&mut self, now: Instant, allocation: EchoAllocation) -> io::Result<(u16, u16)> {
         self.expire(now);
@@ -138,6 +148,7 @@ impl EchoMap {
                         original_id: allocation.original_id,
                         original_seq: allocation.original_seq,
                         upstream_hop_limit: allocation.upstream_hop_limit,
+                        gateway: allocation.gateway,
                         created: now,
                     });
                     return Ok((id, allocation.original_seq));
@@ -242,6 +253,7 @@ mod tests {
                     original_id: 345,
                     original_seq: 678,
                     upstream_hop_limit: 63,
+                    gateway: "fd00::1".parse().unwrap(),
                 },
             )
             .unwrap();
@@ -252,6 +264,7 @@ mod tests {
         assert_eq!(entry.original_id, 345);
         assert_eq!(entry.original_seq, 678);
         assert_eq!(entry.upstream_hop_limit, 63);
+        assert_eq!(entry.gateway, "fd00::1".parse::<Ipv6Addr>().unwrap());
         assert!(map.restore(now, 12, destination, id, seq).is_none());
     }
 
@@ -271,6 +284,7 @@ mod tests {
                     original_id: 1,
                     original_seq: 2,
                     upstream_hop_limit: 63,
+                    gateway: "fd00::1".parse().unwrap(),
                 },
             )
             .unwrap();
@@ -306,5 +320,18 @@ mod tests {
     fn icmp_echo_route_installation_follows_startup_capability() {
         assert!(should_install_icmp_echo_rule(true));
         assert!(!should_install_icmp_echo_rule(false));
+    }
+
+    #[test]
+    fn downstream_icmp_error_source_rewrites_link_local_offenders_to_gateway() {
+        let gateway = "fd00::1".parse().unwrap();
+        assert_eq!(
+            downstream_icmp_error_source("fe80::1234".parse().unwrap(), gateway),
+            gateway
+        );
+        assert_eq!(
+            downstream_icmp_error_source("2001:db8::1".parse().unwrap(), gateway),
+            "2001:db8::1".parse::<Ipv6Addr>().unwrap()
+        );
     }
 }

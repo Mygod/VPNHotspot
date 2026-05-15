@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::future::pending;
 use std::io;
 use std::mem::{size_of, zeroed};
-use std::net::{SocketAddr, SocketAddrV6, UdpSocket};
+use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -57,6 +57,7 @@ struct AssociationTask {
     key: AssociationKey,
     id: u64,
     downstream: String,
+    gateway: Ipv6Addr,
     socket: TokioUdpSocket,
     datagrams: mpsc::UnboundedReceiver<UdpDatagram>,
     reply_sockets: Arc<ReplySocketPool>,
@@ -471,6 +472,7 @@ pub(crate) fn spawn_loop(
                                     key,
                                     id: association_id,
                                     downstream: snapshot.downstream.clone(),
+                                    gateway: ipv6_nat.gateway.address(),
                                     socket: upstream,
                                     datagrams: datagram_rx,
                                     reply_sockets: reply_sockets.clone(),
@@ -615,6 +617,7 @@ impl AssociationTask {
         let context = icmp::UdpErrorContext {
             downstream: self.downstream.clone(),
             reply_mark: self.reply_key.mark,
+            gateway: self.gateway,
             client: self.key.client,
             destination: self.key.destination,
         };

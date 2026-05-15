@@ -24,8 +24,8 @@ use crate::report;
 use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
 use crate::upstream::set_socket_network;
 use vpnhotspotd::shared::icmp_nat::{
-    classify_nat66_destination, icmpv6_error_bytes, nat66_hop_limit, EchoAllocation, EchoEntry,
-    EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_TIME_EXCEEDED,
+    classify_nat66_destination, downstream_icmp_error_source, icmpv6_error_bytes, nat66_hop_limit,
+    EchoAllocation, EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_TIME_EXCEEDED,
 };
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_packet_with_checksum, build_echo_packet_zero_checksum, build_icmp_error_packet,
@@ -87,32 +87,15 @@ struct EchoErrorProbe<'a> {
 pub(crate) struct UdpErrorContext {
     pub(crate) downstream: String,
     pub(crate) reply_mark: u32,
+    pub(crate) gateway: Ipv6Addr,
     pub(crate) client: SocketAddrV6,
     pub(crate) destination: SocketAddrV6,
 }
 
 impl EchoState {
-    fn allocate(
-        &self,
-        network: Network,
-        destination: Ipv6Addr,
-        client: SocketAddrV6,
-        original_id: u16,
-        original_seq: u16,
-        upstream_hop_limit: u8,
-    ) -> io::Result<(u16, u16)> {
+    fn allocate(&self, allocation: EchoAllocation) -> io::Result<(u16, u16)> {
         let mut map = self.lock_map()?;
-        map.allocate(
-            Instant::now(),
-            EchoAllocation {
-                network,
-                destination,
-                client,
-                original_id,
-                original_seq,
-                upstream_hop_limit,
-            },
-        )
+        map.allocate(Instant::now(), allocation)
     }
 
     fn restore(
@@ -266,15 +249,7 @@ pub(crate) async fn drain_udp_error_queue(
             );
             continue;
         };
-        if offender.ip().is_unicast_link_local() {
-            report::stdout!(
-                "udp icmp error dropped: link-local offender={} client={} destination={}",
-                offender,
-                context.client,
-                context.destination
-            );
-            continue;
-        }
+        let source = downstream_icmp_error_source(*offender.ip(), context.gateway);
         let quote = match build_udp_quote(context.client, context.destination, &message.payload) {
             Ok(quote) => quote,
             Err(e) => {
@@ -293,7 +268,7 @@ pub(crate) async fn drain_udp_error_queue(
             icmp_type,
             message.error.ee_code,
             bytes5to8,
-            *offender.ip(),
+            source,
             *context.client.ip(),
             &quote,
         ) {
@@ -313,7 +288,7 @@ pub(crate) async fn drain_udp_error_queue(
         if let Err(e) = send_downstream_icmp(
             &context.downstream,
             context.reply_mark,
-            *offender.ip(),
+            source,
             context.client,
             &packet,
         )
@@ -321,7 +296,7 @@ pub(crate) async fn drain_udp_error_queue(
         {
             report::stdout!(
                 "udp icmp error dropped: source={} client={} destination={}: {}",
-                offender.ip(),
+                source,
                 context.client,
                 context.destination,
                 e
@@ -432,14 +407,15 @@ async fn handle_downstream_echo(
     let Some(network) = select_network(config, packet.destination) else {
         return;
     };
-    let (id, seq) = match state.allocate(
+    let (id, seq) = match state.allocate(EchoAllocation {
         network,
-        packet.destination,
-        packet.source,
-        echo.id,
-        echo.seq,
+        destination: packet.destination,
+        client: packet.source,
+        original_id: echo.id,
+        original_seq: echo.seq,
         upstream_hop_limit,
-    ) {
+        gateway: ipv6_nat.gateway.address(),
+    }) {
         Ok(ids) => ids,
         Err(e) => {
             report::io("nat66.icmp_echo_map", e);
@@ -678,15 +654,13 @@ async fn drain_echo_error_queue(
         let Some(offender) = message.offender else {
             continue;
         };
-        if offender.ip().is_unicast_link_local() {
-            continue;
-        }
         let Some(probe) = error_queue_echo_probe(&message) else {
             continue;
         };
         let Some(entry) = state.restore(network, probe.destination, probe.id, probe.seq)? else {
             continue;
         };
+        let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
         let request = match build_echo_packet_with_checksum(
             ICMPV6_ECHO_REQUEST,
             *entry.client.ip(),
@@ -731,7 +705,7 @@ async fn drain_echo_error_queue(
             icmp_type,
             message.error.ee_code,
             bytes5to8,
-            *offender.ip(),
+            source,
             *entry.client.ip(),
             &quote,
         ) {
@@ -748,18 +722,12 @@ async fn drain_echo_error_queue(
                 continue;
             }
         };
-        if let Err(e) = send_downstream_icmp(
-            downstream,
-            reply_mark,
-            *offender.ip(),
-            entry.client,
-            &packet,
-        )
-        .await
+        if let Err(e) =
+            send_downstream_icmp(downstream, reply_mark, source, entry.client, &packet).await
         {
             report::stdout!(
                 "icmp echo error dropped: source={} client={}: {}",
-                offender.ip(),
+                source,
                 entry.client,
                 e
             );
