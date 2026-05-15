@@ -3,6 +3,7 @@ use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, AsRawFd, RawFd};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Instant;
 
@@ -15,10 +16,9 @@ use nfq::{Queue, Verdict};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
+use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
-use tokio::{select, spawn};
-use tokio_util::sync::CancellationToken;
 
 use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
 use crate::upstream::set_socket_network;
@@ -63,7 +63,9 @@ pub(crate) struct Dispatcher {
 }
 
 struct DispatcherInner {
+    state: Arc<EchoState>,
     registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    next_session_key: AtomicU64,
     task: StdMutex<Option<JoinHandle<()>>>,
 }
 
@@ -81,13 +83,13 @@ impl Drop for DispatcherInner {
 pub(crate) struct Registration {
     input_interface: u32,
     session: Arc<IcmpSession>,
+    state: Arc<EchoState>,
     registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
 }
 
 struct IcmpSession {
+    session_key: u64,
     config: Arc<Mutex<SessionConfig>>,
-    stop: CancellationToken,
-    state: Arc<EchoState>,
 }
 
 struct DownstreamIcmpPacket {
@@ -149,6 +151,12 @@ impl EchoState {
         Ok(map.restore(Instant::now(), network, source, id, seq))
     }
 
+    fn remove_session(&self, session_key: u64) -> io::Result<()> {
+        let mut map = self.lock_map()?;
+        map.remove_session(session_key);
+        Ok(())
+    }
+
     fn lock_map(&self) -> io::Result<MutexGuard<'_, EchoMap>> {
         self.map
             .lock()
@@ -166,7 +174,9 @@ impl Dispatcher {
     pub(crate) fn new() -> Self {
         Self {
             inner: Arc::new(DispatcherInner {
+                state: Arc::new(EchoState::default()),
                 registrations: Arc::new(StdMutex::new(HashMap::new())),
+                next_session_key: AtomicU64::new(1),
                 task: StdMutex::new(None),
             }),
         }
@@ -176,7 +186,6 @@ impl Dispatcher {
         &self,
         initial: &SessionConfig,
         config: Arc<Mutex<SessionConfig>>,
-        stop: CancellationToken,
         netlink: &netlink::Handle,
     ) -> io::Result<Registration> {
         if initial.ipv6_nat.is_none() {
@@ -192,10 +201,10 @@ impl Dispatcher {
             NONLOCAL_PROBE_SOURCE,
         )?);
         self.ensure_started()?;
+        let session_key = self.inner.next_session_key.fetch_add(1, Ordering::Relaxed);
         let session = Arc::new(IcmpSession {
+            session_key,
             config,
-            stop,
-            state: Arc::new(EchoState::default()),
         });
         self.inner
             .registrations
@@ -205,6 +214,7 @@ impl Dispatcher {
         Ok(Registration {
             input_interface,
             session,
+            state: self.inner.state.clone(),
             registrations: self.inner.registrations.clone(),
         })
     }
@@ -222,6 +232,7 @@ impl Dispatcher {
         *task = Some(spawn(run_downstream_queue(
             queue,
             self.inner.registrations.clone(),
+            self.inner.state.clone(),
         )));
         Ok(())
     }
@@ -229,14 +240,23 @@ impl Dispatcher {
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let Ok(mut registrations) = self.registrations.lock() else {
-            return;
-        };
-        if registrations
-            .get(&self.input_interface)
-            .is_some_and(|session| Arc::ptr_eq(session, &self.session))
-        {
-            registrations.remove(&self.input_interface);
+        match self.registrations.lock() {
+            Ok(mut registrations) => {
+                if registrations
+                    .get(&self.input_interface)
+                    .is_some_and(|session| Arc::ptr_eq(session, &self.session))
+                {
+                    registrations.remove(&self.input_interface);
+                }
+            }
+            Err(_) => report::message(
+                "nat66.icmp_remove_registration",
+                "icmp registrations state poisoned",
+                "PoisonError",
+            ),
+        }
+        if let Err(e) = self.state.remove_session(self.session.session_key) {
+            report::io("nat66.icmp_remove_session", e);
         }
     }
 }
@@ -244,6 +264,7 @@ impl Drop for Registration {
 async fn run_downstream_queue(
     mut queue: AsyncFd<Queue>,
     registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    state: Arc<EchoState>,
 ) {
     loop {
         let mut ready = match queue.readable_mut().await {
@@ -308,9 +329,8 @@ async fn run_downstream_queue(
                         report::io("nat66.icmp_queue_verdict", e);
                         break;
                     }
-                    let state = session.state.clone();
-                    let stop = session.stop.clone();
-                    handle_downstream_echo(packet, &snapshot, state, stop).await;
+                    handle_downstream_echo(packet, &snapshot, session.session_key, state.clone())
+                        .await;
                 }
             }
             break;
@@ -483,8 +503,8 @@ pub(crate) async fn send_udp_time_exceeded(
 async fn handle_downstream_echo(
     packet: DownstreamIcmpPacket,
     config: &SessionConfig,
+    session_key: u64,
     state: Arc<EchoState>,
-    stop: CancellationToken,
 ) {
     let Ok((header, payload)) = Icmpv6Header::from_slice(&packet.payload) else {
         return;
@@ -560,6 +580,9 @@ async fn handle_downstream_echo(
         return;
     };
     let (id, seq) = match state.allocate(EchoAllocation {
+        session_key,
+        downstream: config.downstream.clone(),
+        reply_mark: config.reply_mark,
         network,
         destination: packet.destination,
         client: packet.source,
@@ -574,13 +597,7 @@ async fn handle_downstream_echo(
             return;
         }
     };
-    let socket = match upstream_socket(
-        &config.downstream,
-        config.reply_mark,
-        network,
-        state.clone(),
-        stop,
-    ) {
+    let socket = match upstream_socket(network, state.clone()) {
         Ok(socket) => socket,
         Err(e) => {
             report::io_with_details(
@@ -615,13 +632,7 @@ async fn handle_downstream_echo(
     }
 }
 
-fn upstream_socket(
-    downstream: &str,
-    reply_mark: u32,
-    network: Network,
-    state: Arc<EchoState>,
-    stop: CancellationToken,
-) -> io::Result<Arc<AsyncFd<Socket>>> {
+fn upstream_socket(network: Network, state: Arc<EchoState>) -> io::Result<Arc<AsyncFd<Socket>>> {
     if let Some(socket) = state.lock_upstream()?.get(&network).cloned() {
         return Ok(socket);
     }
@@ -646,82 +657,56 @@ fn upstream_socket(
             }
         }
     }
-    spawn_upstream_loop(
-        downstream.to_owned(),
-        reply_mark,
-        network,
-        socket.clone(),
-        error_queue,
-        state,
-        stop.child_token(),
-    );
+    spawn_upstream_loop(network, socket.clone(), error_queue, state);
     Ok(socket)
 }
 
 fn spawn_upstream_loop(
-    downstream: String,
-    reply_mark: u32,
     network: Network,
     socket: Arc<AsyncFd<Socket>>,
     error_queue: bool,
     state: Arc<EchoState>,
-    stop: CancellationToken,
 ) {
     spawn(async move {
         let mut buffer = vec![0u8; 65535];
         loop {
-            select! {
-                _ = stop.cancelled() => break,
-                ready = socket.readable() => {
-                    let mut ready = match ready {
-                        Ok(ready) => ready,
-                        Err(e) => {
-                            report::io("nat66.icmp_upstream_readable", e);
-                            break;
-                        }
-                    };
-                    loop {
-                        if error_queue {
-                            match drain_echo_error_queue(
-                                socket.get_ref().as_raw_fd(),
-                                &downstream,
-                                reply_mark,
-                                network,
-                                &state,
-                            ).await {
-                                Ok(_) => {}
-                                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
-                                Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                                Err(e) => report::io_with_details(
-                                    "nat66.icmp_echo_error_queue_recv",
-                                    e,
-                                    [("network", network.to_string())],
-                                ),
-                            }
-                        }
-                        match recv_raw_icmp_packet(socket.get_ref().as_raw_fd(), &mut buffer) {
-                            Ok(Some(packet)) => handle_upstream_echo_reply(
-                                &downstream,
-                                reply_mark,
-                                network,
-                                &state,
-                                packet,
-                            ).await,
-                            Ok(None) => continue,
-                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                                ready.clear_ready();
-                                break;
-                            }
-                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-                            Err(e) => {
-                                report::io_with_details(
-                                    "nat66.icmp_upstream_recv",
-                                    e,
-                                    [("network", network.to_string())],
-                                );
-                                break;
-                            }
-                        }
+            let mut ready = match socket.readable().await {
+                Ok(ready) => ready,
+                Err(e) => {
+                    report::io("nat66.icmp_upstream_readable", e);
+                    break;
+                }
+            };
+            loop {
+                if error_queue {
+                    match drain_echo_error_queue(socket.get_ref().as_raw_fd(), network, &state)
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                        Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                        Err(e) => report::io_with_details(
+                            "nat66.icmp_echo_error_queue_recv",
+                            e,
+                            [("network", network.to_string())],
+                        ),
+                    }
+                }
+                match recv_raw_icmp_packet(socket.get_ref().as_raw_fd(), &mut buffer) {
+                    Ok(Some(packet)) => handle_upstream_echo_reply(network, &state, packet).await,
+                    Ok(None) => continue,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                        ready.clear_ready();
+                        break;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(e) => {
+                        report::io_with_details(
+                            "nat66.icmp_upstream_recv",
+                            e,
+                            [("network", network.to_string())],
+                        );
+                        break;
                     }
                 }
             }
@@ -730,8 +715,6 @@ fn spawn_upstream_loop(
 }
 
 async fn handle_upstream_echo_reply(
-    downstream: &str,
-    reply_mark: u32,
     network: Network,
     state: &EchoState,
     packet: ReceivedIcmpPacket<'_>,
@@ -765,8 +748,8 @@ async fn handle_upstream_echo_reply(
         }
     };
     if let Err(e) = send_downstream_icmp(
-        downstream,
-        reply_mark,
+        &entry.downstream,
+        entry.reply_mark,
         *packet.source.ip(),
         entry.client,
         &reply,
@@ -784,8 +767,6 @@ async fn handle_upstream_echo_reply(
 
 async fn drain_echo_error_queue(
     fd: RawFd,
-    downstream: &str,
-    reply_mark: u32,
     network: Network,
     state: &EchoState,
 ) -> io::Result<usize> {
@@ -874,8 +855,14 @@ async fn drain_echo_error_queue(
                 continue;
             }
         };
-        if let Err(e) =
-            send_downstream_icmp(downstream, reply_mark, source, entry.client, &packet).await
+        if let Err(e) = send_downstream_icmp(
+            &entry.downstream,
+            entry.reply_mark,
+            source,
+            entry.client,
+            &packet,
+        )
+        .await
         {
             report::stdout!(
                 "icmp echo error dropped: source={} client={}: {}",

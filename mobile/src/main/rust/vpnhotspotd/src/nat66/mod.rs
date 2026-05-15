@@ -64,10 +64,7 @@ impl Runtime {
                 return Err(e);
             }
         };
-        let icmp_registration = match icmp
-            .register(config, shared.clone(), stop.clone(), &netlink)
-            .await
-        {
+        let icmp_registration = match icmp.register(config, shared.clone(), &netlink).await {
             Ok(registration) => Some(registration),
             Err(e) => {
                 report::io_with_details(
@@ -114,18 +111,26 @@ impl Runtime {
     }
 
     pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
-        if let Err(e) = self.ra_task.await {
+        let Self {
+            cleanup_prefixes,
+            netlink,
+            ra_task,
+            _icmp_registration,
+            ..
+        } = self;
+        drop(_icmp_registration);
+        if let Err(e) = ra_task.await {
             report::message("nat66.ra_task_join", e.to_string(), "JoinError");
         }
         let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
             return;
         };
         let mut prefixes = if withdraw_cleanup {
-            self.cleanup_prefixes
+            cleanup_prefixes
         } else {
             Vec::new()
         };
         prefixes.push(ipv6_nat.gateway);
-        ra::withdraw_prefixes_once(&self.netlink, snapshot, &prefixes, false).await;
+        ra::withdraw_prefixes_once(&netlink, snapshot, &prefixes, false).await;
     }
 }
