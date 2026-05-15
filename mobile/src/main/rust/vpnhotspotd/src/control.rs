@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
-use crate::{netlink, report, routing};
+use crate::{nat66, netlink, report, routing};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, complete_frame, daemon_error_report_with_details,
@@ -39,6 +39,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     report::init(sender.clone())?;
     let state = Arc::new(State {
         netlink: netlink::Runtime::new()?,
+        icmp: nat66::IcmpDispatcher::new(),
         sessions: Mutex::new(HashMap::new()),
         ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
@@ -149,6 +150,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     netlink: netlink::Runtime,
+    icmp: nat66::IcmpDispatcher,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
@@ -386,7 +388,7 @@ async fn start_session(
         }
     }
     let mut guard = slot.session.lock().await;
-    match Session::start(id, config, &state.netlink, cancel)
+    match Session::start(id, config, &state.netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
             "control.start_session",

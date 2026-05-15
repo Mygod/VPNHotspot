@@ -23,6 +23,7 @@ impl Session {
         call_id: u64,
         mut config: SessionConfig,
         netlink: &netlink::Runtime,
+        icmp: &nat66::IcmpDispatcher,
         cancel: &CancellationToken,
     ) -> io::Result<Self> {
         let stop = CancellationToken::new();
@@ -52,7 +53,10 @@ impl Session {
             stop.child_token(),
             netlink.handle(),
             netlink.ipv6_address_changed(),
-        ) {
+            icmp,
+        )
+        .await
+        {
             Ok(runtime) => runtime,
             Err(e) => {
                 report::report_for(

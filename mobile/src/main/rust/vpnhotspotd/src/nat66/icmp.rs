@@ -20,9 +20,9 @@ use tokio::task::JoinHandle;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
-use crate::report;
 use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
 use crate::upstream::set_socket_network;
+use crate::{netlink, report};
 use vpnhotspotd::shared::icmp_nat::{
     classify_nat66_destination, downstream_icmp_error_source, icmpv6_error_bytes, nat66_hop_limit,
     EchoAllocation, EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_TIME_EXCEEDED,
@@ -57,11 +57,51 @@ struct EchoState {
     upstream: StdMutex<HashMap<Network, Arc<AsyncFd<Socket>>>>,
 }
 
+#[derive(Clone)]
+pub(crate) struct Dispatcher {
+    inner: Arc<DispatcherInner>,
+}
+
+struct DispatcherInner {
+    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    task: StdMutex<Option<JoinHandle<()>>>,
+}
+
+impl Drop for DispatcherInner {
+    fn drop(&mut self) {
+        let Ok(mut task) = self.task.lock() else {
+            return;
+        };
+        if let Some(task) = task.take() {
+            task.abort();
+        }
+    }
+}
+
+pub(crate) struct Registration {
+    input_interface: u32,
+    session: Arc<IcmpSession>,
+    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+}
+
+struct IcmpSession {
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+    state: Arc<EchoState>,
+}
+
 struct DownstreamIcmpPacket {
+    input_interface: u32,
     source: SocketAddrV6,
     destination: Ipv6Addr,
     hop_limit: u8,
     payload: Vec<u8>,
+}
+
+enum QueuedEchoAction {
+    Accept,
+    Drop,
+    Handle,
 }
 
 struct ReceivedIcmpPacket<'a> {
@@ -122,71 +162,181 @@ impl EchoState {
     }
 }
 
-pub(crate) fn spawn_loop(
-    initial: &SessionConfig,
-    config: Arc<Mutex<SessionConfig>>,
-    stop: CancellationToken,
-) -> io::Result<JoinHandle<()>> {
-    if initial.ipv6_nat.is_none() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "missing ipv6 NAT config",
-        ));
+impl Dispatcher {
+    pub(crate) fn new() -> Self {
+        Self {
+            inner: Arc::new(DispatcherInner {
+                registrations: Arc::new(StdMutex::new(HashMap::new())),
+                task: StdMutex::new(None),
+            }),
+        }
     }
-    let mut queue = AsyncFd::new(create_downstream_queue()?)?;
-    drop(create_downstream_send_socket(
-        &initial.downstream,
-        initial.reply_mark,
-        NONLOCAL_PROBE_SOURCE,
-    )?);
-    let state = Arc::new(EchoState::default());
-    Ok(spawn(async move {
+
+    pub(crate) async fn register(
+        &self,
+        initial: &SessionConfig,
+        config: Arc<Mutex<SessionConfig>>,
+        stop: CancellationToken,
+        netlink: &netlink::Handle,
+    ) -> io::Result<Registration> {
+        if initial.ipv6_nat.is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "missing ipv6 NAT config",
+            ));
+        }
+        let input_interface = netlink::link_index(netlink, &initial.downstream).await?;
+        drop(create_downstream_send_socket(
+            &initial.downstream,
+            initial.reply_mark,
+            NONLOCAL_PROBE_SOURCE,
+        )?);
+        self.ensure_started()?;
+        let session = Arc::new(IcmpSession {
+            config,
+            stop,
+            state: Arc::new(EchoState::default()),
+        });
+        self.inner
+            .registrations
+            .lock()
+            .map_err(|_| io::Error::other("icmp registrations state poisoned"))?
+            .insert(input_interface, session.clone());
+        Ok(Registration {
+            input_interface,
+            session,
+            registrations: self.inner.registrations.clone(),
+        })
+    }
+
+    fn ensure_started(&self) -> io::Result<()> {
+        let mut task = self
+            .inner
+            .task
+            .lock()
+            .map_err(|_| io::Error::other("icmp queue task state poisoned"))?;
+        if task.as_ref().is_some_and(|task| !task.is_finished()) {
+            return Ok(());
+        }
+        let queue = AsyncFd::new(create_downstream_queue()?)?;
+        *task = Some(spawn(run_downstream_queue(
+            queue,
+            self.inner.registrations.clone(),
+        )));
+        Ok(())
+    }
+}
+
+impl Drop for Registration {
+    fn drop(&mut self) {
+        let Ok(mut registrations) = self.registrations.lock() else {
+            return;
+        };
+        if registrations
+            .get(&self.input_interface)
+            .is_some_and(|session| Arc::ptr_eq(session, &self.session))
+        {
+            registrations.remove(&self.input_interface);
+        }
+    }
+}
+
+async fn run_downstream_queue(
+    mut queue: AsyncFd<Queue>,
+    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+) {
+    loop {
+        let mut ready = match queue.readable_mut().await {
+            Ok(ready) => ready,
+            Err(e) => {
+                report::io("nat66.icmp_queue_readable", e);
+                break;
+            }
+        };
         loop {
-            select! {
-                _ = stop.cancelled() => break,
-                ready = queue.readable_mut() => {
-                    let mut ready = match ready {
-                        Ok(ready) => ready,
-                        Err(e) => {
-                            report::io("nat66.icmp_queue_readable", e);
-                            break;
-                        }
-                    };
-                    loop {
-                        let message = match ready.try_io(|queue| queue.get_mut().recv()) {
-                            Ok(Ok(message)) => message,
-                            Ok(Err(e)) if e.kind() == io::ErrorKind::Interrupted => continue,
-                            Ok(Err(e)) => {
-                                report::io("nat66.icmp_queue_recv", e);
-                                break;
-                            }
-                            Err(_) => break,
-                        };
-                        let packet = downstream_packet(&message);
-                        if let Err(e) = drop_queued_packet(ready.get_mut().get_mut(), message) {
-                            report::io("nat66.icmp_queue_verdict", e);
-                            break;
-                        }
-                        let Some(packet) = packet else {
-                            continue;
-                        };
-                        drop(ready);
-                        let snapshot = config.lock().await.clone();
-                        if snapshot.ipv6_nat.is_none() {
-                            break;
-                        }
-                        handle_downstream_echo(
-                            packet,
-                            &snapshot,
-                            state.clone(),
-                            stop.clone(),
-                        ).await;
+            let message = match ready.try_io(|queue| queue.get_mut().recv()) {
+                Ok(Ok(message)) => message,
+                Ok(Err(e)) if e.kind() == io::ErrorKind::Interrupted => continue,
+                Ok(Err(e)) => {
+                    report::io("nat66.icmp_queue_recv", e);
+                    break;
+                }
+                Err(_) => break,
+            };
+            let Some(packet) = downstream_packet(&message) else {
+                if let Err(e) = drop_queued_packet(ready.get_mut().get_mut(), message) {
+                    report::io("nat66.icmp_queue_verdict", e);
+                    break;
+                }
+                continue;
+            };
+            let session = match registrations.lock() {
+                Ok(registrations) => registrations.get(&packet.input_interface).cloned(),
+                Err(_) => {
+                    report::message(
+                        "nat66.icmp_registrations",
+                        "icmp registrations state poisoned",
+                        "PoisonError",
+                    );
+                    None
+                }
+            };
+            let Some(session) = session else {
+                if let Err(e) = accept_queued_packet(ready.get_mut().get_mut(), message) {
+                    report::io("nat66.icmp_queue_verdict", e);
+                    break;
+                }
+                continue;
+            };
+            drop(ready);
+            let snapshot = session.config.lock().await.clone();
+            match queued_echo_action(&packet, &snapshot) {
+                QueuedEchoAction::Accept => {
+                    if let Err(e) = accept_queued_packet(queue.get_mut(), message) {
+                        report::io("nat66.icmp_queue_verdict", e);
                         break;
                     }
                 }
+                QueuedEchoAction::Drop => {
+                    if let Err(e) = drop_queued_packet(queue.get_mut(), message) {
+                        report::io("nat66.icmp_queue_verdict", e);
+                        break;
+                    }
+                }
+                QueuedEchoAction::Handle => {
+                    if let Err(e) = drop_queued_packet(queue.get_mut(), message) {
+                        report::io("nat66.icmp_queue_verdict", e);
+                        break;
+                    }
+                    let state = session.state.clone();
+                    let stop = session.stop.clone();
+                    handle_downstream_echo(packet, &snapshot, state, stop).await;
+                }
             }
+            break;
         }
-    }))
+    }
+}
+
+fn queued_echo_action(packet: &DownstreamIcmpPacket, config: &SessionConfig) -> QueuedEchoAction {
+    let Ok((header, _)) = Icmpv6Header::from_slice(&packet.payload) else {
+        return QueuedEchoAction::Drop;
+    };
+    if !matches!(header.icmp_type, Icmpv6Type::EchoRequest(_)) {
+        return QueuedEchoAction::Drop;
+    }
+    let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
+        return QueuedEchoAction::Accept;
+    };
+    match classify_nat66_destination(packet.destination, ipv6_nat.gateway.address()) {
+        Nat66Destination::Gateway | Nat66Destination::Special => QueuedEchoAction::Accept,
+        Nat66Destination::Routable => QueuedEchoAction::Handle,
+    }
+}
+
+fn accept_queued_packet(queue: &mut Queue, mut message: nfq::Message) -> io::Result<()> {
+    message.set_verdict(Verdict::Accept);
+    queue.verdict(message)
 }
 
 fn drop_queued_packet(queue: &mut Queue, mut message: nfq::Message) -> io::Result<()> {
@@ -202,13 +352,15 @@ fn downstream_packet(message: &nfq::Message) -> Option<DownstreamIcmpPacket> {
     }
     let header = ipv6.header();
     let source_ip = header.source_addr();
+    let input_interface = message.get_indev();
     Some(DownstreamIcmpPacket {
+        input_interface,
         source: SocketAddrV6::new(
             source_ip,
             0,
             0,
             if source_ip.is_unicast_link_local() {
-                message.get_indev()
+                input_interface
             } else {
                 0
             },

@@ -17,22 +17,25 @@ mod tcp;
 mod tproxy;
 mod udp;
 
+pub(crate) use icmp::Dispatcher as IcmpDispatcher;
+
 pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,
     cleanup_prefixes: Vec<Ipv6Inet>,
     netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: JoinHandle<()>,
-    icmp_task: Option<JoinHandle<()>>,
+    _icmp_registration: Option<icmp::Registration>,
 }
 
 impl Runtime {
-    pub(crate) fn start(
+    pub(crate) async fn start(
         config: &SessionConfig,
         shared: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
         netlink: netlink::Handle,
         ipv6_address_changed: Arc<Notify>,
+        icmp: &IcmpDispatcher,
     ) -> io::Result<Option<Self>> {
         if config.ipv6_nat.is_none() {
             return Ok(None);
@@ -61,8 +64,11 @@ impl Runtime {
                 return Err(e);
             }
         };
-        let icmp_task = match icmp::spawn_loop(config, shared.clone(), stop.clone()) {
-            Ok(task) => Some(task),
+        let icmp_registration = match icmp
+            .register(config, shared.clone(), stop.clone(), &netlink)
+            .await
+        {
+            Ok(registration) => Some(registration),
             Err(e) => {
                 report::io_with_details(
                     "nat66.icmp_start",
@@ -76,13 +82,13 @@ impl Runtime {
             ports: Ipv6NatPorts {
                 tcp,
                 udp,
-                icmp_echo: icmp_task.is_some(),
+                icmp_echo: icmp_registration.is_some(),
             },
             cleanup_prefixes: Vec::new(),
             netlink,
             config_changed,
             ra_task,
-            icmp_task,
+            _icmp_registration: icmp_registration,
         }))
     }
 
@@ -110,11 +116,6 @@ impl Runtime {
     pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
         if let Err(e) = self.ra_task.await {
             report::message("nat66.ra_task_join", e.to_string(), "JoinError");
-        }
-        if let Some(icmp_task) = self.icmp_task {
-            if let Err(e) = icmp_task.await {
-                report::message("nat66.icmp_task_join", e.to_string(), "JoinError");
-            }
         }
         let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
             return;
