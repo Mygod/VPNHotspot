@@ -184,9 +184,31 @@ impl EchoMap {
         })
     }
 
+    pub fn remove(
+        &mut self,
+        now: Instant,
+        network: Network,
+        destination: Ipv6Addr,
+        id: u16,
+        seq: u16,
+    ) -> Option<EchoEntry> {
+        self.expire(now);
+        self.entries.remove(&EchoKey {
+            network,
+            destination,
+            id,
+            seq,
+        })
+    }
+
     pub fn remove_session(&mut self, session_key: u64) {
         self.entries
             .retain(|_, entry| entry.session_key != session_key);
+    }
+
+    pub fn has_network_entries(&mut self, now: Instant, network: Network) -> bool {
+        self.expire(now);
+        self.entries.keys().any(|key| key.network == network)
     }
 
     fn expire(&mut self, now: Instant) {
@@ -366,6 +388,77 @@ mod tests {
         assert!(map
             .restore(now, 12, destination, kept_id, kept_seq)
             .is_some());
+    }
+
+    #[test]
+    fn echo_map_removes_specific_allocation() {
+        let mut map = EchoMap::default();
+        let now = Instant::now();
+        let destination: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+        let (id, seq) = map
+            .allocate(
+                now,
+                EchoAllocation {
+                    session_key: 1,
+                    downstream: "ncm0".into(),
+                    reply_mark: 123,
+                    network: 12,
+                    destination,
+                    client,
+                    original_id: 1,
+                    original_seq: 2,
+                    upstream_hop_limit: 63,
+                    gateway: "fd00::1".parse().unwrap(),
+                },
+            )
+            .unwrap();
+
+        assert!(map.remove(now, 12, destination, id, seq).is_some());
+        assert!(map.restore(now, 12, destination, id, seq).is_none());
+    }
+
+    #[test]
+    fn echo_map_tracks_live_networks_after_expiry() {
+        let mut map = EchoMap::default();
+        let now = Instant::now();
+        let destination: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+        map.allocate(
+            now - ECHO_ENTRY_TTL - Duration::from_secs(1),
+            EchoAllocation {
+                session_key: 1,
+                downstream: "ncm0".into(),
+                reply_mark: 123,
+                network: 12,
+                destination,
+                client,
+                original_id: 1,
+                original_seq: 2,
+                upstream_hop_limit: 63,
+                gateway: "fd00::1".parse().unwrap(),
+            },
+        )
+        .unwrap();
+        map.allocate(
+            now,
+            EchoAllocation {
+                session_key: 1,
+                downstream: "ncm0".into(),
+                reply_mark: 123,
+                network: 13,
+                destination,
+                client,
+                original_id: 3,
+                original_seq: 4,
+                upstream_hop_limit: 63,
+                gateway: "fd00::1".parse().unwrap(),
+            },
+        )
+        .unwrap();
+
+        assert!(!map.has_network_entries(now, 12));
+        assert!(map.has_network_entries(now, 13));
     }
 
     #[test]

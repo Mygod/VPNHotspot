@@ -1,4 +1,4 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddrV6};
@@ -16,9 +16,10 @@ use nfq::{Queue, Verdict};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
-use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio::{select, spawn};
+use tokio_util::sync::CancellationToken;
 
 use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
 use crate::upstream::set_socket_network;
@@ -53,8 +54,19 @@ struct SockExtendedErr {
 
 #[derive(Default)]
 struct EchoState {
-    map: StdMutex<EchoMap>,
-    upstream: StdMutex<HashMap<Network, Arc<AsyncFd<Socket>>>>,
+    inner: StdMutex<EchoStateInner>,
+}
+
+#[derive(Default)]
+struct EchoStateInner {
+    map: EchoMap,
+    upstream: HashMap<Network, UpstreamSocket>,
+}
+
+#[derive(Clone)]
+struct UpstreamSocket {
+    socket: Arc<AsyncFd<Socket>>,
+    stop: CancellationToken,
 }
 
 #[derive(Clone)]
@@ -71,6 +83,9 @@ struct DispatcherInner {
 
 impl Drop for DispatcherInner {
     fn drop(&mut self) {
+        if let Err(e) = self.state.cancel_all_upstream() {
+            report::io("nat66.icmp_upstream_cancel", e);
+        }
         let Ok(mut task) = self.task.lock() else {
             return;
         };
@@ -135,9 +150,33 @@ pub(crate) struct UdpErrorContext {
 }
 
 impl EchoState {
-    fn allocate(&self, allocation: EchoAllocation) -> io::Result<(u16, u16)> {
-        let mut map = self.lock_map()?;
-        map.allocate(Instant::now(), allocation)
+    fn allocate_echo(
+        state: &Arc<Self>,
+        allocation: EchoAllocation,
+    ) -> io::Result<(u16, u16, Arc<AsyncFd<Socket>>)> {
+        let network = allocation.network;
+        let destination = allocation.destination;
+        let (id, seq, socket) = {
+            let mut inner = state.lock_inner()?;
+            let (id, seq) = inner.map.allocate(Instant::now(), allocation)?;
+            let socket = inner
+                .upstream
+                .get(&network)
+                .map(|upstream| upstream.socket.clone());
+            (id, seq, socket)
+        };
+        if let Some(socket) = socket {
+            return Ok((id, seq, socket));
+        }
+        match Self::ensure_upstream_socket(state, network) {
+            Ok(socket) => Ok((id, seq, socket)),
+            Err(e) => {
+                if let Err(remove_error) = state.remove_allocation(network, destination, id, seq) {
+                    report::io("nat66.icmp_echo_remove_failed_send", remove_error);
+                }
+                Err(e)
+            }
+        }
     }
 
     fn restore(
@@ -147,26 +186,154 @@ impl EchoState {
         id: u16,
         seq: u16,
     ) -> io::Result<Option<EchoEntry>> {
-        let mut map = self.lock_map()?;
-        Ok(map.restore(Instant::now(), network, source, id, seq))
+        let (entry, upstream) = {
+            let mut inner = self.lock_inner()?;
+            let now = Instant::now();
+            let entry = inner.map.restore(now, network, source, id, seq);
+            let upstream = Self::remove_idle_upstream_locked(&mut inner, network, now);
+            (entry, upstream)
+        };
+        if let Some(upstream) = upstream {
+            upstream.stop.cancel();
+        }
+        Ok(entry)
     }
 
-    fn remove_session(&self, session_key: u64) -> io::Result<()> {
-        let mut map = self.lock_map()?;
-        map.remove_session(session_key);
+    fn remove_allocation(
+        &self,
+        network: Network,
+        destination: Ipv6Addr,
+        id: u16,
+        seq: u16,
+    ) -> io::Result<()> {
+        let upstream = {
+            let mut inner = self.lock_inner()?;
+            let now = Instant::now();
+            inner.map.remove(now, network, destination, id, seq);
+            Self::remove_idle_upstream_locked(&mut inner, network, now)
+        };
+        if let Some(upstream) = upstream {
+            upstream.stop.cancel();
+        }
         Ok(())
     }
 
-    fn lock_map(&self) -> io::Result<MutexGuard<'_, EchoMap>> {
-        self.map
-            .lock()
-            .map_err(|_| io::Error::other("echo map state poisoned"))
+    fn remove_session(&self, session_key: u64) -> io::Result<()> {
+        let upstreams = {
+            let mut inner = self.lock_inner()?;
+            inner.map.remove_session(session_key);
+            Self::remove_idle_upstreams_locked(&mut inner, Instant::now())
+        };
+        for upstream in upstreams {
+            upstream.stop.cancel();
+        }
+        Ok(())
     }
 
-    fn lock_upstream(&self) -> io::Result<MutexGuard<'_, HashMap<Network, Arc<AsyncFd<Socket>>>>> {
-        self.upstream
+    fn ensure_upstream_socket(
+        state: &Arc<Self>,
+        network: Network,
+    ) -> io::Result<Arc<AsyncFd<Socket>>> {
+        if let Some(upstream) = state.lock_inner()?.upstream.get(&network).cloned() {
+            return Ok(upstream.socket);
+        }
+        let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
+        let stop = CancellationToken::new();
+        let error_queue = match enable_ipv6_error_queue(socket.get_ref().as_raw_fd()) {
+            Ok(()) => true,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_queue",
+                    e,
+                    [("network", network.to_string())],
+                );
+                false
+            }
+        };
+        let mut start = false;
+        let active = {
+            let mut inner = state.lock_inner()?;
+            if let Some(upstream) = inner.upstream.get(&network) {
+                upstream.socket.clone()
+            } else {
+                if !inner.map.has_network_entries(Instant::now(), network) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Interrupted,
+                        "echo allocation removed",
+                    ));
+                }
+                start = true;
+                inner.upstream.insert(
+                    network,
+                    UpstreamSocket {
+                        socket: socket.clone(),
+                        stop: stop.clone(),
+                    },
+                );
+                socket.clone()
+            }
+        };
+        if start {
+            spawn_upstream_loop(network, active.clone(), error_queue, state.clone(), stop);
+        }
+        Ok(active)
+    }
+
+    fn remove_idle_upstream_locked(
+        inner: &mut EchoStateInner,
+        network: Network,
+        now: Instant,
+    ) -> Option<UpstreamSocket> {
+        if inner.map.has_network_entries(now, network) {
+            None
+        } else {
+            inner.upstream.remove(&network)
+        }
+    }
+
+    fn remove_idle_upstreams_locked(
+        inner: &mut EchoStateInner,
+        now: Instant,
+    ) -> Vec<UpstreamSocket> {
+        let networks: Vec<_> = inner.upstream.keys().copied().collect();
+        networks
+            .into_iter()
+            .filter_map(|network| Self::remove_idle_upstream_locked(inner, network, now))
+            .collect()
+    }
+
+    fn cancel_all_upstream(&self) -> io::Result<()> {
+        for upstream in self
+            .lock_inner()?
+            .upstream
+            .drain()
+            .map(|(_, upstream)| upstream)
+        {
+            upstream.stop.cancel();
+        }
+        Ok(())
+    }
+
+    fn remove_upstream_socket(
+        &self,
+        network: Network,
+        socket: &Arc<AsyncFd<Socket>>,
+    ) -> io::Result<()> {
+        let mut inner = self.lock_inner()?;
+        if inner
+            .upstream
+            .get(&network)
+            .is_some_and(|upstream| Arc::ptr_eq(&upstream.socket, socket))
+        {
+            inner.upstream.remove(&network);
+        }
+        Ok(())
+    }
+
+    fn lock_inner(&self) -> io::Result<MutexGuard<'_, EchoStateInner>> {
+        self.inner
             .lock()
-            .map_err(|_| io::Error::other("echo upstream state poisoned"))
+            .map_err(|_| io::Error::other("echo state poisoned"))
     }
 }
 
@@ -579,35 +746,24 @@ async fn handle_downstream_echo(
     let Some(network) = select_network(config, packet.destination) else {
         return;
     };
-    let (id, seq) = match state.allocate(EchoAllocation {
-        session_key,
-        downstream: config.downstream.clone(),
-        reply_mark: config.reply_mark,
-        network,
-        destination: packet.destination,
-        client: packet.source,
-        original_id: echo.id,
-        original_seq: echo.seq,
-        upstream_hop_limit,
-        gateway: ipv6_nat.gateway.address(),
-    }) {
-        Ok(ids) => ids,
+    let (id, seq, socket) = match EchoState::allocate_echo(
+        &state,
+        EchoAllocation {
+            session_key,
+            downstream: config.downstream.clone(),
+            reply_mark: config.reply_mark,
+            network,
+            destination: packet.destination,
+            client: packet.source,
+            original_id: echo.id,
+            original_seq: echo.seq,
+            upstream_hop_limit,
+            gateway: ipv6_nat.gateway.address(),
+        },
+    ) {
+        Ok(allocation) => allocation,
         Err(e) => {
             report::io("nat66.icmp_echo_map", e);
-            return;
-        }
-    };
-    let socket = match upstream_socket(network, state.clone()) {
-        Ok(socket) => socket,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_upstream_socket",
-                e,
-                [
-                    ("network", network.to_string()),
-                    ("destination", packet.destination.to_string()),
-                ],
-            );
             return;
         }
     };
@@ -629,36 +785,10 @@ async fn handle_downstream_echo(
                 ("network", network.to_string()),
             ],
         );
-    }
-}
-
-fn upstream_socket(network: Network, state: Arc<EchoState>) -> io::Result<Arc<AsyncFd<Socket>>> {
-    if let Some(socket) = state.lock_upstream()?.get(&network).cloned() {
-        return Ok(socket);
-    }
-    let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
-    let error_queue = match enable_ipv6_error_queue(socket.get_ref().as_raw_fd()) {
-        Ok(()) => true,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_queue",
-                e,
-                [("network", network.to_string())],
-            );
-            false
-        }
-    };
-    {
-        let mut upstream = state.lock_upstream()?;
-        match upstream.entry(network) {
-            Entry::Occupied(entry) => return Ok(entry.get().clone()),
-            Entry::Vacant(entry) => {
-                entry.insert(socket.clone());
-            }
+        if let Err(e) = state.remove_allocation(network, packet.destination, id, seq) {
+            report::io("nat66.icmp_echo_remove_failed_send", e);
         }
     }
-    spawn_upstream_loop(network, socket.clone(), error_queue, state);
-    Ok(socket)
 }
 
 fn spawn_upstream_loop(
@@ -666,18 +796,25 @@ fn spawn_upstream_loop(
     socket: Arc<AsyncFd<Socket>>,
     error_queue: bool,
     state: Arc<EchoState>,
+    stop: CancellationToken,
 ) {
     spawn(async move {
         let mut buffer = vec![0u8; 65535];
         loop {
-            let mut ready = match socket.readable().await {
-                Ok(ready) => ready,
-                Err(e) => {
-                    report::io("nat66.icmp_upstream_readable", e);
-                    break;
-                }
+            let mut ready = select! {
+                _ = stop.cancelled() => break,
+                ready = socket.readable() => match ready {
+                    Ok(ready) => ready,
+                    Err(e) => {
+                        report::io("nat66.icmp_upstream_readable", e);
+                        break;
+                    }
+                },
             };
             loop {
+                if stop.is_cancelled() {
+                    break;
+                }
                 if error_queue {
                     match drain_echo_error_queue(socket.get_ref().as_raw_fd(), network, &state)
                         .await
@@ -710,6 +847,9 @@ fn spawn_upstream_loop(
                     }
                 }
             }
+        }
+        if let Err(e) = state.remove_upstream_socket(network, &socket) {
+            report::io("nat66.icmp_upstream_remove", e);
         }
     });
 }
