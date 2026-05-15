@@ -4,7 +4,7 @@ use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, AsRawFd, RawFd};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard, Weak};
 use std::time::Instant;
 
 use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice};
@@ -81,7 +81,7 @@ pub(crate) struct Dispatcher {
 
 struct DispatcherInner {
     state: Arc<EchoState>,
-    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    registrations: Arc<StdMutex<HashMap<u32, Weak<IcmpSession>>>>,
     next_session_key: AtomicU64,
     task: StdMutex<Option<JoinHandle<()>>>,
 }
@@ -103,12 +103,12 @@ impl Drop for DispatcherInner {
 pub(crate) struct Registration {
     input_interface: u32,
     session: Arc<IcmpSession>,
-    state: Arc<EchoState>,
-    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    registrations: Arc<StdMutex<HashMap<u32, Weak<IcmpSession>>>>,
 }
 
 struct IcmpSession {
     session_key: u64,
+    state: Arc<EchoState>,
     config: Arc<Mutex<SessionConfig>>,
 }
 
@@ -417,17 +417,17 @@ impl Dispatcher {
         let session_key = self.inner.next_session_key.fetch_add(1, Ordering::Relaxed);
         let session = Arc::new(IcmpSession {
             session_key,
+            state: self.inner.state.clone(),
             config,
         });
         self.inner
             .registrations
             .lock()
             .map_err(|_| io::Error::other("icmp registrations state poisoned"))?
-            .insert(input_interface, session.clone());
+            .insert(input_interface, Arc::downgrade(&session));
         Ok(Registration {
             input_interface,
             session,
-            state: self.inner.state.clone(),
             registrations: self.inner.registrations.clone(),
         })
     }
@@ -455,10 +455,14 @@ impl Drop for Registration {
     fn drop(&mut self) {
         match self.registrations.lock() {
             Ok(mut registrations) => {
-                if registrations
-                    .get(&self.input_interface)
-                    .is_some_and(|session| Arc::ptr_eq(session, &self.session))
-                {
+                let remove_registration = match registrations.get(&self.input_interface) {
+                    Some(session) => match session.upgrade() {
+                        Some(session) => Arc::ptr_eq(&session, &self.session),
+                        None => true,
+                    },
+                    None => false,
+                };
+                if remove_registration {
                     registrations.remove(&self.input_interface);
                 }
             }
@@ -468,7 +472,12 @@ impl Drop for Registration {
                 "PoisonError",
             ),
         }
-        if let Err(e) = self.state.remove_session(self.session.session_key) {
+    }
+}
+
+impl Drop for IcmpSession {
+    fn drop(&mut self) {
+        if let Err(e) = self.state.remove_session(self.session_key) {
             report::io("nat66.icmp_remove_session", e);
         }
     }
@@ -476,7 +485,7 @@ impl Drop for Registration {
 
 async fn run_downstream_queue(
     mut queue: AsyncFd<Queue>,
-    registrations: Arc<StdMutex<HashMap<u32, Arc<IcmpSession>>>>,
+    registrations: Arc<StdMutex<HashMap<u32, Weak<IcmpSession>>>>,
     state: Arc<EchoState>,
 ) {
     loop {
@@ -505,7 +514,18 @@ async fn run_downstream_queue(
                 continue;
             };
             let session = match registrations.lock() {
-                Ok(registrations) => registrations.get(&packet.input_interface).cloned(),
+                Ok(mut registrations) => {
+                    match registrations
+                        .get(&packet.input_interface)
+                        .and_then(Weak::upgrade)
+                    {
+                        Some(session) => Some(session),
+                        None => {
+                            registrations.remove(&packet.input_interface);
+                            None
+                        }
+                    }
+                }
                 Err(_) => {
                     report::message(
                         "nat66.icmp_registrations",
