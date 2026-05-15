@@ -9,7 +9,6 @@ pub const ICMPV6_DESTINATION_UNREACHABLE: u8 = 1;
 pub const ICMPV6_PACKET_TOO_BIG: u8 = 2;
 pub const ICMPV6_TIME_EXCEEDED: u8 = 3;
 pub const ICMPV6_PARAMETER_PROBLEM: u8 = 4;
-pub const ECHO_ENTRY_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Nat66Destination {
@@ -135,8 +134,13 @@ pub fn downstream_icmp_error_source(offender: Ipv6Addr, gateway: Ipv6Addr) -> Ip
 }
 
 impl EchoMap {
-    pub fn allocate(&mut self, now: Instant, allocation: EchoAllocation) -> io::Result<(u16, u16)> {
-        self.expire(now);
+    pub fn allocate(
+        &mut self,
+        now: Instant,
+        timeout: Duration,
+        allocation: EchoAllocation,
+    ) -> io::Result<(u16, u16)> {
+        self.expire(now, timeout);
         for _ in 0..=u16::MAX {
             let id = self.next_id;
             self.next_id = self.next_id.wrapping_add(1);
@@ -170,12 +174,13 @@ impl EchoMap {
     pub fn restore(
         &mut self,
         now: Instant,
+        timeout: Duration,
         network: Network,
         source: Ipv6Addr,
         id: u16,
         seq: u16,
     ) -> Option<EchoEntry> {
-        self.expire(now);
+        self.expire(now, timeout);
         self.entries.remove(&EchoKey {
             network,
             destination: source,
@@ -187,12 +192,13 @@ impl EchoMap {
     pub fn remove(
         &mut self,
         now: Instant,
+        timeout: Duration,
         network: Network,
         destination: Ipv6Addr,
         id: u16,
         seq: u16,
     ) -> Option<EchoEntry> {
-        self.expire(now);
+        self.expire(now, timeout);
         self.entries.remove(&EchoKey {
             network,
             destination,
@@ -201,13 +207,19 @@ impl EchoMap {
         })
     }
 
-    pub fn remove_session(&mut self, session_key: u64) {
+    pub fn remove_session(&mut self, now: Instant, timeout: Duration, session_key: u64) {
+        self.expire(now, timeout);
         self.entries
             .retain(|_, entry| entry.session_key != session_key);
     }
 
-    pub fn has_network_entries(&mut self, now: Instant, network: Network) -> bool {
-        self.expire(now);
+    pub fn has_network_entries(
+        &mut self,
+        now: Instant,
+        timeout: Duration,
+        network: Network,
+    ) -> bool {
+        self.expire(now, timeout);
         self.entries.keys().any(|key| key.network == network)
     }
 
@@ -217,7 +229,7 @@ impl EchoMap {
         network: Network,
         timeout: Duration,
     ) -> Option<Instant> {
-        self.expire(now);
+        self.expire(now, timeout);
         self.entries
             .iter()
             .filter(|(key, _)| key.network == network)
@@ -225,9 +237,9 @@ impl EchoMap {
             .min()
     }
 
-    fn expire(&mut self, now: Instant) {
+    fn expire(&mut self, now: Instant, timeout: Duration) {
         self.entries
-            .retain(|_, entry| now.duration_since(entry.created) < ECHO_ENTRY_TTL);
+            .retain(|_, entry| now.duration_since(entry.created) < timeout);
     }
 }
 
@@ -235,6 +247,8 @@ impl EchoMap {
 mod tests {
     use super::*;
     use crate::shared::model::DAEMON_ICMP_NFQUEUE_NUM;
+
+    const TIMEOUT: Duration = Duration::from_secs(60);
 
     #[test]
     fn destination_classifier_separates_gateway_special_and_routable() {
@@ -296,6 +310,7 @@ mod tests {
         let (id, seq) = map
             .allocate(
                 now,
+                TIMEOUT,
                 EchoAllocation {
                     session_key: 1,
                     downstream: "ncm0".into(),
@@ -312,7 +327,7 @@ mod tests {
             .unwrap();
         assert_eq!(seq, 678);
 
-        let entry = map.restore(now, 12, destination, id, seq).unwrap();
+        let entry = map.restore(now, TIMEOUT, 12, destination, id, seq).unwrap();
         assert_eq!(entry.session_key, 1);
         assert_eq!(entry.downstream, "ncm0");
         assert_eq!(entry.reply_mark, 123);
@@ -321,7 +336,9 @@ mod tests {
         assert_eq!(entry.original_seq, 678);
         assert_eq!(entry.upstream_hop_limit, 63);
         assert_eq!(entry.gateway, "fd00::1".parse::<Ipv6Addr>().unwrap());
-        assert!(map.restore(now, 12, destination, id, seq).is_none());
+        assert!(map
+            .restore(now, TIMEOUT, 12, destination, id, seq)
+            .is_none());
     }
 
     #[test]
@@ -329,10 +346,11 @@ mod tests {
         let mut map = EchoMap::default();
         let destination = "2001:db8::1".parse().unwrap();
         let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
-        let created = Instant::now() - ECHO_ENTRY_TTL - Duration::from_secs(1);
+        let created = Instant::now() - TIMEOUT - Duration::from_secs(1);
         let (id, seq) = map
             .allocate(
                 created,
+                TIMEOUT,
                 EchoAllocation {
                     session_key: 1,
                     downstream: "ncm0".into(),
@@ -349,7 +367,7 @@ mod tests {
             .unwrap();
 
         assert!(map
-            .restore(Instant::now(), 12, destination, id, seq)
+            .restore(Instant::now(), TIMEOUT, 12, destination, id, seq)
             .is_none());
     }
 
@@ -362,6 +380,7 @@ mod tests {
         let (removed_id, removed_seq) = map
             .allocate(
                 now,
+                TIMEOUT,
                 EchoAllocation {
                     session_key: 1,
                     downstream: "ncm0".into(),
@@ -379,6 +398,7 @@ mod tests {
         let (kept_id, kept_seq) = map
             .allocate(
                 now,
+                TIMEOUT,
                 EchoAllocation {
                     session_key: 2,
                     downstream: "wlan0".into(),
@@ -394,13 +414,13 @@ mod tests {
             )
             .unwrap();
 
-        map.remove_session(1);
+        map.remove_session(now, TIMEOUT, 1);
 
         assert!(map
-            .restore(now, 12, destination, removed_id, removed_seq)
+            .restore(now, TIMEOUT, 12, destination, removed_id, removed_seq)
             .is_none());
         assert!(map
-            .restore(now, 12, destination, kept_id, kept_seq)
+            .restore(now, TIMEOUT, 12, destination, kept_id, kept_seq)
             .is_some());
     }
 
@@ -413,6 +433,7 @@ mod tests {
         let (id, seq) = map
             .allocate(
                 now,
+                TIMEOUT,
                 EchoAllocation {
                     session_key: 1,
                     downstream: "ncm0".into(),
@@ -428,8 +449,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(map.remove(now, 12, destination, id, seq).is_some());
-        assert!(map.restore(now, 12, destination, id, seq).is_none());
+        assert!(map.remove(now, TIMEOUT, 12, destination, id, seq).is_some());
+        assert!(map
+            .restore(now, TIMEOUT, 12, destination, id, seq)
+            .is_none());
     }
 
     #[test]
@@ -439,7 +462,8 @@ mod tests {
         let destination: Ipv6Addr = "2001:db8::1".parse().unwrap();
         let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
         map.allocate(
-            now - ECHO_ENTRY_TTL - Duration::from_secs(1),
+            now - TIMEOUT - Duration::from_secs(1),
+            TIMEOUT,
             EchoAllocation {
                 session_key: 1,
                 downstream: "ncm0".into(),
@@ -456,6 +480,7 @@ mod tests {
         .unwrap();
         map.allocate(
             now,
+            TIMEOUT,
             EchoAllocation {
                 session_key: 1,
                 downstream: "ncm0".into(),
@@ -471,8 +496,8 @@ mod tests {
         )
         .unwrap();
 
-        assert!(!map.has_network_entries(now, 12));
-        assert!(map.has_network_entries(now, 13));
+        assert!(!map.has_network_entries(now, TIMEOUT, 12));
+        assert!(map.has_network_entries(now, TIMEOUT, 13));
     }
 
     #[test]
@@ -483,6 +508,7 @@ mod tests {
         let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
         map.allocate(
             now,
+            TIMEOUT,
             EchoAllocation {
                 session_key: 1,
                 downstream: "ncm0".into(),
@@ -499,13 +525,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            map.network_idle_deadline(now, 12, Duration::from_secs(60)),
-            Some(now + Duration::from_secs(60))
+            map.network_idle_deadline(now, 12, TIMEOUT),
+            Some(now + TIMEOUT)
         );
-        assert_eq!(
-            map.network_idle_deadline(now, 13, Duration::from_secs(60)),
-            None
-        );
+        assert_eq!(map.network_idle_deadline(now, 13, TIMEOUT), None);
     }
 
     #[test]

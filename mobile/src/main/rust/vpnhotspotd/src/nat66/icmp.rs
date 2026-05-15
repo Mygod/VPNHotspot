@@ -69,6 +69,11 @@ struct UpstreamSocket {
     stop: CancellationToken,
 }
 
+enum UpstreamPrune {
+    Removed,
+    StillActive,
+}
+
 #[derive(Clone)]
 pub(crate) struct Dispatcher {
     inner: Arc<DispatcherInner>,
@@ -158,7 +163,9 @@ impl EchoState {
         let destination = allocation.destination;
         let (id, seq, socket) = {
             let mut inner = state.lock_inner()?;
-            let (id, seq) = inner.map.allocate(Instant::now(), allocation)?;
+            let (id, seq) = inner
+                .map
+                .allocate(Instant::now(), super::IDLE_TIMEOUT, allocation)?;
             let socket = inner
                 .upstream
                 .get(&network)
@@ -189,7 +196,9 @@ impl EchoState {
         let (entry, upstream) = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            let entry = inner.map.restore(now, network, source, id, seq);
+            let entry = inner
+                .map
+                .restore(now, super::IDLE_TIMEOUT, network, source, id, seq);
             let upstream = Self::remove_idle_upstream_locked(&mut inner, network, now);
             (entry, upstream)
         };
@@ -209,7 +218,9 @@ impl EchoState {
         let upstream = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            inner.map.remove(now, network, destination, id, seq);
+            inner
+                .map
+                .remove(now, super::IDLE_TIMEOUT, network, destination, id, seq);
             Self::remove_idle_upstream_locked(&mut inner, network, now)
         };
         if let Some(upstream) = upstream {
@@ -221,8 +232,11 @@ impl EchoState {
     fn remove_session(&self, session_key: u64) -> io::Result<()> {
         let upstreams = {
             let mut inner = self.lock_inner()?;
-            inner.map.remove_session(session_key);
-            Self::remove_idle_upstreams_locked(&mut inner, Instant::now())
+            let now = Instant::now();
+            inner
+                .map
+                .remove_session(now, super::IDLE_TIMEOUT, session_key);
+            Self::remove_idle_upstreams_locked(&mut inner, now)
         };
         for upstream in upstreams {
             upstream.stop.cancel();
@@ -237,15 +251,23 @@ impl EchoState {
             .network_idle_deadline(Instant::now(), network, super::IDLE_TIMEOUT))
     }
 
-    fn prune_idle_upstream(&self, network: Network) -> io::Result<()> {
-        let upstream = {
+    fn prune_idle_upstream(&self, network: Network) -> io::Result<UpstreamPrune> {
+        let (result, upstream) = {
             let mut inner = self.lock_inner()?;
-            Self::remove_idle_upstream_locked(&mut inner, network, Instant::now())
+            let now = Instant::now();
+            if inner
+                .map
+                .has_network_entries(now, super::IDLE_TIMEOUT, network)
+            {
+                (UpstreamPrune::StillActive, None)
+            } else {
+                (UpstreamPrune::Removed, inner.upstream.remove(&network))
+            }
         };
         if let Some(upstream) = upstream {
             upstream.stop.cancel();
         }
-        Ok(())
+        Ok(result)
     }
 
     fn ensure_upstream_socket(
@@ -274,7 +296,10 @@ impl EchoState {
             if let Some(upstream) = inner.upstream.get(&network) {
                 upstream.socket.clone()
             } else {
-                if !inner.map.has_network_entries(Instant::now(), network) {
+                if !inner
+                    .map
+                    .has_network_entries(Instant::now(), super::IDLE_TIMEOUT, network)
+                {
                     return Err(io::Error::new(
                         io::ErrorKind::Interrupted,
                         "echo allocation removed",
@@ -302,7 +327,10 @@ impl EchoState {
         network: Network,
         now: Instant,
     ) -> Option<UpstreamSocket> {
-        if inner.map.has_network_entries(now, network) {
+        if inner
+            .map
+            .has_network_entries(now, super::IDLE_TIMEOUT, network)
+        {
             None
         } else {
             inner.upstream.remove(&network)
@@ -821,12 +849,14 @@ fn spawn_upstream_loop(
         loop {
             let deadline = match state.upstream_idle_deadline(network) {
                 Ok(Some(deadline)) => deadline,
-                Ok(None) => {
-                    if let Err(e) = state.prune_idle_upstream(network) {
+                Ok(None) => match state.prune_idle_upstream(network) {
+                    Ok(UpstreamPrune::Removed) => break,
+                    Ok(UpstreamPrune::StillActive) => continue,
+                    Err(e) => {
                         report::io("nat66.icmp_upstream_timeout", e);
+                        break;
                     }
-                    break;
-                }
+                },
                 Err(e) => {
                     report::io("nat66.icmp_upstream_timeout", e);
                     break;
@@ -835,10 +865,14 @@ fn spawn_upstream_loop(
             let mut ready = select! {
                 _ = stop.cancelled() => break,
                 _ = super::sleep_until_deadline(Some(deadline)) => {
-                    if let Err(e) = state.prune_idle_upstream(network) {
-                        report::io("nat66.icmp_upstream_timeout", e);
+                    match state.prune_idle_upstream(network) {
+                        Ok(UpstreamPrune::Removed) => break,
+                        Ok(UpstreamPrune::StillActive) => continue,
+                        Err(e) => {
+                            report::io("nat66.icmp_upstream_timeout", e);
+                            break;
+                        }
                     }
-                    continue;
                 }
                 ready = socket.readable() => match ready {
                     Ok(ready) => ready,
