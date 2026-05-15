@@ -1,11 +1,10 @@
 use std::collections::{hash_map::Entry, HashMap};
-use std::future::pending;
 use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use libc::{
     c_int, c_void, iovec, msghdr, recvmsg, sockaddr_in6, socklen_t, CMSG_DATA, CMSG_FIRSTHDR,
@@ -16,10 +15,10 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::{mpsc, Mutex};
-use tokio::time::{sleep_until, Instant as TokioInstant};
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
+use super::{sleep_until_deadline, IDLE_TIMEOUT};
 use crate::dns::{resolve_or_error, DNS_PORT};
 use crate::nat66::icmp;
 use crate::report;
@@ -27,8 +26,6 @@ use crate::socket::{set_int_sockopt, socket_addr_v6_from_raw};
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
-
-const UDP_ASSOC_IDLE: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AssociationKey {
@@ -285,7 +282,7 @@ pub(crate) fn spawn_loop(
             }
             let now = Instant::now();
             associations.retain(|_, association| {
-                let active = now.duration_since(association.last_active) < UDP_ASSOC_IDLE;
+                let active = now.duration_since(association.last_active) < IDLE_TIMEOUT;
                 if !active {
                     association.stop.cancel();
                 }
@@ -293,18 +290,12 @@ pub(crate) fn spawn_loop(
             });
             let next_expiry = associations
                 .values()
-                .map(|association| association.last_active + UDP_ASSOC_IDLE)
+                .map(|association| association.last_active + IDLE_TIMEOUT)
                 .min();
 
             select! {
                 _ = stop.cancelled() => break,
-                _ = async {
-                    if let Some(deadline) = next_expiry {
-                        sleep_until(TokioInstant::from_std(deadline)).await;
-                    } else {
-                        pending::<()>().await;
-                    }
-                } => {}
+                _ = sleep_until_deadline(next_expiry) => {}
                 event = association_event_rx.recv() => match event {
                     Some(event) => handle_association_event(&mut associations, event),
                     None => break,

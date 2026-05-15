@@ -211,6 +211,20 @@ impl EchoMap {
         self.entries.keys().any(|key| key.network == network)
     }
 
+    pub fn network_idle_deadline(
+        &mut self,
+        now: Instant,
+        network: Network,
+        timeout: Duration,
+    ) -> Option<Instant> {
+        self.expire(now);
+        self.entries
+            .iter()
+            .filter(|(key, _)| key.network == network)
+            .map(|(_, entry)| entry.created + timeout)
+            .min()
+    }
+
     fn expire(&mut self, now: Instant) {
         self.entries
             .retain(|_, entry| now.duration_since(entry.created) < ECHO_ENTRY_TTL);
@@ -459,6 +473,39 @@ mod tests {
 
         assert!(!map.has_network_entries(now, 12));
         assert!(map.has_network_entries(now, 13));
+    }
+
+    #[test]
+    fn echo_map_reports_network_idle_deadline() {
+        let mut map = EchoMap::default();
+        let now = Instant::now();
+        let destination: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+        map.allocate(
+            now,
+            EchoAllocation {
+                session_key: 1,
+                downstream: "ncm0".into(),
+                reply_mark: 123,
+                network: 12,
+                destination,
+                client,
+                original_id: 1,
+                original_seq: 2,
+                upstream_hop_limit: 63,
+                gateway: "fd00::1".parse().unwrap(),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            map.network_idle_deadline(now, 12, Duration::from_secs(60)),
+            Some(now + Duration::from_secs(60))
+        );
+        assert_eq!(
+            map.network_idle_deadline(now, 13, Duration::from_secs(60)),
+            None
+        );
     }
 
     #[test]

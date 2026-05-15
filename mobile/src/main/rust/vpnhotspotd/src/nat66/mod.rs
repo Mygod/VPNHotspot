@@ -1,8 +1,11 @@
+use std::future::pending;
 use std::io;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
+use tokio::time::{sleep_until, Instant as TokioInstant};
 use tokio_util::sync::CancellationToken;
 
 use cidr::Ipv6Inet;
@@ -18,6 +21,16 @@ mod tproxy;
 mod udp;
 
 pub(crate) use icmp::Dispatcher as IcmpDispatcher;
+
+const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+async fn sleep_until_deadline(deadline: Option<Instant>) {
+    if let Some(deadline) = deadline {
+        sleep_until(TokioInstant::from_std(deadline)).await;
+    } else {
+        pending::<()>().await;
+    }
+}
 
 pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,

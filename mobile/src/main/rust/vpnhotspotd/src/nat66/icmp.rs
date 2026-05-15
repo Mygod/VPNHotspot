@@ -230,6 +230,24 @@ impl EchoState {
         Ok(())
     }
 
+    fn upstream_idle_deadline(&self, network: Network) -> io::Result<Option<Instant>> {
+        let mut inner = self.lock_inner()?;
+        Ok(inner
+            .map
+            .network_idle_deadline(Instant::now(), network, super::IDLE_TIMEOUT))
+    }
+
+    fn prune_idle_upstream(&self, network: Network) -> io::Result<()> {
+        let upstream = {
+            let mut inner = self.lock_inner()?;
+            Self::remove_idle_upstream_locked(&mut inner, network, Instant::now())
+        };
+        if let Some(upstream) = upstream {
+            upstream.stop.cancel();
+        }
+        Ok(())
+    }
+
     fn ensure_upstream_socket(
         state: &Arc<Self>,
         network: Network,
@@ -801,8 +819,27 @@ fn spawn_upstream_loop(
     spawn(async move {
         let mut buffer = vec![0u8; 65535];
         loop {
+            let deadline = match state.upstream_idle_deadline(network) {
+                Ok(Some(deadline)) => deadline,
+                Ok(None) => {
+                    if let Err(e) = state.prune_idle_upstream(network) {
+                        report::io("nat66.icmp_upstream_timeout", e);
+                    }
+                    break;
+                }
+                Err(e) => {
+                    report::io("nat66.icmp_upstream_timeout", e);
+                    break;
+                }
+            };
             let mut ready = select! {
                 _ = stop.cancelled() => break,
+                _ = super::sleep_until_deadline(Some(deadline)) => {
+                    if let Err(e) = state.prune_idle_upstream(network) {
+                        report::io("nat66.icmp_upstream_timeout", e);
+                    }
+                    continue;
+                }
                 ready = socket.readable() => match ready {
                     Ok(ready) => ready,
                     Err(e) => {
