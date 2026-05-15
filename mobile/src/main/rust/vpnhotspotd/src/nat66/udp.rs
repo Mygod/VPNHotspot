@@ -521,7 +521,7 @@ pub(crate) fn spawn_loop(
 impl AssociationTask {
     async fn run(mut self) {
         let mut buffer = [0u8; 65535];
-        loop {
+        'association: loop {
             select! {
                 _ = self.stop.cancelled() => break,
                 datagram = self.datagrams.recv() => match datagram {
@@ -538,20 +538,29 @@ impl AssociationTask {
                                 );
                             }
                         }
-                        if let Err(e) = self.socket.send(&datagram.payload).await {
-                            if !self.drain_error_queue().await {
-                                report::io_with_details(
-                                    "nat66.udp_send",
-                                    e,
-                                    [
-                                        ("client", self.key.client.to_string()),
-                                        ("destination", self.key.destination.to_string()),
-                                    ],
-                                );
-                                break;
+                        let mut retried_after_error_queue = false;
+                        loop {
+                            match self.socket.send(&datagram.payload).await {
+                                Ok(_) => {
+                                    self.report_active();
+                                    break;
+                                }
+                                Err(e) => {
+                                    if !retried_after_error_queue && self.drain_error_queue().await {
+                                        retried_after_error_queue = true;
+                                        continue;
+                                    }
+                                    report::io_with_details(
+                                        "nat66.udp_send",
+                                        e,
+                                        [
+                                            ("client", self.key.client.to_string()),
+                                            ("destination", self.key.destination.to_string()),
+                                        ],
+                                    );
+                                    break 'association;
+                                }
                             }
-                        } else {
-                            self.report_active();
                         }
                     }
                     None => break,

@@ -508,6 +508,8 @@ impl Runtime {
                 (IptablesTarget::Ipv6, "filter", "vpnhotspot_v6_forward"),
                 (IptablesTarget::Ipv6, "filter", "vpnhotspot_v6_output"),
                 (IptablesTarget::Ipv6, "mangle", "vpnhotspot_acl"),
+                (IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_acl_gate"),
+                (IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_protocols"),
                 (IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy"),
             ] {
                 push_unique(
@@ -524,21 +526,17 @@ impl Runtime {
             }
             push_unique(
                 &mut mutations,
-                RoutingMutation::Iptables(Self::ipv6_nat_acl_drop_rule()),
+                RoutingMutation::Iptables(Self::ipv6_nat_acl_gate_rule(config)),
             );
-            for rule in Self::ipv6_nat_tproxy_port_rules(config, ports) {
-                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-            }
             if should_install_icmp_echo_rule(ports.icmp_echo) {
                 push_unique(
                     &mut mutations,
                     RoutingMutation::Iptables(Self::ipv6_nat_icmp_echo_rule(config, ipv6_nat)),
                 );
             }
-            push_unique(
-                &mut mutations,
-                RoutingMutation::Iptables(Self::ipv6_nat_tproxy_acl_rule(config)),
-            );
+            for rule in Self::ipv6_nat_tproxy_port_rules(config, ports) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
             for rule in Self::ipv6_nat_filter_jump_rules() {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
@@ -948,7 +946,12 @@ impl Runtime {
                     "--tproxy-mark".into(),
                     "0x10000000/0x10000000".into(),
                 ]);
-                IptablesRule::new(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy", args)
+                IptablesRule::new(
+                    IptablesTarget::Ipv6,
+                    "mangle",
+                    "vpnhotspot_v6_protocols",
+                    args,
+                )
             })
             .collect()
     }
@@ -960,7 +963,7 @@ impl Runtime {
         IptablesRule::new(
             IptablesTarget::Ipv6,
             "mangle",
-            "vpnhotspot_v6_tproxy",
+            "vpnhotspot_v6_protocols",
             icmp_echo_rule_args(
                 config.downstream.clone(),
                 ipv6_nat.gateway.address(),
@@ -969,17 +972,35 @@ impl Runtime {
         )
     }
 
-    fn ipv6_nat_tproxy_acl_rule(config: &SessionConfig) -> IptablesRule {
+    fn ipv6_nat_acl_gate_rule(config: &SessionConfig) -> IptablesRule {
         IptablesRule::new(
             IptablesTarget::Ipv6,
             "mangle",
-            "vpnhotspot_v6_tproxy",
+            "vpnhotspot_v6_acl_gate",
             vec![
                 "-i".into(),
                 config.downstream.clone(),
                 "-j".into(),
                 "vpnhotspot_acl".into(),
             ],
+        )
+    }
+
+    fn ipv6_nat_tproxy_acl_rule() -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv6,
+            "mangle",
+            "vpnhotspot_v6_tproxy",
+            vec!["-j".into(), "vpnhotspot_v6_acl_gate".into()],
+        )
+    }
+
+    fn ipv6_nat_tproxy_protocols_rule() -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv6,
+            "mangle",
+            "vpnhotspot_v6_tproxy",
+            vec!["-j".into(), "vpnhotspot_v6_protocols".into()],
         )
     }
 
@@ -1009,6 +1030,29 @@ impl Runtime {
             vec!["-j".into(), "vpnhotspot_v6_tproxy".into()],
         )
     }
+}
+
+pub(crate) async fn ensure_ipv6_nat_firewall_base() -> io::Result<()> {
+    ensure_iptables_chain_result(IptablesTarget::Ipv6, "mangle", "vpnhotspot_acl").await?;
+    ensure_iptables_chain_result(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_acl_gate").await?;
+    ensure_iptables_chain_result(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_protocols").await?;
+    ensure_iptables_chain_result(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy").await?;
+    apply_iptables_batch(
+        IptablesTarget::Ipv6,
+        "mangle",
+        &[
+            Runtime::ipv6_nat_acl_drop_rule(),
+            Runtime::ipv6_nat_tproxy_protocols_rule(),
+            Runtime::ipv6_nat_tproxy_acl_rule(),
+        ],
+    )
+    .await
+}
+
+pub(crate) async fn delete_ipv6_nat_firewall_base() {
+    Runtime::ipv6_nat_tproxy_acl_rule().delete().await;
+    Runtime::ipv6_nat_tproxy_protocols_rule().delete().await;
+    Runtime::ipv6_nat_acl_drop_rule().delete().await;
 }
 
 pub(crate) async fn clean(
@@ -1135,8 +1179,12 @@ COMMIT
 COMMIT
 *mangle
 :vpnhotspot_acl - [0:0]
+:vpnhotspot_v6_acl_gate - [0:0]
+:vpnhotspot_v6_protocols - [0:0]
 :vpnhotspot_v6_tproxy - [0:0]
 -X vpnhotspot_acl
+-X vpnhotspot_v6_acl_gate
+-X vpnhotspot_v6_protocols
 -X vpnhotspot_v6_tproxy
 COMMIT
 ",
@@ -1190,6 +1238,16 @@ async fn ensure_iptables_chain(target: IptablesTarget, table: &str, chain: &str)
             ],
         ),
     }
+}
+
+async fn ensure_iptables_chain_result(
+    target: IptablesTarget,
+    table: &str,
+    chain: &str,
+) -> io::Result<()> {
+    let input = firewall::restore_input(table, &[firewall::restore_line("-N", chain, &[])?]);
+    firewall::restore_status(target, &input).await?;
+    Ok(())
 }
 
 async fn add_ip_forward(downstream: &str) -> io::Result<()> {
