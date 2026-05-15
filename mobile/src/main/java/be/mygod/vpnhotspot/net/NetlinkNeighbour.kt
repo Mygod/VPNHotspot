@@ -5,6 +5,7 @@ import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.Neighbour
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
@@ -27,11 +28,9 @@ import java.net.InetAddress
 data class NetlinkNeighbour(val proto: Neighbour) {
     val ip = proto.address.toInetAddress()
     inline val dev get() = proto.dev
-    val lladdr = proto.lladdr?.let { lladdr ->
-        lladdr.toByteArray().also {
-            if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
-        }.let(MacAddress::fromBytes)
-    }
+    val lladdr = proto.lladdr?.toByteArray()?.also {
+        if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
+    }?.let(MacAddress::fromBytes)
     inline val state get() = proto.state
     val validIpv4ClientMac: MacAddress? get() {
         if (state != NeighbourState.NEIGHBOUR_STATE_VALID || ip !is Inet4Address) return null
@@ -42,7 +41,17 @@ data class NetlinkNeighbour(val proto: Neighbour) {
         if (state is NeighbourState.Unrecognized) throw IOException("Invalid neighbour state ${state.value}")
     }
 
+    data class Snapshot(
+        val neighbours: Collection<NetlinkNeighbour>,
+        val bridgeMasterByMember: PersistentMap<String, String>,
+    )
+
     companion object {
+        private data class MonitorState(
+            val neighbours: PersistentMap<Pair<ByteString, String>, NetlinkNeighbour> = persistentMapOf(),
+            val bridgeMasterByMember: PersistentMap<String, String> = persistentMapOf(),
+        )
+
         private fun ByteString.toInetAddress() = toByteArray().let { bytes ->
             when (bytes.size) {
                 4, 16 -> InetAddress.getByAddress(bytes)
@@ -50,26 +59,37 @@ data class NetlinkNeighbour(val proto: Neighbour) {
             }
         }
 
-        val snapshots = DaemonController.neighbourMonitor()
-            .runningFold(persistentMapOf<Pair<ByteString, String>, NetlinkNeighbour>()) { neighbours, deltas ->
-                neighbours.mutate {
-                    for (delta in deltas) when {
-                        delta.upsert != null -> {
-                            val neighbour = NetlinkNeighbour(delta.upsert)
-                            it[delta.upsert.address to neighbour.dev] = neighbour
+        val monitorSnapshots = DaemonController.neighbourMonitor()
+            .runningFold(MonitorState()) { state, update ->
+                state.copy(
+                    neighbours = state.neighbours.mutate {
+                        for (delta in update.neighbour_deltas) {
+                            when {
+                                delta.upsert != null -> {
+                                    val neighbour = NetlinkNeighbour(delta.upsert)
+                                    it[delta.upsert.address to neighbour.dev] = neighbour
+                                }
+                                delta.delete != null -> {
+                                    val address = delta.delete.address
+                                    address.toInetAddress()
+                                    it.remove(address to delta.delete.dev)
+                                }
+                                else -> throw IOException("Missing neighbour delta")
+                            }
                         }
-                        delta.delete != null -> {
-                            val address = delta.delete.address
-                            address.toInetAddress()
-                            it.remove(address to delta.delete.dev)
+                    },
+                    bridgeMasterByMember = update.link_topology?.let { topology ->
+                        persistentMapOf<String, String>().mutate {
+                            for (bridge in topology.bridges) for (member in bridge.members) {
+                                if (bridge.name.isNotEmpty() && member.isNotEmpty()) it[member] = bridge.name
+                            }
                         }
-                        else -> throw IOException("Missing neighbour delta")
-                    }
-                }
+                    } ?: state.bridgeMasterByMember,
+                )
             }
             .drop(1)
             .distinctUntilChanged()
-            .map { it.values }
+            .map { Snapshot(it.neighbours.values, it.bridgeMasterByMember) }
             .catch { e ->
                 if (e is CancellationException) throw e
                 Timber.w(e)
@@ -80,5 +100,7 @@ data class NetlinkNeighbour(val proto: Neighbour) {
                 SharingStarted.WhileSubscribed(replayExpirationMillis = 0),
                 replay = 1,
             )
+
+        val snapshots = monitorSnapshots.map { it.neighbours }.distinctUntilChanged()
     }
 }

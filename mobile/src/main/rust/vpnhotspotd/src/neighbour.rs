@@ -11,11 +11,13 @@ use rtnetlink::packet_route::{
     RouteNetlinkMessage,
 };
 use tokio::sync::mpsc::UnboundedSender;
-use tokio::{spawn, task::JoinHandle};
+use tokio::{select, spawn, task::JoinHandle};
 
 use crate::{netlink, report};
 use vpnhotspotd::shared::proto::daemon::{self, NeighbourState};
-use vpnhotspotd::shared::protocol::{daemon_error_report_with_details, neighbour_deltas_frame};
+use vpnhotspotd::shared::protocol::{
+    daemon_error_report_with_details, neighbour_monitor_update_frame,
+};
 
 const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
 
@@ -43,6 +45,7 @@ pub(crate) async fn dump(
 
 pub(crate) struct Monitor {
     registration: netlink::NeighbourRegistration,
+    link_registration: netlink::LinkRegistration,
     task: JoinHandle<()>,
 }
 
@@ -53,16 +56,19 @@ impl Monitor {
         sender: UnboundedSender<Vec<u8>>,
     ) -> io::Result<Self> {
         let (registration, mut events) = netlink.register_neighbour_monitor()?;
+        let (link_registration, mut link_events) = netlink.register_link_monitor()?;
         let handle = netlink.handle();
+        let mut topology = netlink::bridge_topology(&handle).await?;
         let neighbours = dump(&handle, call_id).await?;
         if sender
-            .send(neighbour_deltas_frame(
+            .send(neighbour_monitor_update_frame(
                 call_id,
                 neighbours
                     .into_iter()
                     .map(|neighbour| daemon::NeighbourDelta {
                         delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
                     }),
+                Some(topology.clone()),
             ))
             .is_err()
         {
@@ -73,17 +79,52 @@ impl Monitor {
         }
         Ok(Self {
             registration,
+            link_registration,
             task: spawn(async move {
-                while let Some(message) = events.recv().await {
-                    if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
-                        if sender
-                            .send(neighbour_deltas_frame(call_id, std::iter::once(delta)))
-                            .is_err()
-                        {
-                            report::stderr!(
-                                "neighbour monitor frame send failed: controller disconnected"
-                            );
-                            break;
+                loop {
+                    select! {
+                        message = events.recv() => match message {
+                            Some(message) => {
+                                if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
+                                    if sender
+                                        .send(neighbour_monitor_update_frame(
+                                            call_id,
+                                            std::iter::once(delta),
+                                            None,
+                                        ))
+                                        .is_err()
+                                    {
+                                        report::stderr!(
+                                            "neighbour monitor frame send failed: controller disconnected"
+                                        );
+                                        break;
+                                    }
+                                }
+                            }
+                            None => break,
+                        },
+                        message = link_events.recv() => match message {
+                            Some(_) => match netlink::bridge_topology(&handle).await {
+                                Ok(next) if next != topology => {
+                                    if sender
+                                        .send(neighbour_monitor_update_frame(
+                                            call_id,
+                                            std::iter::empty::<daemon::NeighbourDelta>(),
+                                            Some(next.clone()),
+                                        ))
+                                        .is_err()
+                                    {
+                                        report::stderr!(
+                                            "neighbour monitor frame send failed: controller disconnected"
+                                        );
+                                        break;
+                                    }
+                                    topology = next;
+                                }
+                                Ok(_) => {}
+                                Err(e) => report::io("neighbour.bridge_topology", e),
+                            },
+                            None => break,
                         }
                     }
                 }
@@ -92,8 +133,13 @@ impl Monitor {
     }
 
     pub(crate) async fn stop(self) {
-        let Self { registration, task } = self;
+        let Self {
+            registration,
+            link_registration,
+            task,
+        } = self;
         drop(registration);
+        drop(link_registration);
         if let Err(e) = task.await {
             report::message("neighbour.monitor_join", e.to_string(), "JoinError");
         }

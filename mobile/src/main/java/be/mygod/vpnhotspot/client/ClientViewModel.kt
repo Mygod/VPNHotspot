@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.Parcelable
 import android.system.OsConstants
 import androidx.annotation.RequiresApi
+import androidx.collection.MutableScatterMap
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -31,6 +32,7 @@ import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,9 +64,9 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     private val repeater = MutableStateFlow<RepeaterService.Binder?>(null)
     private var p2p: Collection<WifiP2pDevice> = emptyList()
-    private var wifiAp = emptyList<Pair<String, MacAddress>>()
-    private var neighbours: Collection<NetlinkNeighbour> = emptyList()
-    private var tetheringClients = emptyMap<MacAddress, TetheredClient>()
+    private var wifiAp = MutableScatterMap<Pair<String, MacAddress>, Unit>()
+    private var netlinkSnapshot = NetlinkNeighbour.Snapshot(emptyList(), persistentMapOf())
+    private var tetheringClients = MutableScatterMap<MacAddress, TetheredClient>()
     val clients = MutableLiveData<List<Client>>()
     val clientsFragmentObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
@@ -85,9 +87,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private suspend fun handleClientsChanged(
         flow: Flow<TetheringCommands.OnClientsChanged>,
     ) = flow.collect { event ->
-        tetheringClients = event.clients.associate { client ->
-            getMacAddress(client) as MacAddress to TetheredClient(
-                TetherType.fromTetheringType(getTetheringType(client) as Int), (getAddresses(client) as List<*>).map {
+        val tetheringClients = MutableScatterMap<MacAddress, TetheredClient>()
+        for (client in event.clients) {
+            tetheringClients[getMacAddress(client) as MacAddress] = TetheredClient(
+                TetherType.fromTetheringType(getTetheringType(client) as Int),
+                (getAddresses(client) as List<*>).map {
                     val address = getAddress(it) as LinkAddress
                     ClientAddressInfo(
                         NeighbourState.NEIGHBOUR_STATE_UNSET,
@@ -101,17 +105,26 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                                 info.expirationTime}")
                         }
                     }
-                })
+                },
+            )
         }
+        this.tetheringClients = tetheringClients
         populateClients()
     }
 
     private fun populateClients() {
-        val clients = HashMap<Pair<String?, MacAddress>, Client>()
+        val clients = MutableScatterMap<Pair<String?, MacAddress>, Client>()
+        fun canonicalIface(iface: String) = netlinkSnapshot.bridgeMasterByMember[iface] ?: iface
+        fun rowIface(iface: String?) = iface?.let { canonicalIface(it) }
+        fun getClient(mac: MacAddress, iface: String?, type: TetherType = TetherType.ofInterface(rowIface(iface))) =
+            (rowIface(iface) to mac).let { key ->
+                clients[key] ?: Client(mac, key.first, type).also { clients[key] = it }
+            }
         repeater.value?.group?.value?.`interface`?.let { p2pInterface ->
             for (client in p2p) {
                 val addr = MacAddress.fromString(client.deviceAddress!!)
-                clients[p2pInterface to addr] = Client(addr, p2pInterface, TetherType.WIFI_P2P).apply {
+                getClient(addr, p2pInterface, TetherType.WIFI_P2P).apply {
+                    addSource(p2pInterface)
                     // WiFi mainline module might be backported to API 30
                     if (Build.VERSION.SDK_INT >= 30) try {
                         client.ipAddress
@@ -122,28 +135,29 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 }
             }
         }
-        for (client in wifiAp) clients[client] = Client(client.second, client.first, TetherType.WIFI)
-        for (neighbour in neighbours) {
+        wifiAp.forEach { client, _ ->
+            getClient(client.second, client.first, TetherType.WIFI).addSource(client.first)
+        }
+        for (neighbour in netlinkSnapshot.neighbours) {
             val lladdr = neighbour.lladdr ?: continue
-            val key = neighbour.dev to lladdr
-            var client = clients[key]
+            val iface = canonicalIface(neighbour.dev)
+            var client = clients[iface to lladdr]
             if (client == null) {
-                if (!tetheredInterfaces.contains(neighbour.dev)) continue
-                client = Client(lladdr, neighbour.dev)
-                clients[key] = client
+                if (!tetheredInterfaces.contains(iface)) continue
+                client = getClient(lladdr, neighbour.dev)
             }
+            client.addSource(neighbour.dev)
             client.ip.compute(neighbour.ip) { _, info ->
                 info?.apply { state = neighbour.state } ?: ClientAddressInfo(neighbour.state)
             }
         }
-        for ((mac, tetheringClient) in tetheringClients) {
+        tetheringClients.forEach { mac, tetheringClient ->
             var bestClient: Client? = null
-            for ((key, client) in clients) if (key.second == mac) {
+            clients.forEach { key, client ->
+                if (key.second != mac) return@forEach
                 if (key.first != null && TetherType.ofInterface(key.first).isA(tetheringClient.fallbackType)) {
                     bestClient = client
-                    break
-                }
-                if (bestClient == null) bestClient = client
+                } else if (bestClient == null) bestClient = client
             }
             if (bestClient == null) bestClient = Client(mac, null, tetheringClient.fallbackType).also {
                 clients[null to mac] = it
@@ -153,7 +167,10 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 info
             }
         }
-        this.clients.postValue(clients.values.sortedWith(compareBy<Client> { it.iface }.thenBy { it.macString }))
+        val result = ArrayList<Client>(clients.size)
+        clients.forEachValue { result.add(it) }
+        result.sortWith(compareBy<Client> { it.iface }.thenBy { it.macString })
+        this.clients.postValue(result)
     }
 
     private fun refreshP2p() {
@@ -166,8 +183,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         owner.lifecycleScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
-                    NetlinkNeighbour.snapshots.collect {
-                        neighbours = it
+                    NetlinkNeighbour.monitorSnapshots.collect {
+                        netlinkSnapshot = it
                         populateClients()
                     }
                 }
@@ -201,11 +218,17 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     @RequiresApi(31)
     override fun onConnectedClientsChanged(clients: List<Parcelable>) {
-        wifiAp = clients.mapNotNull {
+        val wifiAp = MutableScatterMap<Pair<String, MacAddress>, Unit>()
+        for (it in clients) {
             val client = WifiClient(it)
-            client.apInstanceIdentifier?.run { this to client.macAddress }
+            client.apInstanceIdentifier?.let { wifiAp[it to client.macAddress] = Unit }
         }
+        this.wifiAp = wifiAp
+        populateClients()
     }
+
+    @RequiresApi(31)
+    override fun onInfoChanged(info: List<Parcelable>) = populateClients()
 
     @RequiresApi(31)
     override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) {

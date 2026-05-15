@@ -109,9 +109,9 @@ object DaemonController {
         return reply.traffic_counter_lines?.lines ?: throw IOException("Unexpected daemon reply $reply")
     }
 
-    fun neighbourMonitor(): Flow<List<NeighbourDelta>> = flow {
+    fun neighbourMonitor(): Flow<NeighbourMonitorUpdate> = flow {
         eventFlow(eventCall(ClientEnvelope(start_neighbour_monitor = StartNeighbourMonitorCommand()))).collect {
-            emit(it.neighbour_deltas?.deltas ?: throw IOException("Unexpected daemon event $it"))
+            emit(it.neighbour_monitor ?: throw IOException("Unexpected daemon event $it"))
         }
     }
 

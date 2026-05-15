@@ -217,14 +217,19 @@ pub fn ack_event_frame(id: u64) -> Vec<u8> {
     event_frame(id, daemon::event_frame::Payload::Ack(daemon::Ack {}))
 }
 
-pub fn neighbour_deltas_frame<I>(id: u64, deltas: I) -> Vec<u8>
+pub fn neighbour_monitor_update_frame<I>(
+    id: u64,
+    neighbour_deltas: I,
+    link_topology: Option<daemon::LinkTopologySnapshot>,
+) -> Vec<u8>
 where
     I: IntoIterator<Item = daemon::NeighbourDelta>,
 {
     event_frame(
         id,
-        daemon::event_frame::Payload::NeighbourDeltas(daemon::NeighbourDeltas {
-            deltas: deltas.into_iter().collect(),
+        daemon::event_frame::Payload::NeighbourMonitor(daemon::NeighbourMonitorUpdate {
+            neighbour_deltas: neighbour_deltas.into_iter().collect(),
+            link_topology,
         }),
     )
 }

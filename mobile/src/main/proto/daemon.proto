@@ -104,7 +104,7 @@ message EventFrame {
   uint64 call_id = 1;
   oneof payload {
     Ack ack = 2;
-    NeighbourDeltas neighbour_deltas = 3;
+    NeighbourMonitorUpdate neighbour_monitor = 3;
   }
 }
 
@@ -128,8 +128,18 @@ message TrafficCounterLines {
   repeated string lines = 1;
 }
 
-message NeighbourDeltas {
-  repeated NeighbourDelta deltas = 1;
+message NeighbourMonitorUpdate {
+  repeated NeighbourDelta neighbour_deltas = 1;
+  LinkTopologySnapshot link_topology = 2;
+}
+
+message LinkTopologySnapshot {
+  repeated BridgeInterface bridges = 1;
+}
+
+message BridgeInterface {
+  string name = 1;
+  repeated string members = 2;
 }
 
 message NeighbourDelta {

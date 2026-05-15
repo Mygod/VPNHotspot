@@ -184,7 +184,7 @@ class ClientsFragment : Fragment() {
     private inner class ClientAdapter : ListAdapter<Client, ClientViewHolder>(Client) {
         var size = CompletableDeferred(0)
 
-        override fun submitList(list: MutableList<Client>?) {
+        override fun submitList(list: List<Client>?) {
             binding.empty.isVisible = list.isNullOrEmpty()
             val deferred = CompletableDeferred<Int>()
             size = deferred
@@ -201,6 +201,10 @@ class ClientsFragment : Fragment() {
 
         fun updateTraffic(newRecords: ObjectList<TrafficRecord>, oldRecords: LongObjectMap<TrafficRecord>) {
             rates.forEachValue { it.clear() }
+            val rateKeys = MutableScatterMap<Pair<String, MacAddress>, Pair<String?, MacAddress>>()
+            currentList.forEach { client ->
+                client.ifaces.forEach { rateKeys[it to client.mac] = client.iface to client.mac }
+            }
             newRecords.forEach { newRecord ->
                 val oldRecord = oldRecords[newRecord.previousId ?: return@forEach] ?: return@forEach
                 val elapsed = newRecord.timestamp - oldRecord.timestamp
@@ -210,7 +214,8 @@ class ClientsFragment : Fragment() {
                         newRecord.receivedBytes != oldRecord.receivedBytes) Timber.w(Exception("wtf"))
                     return@forEach
                 }
-                val rate = rates.compute(newRecord.downstream to newRecord.mac) { _, rate -> rate ?: TrafficRate() }
+                val key = rateKeys[newRecord.downstream to newRecord.mac] ?: (newRecord.downstream to newRecord.mac)
+                val rate = rates.compute(key) { _, rate -> rate ?: TrafficRate() }
                 if (rate.send < 0 || rate.receive < 0) {
                     rate.send = 0
                     rate.receive = 0
@@ -233,7 +238,7 @@ class ClientsFragment : Fragment() {
         binding.clients.adapter = adapter
         activityViewModels<ClientViewModel>().value.apply {
             lifecycle.addObserver(clientsFragmentObserver)
-            clients.observe(viewLifecycleOwner) { adapter.submitList(it.toMutableList()) }
+            clients.observe(viewLifecycleOwner) { adapter.submitList(it) }
         }
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
