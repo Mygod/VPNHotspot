@@ -1,6 +1,8 @@
 use std::io;
-use std::os::fd::{AsFd, BorrowedFd};
+use std::net::{Ipv6Addr, SocketAddrV6};
+use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
+use libc::{fcntl, sockaddr_in6, F_GETFL, F_SETFL, O_NONBLOCK};
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 
@@ -23,5 +25,26 @@ pub(crate) fn is_connection_closed(error: &io::Error) -> bool {
             | io::ErrorKind::ConnectionReset
             | io::ErrorKind::TimedOut
             | io::ErrorKind::UnexpectedEof
+    )
+}
+
+pub(crate) fn set_nonblocking(fd: RawFd) -> io::Result<()> {
+    let flags = unsafe { fcntl(fd, F_GETFL) };
+    if flags < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } < 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
+pub(crate) fn socket_addr_v6_from_raw(address: sockaddr_in6) -> SocketAddrV6 {
+    SocketAddrV6::new(
+        Ipv6Addr::from(address.sin6_addr.s6_addr),
+        u16::from_be(address.sin6_port),
+        address.sin6_flowinfo,
+        address.sin6_scope_id,
     )
 }

@@ -52,7 +52,7 @@ pub(crate) async fn connect_udp(
     TokioUdpSocket::from_std(socket.into())
 }
 
-fn set_socket_network(network: Network, fd: c_int) -> io::Result<()> {
+pub(crate) fn set_socket_network(network: Network, fd: c_int) -> io::Result<()> {
     if unsafe { android_setsocknetwork(network, fd) } == 0 {
         Ok(())
     } else {

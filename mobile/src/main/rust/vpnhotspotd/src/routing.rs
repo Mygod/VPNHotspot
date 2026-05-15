@@ -22,9 +22,9 @@ use crate::{
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatPorts, SessionConfig, SessionPorts,
-    UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE,
-    DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE, DAEMON_UDP_TPROXY_ADDRESS,
-    LOCAL_NETWORK_TABLE,
+    UpstreamConfig, UpstreamRole, DAEMON_ICMP_NFQUEUE_NUM, DAEMON_INTERCEPT_FWMARK_MASK,
+    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK, DAEMON_REPLY_MARK_MASK, DAEMON_TABLE,
+    DAEMON_UDP_TPROXY_ADDRESS, LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::{
     CleanRoutingCommand, MasqueradeMode, ReplaceStaticAddressesCommand,
@@ -528,6 +528,12 @@ impl Runtime {
             for rule in Self::ipv6_nat_tproxy_port_rules(config, ports) {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
+            if ports.icmp_echo {
+                push_unique(
+                    &mut mutations,
+                    RoutingMutation::Iptables(Self::ipv6_nat_icmp_echo_rule(config, ipv6_nat)),
+                );
+            }
             push_unique(
                 &mut mutations,
                 RoutingMutation::Iptables(Self::ipv6_nat_tproxy_acl_rule(config)),
@@ -944,6 +950,32 @@ impl Runtime {
                 IptablesRule::new(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy", args)
             })
             .collect()
+    }
+
+    fn ipv6_nat_icmp_echo_rule(
+        config: &SessionConfig,
+        ipv6_nat: &vpnhotspotd::shared::model::Ipv6NatConfig,
+    ) -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv6,
+            "mangle",
+            "vpnhotspot_v6_tproxy",
+            vec![
+                "-i".into(),
+                config.downstream.clone(),
+                "-p".into(),
+                "icmpv6".into(),
+                "--icmpv6-type".into(),
+                "echo-request".into(),
+                "!".into(),
+                "-d".into(),
+                ipv6_nat.gateway.address().to_string(),
+                "-j".into(),
+                "NFQUEUE".into(),
+                "--queue-num".into(),
+                DAEMON_ICMP_NFQUEUE_NUM.to_string(),
+            ],
+        )
     }
 
     fn ipv6_nat_tproxy_acl_rule(config: &SessionConfig) -> IptablesRule {

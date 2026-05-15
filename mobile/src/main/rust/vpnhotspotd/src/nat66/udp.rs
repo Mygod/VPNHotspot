@@ -2,7 +2,7 @@ use std::collections::{hash_map::Entry, HashMap};
 use std::future::pending;
 use std::io;
 use std::mem::{size_of, zeroed};
-use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
+use std::net::{SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -20,7 +20,9 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::dns::{resolve_or_error, DNS_PORT};
+use crate::nat66::icmp;
 use crate::report;
+use crate::socket::socket_addr_v6_from_raw;
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
@@ -34,7 +36,7 @@ struct AssociationKey {
 
 struct UdpAssociation {
     id: u64,
-    socket: Arc<TokioUdpSocket>,
+    datagrams: mpsc::UnboundedSender<Vec<u8>>,
     last_active: Instant,
     stop: CancellationToken,
 }
@@ -47,10 +49,13 @@ enum UdpAssociationEvent {
 struct AssociationTask {
     key: AssociationKey,
     id: u64,
-    socket: Arc<TokioUdpSocket>,
+    downstream: String,
+    socket: TokioUdpSocket,
+    datagrams: mpsc::UnboundedReceiver<Vec<u8>>,
     reply_sockets: Arc<ReplySocketPool>,
     reply_key: ReplySocketKey,
     reply_socket: Option<Arc<TokioUdpSocket>>,
+    icmp_errors: bool,
     stop: CancellationToken,
     association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
 }
@@ -369,19 +374,11 @@ pub(crate) fn spawn_loop(
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
-                                if let Some(socket) = associations.get_mut(&key).map(|association| {
+                                if let Some(datagrams) = associations.get_mut(&key).map(|association| {
                                     association.last_active = activity;
-                                    association.socket.clone()
+                                    association.datagrams.clone()
                                 }) {
-                                    if let Err(e) = socket.send(&buffer[..size]).await {
-                                        report::io_with_details(
-                                            "nat66.udp_send",
-                                            e,
-                                            [
-                                                ("client", client.to_string()),
-                                                ("destination", destination.to_string()),
-                                            ],
-                                        );
+                                    if datagrams.send(buffer[..size].to_vec()).is_err() {
                                         if let Some(association) = associations.remove(&key) {
                                             association.stop.cancel();
                                         }
@@ -389,7 +386,7 @@ pub(crate) fn spawn_loop(
                                     continue;
                                 }
                                 let upstream = match connect_udp(network, destination).await {
-                                    Ok(socket) => Arc::new(socket),
+                                    Ok(socket) => socket,
                                     Err(e) => {
                                         report::io_with_details(
                                             "nat66.udp_connect",
@@ -400,6 +397,20 @@ pub(crate) fn spawn_loop(
                                             ],
                                         );
                                         continue;
+                                    }
+                                };
+                                let icmp_errors = match icmp::enable_udp_error_queue(&upstream) {
+                                    Ok(()) => true,
+                                    Err(e) => {
+                                        report::io_with_details(
+                                            "nat66.udp_error_queue",
+                                            e,
+                                            [
+                                                ("client", client.to_string()),
+                                                ("destination", destination.to_string()),
+                                            ],
+                                        );
+                                        false
                                     }
                                 };
                                 let reply_key = ReplySocketKey {
@@ -420,13 +431,17 @@ pub(crate) fn spawn_loop(
                                 let association_stop = stop.child_token();
                                 let association_id = next_association_id;
                                 next_association_id = next_association_id.wrapping_add(1);
+                                let (datagram_tx, datagram_rx) = mpsc::unbounded_channel();
                                 spawn(AssociationTask {
                                     key,
                                     id: association_id,
-                                    socket: upstream.clone(),
+                                    downstream: snapshot.downstream.clone(),
+                                    socket: upstream,
+                                    datagrams: datagram_rx,
                                     reply_sockets: reply_sockets.clone(),
                                     reply_key,
                                     reply_socket: None,
+                                    icmp_errors,
                                     stop: association_stop.clone(),
                                     association_event_tx: association_event_tx.clone(),
                                 }.run());
@@ -434,20 +449,12 @@ pub(crate) fn spawn_loop(
                                     key,
                                     UdpAssociation {
                                         id: association_id,
-                                        socket: upstream.clone(),
+                                        datagrams: datagram_tx.clone(),
                                         last_active: activity,
                                         stop: association_stop,
                                     },
                                 );
-                                if let Err(e) = upstream.send(&buffer[..size]).await {
-                                    report::io_with_details(
-                                        "nat66.udp_send",
-                                        e,
-                                        [
-                                            ("client", client.to_string()),
-                                            ("destination", destination.to_string()),
-                                        ],
-                                    );
+                                if datagram_tx.send(buffer[..size].to_vec()).is_err() {
                                     if let Some(association) = associations.remove(&key) {
                                         association.stop.cancel();
                                     }
@@ -480,6 +487,26 @@ impl AssociationTask {
         loop {
             select! {
                 _ = self.stop.cancelled() => break,
+                datagram = self.datagrams.recv() => match datagram {
+                    Some(datagram) => {
+                        if let Err(e) = self.socket.send(&datagram).await {
+                            if !self.drain_error_queue().await {
+                                report::io_with_details(
+                                    "nat66.udp_send",
+                                    e,
+                                    [
+                                        ("client", self.key.client.to_string()),
+                                        ("destination", self.key.destination.to_string()),
+                                    ],
+                                );
+                                break;
+                            }
+                        } else {
+                            self.report_active();
+                        }
+                    }
+                    None => break,
+                },
                 result = self.socket.recv(&mut buffer) => match result {
                     Ok(size) => {
                         if let Err(e) = send_response(
@@ -497,28 +524,20 @@ impl AssociationTask {
                             );
                             break;
                         }
-                        if self.association_event_tx
-                            .send(UdpAssociationEvent::Active(self.key, self.id))
-                            .is_err()
-                            && !self.stop.is_cancelled()
-                        {
-                            report::message(
-                                "nat66.udp_association_active",
-                                "association event receiver closed",
-                                "ChannelClosed",
-                            );
-                        }
+                        self.report_active();
                     }
                     Err(e) => {
-                        report::io_with_details(
-                            "nat66.udp_upstream_recv",
-                            e,
-                            [
-                                ("client", self.key.client.to_string()),
-                                ("destination", self.key.destination.to_string()),
-                            ],
-                        );
-                        break;
+                        if !self.drain_error_queue().await {
+                            report::io_with_details(
+                                "nat66.udp_upstream_recv",
+                                e,
+                                [
+                                    ("client", self.key.client.to_string()),
+                                    ("destination", self.key.destination.to_string()),
+                                ],
+                            );
+                            break;
+                        }
                     }
                 }
             }
@@ -536,6 +555,54 @@ impl AssociationTask {
         {
             report::message(
                 "nat66.udp_association_closed",
+                "association event receiver closed",
+                "ChannelClosed",
+            );
+        }
+    }
+
+    async fn drain_error_queue(&self) -> bool {
+        if !self.icmp_errors {
+            return false;
+        }
+        let context = icmp::UdpErrorContext {
+            downstream: self.downstream.clone(),
+            reply_mark: self.reply_key.mark,
+            client: self.key.client,
+            destination: self.key.destination,
+        };
+        match icmp::drain_udp_error_queue(&self.socket, &context).await {
+            Ok(count) => {
+                if count > 0 {
+                    self.report_active();
+                    true
+                } else {
+                    false
+                }
+            }
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.udp_error_queue_recv",
+                    e,
+                    [
+                        ("client", self.key.client.to_string()),
+                        ("destination", self.key.destination.to_string()),
+                    ],
+                );
+                false
+            }
+        }
+    }
+
+    fn report_active(&self) {
+        if self
+            .association_event_tx
+            .send(UdpAssociationEvent::Active(self.key, self.id))
+            .is_err()
+            && !self.stop.is_cancelled()
+        {
+            report::message(
+                "nat66.udp_association_active",
                 "association event receiver closed",
                 "ChannelClosed",
             );
@@ -630,15 +697,6 @@ fn create_reply_socket(key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
     socket.bind(&SockAddr::from(key.source))?;
     socket.set_nonblocking(true)?;
     Ok(Arc::new(TokioUdpSocket::from_std(socket.into())?))
-}
-
-fn socket_addr_v6_from_raw(address: sockaddr_in6) -> SocketAddrV6 {
-    SocketAddrV6::new(
-        Ipv6Addr::from(address.sin6_addr.s6_addr),
-        u16::from_be(address.sin6_port),
-        address.sin6_flowinfo,
-        address.sin6_scope_id,
-    )
 }
 
 fn recv_packet(fd: i32, buffer: &mut [u8]) -> io::Result<(usize, SocketAddrV6, SocketAddrV6)> {

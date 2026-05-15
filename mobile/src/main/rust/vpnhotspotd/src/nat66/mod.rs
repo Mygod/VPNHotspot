@@ -11,6 +11,7 @@ use crate::netlink;
 use crate::report;
 use vpnhotspotd::shared::model::{Ipv6NatPorts, SessionConfig};
 
+mod icmp;
 mod ra;
 mod tcp;
 mod tproxy;
@@ -22,6 +23,7 @@ pub(crate) struct Runtime {
     netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: JoinHandle<()>,
+    icmp_task: Option<JoinHandle<()>>,
 }
 
 impl Runtime {
@@ -46,7 +48,7 @@ impl Runtime {
             return Err(e);
         }
         let ra_task = match ra::spawn_loop(
-            shared,
+            shared.clone(),
             config_changed.clone(),
             ipv6_address_changed,
             netlink.clone(),
@@ -59,12 +61,28 @@ impl Runtime {
                 return Err(e);
             }
         };
+        let icmp_task = match icmp::spawn_loop(config, shared.clone(), stop.clone()) {
+            Ok(task) => Some(task),
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_start",
+                    e,
+                    [("downstream", config.downstream.clone())],
+                );
+                None
+            }
+        };
         Ok(Some(Self {
-            ports: Ipv6NatPorts { tcp, udp },
+            ports: Ipv6NatPorts {
+                tcp,
+                udp,
+                icmp_echo: icmp_task.is_some(),
+            },
             cleanup_prefixes: Vec::new(),
             netlink,
             config_changed,
             ra_task,
+            icmp_task,
         }))
     }
 
@@ -92,6 +110,11 @@ impl Runtime {
     pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
         if let Err(e) = self.ra_task.await {
             report::message("nat66.ra_task_join", e.to_string(), "JoinError");
+        }
+        if let Some(icmp_task) = self.icmp_task {
+            if let Err(e) = icmp_task.await {
+                report::message("nat66.icmp_task_join", e.to_string(), "JoinError");
+            }
         }
         let Some(ipv6_nat) = snapshot.ipv6_nat.as_ref() else {
             return;
