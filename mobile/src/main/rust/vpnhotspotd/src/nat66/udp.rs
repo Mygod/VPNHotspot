@@ -6,9 +6,11 @@ use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Instant;
 
-use libc::{c_int, c_void, socklen_t, IPPROTO_IPV6, MSG_DONTWAIT};
+use libc::{c_int, c_void, socklen_t, IPPROTO_IPV6};
 use nix::cmsg_space;
-use nix::sys::socket::{recvmsg, setsockopt, sockopt, ControlMessageOwned, MsgFlags, SockaddrIn6};
+use nix::sys::socket::{
+    recvmsg, send, setsockopt, sockopt, ControlMessageOwned, MsgFlags, SockaddrIn6,
+};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
@@ -934,18 +936,9 @@ fn forward_udp_datagram(
 }
 
 fn send_udp_payload(socket: &TokioUdpSocket, payload: &[u8]) -> io::Result<()> {
-    let written = unsafe {
-        libc::send(
-            socket.as_raw_fd(),
-            payload.as_ptr() as *const c_void,
-            payload.len(),
-            MSG_DONTWAIT,
-        )
-    };
-    if written < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if written as usize == payload.len() {
+    let written =
+        send(socket.as_raw_fd(), payload, MsgFlags::MSG_DONTWAIT).map_err(io::Error::from)?;
+    if written == payload.len() {
         Ok(())
     } else {
         Err(io::Error::new(

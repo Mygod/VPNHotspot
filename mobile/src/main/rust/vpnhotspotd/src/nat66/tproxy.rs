@@ -1,9 +1,7 @@
 use std::io;
-use std::mem::size_of_val;
 use std::net::{Ipv6Addr, SocketAddrV6, TcpListener, UdpSocket};
-use std::os::fd::AsRawFd;
 
-use libc::{c_void, setsockopt, socklen_t, IPPROTO_IPV6, IPV6_RECVORIGDSTADDR};
+use nix::sys::socket::{setsockopt, sockopt};
 use socket2::{Domain, SockAddr, Socket, Type};
 use vpnhotspotd::shared::model::DAEMON_UDP_TPROXY_ADDRESS;
 
@@ -30,19 +28,7 @@ pub(crate) fn create_udp_listener(mark: u32) -> io::Result<UdpSocket> {
     socket.set_mark(mark)?;
     socket.set_only_v6(true)?;
     socket.set_ip_transparent_v6(true)?;
-    let one = 1;
-    if unsafe {
-        setsockopt(
-            socket.as_raw_fd(),
-            IPPROTO_IPV6,
-            IPV6_RECVORIGDSTADDR,
-            &one as *const _ as *const c_void,
-            size_of_val(&one) as socklen_t,
-        )
-    } < 0
-    {
-        return Err(io::Error::last_os_error());
-    }
+    setsockopt(&socket, sockopt::Ipv6OrigDstAddr, &true).map_err(io::Error::from)?;
     // UDP TPROXY rules land on ::1 so cached transparent reply sockets bound to
     // original destinations do not compete with the listener in UDP socket lookup.
     socket.bind(&SockAddr::from(SocketAddrV6::new(
