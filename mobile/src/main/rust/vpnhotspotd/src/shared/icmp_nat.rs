@@ -40,6 +40,7 @@ pub struct EchoEntry {
     pub client: SocketAddrV6,
     pub original_id: u16,
     pub original_seq: u16,
+    pub downstream_hop_limit: u8,
     pub upstream_hop_limit: u8,
     pub gateway: Ipv6Addr,
     created: Instant,
@@ -54,6 +55,7 @@ pub struct EchoAllocation {
     pub client: SocketAddrV6,
     pub original_id: u16,
     pub original_seq: u16,
+    pub downstream_hop_limit: u8,
     pub upstream_hop_limit: u8,
     pub gateway: Ipv6Addr,
 }
@@ -160,6 +162,7 @@ impl EchoMap {
                         client: allocation.client,
                         original_id: allocation.original_id,
                         original_seq: allocation.original_seq,
+                        downstream_hop_limit: allocation.downstream_hop_limit,
                         upstream_hop_limit: allocation.upstream_hop_limit,
                         gateway: allocation.gateway,
                         created: now,
@@ -338,6 +341,7 @@ mod tests {
                     client,
                     original_id: 345,
                     original_seq: 678,
+                    downstream_hop_limit: 64,
                     upstream_hop_limit: 63,
                     gateway: "fd00::1".parse().unwrap(),
                 },
@@ -352,6 +356,7 @@ mod tests {
         assert_eq!(entry.client, client);
         assert_eq!(entry.original_id, 345);
         assert_eq!(entry.original_seq, 678);
+        assert_eq!(entry.downstream_hop_limit, 64);
         assert_eq!(entry.upstream_hop_limit, 63);
         assert_eq!(entry.gateway, "fd00::1".parse::<Ipv6Addr>().unwrap());
         assert!(map
@@ -378,6 +383,7 @@ mod tests {
                     client,
                     original_id: 1,
                     original_seq: 2,
+                    downstream_hop_limit: 64,
                     upstream_hop_limit: 63,
                     gateway: "fd00::1".parse().unwrap(),
                 },
@@ -408,6 +414,7 @@ mod tests {
                     client,
                     original_id: 1,
                     original_seq: 2,
+                    downstream_hop_limit: 64,
                     upstream_hop_limit: 63,
                     gateway: "fd00::1".parse().unwrap(),
                 },
@@ -426,6 +433,7 @@ mod tests {
                     client,
                     original_id: 3,
                     original_seq: 4,
+                    downstream_hop_limit: 64,
                     upstream_hop_limit: 63,
                     gateway: "fd00::1".parse().unwrap(),
                 },
@@ -461,6 +469,7 @@ mod tests {
                     client,
                     original_id: 1,
                     original_seq: 2,
+                    downstream_hop_limit: 64,
                     upstream_hop_limit: 63,
                     gateway: "fd00::1".parse().unwrap(),
                 },
@@ -493,6 +502,7 @@ mod tests {
                 client,
                 original_id: 1,
                 original_seq: 2,
+                downstream_hop_limit: 64,
                 upstream_hop_limit: 63,
                 gateway: "fd00::1".parse().unwrap(),
             },
@@ -510,6 +520,7 @@ mod tests {
                 client,
                 original_id: 3,
                 original_seq: 4,
+                downstream_hop_limit: 64,
                 upstream_hop_limit: 63,
                 gateway: "fd00::1".parse().unwrap(),
             },
@@ -538,6 +549,7 @@ mod tests {
                 client,
                 original_id: 1,
                 original_seq: 2,
+                downstream_hop_limit: 64,
                 upstream_hop_limit: 63,
                 gateway: "fd00::1".parse().unwrap(),
             },

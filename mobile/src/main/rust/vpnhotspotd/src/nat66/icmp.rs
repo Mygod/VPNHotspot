@@ -36,9 +36,9 @@ use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_
 
 const IPV6_RECVERR_OPT: c_int = 25;
 const MSG_ERRQUEUE_OPT: c_int = 0x2000;
+const SO_EE_ORIGIN_LOCAL: u8 = 1;
 const SO_EE_ORIGIN_ICMP6: u8 = 3;
 const NONLOCAL_PROBE_SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-const IPV6_HEADER_LEN: u64 = 40;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -176,6 +176,18 @@ struct EchoErrorResponse {
     bytes5to8: [u8; 4],
     destination: Ipv6Addr,
     hop_limit: u8,
+}
+
+enum QueuedEchoError {
+    Upstream {
+        offender: SocketAddrV6,
+        icmp_type: u8,
+        code: u8,
+        bytes5to8: [u8; 4],
+    },
+    LocalPacketTooBig {
+        mtu: u32,
+    },
 }
 
 #[derive(Clone)]
@@ -923,6 +935,7 @@ async fn handle_downstream_echo(
             client: packet.source,
             original_id: echo.id,
             original_seq: echo.seq,
+            downstream_hop_limit: packet.hop_limit,
             upstream_hop_limit,
             gateway: ipv6_nat.gateway.address(),
         },
@@ -986,44 +999,6 @@ async fn handle_downstream_echo(
                             retried_after_error_queue = true;
                             continue;
                         }
-                    }
-                }
-                if e.raw_os_error() == Some(libc::EMSGSIZE) {
-                    match upstream_mtu(socket.socket.get_ref().as_raw_fd()) {
-                        Ok(mtu) if icmpv6_packet_exceeds_mtu(&request, mtu) => {
-                            match state.restore(network, packet.destination, id, seq) {
-                                Ok(Some(entry)) => {
-                                    send_echo_error(
-                                        entry,
-                                        EchoErrorResponse {
-                                            source: ipv6_nat.gateway.address(),
-                                            icmp_type: ICMPV6_PACKET_TOO_BIG,
-                                            code: 0,
-                                            bytes5to8: mtu.to_be_bytes(),
-                                            destination: packet.destination,
-                                            hop_limit: packet.hop_limit,
-                                        },
-                                        payload,
-                                    )
-                                    .await;
-                                }
-                                Ok(None) => {}
-                                Err(error) => {
-                                    report::io("nat66.icmp_echo_restore_failed_send", error);
-                                }
-                            }
-                            break;
-                        }
-                        Ok(_) => {}
-                        Err(error) => report::io_with_details(
-                            "nat66.icmp_upstream_mtu",
-                            error,
-                            [
-                                ("client", packet.source.to_string()),
-                                ("destination", packet.destination.to_string()),
-                                ("network", network.to_string()),
-                            ],
-                        ),
                     }
                 }
                 report::io_with_details(
@@ -1364,36 +1339,70 @@ async fn drain_echo_error_queue(
             Err(e) => return Err(e),
         };
         drained += 1;
-        if message.error.ee_origin != SO_EE_ORIGIN_ICMP6 {
-            continue;
-        }
-        let Some((icmp_type, bytes5to8)) = error_type_bytes(&message.error) else {
-            continue;
-        };
-        let Some(offender) = message.offender else {
-            continue;
-        };
-        let Some(probe) = error_queue_echo_probe(&message) else {
+        let Some((probe, error)) = classify_error_queue_echo(&message) else {
             continue;
         };
         let Some(entry) = state.restore(network, probe.destination, probe.id, probe.seq)? else {
             continue;
         };
-        let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
-        let hop_limit = probe.hop_limit.unwrap_or(entry.upstream_hop_limit);
-        send_echo_error(
-            entry,
-            EchoErrorResponse {
-                source,
+        let response = echo_error_response(error, &entry, &probe);
+        send_echo_error(entry, response, probe.payload).await
+    }
+}
+
+fn classify_error_queue_echo(
+    message: &ErrorQueueMessage,
+) -> Option<(EchoErrorProbe<'_>, QueuedEchoError)> {
+    let probe = error_queue_echo_probe(message)?;
+    let error = match message.error.ee_origin {
+        SO_EE_ORIGIN_ICMP6 => {
+            let (icmp_type, bytes5to8) = error_type_bytes(&message.error)?;
+            QueuedEchoError::Upstream {
+                offender: message.offender?,
                 icmp_type,
                 code: message.error.ee_code,
                 bytes5to8,
-                destination: probe.destination,
-                hop_limit,
-            },
-            probe.payload,
-        )
-        .await
+            }
+        }
+        SO_EE_ORIGIN_LOCAL if message.error.ee_errno == libc::EMSGSIZE as u32 => {
+            let mtu = message.error.ee_info;
+            if mtu == 0 {
+                return None;
+            }
+            QueuedEchoError::LocalPacketTooBig { mtu }
+        }
+        _ => return None,
+    };
+    Some((probe, error))
+}
+
+fn echo_error_response(
+    error: QueuedEchoError,
+    entry: &EchoEntry,
+    probe: &EchoErrorProbe<'_>,
+) -> EchoErrorResponse {
+    match error {
+        QueuedEchoError::Upstream {
+            offender,
+            icmp_type,
+            code,
+            bytes5to8,
+        } => EchoErrorResponse {
+            source: downstream_icmp_error_source(*offender.ip(), entry.gateway),
+            icmp_type,
+            code,
+            bytes5to8,
+            destination: probe.destination,
+            hop_limit: probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
+        },
+        QueuedEchoError::LocalPacketTooBig { mtu } => EchoErrorResponse {
+            source: entry.gateway,
+            icmp_type: ICMPV6_PACKET_TOO_BIG,
+            code: 0,
+            bytes5to8: mtu.to_be_bytes(),
+            destination: probe.destination,
+            hop_limit: entry.downstream_hop_limit,
+        },
     }
 }
 
@@ -1603,34 +1612,6 @@ fn set_upstream_echo_hop_limit(socket: &AsyncFd<Socket>, hop_limit: u8) -> io::R
         libc::IPV6_UNICAST_HOPS,
         c_int::from(hop_limit),
     )
-}
-
-fn upstream_mtu(fd: RawFd) -> io::Result<u32> {
-    let mut mtu = 0 as c_int;
-    let mut len = size_of::<c_int>() as socklen_t;
-    let result = unsafe {
-        libc::getsockopt(
-            fd,
-            IPPROTO_IPV6,
-            libc::IPV6_MTU,
-            &mut mtu as *mut _ as *mut c_void,
-            &mut len,
-        )
-    };
-    if result < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if mtu <= 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "invalid ipv6 mtu",
-        ));
-    }
-    Ok(mtu as u32)
-}
-
-fn icmpv6_packet_exceeds_mtu(packet: &[u8], mtu: u32) -> bool {
-    IPV6_HEADER_LEN + packet.len() as u64 > u64::from(mtu)
 }
 
 async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload: &[u8]) {
