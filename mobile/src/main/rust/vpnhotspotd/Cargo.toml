@@ -17,6 +17,7 @@ etherparse = "0.20.1"
 futures-util = "0.3.32"
 libc = "0.2.186"
 nfq = { package = "nfq-updated", version = "0.2.6" }
+nix = { version = "0.30.1", default-features = false, features = ["net", "uio"] }
 prost = "0.14.3"
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
 socket2 = { version = "0.6.3", features = ["all"] }

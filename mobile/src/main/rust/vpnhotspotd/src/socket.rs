@@ -1,11 +1,7 @@
 use std::io;
-use std::mem::size_of;
-use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, BorrowedFd, RawFd};
 
-use libc::{
-    c_int, c_void, fcntl, setsockopt, sockaddr_in6, socklen_t, F_GETFL, F_SETFL, O_NONBLOCK,
-};
+use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 
@@ -41,36 +37,4 @@ pub(crate) fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     } else {
         Ok(())
     }
-}
-
-pub(crate) fn set_int_sockopt(
-    fd: RawFd,
-    level: c_int,
-    name: c_int,
-    value: c_int,
-) -> io::Result<()> {
-    let value_len = size_of::<c_int>() as socklen_t;
-    if unsafe {
-        setsockopt(
-            fd,
-            level,
-            name,
-            &value as *const _ as *const c_void,
-            value_len,
-        )
-    } == 0
-    {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-
-pub(crate) fn socket_addr_v6_from_raw(address: sockaddr_in6) -> SocketAddrV6 {
-    SocketAddrV6::new(
-        Ipv6Addr::from(address.sin6_addr.s6_addr),
-        u16::from_be(address.sin6_port),
-        address.sin6_flowinfo,
-        address.sin6_scope_id,
-    )
 }

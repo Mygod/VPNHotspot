@@ -1,6 +1,5 @@
 use std::collections::HashMap;
-use std::io;
-use std::mem::{size_of, zeroed};
+use std::io::{self, IoSliceMut};
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::os::fd::{AsFd, AsRawFd, RawFd};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -8,11 +7,10 @@ use std::sync::{Arc, Mutex as StdMutex, MutexGuard, Weak};
 use std::time::Instant;
 
 use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice, UdpHeader};
-use libc::{
-    c_int, c_void, iovec, msghdr, recvmsg, sa_family_t, sockaddr_in6, socklen_t, CMSG_DATA,
-    CMSG_FIRSTHDR, CMSG_NXTHDR, IPPROTO_IPV6, MSG_DONTWAIT,
-};
+use libc::c_int;
 use nfq::{Queue, Verdict};
+use nix::cmsg_space;
+use nix::sys::socket::{recvmsg, setsockopt, sockopt, ControlMessageOwned, MsgFlags, SockaddrIn6};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::{Mutex, Notify};
@@ -20,7 +18,7 @@ use tokio::task::JoinHandle;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
-use crate::socket::{await_writable, set_int_sockopt, set_nonblocking, socket_addr_v6_from_raw};
+use crate::socket::{await_writable, set_nonblocking};
 use crate::upstream::set_socket_network;
 use crate::{netlink, report};
 use vpnhotspotd::shared::icmp_nat::{
@@ -34,23 +32,9 @@ use vpnhotspotd::shared::icmp_wire::{
 };
 use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM};
 
-const IPV6_RECVERR_OPT: c_int = 25;
-const MSG_ERRQUEUE_OPT: c_int = 0x2000;
 const SO_EE_ORIGIN_LOCAL: u8 = 1;
 const SO_EE_ORIGIN_ICMP6: u8 = 3;
 const NONLOCAL_PROBE_SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
-
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct SockExtendedErr {
-    ee_errno: u32,
-    ee_origin: u8,
-    ee_type: u8,
-    ee_code: u8,
-    ee_pad: u8,
-    ee_info: u32,
-    ee_data: u32,
-}
 
 #[derive(Default)]
 struct EchoState {
@@ -148,7 +132,7 @@ struct ReceivedIcmpPacket<'a> {
 }
 
 struct ErrorQueueMessage {
-    error: SockExtendedErr,
+    error: libc::sock_extended_err,
     offender: Option<SocketAddrV6>,
     destination: Option<SocketAddrV6>,
     payload: Vec<u8>,
@@ -414,7 +398,7 @@ impl EchoState {
         let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
         let stop = CancellationToken::new();
         let changed = Arc::new(Notify::new());
-        let error_queue = match enable_ipv6_error_queue(socket.get_ref().as_raw_fd()) {
+        let error_queue = match enable_ipv6_error_queue(socket.get_ref()) {
             Ok(()) => true,
             Err(e) => {
                 report::io_with_details(
@@ -1486,84 +1470,52 @@ fn recv_raw_icmp_packet<'a>(
     fd: RawFd,
     buffer: &'a mut [u8],
 ) -> io::Result<Option<ReceivedIcmpPacket<'a>>> {
-    let mut source: sockaddr_in6 = unsafe { zeroed() };
-    let source_len = size_of::<sockaddr_in6>() as socklen_t;
-    let mut iov = iovec {
-        iov_base: buffer.as_mut_ptr() as *mut c_void,
-        iov_len: buffer.len(),
+    let (size, source) = {
+        let mut iov = [IoSliceMut::new(buffer)];
+        let message = recvmsg::<SockaddrIn6>(fd, &mut iov, None, MsgFlags::MSG_DONTWAIT)
+            .map_err(io::Error::from)?;
+        if message.bytes == 0 {
+            return Ok(None);
+        }
+        let Some(source) = message.address.map(SocketAddrV6::from) else {
+            return Ok(None);
+        };
+        (message.bytes, source)
     };
-    let mut message = msghdr {
-        msg_name: &mut source as *mut _ as *mut c_void,
-        msg_namelen: source_len,
-        msg_iov: &mut iov,
-        msg_iovlen: 1,
-        msg_control: std::ptr::null_mut(),
-        msg_controllen: 0,
-        msg_flags: 0,
-    };
-    let size = unsafe { recvmsg(fd, &mut message, MSG_DONTWAIT) };
-    if size < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if size == 0 || source.sin6_family != libc::AF_INET6 as sa_family_t {
-        return Ok(None);
-    }
     Ok(Some(ReceivedIcmpPacket {
-        source: socket_addr_v6_from_raw(source),
-        payload: &buffer[..size as usize],
+        source,
+        payload: &buffer[..size],
     }))
 }
 
 fn recv_error_queue(fd: RawFd) -> io::Result<ErrorQueueMessage> {
-    let mut name: sockaddr_in6 = unsafe { zeroed() };
-    let name_len = size_of::<sockaddr_in6>() as socklen_t;
     let mut buffer = vec![0u8; 2048];
-    let mut control = [0u8; 512];
-    let mut iov = iovec {
-        iov_base: buffer.as_mut_ptr() as *mut c_void,
-        iov_len: buffer.len(),
-    };
-    let mut message = msghdr {
-        msg_name: &mut name as *mut _ as *mut c_void,
-        msg_namelen: name_len,
-        msg_iov: &mut iov,
-        msg_iovlen: 1,
-        msg_control: control.as_mut_ptr() as *mut c_void,
-        msg_controllen: control.len(),
-        msg_flags: 0,
-    };
-    let size = unsafe { recvmsg(fd, &mut message, MSG_DONTWAIT | MSG_ERRQUEUE_OPT) };
-    if size < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let destination = if name.sin6_family == libc::AF_INET6 as sa_family_t {
-        Some(socket_addr_v6_from_raw(name))
-    } else {
-        None
-    };
-    let mut error = None;
-    let mut offender = None;
-    let mut current = unsafe { CMSG_FIRSTHDR(&message) };
-    while !current.is_null() {
-        unsafe {
-            if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_RECVERR_OPT {
-                let data = CMSG_DATA(current) as *const u8;
-                error = Some((data as *const SockExtendedErr).read_unaligned());
-                let data_len = (*current).cmsg_len as usize - (data as usize - current as usize);
-                if data_len >= size_of::<SockExtendedErr>() + size_of::<sockaddr_in6>() {
-                    let raw = (data.add(size_of::<SockExtendedErr>()) as *const sockaddr_in6)
-                        .read_unaligned();
-                    if raw.sin6_family == libc::AF_INET6 as sa_family_t {
-                        offender = Some(socket_addr_v6_from_raw(raw));
-                    }
-                }
+    let (size, destination, error, offender) = {
+        let mut control = cmsg_space!(libc::sock_extended_err, libc::sockaddr_in6);
+        let mut iov = [IoSliceMut::new(&mut buffer)];
+        let message = recvmsg::<SockaddrIn6>(
+            fd,
+            &mut iov,
+            Some(&mut control),
+            MsgFlags::MSG_DONTWAIT | MsgFlags::MSG_ERRQUEUE,
+        )
+        .map_err(io::Error::from)?;
+        let destination = message.address.map(SocketAddrV6::from);
+        let mut error = None;
+        let mut offender = None;
+        for cmsg in message.cmsgs().map_err(io::Error::from)? {
+            if let ControlMessageOwned::Ipv6RecvErr(value, raw_offender) = cmsg {
+                error = Some(value);
+                offender = raw_offender
+                    .filter(|raw| raw.sin6_family == libc::AF_INET6 as libc::sa_family_t)
+                    .map(|raw| SocketAddrV6::from(SockaddrIn6::from(raw)));
             }
-            current = CMSG_NXTHDR(&message, current);
         }
-    }
+        (message.bytes, destination, error, offender)
+    };
     let error =
         error.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 error"))?;
-    buffer.truncate(size as usize);
+    buffer.truncate(size);
     Ok(ErrorQueueMessage {
         error,
         offender,
@@ -1601,17 +1553,12 @@ fn create_upstream_socket(network: Network) -> io::Result<Socket> {
     Ok(socket)
 }
 
-fn enable_ipv6_error_queue(fd: RawFd) -> io::Result<()> {
-    set_int_sockopt(fd, IPPROTO_IPV6, IPV6_RECVERR_OPT, 1)
+fn enable_ipv6_error_queue(socket: &Socket) -> io::Result<()> {
+    setsockopt(socket, sockopt::Ipv6RecvErr, &true).map_err(io::Error::from)
 }
 
 fn set_upstream_echo_hop_limit(socket: &AsyncFd<Socket>, hop_limit: u8) -> io::Result<()> {
-    set_int_sockopt(
-        socket.get_ref().as_raw_fd(),
-        IPPROTO_IPV6,
-        libc::IPV6_UNICAST_HOPS,
-        c_int::from(hop_limit),
-    )
+    setsockopt(socket.get_ref(), sockopt::Ipv6Ttl, &c_int::from(hop_limit)).map_err(io::Error::from)
 }
 
 async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload: &[u8]) {
@@ -1780,6 +1727,6 @@ async fn sendto_all_async(
     Ok(())
 }
 
-fn error_type_bytes(error: &SockExtendedErr) -> Option<(u8, [u8; 4])> {
+fn error_type_bytes(error: &libc::sock_extended_err) -> Option<(u8, [u8; 4])> {
     icmpv6_error_bytes(error.ee_type, error.ee_info)
 }

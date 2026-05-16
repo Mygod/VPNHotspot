@@ -1,16 +1,14 @@
 use std::collections::{hash_map::Entry, HashMap};
-use std::io;
-use std::mem::{size_of, zeroed};
+use std::io::{self, IoSliceMut};
+use std::mem::size_of;
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Instant;
 
-use libc::{
-    c_int, c_void, iovec, msghdr, recvmsg, sockaddr_in6, socklen_t, CMSG_DATA, CMSG_FIRSTHDR,
-    CMSG_NXTHDR, IPPROTO_IPV6, IPV6_HOPLIMIT, IPV6_RECVHOPLIMIT, IPV6_RECVORIGDSTADDR,
-    IPV6_UNICAST_HOPS, MSG_DONTWAIT,
-};
+use libc::{c_int, c_void, socklen_t, IPPROTO_IPV6, MSG_DONTWAIT};
+use nix::cmsg_space;
+use nix::sys::socket::{recvmsg, setsockopt, sockopt, ControlMessageOwned, MsgFlags, SockaddrIn6};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
@@ -22,7 +20,6 @@ use super::{sleep_until_deadline, IDLE_TIMEOUT};
 use crate::dns::{resolve_or_error, DNS_PORT};
 use crate::nat66::icmp;
 use crate::report;
-use crate::socket::{set_int_sockopt, socket_addr_v6_from_raw};
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
@@ -252,7 +249,7 @@ pub(crate) fn spawn_loop(
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
         let listener_fd = listener.get_ref().as_raw_fd();
-        if let Err(e) = enable_recv_hop_limit(listener_fd) {
+        if let Err(e) = enable_recv_hop_limit(listener.get_ref()) {
             report::io("nat66.udp_hop_limit_setup", e);
         }
         let reply_sockets = Arc::new(ReplySocketPool::default());
@@ -791,17 +788,12 @@ fn create_reply_socket(key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
     Ok(Arc::new(TokioUdpSocket::from_std(socket.into())?))
 }
 
-fn enable_recv_hop_limit(fd: i32) -> io::Result<()> {
-    set_int_sockopt(fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, 1)
+fn enable_recv_hop_limit(socket: &UdpSocket) -> io::Result<()> {
+    setsockopt(socket, sockopt::Ipv6RecvHopLimit, &true).map_err(io::Error::from)
 }
 
 fn set_upstream_hop_limit(socket: &TokioUdpSocket, hop_limit: u8) -> io::Result<()> {
-    set_int_sockopt(
-        socket.as_raw_fd(),
-        IPPROTO_IPV6,
-        IPV6_UNICAST_HOPS,
-        c_int::from(hop_limit),
-    )
+    setsockopt(socket, sockopt::Ipv6Ttl, &c_int::from(hop_limit)).map_err(io::Error::from)
 }
 
 async fn send_udp_packet_too_big(
@@ -964,48 +956,31 @@ fn recv_packet(
     fd: i32,
     buffer: &mut [u8],
 ) -> io::Result<(usize, SocketAddrV6, SocketAddrV6, Option<u8>)> {
-    let mut source: sockaddr_in6 = unsafe { zeroed() };
-    let source_len = size_of::<sockaddr_in6>() as socklen_t;
-    let mut control = [0u8; 128];
-    let mut iov = iovec {
-        iov_base: buffer.as_mut_ptr() as *mut c_void,
-        iov_len: buffer.len(),
-    };
-    let mut message = msghdr {
-        msg_name: &mut source as *mut _ as *mut c_void,
-        msg_namelen: source_len,
-        msg_iov: &mut iov,
-        msg_iovlen: 1,
-        msg_control: control.as_mut_ptr() as *mut c_void,
-        msg_controllen: control.len(),
-        msg_flags: 0,
-    };
-    let size = unsafe { recvmsg(fd, &mut message, MSG_DONTWAIT) };
-    if size < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let source = socket_addr_v6_from_raw(source);
+    let mut control = cmsg_space!(libc::sockaddr_in6, libc::c_int);
+    let mut iov = [IoSliceMut::new(buffer)];
+    let message = recvmsg::<SockaddrIn6>(fd, &mut iov, Some(&mut control), MsgFlags::MSG_DONTWAIT)
+        .map_err(io::Error::from)?;
+    let source = message
+        .address
+        .map(SocketAddrV6::from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing source address"))?;
     let mut destination = None;
     let mut hop_limit = None;
-    let mut current = unsafe { CMSG_FIRSTHDR(&message) };
-    while !current.is_null() {
-        unsafe {
-            if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_RECVORIGDSTADDR
-            {
-                let raw = CMSG_DATA(current) as *const sockaddr_in6;
-                destination = Some(socket_addr_v6_from_raw(*raw));
-            } else if (*current).cmsg_level == IPPROTO_IPV6 && (*current).cmsg_type == IPV6_HOPLIMIT
-            {
-                let value = (CMSG_DATA(current) as *const c_int).read_unaligned();
-                if (0..=u8::MAX as c_int).contains(&value) {
-                    hop_limit = Some(value as u8);
-                }
+    for cmsg in message.cmsgs().map_err(io::Error::from)? {
+        match cmsg {
+            ControlMessageOwned::Ipv6OrigDstAddr(raw) => {
+                destination = Some(SocketAddrV6::from(SockaddrIn6::from(raw)));
             }
-            current = CMSG_NXTHDR(&message, current);
+            ControlMessageOwned::Ipv6HopLimit(value)
+                if (0..=i32::from(u8::MAX)).contains(&value) =>
+            {
+                hop_limit = Some(value as u8);
+            }
+            _ => {}
         }
     }
     let destination = destination.ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidData, "missing original destination")
     })?;
-    Ok((size as usize, source, destination, hop_limit))
+    Ok((message.bytes, source, destination, hop_limit))
 }
