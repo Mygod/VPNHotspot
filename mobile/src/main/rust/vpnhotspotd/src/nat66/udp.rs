@@ -27,6 +27,9 @@ use crate::upstream::connect_udp;
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
 
+const IPV6_HEADER_LEN: u64 = 40;
+const UDP_HEADER_LEN: u64 = 8;
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AssociationKey {
     client: SocketAddrV6,
@@ -853,6 +856,10 @@ fn upstream_mtu(socket: &TokioUdpSocket) -> io::Result<u32> {
     Ok(mtu as u32)
 }
 
+fn udp_ipv6_packet_exceeds_mtu(payload: &[u8], mtu: u32) -> bool {
+    IPV6_HEADER_LEN + UDP_HEADER_LEN + payload.len() as u64 > u64::from(mtu)
+}
+
 fn forward_udp_datagram(
     socket: &TokioUdpSocket,
     hop_limit: u8,
@@ -878,7 +885,21 @@ fn forward_udp_datagram(
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return UdpForwardResult::Dropped,
             Err(e) if e.raw_os_error() == Some(libc::EMSGSIZE) => match upstream_mtu(socket) {
-                Ok(mtu) => return UdpForwardResult::PacketTooBig(mtu),
+                Ok(mtu) if udp_ipv6_packet_exceeds_mtu(payload, mtu) => {
+                    return UdpForwardResult::PacketTooBig(mtu);
+                }
+                Ok(_) if icmp_errors_registered => return UdpForwardResult::Dropped,
+                Ok(_) => {
+                    report::io_with_details(
+                        "nat66.udp_send",
+                        e,
+                        [
+                            ("client", client.to_string()),
+                            ("destination", destination.to_string()),
+                        ],
+                    );
+                    return UdpForwardResult::Failed;
+                }
                 Err(mtu_error) => {
                     report::io_with_details(
                         "nat66.udp_mtu",
