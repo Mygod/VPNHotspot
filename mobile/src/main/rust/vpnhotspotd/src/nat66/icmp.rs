@@ -28,7 +28,8 @@ use vpnhotspotd::shared::icmp_nat::{
 };
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_packet_with_checksum, build_echo_packet_zero_checksum, build_icmp_error_packet,
-    build_icmp_quote, build_udp_quote_with_hop_limit, ICMPV6_ECHO_REPLY, ICMPV6_ECHO_REQUEST,
+    build_icmp_quote, build_translated_udp_quote, build_udp_quote_with_hop_limit, UdpQuoteMetadata,
+    ICMPV6_ECHO_REPLY, ICMPV6_ECHO_REQUEST,
 };
 use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM};
 
@@ -147,9 +148,7 @@ struct EchoErrorProbe<'a> {
 }
 
 struct UdpErrorProbe<'a> {
-    source: SocketAddrV6,
-    destination: SocketAddrV6,
-    hop_limit: u8,
+    quote: UdpQuoteMetadata,
     payload: &'a [u8],
 }
 
@@ -1238,8 +1237,8 @@ async fn handle_upstream_udp_error(
 ) {
     let key = UdpErrorKey {
         network,
-        upstream: probe.source,
-        destination: probe.destination,
+        upstream: probe.quote.source,
+        destination: probe.quote.destination,
     };
     let context = match state.lookup_udp_error(key) {
         Ok(Some(context)) => context,
@@ -1250,10 +1249,10 @@ async fn handle_upstream_udp_error(
         }
     };
     let source = downstream_icmp_error_source(*offender.ip(), context.gateway);
-    let quote = match build_udp_quote_with_hop_limit(
+    let quote = match build_translated_udp_quote(
+        probe.quote,
         context.client,
         context.destination,
-        probe.hop_limit,
         probe.payload,
     ) {
         Ok(quote) => quote,
@@ -1432,20 +1431,30 @@ fn quoted_udp_probe(payload: &[u8]) -> Option<UdpErrorProbe<'_>> {
         return None;
     }
     let (udp, payload) = UdpHeader::from_slice(rest).ok()?;
+    if ip.payload_length != udp.length
+        || udp.length < UdpHeader::LEN_U16
+        || usize::from(udp.length) < UdpHeader::LEN + payload.len()
+    {
+        return None;
+    }
     Some(UdpErrorProbe {
-        source: normalize_udp_error_addr(SocketAddrV6::new(
-            ip.source_addr(),
-            udp.source_port,
-            0,
-            0,
-        )),
-        destination: normalize_udp_error_addr(SocketAddrV6::new(
-            ip.destination_addr(),
-            udp.destination_port,
-            0,
-            0,
-        )),
-        hop_limit: ip.hop_limit,
+        quote: UdpQuoteMetadata {
+            source: normalize_udp_error_addr(SocketAddrV6::new(
+                ip.source_addr(),
+                udp.source_port,
+                0,
+                0,
+            )),
+            destination: normalize_udp_error_addr(SocketAddrV6::new(
+                ip.destination_addr(),
+                udp.destination_port,
+                0,
+                0,
+            )),
+            hop_limit: ip.hop_limit,
+            length: udp.length,
+            checksum: udp.checksum,
+        },
         payload,
     })
 }

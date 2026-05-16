@@ -8,6 +8,15 @@ pub const ICMPV6_ECHO_REQUEST: u8 = 128;
 pub const ICMPV6_ECHO_REPLY: u8 = 129;
 const ICMPV6_MINIMUM_MTU: usize = 1280;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UdpQuoteMetadata {
+    pub source: SocketAddrV6,
+    pub destination: SocketAddrV6,
+    pub hop_limit: u8,
+    pub length: u16,
+    pub checksum: u16,
+}
+
 pub fn build_echo_packet_zero_checksum(type_u8: u8, id: u16, seq: u16, payload: &[u8]) -> Vec<u8> {
     let mut packet = Vec::with_capacity(ICMPV6_HEADER_LEN + payload.len());
     packet.extend([type_u8, 0, 0, 0]);
@@ -125,9 +134,91 @@ pub fn build_udp_quote_with_hop_limit(
     Ok(quote)
 }
 
+pub fn build_translated_udp_quote(
+    original: UdpQuoteMetadata,
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+    payload: &[u8],
+) -> io::Result<Vec<u8>> {
+    let length = usize::from(original.length);
+    if length < UdpHeader::LEN || length < UdpHeader::LEN + payload.len() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid udp quote length",
+        ));
+    }
+    let max_payload =
+        ICMPV6_MINIMUM_MTU - Ipv6Header::LEN - ICMPV6_HEADER_LEN - Ipv6Header::LEN - UdpHeader::LEN;
+    let quoted_payload = &payload[..payload.len().min(max_payload)];
+    let ip = ipv6_header(
+        *client.ip(),
+        *destination.ip(),
+        IpNumber::UDP,
+        original.hop_limit,
+        length,
+    )?;
+    let udp = UdpHeader {
+        source_port: client.port(),
+        destination_port: destination.port(),
+        length: original.length,
+        checksum: translated_udp_checksum(original, client, destination)?,
+    };
+    let mut quote = Vec::with_capacity(Ipv6Header::LEN + UdpHeader::LEN + quoted_payload.len());
+    quote.extend_from_slice(&ip.to_bytes());
+    quote.extend_from_slice(&udp.to_bytes());
+    quote.extend_from_slice(quoted_payload);
+    Ok(quote)
+}
+
 fn cap_invoking_icmp_payload(payload: &[u8]) -> &[u8] {
     let max_payload = ICMPV6_MINIMUM_MTU - Ipv6Header::LEN - ICMPV6_HEADER_LEN - Ipv6Header::LEN;
     &payload[..payload.len().min(max_payload)]
+}
+
+fn translated_udp_checksum(
+    original: UdpQuoteMetadata,
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+) -> io::Result<u16> {
+    if original.checksum == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "missing udp checksum",
+        ));
+    }
+    let mut sum = u32::from(!original.checksum);
+    update_checksum_words(
+        &mut sum,
+        original.source.ip().octets(),
+        client.ip().octets(),
+    );
+    update_checksum_words(
+        &mut sum,
+        original.destination.ip().octets(),
+        destination.ip().octets(),
+    );
+    update_checksum_word(&mut sum, original.source.port(), client.port());
+    update_checksum_word(&mut sum, original.destination.port(), destination.port());
+    while sum > 0xffff {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    let checksum = !(sum as u16);
+    Ok(if checksum == 0 { 0xffff } else { checksum })
+}
+
+fn update_checksum_words(sum: &mut u32, old: [u8; 16], new: [u8; 16]) {
+    for (old, new) in old.chunks_exact(2).zip(new.chunks_exact(2)) {
+        update_checksum_word(
+            sum,
+            u16::from_be_bytes([old[0], old[1]]),
+            u16::from_be_bytes([new[0], new[1]]),
+        );
+    }
+}
+
+fn update_checksum_word(sum: &mut u32, old: u16, new: u16) {
+    *sum += u32::from(!old) + u32::from(new);
+    *sum = (*sum & 0xffff) + (*sum >> 16);
 }
 
 fn ipv6_header(
@@ -283,6 +374,44 @@ mod tests {
                 .unwrap();
         assert_eq!(udp.checksum, expected.checksum);
         assert_ne!(udp.checksum, 0);
+    }
+
+    #[test]
+    fn translated_udp_quote_preserves_parsed_length_and_adjusts_checksum() {
+        let upstream = "[2001:db8:1::10]:50000".parse().unwrap();
+        let client = "[fd00::2]:1234".parse().unwrap();
+        let destination = "[2001:db8::1]:443".parse().unwrap();
+        let full_payload = vec![7u8; 4096];
+        let upstream_quote =
+            build_udp_quote_with_hop_limit(upstream, destination, 2, &full_payload).unwrap();
+        let (upstream_ip, upstream_rest) = Ipv6Header::from_slice(&upstream_quote).unwrap();
+        let (upstream_udp, upstream_payload) = UdpHeader::from_slice(upstream_rest).unwrap();
+        let translated = build_translated_udp_quote(
+            UdpQuoteMetadata {
+                source: upstream,
+                destination,
+                hop_limit: upstream_ip.hop_limit,
+                length: upstream_udp.length,
+                checksum: upstream_udp.checksum,
+            },
+            client,
+            destination,
+            &upstream_payload[..32],
+        )
+        .unwrap();
+        let expected =
+            build_udp_quote_with_hop_limit(client, destination, 2, &full_payload).unwrap();
+        let (expected_ip, expected_rest) = Ipv6Header::from_slice(&expected).unwrap();
+        let (expected_udp, _) = UdpHeader::from_slice(expected_rest).unwrap();
+        let (ip, rest) = Ipv6Header::from_slice(&translated).unwrap();
+        let (udp, payload) = UdpHeader::from_slice(rest).unwrap();
+        assert_eq!(ip.source_addr(), *client.ip());
+        assert_eq!(ip.destination_addr(), *destination.ip());
+        assert_eq!(ip.hop_limit, 2);
+        assert_eq!(ip.payload_length, expected_ip.payload_length);
+        assert_eq!(udp.length, expected_udp.length);
+        assert_eq!(udp.checksum, expected_udp.checksum);
+        assert_eq!(payload, &upstream_payload[..32]);
     }
 
     #[test]
