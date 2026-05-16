@@ -7,7 +7,7 @@ import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
 import kotlinx.collections.immutable.mutate
-import kotlinx.collections.immutable.persistentMapOf
+import kotlinx.collections.immutable.persistentHashMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +48,8 @@ data class NetlinkNeighbour(val proto: Neighbour) {
 
     companion object {
         private data class MonitorState(
-            val neighbours: PersistentMap<Pair<ByteString, String>, NetlinkNeighbour> = persistentMapOf(),
-            val bridgeMasterByMember: PersistentMap<String, String> = persistentMapOf(),
+            val neighbours: PersistentMap<Pair<ByteString, String>, NetlinkNeighbour> = persistentHashMapOf(),
+            val bridgeMasterByMember: PersistentMap<String, String> = persistentHashMapOf(),
         )
 
         private fun ByteString.toInetAddress() = toByteArray().let { bytes ->
@@ -79,7 +79,7 @@ data class NetlinkNeighbour(val proto: Neighbour) {
                         }
                     },
                     bridgeMasterByMember = update.link_topology?.let { topology ->
-                        persistentMapOf<String, String>().mutate {
+                        persistentHashMapOf<String, String>().mutate {
                             for (bridge in topology.bridges) for (member in bridge.members) {
                                 if (bridge.name.isNotEmpty() && member.isNotEmpty()) it[member] = bridge.name
                             }
