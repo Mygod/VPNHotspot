@@ -198,6 +198,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 MacAddress.fromString(dialogView.persistentRandomizedMac.text.toString())
             } else null
             allowedAcsChannels = acsList.associate { (band, text, _) -> band to RangeInput.fromString(text.text) }
+            isBandOptimizationEnabled = dialogView.bandOptimization.isChecked
             if (arg.p2pMode || Build.VERSION.SDK_INT < 33) return@apply
             maxChannelBandwidth = (dialogView.maxChannelBandwidth.selectedItem as BandWidth).width
             if (Build.VERSION.SDK_INT >= 36) isClientIsolationEnabled = dialogView.clientIsolation.isChecked
@@ -327,8 +328,6 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
         }
         if (arg.p2pMode || Build.VERSION.SDK_INT < 30 || !SoftApConfigurationCompat.isBandOptimizationSupported) {
             dialogView.bandOptimization.isGone = true
-        } else dialogView.bandOptimization.setOnClickListener {
-            base.isBandOptimizationEnabled = dialogView.bandOptimization.isChecked
         }
         if (Build.VERSION.SDK_INT < 33) dialogView.vendorElementsWrapper.isGone = true
         else dialogView.vendorElements.addTextChangedListener(this@WifiApDialogFragment)
