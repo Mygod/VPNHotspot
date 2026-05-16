@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard, Weak};
 use std::time::Instant;
 
-use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice};
+use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice, UdpHeader};
 use libc::{
     c_int, c_void, iovec, msghdr, recvmsg, sa_family_t, sockaddr_in6, socklen_t, CMSG_DATA,
     CMSG_FIRSTHDR, CMSG_NXTHDR, IPPROTO_IPV6, MSG_DONTWAIT,
@@ -15,8 +15,7 @@ use libc::{
 use nfq::{Queue, Verdict};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
-use tokio::net::UdpSocket as TokioUdpSocket;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
@@ -26,12 +25,12 @@ use crate::upstream::set_socket_network;
 use crate::{netlink, report};
 use vpnhotspotd::shared::icmp_nat::{
     classify_nat66_destination, downstream_icmp_error_source, icmpv6_error_bytes, nat66_hop_limit,
-    EchoAllocation, EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_TIME_EXCEEDED,
+    EchoAllocation, EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_PACKET_TOO_BIG,
+    ICMPV6_TIME_EXCEEDED,
 };
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_packet_with_checksum, build_echo_packet_zero_checksum, build_icmp_error_packet,
-    build_icmp_quote, build_udp_quote, build_udp_quote_with_hop_limit, ICMPV6_ECHO_REPLY,
-    ICMPV6_ECHO_REQUEST,
+    build_icmp_quote, build_udp_quote_with_hop_limit, ICMPV6_ECHO_REPLY, ICMPV6_ECHO_REQUEST,
 };
 use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM};
 
@@ -61,18 +60,25 @@ struct EchoState {
 struct EchoStateInner {
     map: EchoMap,
     upstream: HashMap<Network, UpstreamSocket>,
+    udp_errors: HashMap<UdpErrorKey, UdpErrorContext>,
 }
 
 #[derive(Clone)]
 struct UpstreamSocket {
     socket: Arc<AsyncFd<Socket>>,
     stop: CancellationToken,
+    changed: Arc<Notify>,
     error_queue: bool,
 }
 
 enum UpstreamPrune {
     Removed,
     StillActive,
+}
+
+enum UpstreamActivity {
+    Idle,
+    Active(Option<Instant>),
 }
 
 #[derive(Clone)]
@@ -97,6 +103,14 @@ impl Drop for DispatcherInner {
         };
         if let Some(task) = task.take() {
             task.abort();
+        }
+    }
+}
+
+impl Drop for UdpErrorRegistration {
+    fn drop(&mut self) {
+        if let Err(e) = self.state.unregister_udp_error(self.key) {
+            report::io("nat66.icmp_udp_unregister", e);
         }
     }
 }
@@ -147,12 +161,32 @@ struct EchoErrorProbe<'a> {
     payload: &'a [u8],
 }
 
+struct UdpErrorProbe<'a> {
+    source: SocketAddrV6,
+    destination: SocketAddrV6,
+    hop_limit: u8,
+    payload: &'a [u8],
+}
+
+#[derive(Clone)]
 pub(crate) struct UdpErrorContext {
     pub(crate) downstream: String,
     pub(crate) reply_mark: u32,
     pub(crate) gateway: Ipv6Addr,
     pub(crate) client: SocketAddrV6,
     pub(crate) destination: SocketAddrV6,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+struct UdpErrorKey {
+    network: Network,
+    upstream: SocketAddrV6,
+    destination: SocketAddrV6,
+}
+
+pub(crate) struct UdpErrorRegistration {
+    key: UdpErrorKey,
+    state: Arc<EchoState>,
 }
 
 impl EchoState {
@@ -162,14 +196,22 @@ impl EchoState {
     ) -> io::Result<(u16, u16, UpstreamSocket)> {
         let network = allocation.network;
         let destination = allocation.destination;
-        let (id, seq, socket) = {
+        let (id, seq, socket, notify) = {
             let mut inner = state.lock_inner()?;
-            let (id, seq) = inner
+            let now = Instant::now();
+            let old_deadline = inner
                 .map
-                .allocate(Instant::now(), super::IDLE_TIMEOUT, allocation)?;
+                .network_idle_deadline(now, network, super::IDLE_TIMEOUT);
+            let (id, seq) = inner.map.allocate(now, super::IDLE_TIMEOUT, allocation)?;
             let socket = inner.upstream.get(&network).cloned();
-            (id, seq, socket)
+            let notify = if old_deadline.is_none() {
+                Self::upstream_changed_locked(&inner, network)
+            } else {
+                None
+            };
+            (id, seq, socket, notify)
         };
+        Self::notify_upstream_changed(notify);
         if let Some(socket) = socket {
             return Ok((id, seq, socket));
         }
@@ -227,6 +269,60 @@ impl EchoState {
         Ok(())
     }
 
+    fn register_udp_error(
+        state: &Arc<Self>,
+        network: Network,
+        upstream: SocketAddrV6,
+        destination: SocketAddrV6,
+        context: UdpErrorContext,
+    ) -> io::Result<UdpErrorRegistration> {
+        let key = UdpErrorKey {
+            network,
+            upstream: normalize_udp_error_addr(upstream),
+            destination: normalize_udp_error_addr(destination),
+        };
+        state.lock_inner()?.udp_errors.insert(key, context);
+        if let Err(e) = Self::ensure_upstream_socket(state, network) {
+            state.lock_inner()?.udp_errors.remove(&key);
+            return Err(e);
+        }
+        Ok(UdpErrorRegistration {
+            key,
+            state: state.clone(),
+        })
+    }
+
+    fn unregister_udp_error(&self, key: UdpErrorKey) -> io::Result<()> {
+        let (upstream, notify) = {
+            let mut inner = self.lock_inner()?;
+            let now = Instant::now();
+            let removed = inner.udp_errors.remove(&key).is_some();
+            let upstream = Self::remove_idle_upstream_locked(&mut inner, key.network, now);
+            let notify = if removed
+                && upstream.is_none()
+                && !Self::has_udp_error_entries_locked(&inner, key.network)
+                && inner
+                    .map
+                    .network_idle_deadline(now, key.network, super::IDLE_TIMEOUT)
+                    .is_some()
+            {
+                Self::upstream_changed_locked(&inner, key.network)
+            } else {
+                None
+            };
+            (upstream, notify)
+        };
+        if let Some(upstream) = upstream {
+            upstream.stop.cancel();
+        }
+        Self::notify_upstream_changed(notify);
+        Ok(())
+    }
+
+    fn lookup_udp_error(&self, key: UdpErrorKey) -> io::Result<Option<UdpErrorContext>> {
+        Ok(self.lock_inner()?.udp_errors.get(&key).cloned())
+    }
+
     fn has_allocation(
         &self,
         network: Network,
@@ -260,21 +356,24 @@ impl EchoState {
         Ok(())
     }
 
-    fn upstream_idle_deadline(&self, network: Network) -> io::Result<Option<Instant>> {
+    fn upstream_activity(&self, network: Network) -> io::Result<UpstreamActivity> {
         let mut inner = self.lock_inner()?;
-        Ok(inner
+        let now = Instant::now();
+        let echo_deadline = inner
             .map
-            .network_idle_deadline(Instant::now(), network, super::IDLE_TIMEOUT))
+            .network_idle_deadline(now, network, super::IDLE_TIMEOUT);
+        if echo_deadline.is_some() || Self::has_udp_error_entries_locked(&inner, network) {
+            Ok(UpstreamActivity::Active(echo_deadline))
+        } else {
+            Ok(UpstreamActivity::Idle)
+        }
     }
 
     fn prune_idle_upstream(&self, network: Network) -> io::Result<UpstreamPrune> {
         let (result, upstream) = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            if inner
-                .map
-                .has_network_entries(now, super::IDLE_TIMEOUT, network)
-            {
+            if Self::has_network_entries_locked(&mut inner, network, now) {
                 (UpstreamPrune::StillActive, None)
             } else {
                 (UpstreamPrune::Removed, inner.upstream.remove(&network))
@@ -292,6 +391,7 @@ impl EchoState {
         }
         let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
         let stop = CancellationToken::new();
+        let changed = Arc::new(Notify::new());
         let error_queue = match enable_ipv6_error_queue(socket.get_ref().as_raw_fd()) {
             Ok(()) => true,
             Err(e) => {
@@ -306,6 +406,7 @@ impl EchoState {
         let upstream = UpstreamSocket {
             socket: socket.clone(),
             stop: stop.clone(),
+            changed: changed.clone(),
             error_queue,
         };
         let mut start = false;
@@ -314,13 +415,10 @@ impl EchoState {
             if let Some(upstream) = inner.upstream.get(&network) {
                 upstream.clone()
             } else {
-                if !inner
-                    .map
-                    .has_network_entries(Instant::now(), super::IDLE_TIMEOUT, network)
-                {
+                if !Self::has_network_entries_locked(&mut inner, network, Instant::now()) {
                     return Err(io::Error::new(
                         io::ErrorKind::Interrupted,
-                        "echo allocation removed",
+                        "upstream ICMP registration removed",
                     ));
                 }
                 start = true;
@@ -332,6 +430,7 @@ impl EchoState {
             spawn_upstream_loop(
                 network,
                 active.socket.clone(),
+                active.changed.clone(),
                 active.error_queue,
                 state.clone(),
                 stop,
@@ -345,14 +444,26 @@ impl EchoState {
         network: Network,
         now: Instant,
     ) -> Option<UpstreamSocket> {
-        if inner
-            .map
-            .has_network_entries(now, super::IDLE_TIMEOUT, network)
-        {
+        if Self::has_network_entries_locked(inner, network, now) {
             None
         } else {
             inner.upstream.remove(&network)
         }
+    }
+
+    fn has_network_entries_locked(
+        inner: &mut EchoStateInner,
+        network: Network,
+        now: Instant,
+    ) -> bool {
+        inner
+            .map
+            .has_network_entries(now, super::IDLE_TIMEOUT, network)
+            || Self::has_udp_error_entries_locked(inner, network)
+    }
+
+    fn has_udp_error_entries_locked(inner: &EchoStateInner, network: Network) -> bool {
+        inner.udp_errors.keys().any(|key| key.network == network)
     }
 
     fn remove_idle_upstreams_locked(
@@ -376,6 +487,19 @@ impl EchoState {
             upstream.stop.cancel();
         }
         Ok(())
+    }
+
+    fn upstream_changed_locked(inner: &EchoStateInner, network: Network) -> Option<Arc<Notify>> {
+        inner
+            .upstream
+            .get(&network)
+            .map(|upstream| upstream.changed.clone())
+    }
+
+    fn notify_upstream_changed(notify: Option<Arc<Notify>>) {
+        if let Some(notify) = notify {
+            notify.notify_one();
+        }
     }
 
     fn remove_upstream_socket(
@@ -448,6 +572,16 @@ impl Dispatcher {
             session,
             registrations: self.inner.registrations.clone(),
         })
+    }
+
+    pub(crate) fn register_udp_error(
+        &self,
+        network: Network,
+        upstream: SocketAddrV6,
+        destination: SocketAddrV6,
+        context: UdpErrorContext,
+    ) -> io::Result<UdpErrorRegistration> {
+        EchoState::register_udp_error(&self.inner.state, network, upstream, destination, context)
     }
 
     fn ensure_started(&self) -> io::Result<()> {
@@ -642,94 +776,6 @@ fn downstream_packet(message: &nfq::Message) -> Option<DownstreamIcmpPacket> {
     })
 }
 
-pub(crate) fn enable_udp_error_queue(socket: &TokioUdpSocket) -> io::Result<()> {
-    enable_ipv6_error_queue(socket.as_raw_fd())
-}
-
-pub(crate) async fn drain_udp_error_queue(
-    socket: &TokioUdpSocket,
-    context: &UdpErrorContext,
-) -> io::Result<usize> {
-    let mut translated = 0;
-    loop {
-        let message = match recv_error_queue(socket.as_raw_fd()) {
-            Ok(message) => message,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(translated),
-            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e),
-        };
-        if message.error.ee_origin != SO_EE_ORIGIN_ICMP6 {
-            continue;
-        }
-        let Some((icmp_type, bytes5to8)) = error_type_bytes(&message.error) else {
-            continue;
-        };
-        let Some(offender) = message.offender else {
-            report::stdout!(
-                "udp icmp error dropped: missing offender client={} destination={}",
-                context.client,
-                context.destination
-            );
-            continue;
-        };
-        let source = downstream_icmp_error_source(*offender.ip(), context.gateway);
-        let quote = match build_udp_quote(context.client, context.destination, &message.payload) {
-            Ok(quote) => quote,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_udp_quote",
-                    e,
-                    [
-                        ("client", context.client.to_string()),
-                        ("destination", context.destination.to_string()),
-                    ],
-                );
-                continue;
-            }
-        };
-        let packet = match build_icmp_error_packet(
-            icmp_type,
-            message.error.ee_code,
-            bytes5to8,
-            source,
-            *context.client.ip(),
-            &quote,
-        ) {
-            Ok(packet) => packet,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_udp_error_packet",
-                    e,
-                    [
-                        ("client", context.client.to_string()),
-                        ("destination", context.destination.to_string()),
-                    ],
-                );
-                continue;
-            }
-        };
-        if let Err(e) = send_downstream_icmp(
-            &context.downstream,
-            context.reply_mark,
-            source,
-            context.client,
-            &packet,
-        )
-        .await
-        {
-            report::stdout!(
-                "udp icmp error dropped: source={} client={} destination={}: {}",
-                source,
-                context.client,
-                context.destination,
-                e
-            );
-            continue;
-        }
-        translated += 1;
-    }
-}
-
 pub(crate) async fn send_udp_time_exceeded(
     downstream: &str,
     reply_mark: u32,
@@ -749,6 +795,32 @@ pub(crate) async fn send_udp_time_exceeded(
         &quote,
     )?;
     send_downstream_icmp(downstream, reply_mark, gateway, client, &packet).await
+}
+
+pub(crate) async fn send_udp_packet_too_big(
+    context: &UdpErrorContext,
+    mtu: u32,
+    hop_limit: u8,
+    payload: &[u8],
+) -> io::Result<()> {
+    let quote =
+        build_udp_quote_with_hop_limit(context.client, context.destination, hop_limit, payload)?;
+    let packet = build_icmp_error_packet(
+        ICMPV6_PACKET_TOO_BIG,
+        0,
+        mtu.to_be_bytes(),
+        context.gateway,
+        *context.client.ip(),
+        &quote,
+    )?;
+    send_downstream_icmp(
+        &context.downstream,
+        context.reply_mark,
+        context.gateway,
+        context.client,
+        &packet,
+    )
+    .await
 }
 
 async fn handle_downstream_echo(
@@ -927,6 +999,7 @@ async fn handle_downstream_echo(
 fn spawn_upstream_loop(
     network: Network,
     socket: Arc<AsyncFd<Socket>>,
+    changed: Arc<Notify>,
     error_queue: bool,
     state: Arc<EchoState>,
     stop: CancellationToken,
@@ -934,9 +1007,9 @@ fn spawn_upstream_loop(
     spawn(async move {
         let mut buffer = vec![0u8; 65535];
         loop {
-            let deadline = match state.upstream_idle_deadline(network) {
-                Ok(Some(deadline)) => deadline,
-                Ok(None) => match state.prune_idle_upstream(network) {
+            let deadline = match state.upstream_activity(network) {
+                Ok(UpstreamActivity::Active(deadline)) => deadline,
+                Ok(UpstreamActivity::Idle) => match state.prune_idle_upstream(network) {
                     Ok(UpstreamPrune::Removed) => break,
                     Ok(UpstreamPrune::StillActive) => continue,
                     Err(e) => {
@@ -951,7 +1024,8 @@ fn spawn_upstream_loop(
             };
             let mut ready = select! {
                 _ = stop.cancelled() => break,
-                _ = super::sleep_until_deadline(Some(deadline)) => {
+                _ = changed.notified() => continue,
+                _ = super::sleep_until_deadline(deadline) => {
                     match state.prune_idle_upstream(network) {
                         Ok(UpstreamPrune::Removed) => break,
                         Ok(UpstreamPrune::StillActive) => continue,
@@ -988,7 +1062,7 @@ fn spawn_upstream_loop(
                     }
                 }
                 match recv_raw_icmp_packet(socket.get_ref().as_raw_fd(), &mut buffer) {
-                    Ok(Some(packet)) => handle_upstream_echo_reply(network, &state, packet).await,
+                    Ok(Some(packet)) => handle_upstream_icmp_packet(network, &state, packet).await,
                     Ok(None) => continue,
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                         ready.clear_ready();
@@ -1012,7 +1086,7 @@ fn spawn_upstream_loop(
     });
 }
 
-async fn handle_upstream_echo_reply(
+async fn handle_upstream_icmp_packet(
     network: Network,
     state: &EchoState,
     packet: ReceivedIcmpPacket<'_>,
@@ -1020,10 +1094,39 @@ async fn handle_upstream_echo_reply(
     let Ok((header, payload)) = Icmpv6Header::from_slice(packet.payload) else {
         return;
     };
-    let Icmpv6Type::EchoReply(echo) = header.icmp_type else {
-        return;
-    };
-    let entry = match state.restore(network, *packet.source.ip(), echo.id, echo.seq) {
+    match header.icmp_type {
+        Icmpv6Type::EchoReply(echo) => {
+            handle_upstream_echo_reply(network, state, packet.source, echo.id, echo.seq, payload)
+                .await;
+        }
+        _ => {
+            if let Some((icmp_type, code, bytes5to8)) =
+                packet_icmp_error_metadata(packet.payload, &header)
+            {
+                handle_upstream_icmp_error(
+                    network,
+                    state,
+                    packet.source,
+                    icmp_type,
+                    code,
+                    bytes5to8,
+                    payload,
+                )
+                .await;
+            }
+        }
+    }
+}
+
+async fn handle_upstream_echo_reply(
+    network: Network,
+    state: &EchoState,
+    source: SocketAddrV6,
+    id: u16,
+    seq: u16,
+    payload: &[u8],
+) {
+    let entry = match state.restore(network, *source.ip(), id, seq) {
         Ok(Some(entry)) => entry,
         Ok(None) => return,
         Err(e) => {
@@ -1033,7 +1136,7 @@ async fn handle_upstream_echo_reply(
     };
     let reply = match build_echo_packet_with_checksum(
         ICMPV6_ECHO_REPLY,
-        *packet.source.ip(),
+        *source.ip(),
         *entry.client.ip(),
         entry.original_id,
         entry.original_seq,
@@ -1048,7 +1151,7 @@ async fn handle_upstream_echo_reply(
     if let Err(e) = send_downstream_icmp(
         &entry.downstream,
         entry.reply_mark,
-        *packet.source.ip(),
+        *source.ip(),
         entry.client,
         &reply,
     )
@@ -1056,8 +1159,207 @@ async fn handle_upstream_echo_reply(
     {
         report::stdout!(
             "icmp echo reply dropped: source={} client={}: {}",
-            packet.source.ip(),
+            source.ip(),
             entry.client,
+            e
+        );
+    }
+}
+
+async fn handle_upstream_icmp_error(
+    network: Network,
+    state: &EchoState,
+    offender: SocketAddrV6,
+    icmp_type: u8,
+    code: u8,
+    bytes5to8: [u8; 4],
+    quote: &[u8],
+) {
+    if let Some(probe) = quoted_echo_probe(quote) {
+        handle_upstream_echo_error(network, state, offender, icmp_type, code, bytes5to8, probe)
+            .await;
+        return;
+    }
+    if let Some(probe) = quoted_udp_probe(quote) {
+        handle_upstream_udp_error(network, state, offender, icmp_type, code, bytes5to8, probe)
+            .await;
+    }
+}
+
+async fn handle_upstream_echo_error(
+    network: Network,
+    state: &EchoState,
+    offender: SocketAddrV6,
+    icmp_type: u8,
+    code: u8,
+    bytes5to8: [u8; 4],
+    probe: EchoErrorProbe<'_>,
+) {
+    let entry = match state.restore(network, probe.destination, probe.id, probe.seq) {
+        Ok(Some(entry)) => entry,
+        Ok(None) => return,
+        Err(e) => {
+            report::io("nat66.icmp_echo_restore", e);
+            return;
+        }
+    };
+    let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
+    let request = match build_echo_packet_with_checksum(
+        ICMPV6_ECHO_REQUEST,
+        *entry.client.ip(),
+        probe.destination,
+        entry.original_id,
+        entry.original_seq,
+        probe.payload,
+    ) {
+        Ok(request) => request,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_quote_request",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", probe.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    let quote = match build_icmp_quote(
+        *entry.client.ip(),
+        probe.destination,
+        probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
+        &request,
+    ) {
+        Ok(quote) => quote,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_quote",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", probe.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    let packet = match build_icmp_error_packet(
+        icmp_type,
+        code,
+        bytes5to8,
+        source,
+        *entry.client.ip(),
+        &quote,
+    ) {
+        Ok(packet) => packet,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_packet",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", probe.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    if let Err(e) = send_downstream_icmp(
+        &entry.downstream,
+        entry.reply_mark,
+        source,
+        entry.client,
+        &packet,
+    )
+    .await
+    {
+        report::stdout!(
+            "icmp echo error dropped: source={} client={}: {}",
+            source,
+            entry.client,
+            e
+        );
+    }
+}
+
+async fn handle_upstream_udp_error(
+    network: Network,
+    state: &EchoState,
+    offender: SocketAddrV6,
+    icmp_type: u8,
+    code: u8,
+    bytes5to8: [u8; 4],
+    probe: UdpErrorProbe<'_>,
+) {
+    let key = UdpErrorKey {
+        network,
+        upstream: probe.source,
+        destination: probe.destination,
+    };
+    let context = match state.lookup_udp_error(key) {
+        Ok(Some(context)) => context,
+        Ok(None) => return,
+        Err(e) => {
+            report::io("nat66.icmp_udp_lookup", e);
+            return;
+        }
+    };
+    let source = downstream_icmp_error_source(*offender.ip(), context.gateway);
+    let quote = match build_udp_quote_with_hop_limit(
+        context.client,
+        context.destination,
+        probe.hop_limit,
+        probe.payload,
+    ) {
+        Ok(quote) => quote,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_udp_quote",
+                e,
+                [
+                    ("client", context.client.to_string()),
+                    ("destination", context.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    let packet = match build_icmp_error_packet(
+        icmp_type,
+        code,
+        bytes5to8,
+        source,
+        *context.client.ip(),
+        &quote,
+    ) {
+        Ok(packet) => packet,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_udp_error_packet",
+                e,
+                [
+                    ("client", context.client.to_string()),
+                    ("destination", context.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    if let Err(e) = send_downstream_icmp(
+        &context.downstream,
+        context.reply_mark,
+        source,
+        context.client,
+        &packet,
+    )
+    .await
+    {
+        report::stdout!(
+            "udp icmp error dropped: source={} client={} destination={}: {}",
+            source,
+            context.client,
+            context.destination,
             e
         );
     }
@@ -1208,6 +1510,46 @@ fn quoted_echo_probe(payload: &[u8]) -> Option<EchoErrorProbe<'_>> {
         hop_limit: Some(ip.hop_limit),
         payload,
     })
+}
+
+fn quoted_udp_probe(payload: &[u8]) -> Option<UdpErrorProbe<'_>> {
+    let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
+    if ip.next_header != IpNumber::UDP {
+        return None;
+    }
+    let (udp, payload) = UdpHeader::from_slice(rest).ok()?;
+    Some(UdpErrorProbe {
+        source: normalize_udp_error_addr(SocketAddrV6::new(
+            ip.source_addr(),
+            udp.source_port,
+            0,
+            0,
+        )),
+        destination: normalize_udp_error_addr(SocketAddrV6::new(
+            ip.destination_addr(),
+            udp.destination_port,
+            0,
+            0,
+        )),
+        hop_limit: ip.hop_limit,
+        payload,
+    })
+}
+
+fn packet_icmp_error_metadata(packet: &[u8], header: &Icmpv6Header) -> Option<(u8, u8, [u8; 4])> {
+    let type_u8 = header.icmp_type.type_u8();
+    if icmpv6_error_bytes(type_u8, 0).is_none() || packet.len() < 8 {
+        return None;
+    }
+    Some((
+        type_u8,
+        header.icmp_type.code_u8(),
+        packet[4..8].try_into().ok()?,
+    ))
+}
+
+fn normalize_udp_error_addr(address: SocketAddrV6) -> SocketAddrV6 {
+    SocketAddrV6::new(*address.ip(), address.port(), 0, 0)
 }
 
 fn recv_raw_icmp_packet<'a>(

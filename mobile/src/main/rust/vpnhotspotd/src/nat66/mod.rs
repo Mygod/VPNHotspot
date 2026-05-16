@@ -59,7 +59,7 @@ impl Runtime {
         let udp_listener = tproxy::create_udp_listener(config.reply_mark)?;
         let udp = udp_listener.local_addr()?.port();
         tcp::spawn_loop(tcp_listener, shared.clone(), stop.clone())?;
-        if let Err(e) = udp::spawn_loop(udp_listener, shared.clone(), stop.clone()) {
+        if let Err(e) = udp::spawn_loop(udp_listener, shared.clone(), stop.clone(), icmp.clone()) {
             stop.cancel();
             return Err(e);
         }

@@ -36,6 +36,7 @@ struct AssociationKey {
 struct UdpAssociation {
     id: u64,
     socket: Arc<TokioUdpSocket>,
+    _icmp_errors: Option<icmp::UdpErrorRegistration>,
     last_active: Instant,
     stop: CancellationToken,
 }
@@ -48,19 +49,17 @@ enum UdpAssociationEvent {
 enum UdpForwardResult {
     Sent,
     Dropped,
+    PacketTooBig(u32),
     Failed,
 }
 
 struct AssociationTask {
     key: AssociationKey,
     id: u64,
-    downstream: String,
-    gateway: Ipv6Addr,
     socket: Arc<TokioUdpSocket>,
     reply_sockets: Arc<ReplySocketPool>,
     reply_key: ReplySocketKey,
     reply_socket: Option<Arc<TokioUdpSocket>>,
-    icmp_errors: bool,
     stop: CancellationToken,
     association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
 }
@@ -244,6 +243,7 @@ pub(crate) fn spawn_loop(
     listener: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    icmp_dispatcher: icmp::Dispatcher,
 ) -> io::Result<()> {
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
@@ -367,7 +367,18 @@ pub(crate) fn spawn_loop(
                                 if is_special_destination(*destination.ip()) {
                                     continue;
                                 }
-                                let upstream_hop_limit = match nat66_hop_limit(hop_limit) {
+                                let downstream_hop_limit = match hop_limit {
+                                    Some(hop_limit) => hop_limit,
+                                    None => {
+                                        report::message(
+                                            "nat66.udp_hop_limit_missing",
+                                            "missing downstream hop limit",
+                                            "InvalidData",
+                                        );
+                                        continue;
+                                    }
+                                };
+                                let upstream_hop_limit = match nat66_hop_limit(Some(downstream_hop_limit)) {
                                     Nat66HopLimit::Expired => {
                                         if let Err(e) = icmp::send_udp_time_exceeded(
                                             &snapshot.downstream,
@@ -375,7 +386,7 @@ pub(crate) fn spawn_loop(
                                             ipv6_nat.gateway.address(),
                                             client,
                                             destination,
-                                            hop_limit.unwrap_or(1),
+                                            downstream_hop_limit,
                                             &buffer[..size],
                                         ).await {
                                             report::io_with_details(
@@ -390,14 +401,7 @@ pub(crate) fn spawn_loop(
                                         continue;
                                     }
                                     Nat66HopLimit::Forward(hop_limit) => hop_limit,
-                                    Nat66HopLimit::Missing => {
-                                        report::message(
-                                            "nat66.udp_hop_limit_missing",
-                                            "missing downstream hop limit",
-                                            "InvalidData",
-                                        );
-                                        continue;
-                                    }
+                                    Nat66HopLimit::Missing => continue,
                                 };
                                 let network = match select_network(&snapshot, *destination.ip()) {
                                     Some(network) => network,
@@ -418,6 +422,18 @@ pub(crate) fn spawn_loop(
                                             }
                                         }
                                         UdpForwardResult::Dropped => {}
+                                        UdpForwardResult::PacketTooBig(mtu) => {
+                                            send_udp_packet_too_big(
+                                                &snapshot,
+                                                ipv6_nat.gateway.address(),
+                                                client,
+                                                destination,
+                                                mtu,
+                                                downstream_hop_limit,
+                                                &buffer[..size],
+                                            )
+                                            .await;
+                                        }
                                         UdpForwardResult::Failed => {
                                             if let Some(association) = associations.remove(&key) {
                                                 association.stop.cancel();
@@ -440,20 +456,6 @@ pub(crate) fn spawn_loop(
                                         continue;
                                     }
                                 };
-                                let icmp_errors = match icmp::enable_udp_error_queue(&upstream) {
-                                    Ok(()) => true,
-                                    Err(e) => {
-                                        report::io_with_details(
-                                            "nat66.udp_error_queue",
-                                            e,
-                                            [
-                                                ("client", client.to_string()),
-                                                ("destination", destination.to_string()),
-                                            ],
-                                        );
-                                        false
-                                    }
-                                };
                                 let reply_key = ReplySocketKey {
                                     source: destination,
                                     mark: snapshot.reply_mark,
@@ -469,6 +471,54 @@ pub(crate) fn spawn_loop(
                                     );
                                     continue;
                                 }
+                                let icmp_errors = match upstream.local_addr() {
+                                    Ok(SocketAddr::V6(source)) => {
+                                        match icmp_dispatcher.register_udp_error(
+                                            network,
+                                            source,
+                                            destination,
+                                            icmp::UdpErrorContext {
+                                                downstream: snapshot.downstream.clone(),
+                                                reply_mark: snapshot.reply_mark,
+                                                gateway: ipv6_nat.gateway.address(),
+                                                client,
+                                                destination,
+                                            },
+                                        ) {
+                                            Ok(registration) => Some(registration),
+                                            Err(e) => {
+                                                report::io_with_details(
+                                                    "nat66.udp_icmp_register",
+                                                    e,
+                                                    [
+                                                        ("client", client.to_string()),
+                                                        ("destination", destination.to_string()),
+                                                    ],
+                                                );
+                                                None
+                                            }
+                                        }
+                                    }
+                                    Ok(SocketAddr::V4(_)) => {
+                                        report::message(
+                                            "nat66.udp_icmp_register",
+                                            "unexpected IPv4 upstream socket address",
+                                            "InvalidData",
+                                        );
+                                        None
+                                    }
+                                    Err(e) => {
+                                        report::io_with_details(
+                                            "nat66.udp_icmp_register",
+                                            e,
+                                            [
+                                                ("client", client.to_string()),
+                                                ("destination", destination.to_string()),
+                                            ],
+                                        );
+                                        None
+                                    }
+                                };
                                 let upstream = Arc::new(upstream);
                                 match forward_udp_datagram(
                                     &upstream,
@@ -484,6 +534,22 @@ pub(crate) fn spawn_loop(
                                         }
                                         continue;
                                     }
+                                    UdpForwardResult::PacketTooBig(mtu) => {
+                                        send_udp_packet_too_big(
+                                            &snapshot,
+                                            ipv6_nat.gateway.address(),
+                                            client,
+                                            destination,
+                                            mtu,
+                                            downstream_hop_limit,
+                                            &buffer[..size],
+                                        )
+                                        .await;
+                                        if let Err(e) = reply_sockets.release_user(reply_key) {
+                                            report::io("nat66.udp_reply_release", e);
+                                        }
+                                        continue;
+                                    }
                                 }
                                 let association_stop = stop.child_token();
                                 let association_id = next_association_id;
@@ -491,13 +557,10 @@ pub(crate) fn spawn_loop(
                                 spawn(AssociationTask {
                                     key,
                                     id: association_id,
-                                    downstream: snapshot.downstream.clone(),
-                                    gateway: ipv6_nat.gateway.address(),
                                     socket: upstream.clone(),
                                     reply_sockets: reply_sockets.clone(),
                                     reply_key,
                                     reply_socket: None,
-                                    icmp_errors,
                                     stop: association_stop.clone(),
                                     association_event_tx: association_event_tx.clone(),
                                 }.run());
@@ -506,6 +569,7 @@ pub(crate) fn spawn_loop(
                                     UdpAssociation {
                                         id: association_id,
                                         socket: upstream,
+                                        _icmp_errors: icmp_errors,
                                         last_active: activity,
                                         stop: association_stop,
                                     },
@@ -557,18 +621,17 @@ impl AssociationTask {
                         }
                         self.report_active();
                     }
+                    Err(e) if is_udp_icmp_error(&e) => continue,
                     Err(e) => {
-                        if !self.drain_error_queue().await {
-                            report::io_with_details(
-                                "nat66.udp_upstream_recv",
-                                e,
-                                [
-                                    ("client", self.key.client.to_string()),
-                                    ("destination", self.key.destination.to_string()),
-                                ],
-                            );
-                            break;
-                        }
+                        report::io_with_details(
+                            "nat66.udp_upstream_recv",
+                            e,
+                            [
+                                ("client", self.key.client.to_string()),
+                                ("destination", self.key.destination.to_string()),
+                            ],
+                        );
+                        break;
                     }
                 }
             }
@@ -592,40 +655,6 @@ impl AssociationTask {
         }
     }
 
-    async fn drain_error_queue(&self) -> bool {
-        if !self.icmp_errors {
-            return false;
-        }
-        let context = icmp::UdpErrorContext {
-            downstream: self.downstream.clone(),
-            reply_mark: self.reply_key.mark,
-            gateway: self.gateway,
-            client: self.key.client,
-            destination: self.key.destination,
-        };
-        match icmp::drain_udp_error_queue(&self.socket, &context).await {
-            Ok(count) => {
-                if count > 0 {
-                    self.report_active();
-                    true
-                } else {
-                    false
-                }
-            }
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.udp_error_queue_recv",
-                    e,
-                    [
-                        ("client", self.key.client.to_string()),
-                        ("destination", self.key.destination.to_string()),
-                    ],
-                );
-                false
-            }
-        }
-    }
-
     fn report_active(&self) {
         if self
             .association_event_tx
@@ -640,6 +669,21 @@ impl AssociationTask {
             );
         }
     }
+}
+
+fn is_udp_icmp_error(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(
+            libc::EACCES
+                | libc::ECONNREFUSED
+                | libc::EHOSTUNREACH
+                | libc::EMSGSIZE
+                | libc::ENETUNREACH
+                | libc::EPROTO
+                | libc::ETIMEDOUT
+        )
+    )
 }
 
 async fn send_response(
@@ -744,6 +788,58 @@ fn set_upstream_hop_limit(socket: &TokioUdpSocket, hop_limit: u8) -> io::Result<
     )
 }
 
+async fn send_udp_packet_too_big(
+    config: &SessionConfig,
+    gateway: Ipv6Addr,
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+    mtu: u32,
+    hop_limit: u8,
+    payload: &[u8],
+) {
+    let context = icmp::UdpErrorContext {
+        downstream: config.downstream.clone(),
+        reply_mark: config.reply_mark,
+        gateway,
+        client,
+        destination,
+    };
+    if let Err(e) = icmp::send_udp_packet_too_big(&context, mtu, hop_limit, payload).await {
+        report::io_with_details(
+            "nat66.udp_packet_too_big",
+            e,
+            [
+                ("client", client.to_string()),
+                ("destination", destination.to_string()),
+            ],
+        );
+    }
+}
+
+fn upstream_mtu(socket: &TokioUdpSocket) -> io::Result<u32> {
+    let mut mtu = 0 as c_int;
+    let mut len = size_of::<c_int>() as socklen_t;
+    let result = unsafe {
+        libc::getsockopt(
+            socket.as_raw_fd(),
+            IPPROTO_IPV6,
+            libc::IPV6_MTU,
+            &mut mtu as *mut _ as *mut c_void,
+            &mut len,
+        )
+    };
+    if result < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if mtu <= 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid ipv6 mtu",
+        ));
+    }
+    Ok(mtu as u32)
+}
+
 fn forward_udp_datagram(
     socket: &TokioUdpSocket,
     hop_limit: u8,
@@ -763,10 +859,33 @@ fn forward_udp_datagram(
         return UdpForwardResult::Dropped;
     }
     loop {
-        match socket.try_send(payload) {
+        match send_udp_payload(socket, payload) {
             Ok(_) => return UdpForwardResult::Sent,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return UdpForwardResult::Dropped,
+            Err(e) if e.raw_os_error() == Some(libc::EMSGSIZE) => match upstream_mtu(socket) {
+                Ok(mtu) => return UdpForwardResult::PacketTooBig(mtu),
+                Err(mtu_error) => {
+                    report::io_with_details(
+                        "nat66.udp_mtu",
+                        mtu_error,
+                        [
+                            ("client", client.to_string()),
+                            ("destination", destination.to_string()),
+                        ],
+                    );
+                    report::io_with_details(
+                        "nat66.udp_send",
+                        e,
+                        [
+                            ("client", client.to_string()),
+                            ("destination", destination.to_string()),
+                        ],
+                    );
+                    return UdpForwardResult::Failed;
+                }
+            },
+            Err(e) if is_udp_icmp_error(&e) => return UdpForwardResult::Dropped,
             Err(e) => {
                 report::io_with_details(
                     "nat66.udp_send",
@@ -779,6 +898,28 @@ fn forward_udp_datagram(
                 return UdpForwardResult::Failed;
             }
         }
+    }
+}
+
+fn send_udp_payload(socket: &TokioUdpSocket, payload: &[u8]) -> io::Result<()> {
+    let written = unsafe {
+        libc::send(
+            socket.as_raw_fd(),
+            payload.as_ptr() as *const c_void,
+            payload.len(),
+            MSG_DONTWAIT,
+        )
+    };
+    if written < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if written as usize == payload.len() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::WriteZero,
+            "short udp datagram write",
+        ))
     }
 }
 
