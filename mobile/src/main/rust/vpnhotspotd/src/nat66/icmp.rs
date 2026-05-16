@@ -38,6 +38,7 @@ const IPV6_RECVERR_OPT: c_int = 25;
 const MSG_ERRQUEUE_OPT: c_int = 0x2000;
 const SO_EE_ORIGIN_ICMP6: u8 = 3;
 const NONLOCAL_PROBE_SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
+const IPV6_HEADER_LEN: u64 = 40;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -166,6 +167,15 @@ struct UdpErrorProbe<'a> {
     destination: SocketAddrV6,
     hop_limit: u8,
     payload: &'a [u8],
+}
+
+struct EchoErrorResponse {
+    source: Ipv6Addr,
+    icmp_type: u8,
+    code: u8,
+    bytes5to8: [u8; 4],
+    destination: Ipv6Addr,
+    hop_limit: u8,
 }
 
 #[derive(Clone)]
@@ -978,6 +988,44 @@ async fn handle_downstream_echo(
                         }
                     }
                 }
+                if e.raw_os_error() == Some(libc::EMSGSIZE) {
+                    match upstream_mtu(socket.socket.get_ref().as_raw_fd()) {
+                        Ok(mtu) if icmpv6_packet_exceeds_mtu(&request, mtu) => {
+                            match state.restore(network, packet.destination, id, seq) {
+                                Ok(Some(entry)) => {
+                                    send_echo_error(
+                                        entry,
+                                        EchoErrorResponse {
+                                            source: ipv6_nat.gateway.address(),
+                                            icmp_type: ICMPV6_PACKET_TOO_BIG,
+                                            code: 0,
+                                            bytes5to8: mtu.to_be_bytes(),
+                                            destination: packet.destination,
+                                            hop_limit: packet.hop_limit,
+                                        },
+                                        payload,
+                                    )
+                                    .await;
+                                }
+                                Ok(None) => {}
+                                Err(error) => {
+                                    report::io("nat66.icmp_echo_restore_failed_send", error);
+                                }
+                            }
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(error) => report::io_with_details(
+                            "nat66.icmp_upstream_mtu",
+                            error,
+                            [
+                                ("client", packet.source.to_string()),
+                                ("destination", packet.destination.to_string()),
+                                ("network", network.to_string()),
+                            ],
+                        ),
+                    }
+                }
                 report::io_with_details(
                     "nat66.icmp_upstream_send",
                     e,
@@ -1204,83 +1252,20 @@ async fn handle_upstream_echo_error(
         }
     };
     let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
-    let request = match build_echo_packet_with_checksum(
-        ICMPV6_ECHO_REQUEST,
-        *entry.client.ip(),
-        probe.destination,
-        entry.original_id,
-        entry.original_seq,
+    let hop_limit = probe.hop_limit.unwrap_or(entry.upstream_hop_limit);
+    send_echo_error(
+        entry,
+        EchoErrorResponse {
+            source,
+            icmp_type,
+            code,
+            bytes5to8,
+            destination: probe.destination,
+            hop_limit,
+        },
         probe.payload,
-    ) {
-        Ok(request) => request,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_quote_request",
-                e,
-                [
-                    ("client", entry.client.to_string()),
-                    ("destination", probe.destination.to_string()),
-                ],
-            );
-            return;
-        }
-    };
-    let quote = match build_icmp_quote(
-        *entry.client.ip(),
-        probe.destination,
-        probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
-        &request,
-    ) {
-        Ok(quote) => quote,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_quote",
-                e,
-                [
-                    ("client", entry.client.to_string()),
-                    ("destination", probe.destination.to_string()),
-                ],
-            );
-            return;
-        }
-    };
-    let packet = match build_icmp_error_packet(
-        icmp_type,
-        code,
-        bytes5to8,
-        source,
-        *entry.client.ip(),
-        &quote,
-    ) {
-        Ok(packet) => packet,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_packet",
-                e,
-                [
-                    ("client", entry.client.to_string()),
-                    ("destination", probe.destination.to_string()),
-                ],
-            );
-            return;
-        }
-    };
-    if let Err(e) = send_downstream_icmp(
-        &entry.downstream,
-        entry.reply_mark,
-        source,
-        entry.client,
-        &packet,
     )
     .await
-    {
-        report::stdout!(
-            "icmp echo error dropped: source={} client={}: {}",
-            source,
-            entry.client,
-            e
-        );
-    }
 }
 
 async fn handle_upstream_udp_error(
@@ -1395,84 +1380,20 @@ async fn drain_echo_error_queue(
             continue;
         };
         let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
-        let request = match build_echo_packet_with_checksum(
-            ICMPV6_ECHO_REQUEST,
-            *entry.client.ip(),
-            probe.destination,
-            entry.original_id,
-            entry.original_seq,
+        let hop_limit = probe.hop_limit.unwrap_or(entry.upstream_hop_limit);
+        send_echo_error(
+            entry,
+            EchoErrorResponse {
+                source,
+                icmp_type,
+                code: message.error.ee_code,
+                bytes5to8,
+                destination: probe.destination,
+                hop_limit,
+            },
             probe.payload,
-        ) {
-            Ok(request) => request,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_echo_error_quote_request",
-                    e,
-                    [
-                        ("client", entry.client.to_string()),
-                        ("destination", probe.destination.to_string()),
-                    ],
-                );
-                continue;
-            }
-        };
-        let quote = match build_icmp_quote(
-            *entry.client.ip(),
-            probe.destination,
-            probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
-            &request,
-        ) {
-            Ok(quote) => quote,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_echo_error_quote",
-                    e,
-                    [
-                        ("client", entry.client.to_string()),
-                        ("destination", probe.destination.to_string()),
-                    ],
-                );
-                continue;
-            }
-        };
-        let packet = match build_icmp_error_packet(
-            icmp_type,
-            message.error.ee_code,
-            bytes5to8,
-            source,
-            *entry.client.ip(),
-            &quote,
-        ) {
-            Ok(packet) => packet,
-            Err(e) => {
-                report::io_with_details(
-                    "nat66.icmp_echo_error_packet",
-                    e,
-                    [
-                        ("client", entry.client.to_string()),
-                        ("destination", probe.destination.to_string()),
-                    ],
-                );
-                continue;
-            }
-        };
-        if let Err(e) = send_downstream_icmp(
-            &entry.downstream,
-            entry.reply_mark,
-            source,
-            entry.client,
-            &packet,
         )
         .await
-        {
-            report::stdout!(
-                "icmp echo error dropped: source={} client={}: {}",
-                source,
-                entry.client,
-                e
-            );
-            continue;
-        }
     }
 }
 
@@ -1682,6 +1603,114 @@ fn set_upstream_echo_hop_limit(socket: &AsyncFd<Socket>, hop_limit: u8) -> io::R
         libc::IPV6_UNICAST_HOPS,
         c_int::from(hop_limit),
     )
+}
+
+fn upstream_mtu(fd: RawFd) -> io::Result<u32> {
+    let mut mtu = 0 as c_int;
+    let mut len = size_of::<c_int>() as socklen_t;
+    let result = unsafe {
+        libc::getsockopt(
+            fd,
+            IPPROTO_IPV6,
+            libc::IPV6_MTU,
+            &mut mtu as *mut _ as *mut c_void,
+            &mut len,
+        )
+    };
+    if result < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if mtu <= 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid ipv6 mtu",
+        ));
+    }
+    Ok(mtu as u32)
+}
+
+fn icmpv6_packet_exceeds_mtu(packet: &[u8], mtu: u32) -> bool {
+    IPV6_HEADER_LEN + packet.len() as u64 > u64::from(mtu)
+}
+
+async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload: &[u8]) {
+    let request = match build_echo_packet_with_checksum(
+        ICMPV6_ECHO_REQUEST,
+        *entry.client.ip(),
+        response.destination,
+        entry.original_id,
+        entry.original_seq,
+        payload,
+    ) {
+        Ok(request) => request,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_quote_request",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", response.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    let quote = match build_icmp_quote(
+        *entry.client.ip(),
+        response.destination,
+        response.hop_limit,
+        &request,
+    ) {
+        Ok(quote) => quote,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_quote",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", response.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    let packet = match build_icmp_error_packet(
+        response.icmp_type,
+        response.code,
+        response.bytes5to8,
+        response.source,
+        *entry.client.ip(),
+        &quote,
+    ) {
+        Ok(packet) => packet,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.icmp_echo_error_packet",
+                e,
+                [
+                    ("client", entry.client.to_string()),
+                    ("destination", response.destination.to_string()),
+                ],
+            );
+            return;
+        }
+    };
+    if let Err(e) = send_downstream_icmp(
+        &entry.downstream,
+        entry.reply_mark,
+        response.source,
+        entry.client,
+        &packet,
+    )
+    .await
+    {
+        report::stdout!(
+            "icmp echo error dropped: source={} client={}: {}",
+            response.source,
+            entry.client,
+            e
+        );
+    }
 }
 
 async fn send_upstream_echo(

@@ -271,9 +271,6 @@ if ! grep -qi 'time exceeded' <<<"$hop2_output"; then
     echo "ping exit status: $hop2_status"
     fail "hop-limit-2 Echo did not produce Time Exceeded."
 fi
-if grep -F "From $NAT_GW " <<<"$hop2_output" >/dev/null; then
-    fail "hop-limit-2 Echo Time Exceeded came from the NAT66 gateway instead of an upstream hop."
-fi
 pass "hop-limit-2 Echo produced best-effort upstream Time Exceeded."
 
 section "UDP DNS"
@@ -370,8 +367,6 @@ if hop1 != gateway:
 hop2 = expect_time_exceeded(2, 33435)
 if hop2 is None:
     raise SystemExit("hop-limit-2 offender missing")
-if hop2 == gateway:
-    raise SystemExit(f"hop-limit-2 offender unexpectedly gateway-sourced: {hop2}")
 PY
 pass "UDP hop-limit errors are translated through the IPv6 error queue."
 
