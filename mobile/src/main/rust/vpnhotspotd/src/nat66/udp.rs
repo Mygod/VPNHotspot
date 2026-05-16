@@ -33,14 +33,9 @@ struct AssociationKey {
     destination: SocketAddrV6,
 }
 
-struct UdpDatagram {
-    payload: Vec<u8>,
-    upstream_hop_limit: u8,
-}
-
 struct UdpAssociation {
     id: u64,
-    datagrams: mpsc::UnboundedSender<UdpDatagram>,
+    socket: Arc<TokioUdpSocket>,
     last_active: Instant,
     stop: CancellationToken,
 }
@@ -50,13 +45,18 @@ enum UdpAssociationEvent {
     Closed(AssociationKey, u64),
 }
 
+enum UdpForwardResult {
+    Sent,
+    Dropped,
+    Failed,
+}
+
 struct AssociationTask {
     key: AssociationKey,
     id: u64,
     downstream: String,
     gateway: Ipv6Addr,
-    socket: TokioUdpSocket,
-    datagrams: mpsc::UnboundedReceiver<UdpDatagram>,
+    socket: Arc<TokioUdpSocket>,
     reply_sockets: Arc<ReplySocketPool>,
     reply_key: ReplySocketKey,
     reply_socket: Option<Arc<TokioUdpSocket>>,
@@ -404,17 +404,24 @@ pub(crate) fn spawn_loop(
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
-                                let datagram = UdpDatagram {
-                                    payload: buffer[..size].to_vec(),
-                                    upstream_hop_limit,
-                                };
-                                if let Some(datagrams) = associations.get_mut(&key).map(|association| {
-                                    association.last_active = activity;
-                                    association.datagrams.clone()
-                                }) {
-                                    if datagrams.send(datagram).is_err() {
-                                        if let Some(association) = associations.remove(&key) {
-                                            association.stop.cancel();
+                                if let Some(socket) = associations.get(&key).map(|association| association.socket.clone()) {
+                                    match forward_udp_datagram(
+                                        &socket,
+                                        upstream_hop_limit,
+                                        &buffer[..size],
+                                        client,
+                                        destination,
+                                    ) {
+                                        UdpForwardResult::Sent => {
+                                            if let Some(association) = associations.get_mut(&key) {
+                                                association.last_active = activity;
+                                            }
+                                        }
+                                        UdpForwardResult::Dropped => {}
+                                        UdpForwardResult::Failed => {
+                                            if let Some(association) = associations.remove(&key) {
+                                                association.stop.cancel();
+                                            }
                                         }
                                     }
                                     continue;
@@ -462,17 +469,31 @@ pub(crate) fn spawn_loop(
                                     );
                                     continue;
                                 }
+                                let upstream = Arc::new(upstream);
+                                match forward_udp_datagram(
+                                    &upstream,
+                                    upstream_hop_limit,
+                                    &buffer[..size],
+                                    client,
+                                    destination,
+                                ) {
+                                    UdpForwardResult::Sent => {}
+                                    UdpForwardResult::Dropped | UdpForwardResult::Failed => {
+                                        if let Err(e) = reply_sockets.release_user(reply_key) {
+                                            report::io("nat66.udp_reply_release", e);
+                                        }
+                                        continue;
+                                    }
+                                }
                                 let association_stop = stop.child_token();
                                 let association_id = next_association_id;
                                 next_association_id = next_association_id.wrapping_add(1);
-                                let (datagram_tx, datagram_rx) = mpsc::unbounded_channel();
                                 spawn(AssociationTask {
                                     key,
                                     id: association_id,
                                     downstream: snapshot.downstream.clone(),
                                     gateway: ipv6_nat.gateway.address(),
-                                    socket: upstream,
-                                    datagrams: datagram_rx,
+                                    socket: upstream.clone(),
                                     reply_sockets: reply_sockets.clone(),
                                     reply_key,
                                     reply_socket: None,
@@ -484,16 +505,11 @@ pub(crate) fn spawn_loop(
                                     key,
                                     UdpAssociation {
                                         id: association_id,
-                                        datagrams: datagram_tx.clone(),
+                                        socket: upstream,
                                         last_active: activity,
                                         stop: association_stop,
                                     },
                                 );
-                                if datagram_tx.send(datagram).is_err() {
-                                    if let Some(association) = associations.remove(&key) {
-                                        association.stop.cancel();
-                                    }
-                                }
                             }
                             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                                 ready.clear_ready();
@@ -519,49 +535,9 @@ pub(crate) fn spawn_loop(
 impl AssociationTask {
     async fn run(mut self) {
         let mut buffer = [0u8; 65535];
-        'association: loop {
+        loop {
             select! {
                 _ = self.stop.cancelled() => break,
-                datagram = self.datagrams.recv() => match datagram {
-                    Some(datagram) => {
-                        if let Err(e) = set_upstream_hop_limit(&self.socket, datagram.upstream_hop_limit) {
-                            report::io_with_details(
-                                "nat66.udp_hop_limit",
-                                e,
-                                [
-                                    ("client", self.key.client.to_string()),
-                                    ("destination", self.key.destination.to_string()),
-                                ],
-                            );
-                            continue;
-                        }
-                        let mut retried_after_error_queue = false;
-                        loop {
-                            match self.socket.send(&datagram.payload).await {
-                                Ok(_) => {
-                                    self.report_active();
-                                    break;
-                                }
-                                Err(e) => {
-                                    if !retried_after_error_queue && self.drain_error_queue().await {
-                                        retried_after_error_queue = true;
-                                        continue;
-                                    }
-                                    report::io_with_details(
-                                        "nat66.udp_send",
-                                        e,
-                                        [
-                                            ("client", self.key.client.to_string()),
-                                            ("destination", self.key.destination.to_string()),
-                                        ],
-                                    );
-                                    break 'association;
-                                }
-                            }
-                        }
-                    }
-                    None => break,
-                },
                 result = self.socket.recv(&mut buffer) => match result {
                     Ok(size) => {
                         if let Err(e) = send_response(
@@ -766,6 +742,44 @@ fn set_upstream_hop_limit(socket: &TokioUdpSocket, hop_limit: u8) -> io::Result<
         IPV6_UNICAST_HOPS,
         c_int::from(hop_limit),
     )
+}
+
+fn forward_udp_datagram(
+    socket: &TokioUdpSocket,
+    hop_limit: u8,
+    payload: &[u8],
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+) -> UdpForwardResult {
+    if let Err(e) = set_upstream_hop_limit(socket, hop_limit) {
+        report::io_with_details(
+            "nat66.udp_hop_limit",
+            e,
+            [
+                ("client", client.to_string()),
+                ("destination", destination.to_string()),
+            ],
+        );
+        return UdpForwardResult::Dropped;
+    }
+    loop {
+        match socket.try_send(payload) {
+            Ok(_) => return UdpForwardResult::Sent,
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return UdpForwardResult::Dropped,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.udp_send",
+                    e,
+                    [
+                        ("client", client.to_string()),
+                        ("destination", destination.to_string()),
+                    ],
+                );
+                return UdpForwardResult::Failed;
+            }
+        }
+    }
 }
 
 fn recv_packet(
