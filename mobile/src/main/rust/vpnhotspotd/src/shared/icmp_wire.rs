@@ -108,7 +108,7 @@ pub fn build_udp_quote_with_hop_limit(
 ) -> io::Result<Vec<u8>> {
     let max_payload =
         ICMPV6_MINIMUM_MTU - Ipv6Header::LEN - ICMPV6_HEADER_LEN - Ipv6Header::LEN - UdpHeader::LEN;
-    let payload = &payload[..payload.len().min(max_payload)];
+    let quoted_payload = &payload[..payload.len().min(max_payload)];
     let ip = ipv6_header(
         *client.ip(),
         *destination.ip(),
@@ -118,10 +118,10 @@ pub fn build_udp_quote_with_hop_limit(
     )?;
     let udp = UdpHeader::with_ipv6_checksum(client.port(), destination.port(), &ip, payload)
         .map_err(io::Error::other)?;
-    let mut quote = Vec::with_capacity(Ipv6Header::LEN + UdpHeader::LEN + payload.len());
+    let mut quote = Vec::with_capacity(Ipv6Header::LEN + UdpHeader::LEN + quoted_payload.len());
     quote.extend_from_slice(&ip.to_bytes());
     quote.extend_from_slice(&udp.to_bytes());
-    quote.extend_from_slice(payload);
+    quote.extend_from_slice(quoted_payload);
     Ok(quote)
 }
 
@@ -247,6 +247,11 @@ mod tests {
         let (udp, payload) = UdpHeader::from_slice(rest).unwrap();
         assert_eq!(udp.source_port, client.port());
         assert_eq!(udp.destination_port, destination.port());
+        assert_eq!(
+            usize::from(ip.payload_length),
+            UdpHeader::LEN + payload.len()
+        );
+        assert_eq!(usize::from(udp.length), UdpHeader::LEN + payload.len());
         assert_eq!(payload, b"payload");
         assert_ne!(udp.checksum, 0);
     }
@@ -263,12 +268,20 @@ mod tests {
         );
         let (ip, rest) = Ipv6Header::from_slice(&quote).unwrap();
         assert_eq!(ip.hop_limit, 1);
-        assert_eq!(usize::from(ip.payload_length), rest.len());
-        let (udp, payload) = UdpHeader::from_slice(rest).unwrap();
         assert_eq!(
-            payload.len(),
+            usize::from(ip.payload_length),
+            UdpHeader::LEN + payload.len()
+        );
+        let (udp, quoted_payload) = UdpHeader::from_slice(rest).unwrap();
+        assert_eq!(usize::from(udp.length), UdpHeader::LEN + payload.len());
+        assert_eq!(
+            quoted_payload.len(),
             quote.len() - Ipv6Header::LEN - UdpHeader::LEN
         );
+        let expected =
+            UdpHeader::with_ipv6_checksum(client.port(), destination.port(), &ip, &payload)
+                .unwrap();
+        assert_eq!(udp.checksum, expected.checksum);
         assert_ne!(udp.checksum, 0);
     }
 

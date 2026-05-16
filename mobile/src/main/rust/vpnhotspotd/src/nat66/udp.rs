@@ -875,7 +875,10 @@ fn forward_udp_datagram(
         match send_udp_payload(socket, payload) {
             Ok(_) => return UdpForwardResult::Sent,
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return UdpForwardResult::Dropped,
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                // Keep the shared UDP owner moving; local datagram queue pressure drops only this packet.
+                return UdpForwardResult::Dropped;
+            }
             Err(e) if e.raw_os_error() == Some(libc::EMSGSIZE) => match upstream_mtu(socket) {
                 Ok(mtu) if udp_ipv6_packet_exceeds_mtu(payload, mtu) => {
                     return UdpForwardResult::PacketTooBig(mtu);
