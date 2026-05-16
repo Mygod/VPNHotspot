@@ -532,6 +532,10 @@ impl Runtime {
                 &mut mutations,
                 RoutingMutation::Iptables(Self::ipv6_nat_tproxy_acl_rule(config)),
             );
+            // Iptables rules are installed with -I; these land before the ACL gate.
+            for rule in Self::ipv6_nat_tproxy_icmpv6_control_rules(config) {
+                push_unique(&mut mutations, RoutingMutation::Iptables(rule));
+            }
             for rule in Self::ipv6_nat_filter_jump_rules() {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
@@ -958,6 +962,29 @@ impl Runtime {
                 "vpnhotspot_acl".into(),
             ],
         )
+    }
+
+    fn ipv6_nat_tproxy_icmpv6_control_rules(config: &SessionConfig) -> Vec<IptablesRule> {
+        ["133", "135", "136"]
+            .into_iter()
+            .map(|icmpv6_type| {
+                IptablesRule::new(
+                    IptablesTarget::Ipv6,
+                    "mangle",
+                    "vpnhotspot_v6_tproxy",
+                    vec![
+                        "-i".into(),
+                        config.downstream.clone(),
+                        "-p".into(),
+                        "icmpv6".into(),
+                        "--icmpv6-type".into(),
+                        icmpv6_type.into(),
+                        "-j".into(),
+                        "RETURN".into(),
+                    ],
+                )
+            })
+            .collect()
     }
 
     fn ipv6_nat_filter_jump_rules() -> Vec<IptablesRule> {
