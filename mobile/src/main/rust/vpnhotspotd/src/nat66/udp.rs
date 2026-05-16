@@ -35,7 +35,7 @@ struct AssociationKey {
 
 struct UdpDatagram {
     payload: Vec<u8>,
-    upstream_hop_limit: Option<u8>,
+    upstream_hop_limit: u8,
 }
 
 struct UdpAssociation {
@@ -389,8 +389,15 @@ pub(crate) fn spawn_loop(
                                         }
                                         continue;
                                     }
-                                    Nat66HopLimit::Forward(hop_limit) => Some(hop_limit),
-                                    Nat66HopLimit::Missing => None,
+                                    Nat66HopLimit::Forward(hop_limit) => hop_limit,
+                                    Nat66HopLimit::Missing => {
+                                        report::message(
+                                            "nat66.udp_hop_limit_missing",
+                                            "missing downstream hop limit",
+                                            "InvalidData",
+                                        );
+                                        continue;
+                                    }
                                 };
                                 let network = match select_network(&snapshot, *destination.ip()) {
                                     Some(network) => network,
@@ -517,17 +524,16 @@ impl AssociationTask {
                 _ = self.stop.cancelled() => break,
                 datagram = self.datagrams.recv() => match datagram {
                     Some(datagram) => {
-                        if let Some(hop_limit) = datagram.upstream_hop_limit {
-                            if let Err(e) = set_upstream_hop_limit(&self.socket, hop_limit) {
-                                report::io_with_details(
-                                    "nat66.udp_hop_limit",
-                                    e,
-                                    [
-                                        ("client", self.key.client.to_string()),
-                                        ("destination", self.key.destination.to_string()),
-                                    ],
-                                );
-                            }
+                        if let Err(e) = set_upstream_hop_limit(&self.socket, datagram.upstream_hop_limit) {
+                            report::io_with_details(
+                                "nat66.udp_hop_limit",
+                                e,
+                                [
+                                    ("client", self.key.client.to_string()),
+                                    ("destination", self.key.destination.to_string()),
+                                ],
+                            );
+                            continue;
                         }
                         let mut retried_after_error_queue = false;
                         loop {
