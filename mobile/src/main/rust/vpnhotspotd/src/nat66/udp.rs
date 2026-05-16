@@ -36,7 +36,7 @@ struct AssociationKey {
 struct UdpAssociation {
     id: u64,
     socket: Arc<TokioUdpSocket>,
-    _icmp_errors: Option<icmp::UdpErrorRegistration>,
+    icmp_errors: Option<icmp::UdpErrorRegistration>,
     last_active: Instant,
     stop: CancellationToken,
 }
@@ -60,6 +60,7 @@ struct AssociationTask {
     reply_sockets: Arc<ReplySocketPool>,
     reply_key: ReplySocketKey,
     reply_socket: Option<Arc<TokioUdpSocket>>,
+    icmp_errors_registered: bool,
     stop: CancellationToken,
     association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
 }
@@ -408,13 +409,22 @@ pub(crate) fn spawn_loop(
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
-                                if let Some(socket) = associations.get(&key).map(|association| association.socket.clone()) {
+                                if let Some((socket, icmp_errors_registered)) = associations
+                                    .get(&key)
+                                    .map(|association| {
+                                        (
+                                            association.socket.clone(),
+                                            association.icmp_errors.is_some(),
+                                        )
+                                    })
+                                {
                                     match forward_udp_datagram(
                                         &socket,
                                         upstream_hop_limit,
                                         &buffer[..size],
                                         client,
                                         destination,
+                                        icmp_errors_registered,
                                     ) {
                                         UdpForwardResult::Sent => {
                                             if let Some(association) = associations.get_mut(&key) {
@@ -519,6 +529,7 @@ pub(crate) fn spawn_loop(
                                         None
                                     }
                                 };
+                                let icmp_errors_registered = icmp_errors.is_some();
                                 let upstream = Arc::new(upstream);
                                 match forward_udp_datagram(
                                     &upstream,
@@ -526,6 +537,7 @@ pub(crate) fn spawn_loop(
                                     &buffer[..size],
                                     client,
                                     destination,
+                                    icmp_errors_registered,
                                 ) {
                                     UdpForwardResult::Sent => {}
                                     UdpForwardResult::Dropped | UdpForwardResult::Failed => {
@@ -561,6 +573,7 @@ pub(crate) fn spawn_loop(
                                     reply_sockets: reply_sockets.clone(),
                                     reply_key,
                                     reply_socket: None,
+                                    icmp_errors_registered,
                                     stop: association_stop.clone(),
                                     association_event_tx: association_event_tx.clone(),
                                 }.run());
@@ -569,7 +582,7 @@ pub(crate) fn spawn_loop(
                                     UdpAssociation {
                                         id: association_id,
                                         socket: upstream,
-                                        _icmp_errors: icmp_errors,
+                                        icmp_errors,
                                         last_active: activity,
                                         stop: association_stop,
                                     },
@@ -621,7 +634,7 @@ impl AssociationTask {
                         }
                         self.report_active();
                     }
-                    Err(e) if is_udp_icmp_error(&e) => continue,
+                    Err(e) if self.icmp_errors_registered && is_udp_icmp_error(&e) => continue,
                     Err(e) => {
                         report::io_with_details(
                             "nat66.udp_upstream_recv",
@@ -846,6 +859,7 @@ fn forward_udp_datagram(
     payload: &[u8],
     client: SocketAddrV6,
     destination: SocketAddrV6,
+    icmp_errors_registered: bool,
 ) -> UdpForwardResult {
     if let Err(e) = set_upstream_hop_limit(socket, hop_limit) {
         report::io_with_details(
@@ -885,7 +899,9 @@ fn forward_udp_datagram(
                     return UdpForwardResult::Failed;
                 }
             },
-            Err(e) if is_udp_icmp_error(&e) => return UdpForwardResult::Dropped,
+            Err(e) if icmp_errors_registered && is_udp_icmp_error(&e) => {
+                return UdpForwardResult::Dropped;
+            }
             Err(e) => {
                 report::io_with_details(
                     "nat66.udp_send",
