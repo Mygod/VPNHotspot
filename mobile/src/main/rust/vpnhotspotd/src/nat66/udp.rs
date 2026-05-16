@@ -6,6 +6,7 @@ use std::os::fd::AsRawFd;
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::Instant;
 
+use etherparse::{Ipv6Header, UdpHeader};
 use libc::{c_int, c_void, socklen_t, IPPROTO_IPV6};
 use nix::cmsg_space;
 use nix::sys::socket::{
@@ -25,9 +26,6 @@ use crate::report;
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::{select_network, SessionConfig};
-
-const IPV6_HEADER_LEN: u64 = 40;
-const UDP_HEADER_LEN: u64 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AssociationKey {
@@ -59,8 +57,7 @@ struct AssociationTask {
     key: AssociationKey,
     id: u64,
     socket: Arc<TokioUdpSocket>,
-    reply_sockets: Arc<ReplySocketPool>,
-    reply_key: ReplySocketKey,
+    reply_reservation: ReplySocketReservation,
     reply_socket: Option<Arc<TokioUdpSocket>>,
     icmp_errors_registered: bool,
     stop: CancellationToken,
@@ -78,9 +75,27 @@ struct ReplySocketEntry {
     users: usize,
 }
 
+struct RetainedDnsSocket {
+    key: ReplySocketKey,
+    socket: Arc<TokioUdpSocket>,
+}
+
+struct ReplySocketReservation {
+    pool: Arc<ReplySocketPool>,
+    key: ReplySocketKey,
+}
+
+impl Drop for ReplySocketReservation {
+    fn drop(&mut self) {
+        if let Err(e) = self.pool.release_user(self.key) {
+            report::io("nat66.udp_reply_release", e);
+        }
+    }
+}
+
 #[derive(Default)]
 struct ReplySocketState {
-    retained_dns: Option<ReplySocketKey>,
+    retained_dns: Option<RetainedDnsSocket>,
     sockets: HashMap<ReplySocketKey, ReplySocketEntry>,
 }
 
@@ -90,107 +105,77 @@ struct ReplySocketPool {
 }
 
 impl ReplySocketPool {
-    fn reserve_user(&self, key: ReplySocketKey) -> io::Result<()> {
-        self.with_state(|state| match state.sockets.entry(key) {
-            Entry::Occupied(mut entry) => {
-                entry.get_mut().users += 1;
-            }
-            Entry::Vacant(entry) => {
-                entry.insert(ReplySocketEntry {
-                    socket: None,
-                    users: 1,
-                });
-            }
-        })
-    }
-
-    fn acquire_reserved(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self.with_state(|state| {
-            state
-                .sockets
-                .get(&key)
-                .and_then(|entry| entry.socket.clone())
-        })? {
-            return Ok(socket);
-        }
-        let socket = create_reply_socket(key)?;
-        self.with_state(|state| match state.sockets.entry(key) {
-            Entry::Occupied(mut entry) => {
-                if let Some(socket) = &entry.get().socket {
-                    socket.clone()
-                } else {
-                    entry.get_mut().socket = Some(socket.clone());
-                    socket
-                }
-            }
-            Entry::Vacant(_) => socket,
-        })
-    }
-
-    fn retain_dns(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self.with_state(|state| {
-            if state.retained_dns != Some(key) {
-                if let Some(previous) = state.retained_dns.replace(key) {
-                    if state
-                        .sockets
-                        .get(&previous)
-                        .is_some_and(|entry| entry.users == 0)
-                    {
-                        state.sockets.remove(&previous);
-                    }
-                }
-            }
-            state
-                .sockets
-                .get(&key)
-                .and_then(|entry| entry.socket.clone())
-        })? {
-            return Ok(socket);
-        }
-        let socket = create_reply_socket(key)?;
+    fn reserve_user(self: &Arc<Self>, key: ReplySocketKey) -> io::Result<ReplySocketReservation> {
         self.with_state(|state| {
-            if state.retained_dns != Some(key) {
-                if let Some(previous) = state.retained_dns.replace(key) {
-                    if state
-                        .sockets
-                        .get(&previous)
-                        .is_some_and(|entry| entry.users == 0)
-                    {
-                        state.sockets.remove(&previous);
-                    }
-                }
-            }
+            let retained = state.retained_dns_socket(key);
             match state.sockets.entry(key) {
                 Entry::Occupied(mut entry) => {
-                    if let Some(socket) = &entry.get().socket {
-                        socket.clone()
-                    } else {
-                        entry.get_mut().socket = Some(socket.clone());
-                        socket
+                    let entry = entry.get_mut();
+                    entry.users += 1;
+                    if entry.socket.is_none() {
+                        entry.socket = retained;
                     }
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(ReplySocketEntry {
-                        socket: Some(socket.clone()),
-                        users: 0,
+                        socket: retained,
+                        users: 1,
                     });
-                    socket
                 }
             }
+        })?;
+        Ok(ReplySocketReservation {
+            pool: self.clone(),
+            key,
+        })
+    }
+
+    fn acquire_reserved(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self.with_state(|state| state.reserved_socket(key))? {
+            return Ok(socket);
+        }
+        let socket = create_reply_socket(key)?;
+        self.with_state(|state| {
+            if let Some(existing) = state.reserved_socket(key) {
+                return existing;
+            }
+            if let Some(entry) = state.sockets.get_mut(&key) {
+                entry.socket = Some(socket.clone());
+            }
+            socket
+        })
+    }
+
+    fn retain_dns(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self.with_state(|state| state.retain_existing_dns_socket(key))? {
+            return Ok(socket);
+        }
+        let socket = create_reply_socket(key)?;
+        self.with_state(|state| {
+            if let Some(existing) = state.retain_existing_dns_socket(key) {
+                return existing;
+            }
+            if let Some(entry) = state.sockets.get_mut(&key) {
+                entry.socket = Some(socket.clone());
+            }
+            state.retain_dns_socket(key, socket.clone());
+            socket
         })
     }
 
     fn release_user(&self, key: ReplySocketKey) -> io::Result<()> {
         self.with_state(|state| -> io::Result<()> {
-            let entry = state
-                .sockets
-                .get_mut(&key)
-                .ok_or_else(|| io::Error::other("reply socket reservation missing"))?;
-            if entry.users == 0 {
-                return Err(io::Error::other("reply socket users underflow"));
-            }
-            entry.users -= 1;
-            let remove = entry.users == 0 && state.retained_dns != Some(key);
+            let remove = {
+                let entry = state
+                    .sockets
+                    .get_mut(&key)
+                    .ok_or_else(|| io::Error::other("reply socket reservation missing"))?;
+                if entry.users == 0 {
+                    return Err(io::Error::other("reply socket users underflow"));
+                }
+                entry.users -= 1;
+                entry.users == 0
+            };
             if remove {
                 state.sockets.remove(&key);
             }
@@ -204,30 +189,7 @@ impl ReplySocketPool {
         previous: &Arc<TokioUdpSocket>,
     ) -> io::Result<Arc<TokioUdpSocket>> {
         let socket = create_reply_socket(key)?;
-        self.with_state(|state| {
-            let retained = state.retained_dns == Some(key);
-            match state.sockets.entry(key) {
-                Entry::Occupied(mut entry) => {
-                    if entry
-                        .get()
-                        .socket
-                        .as_ref()
-                        .is_some_and(|socket| Arc::ptr_eq(socket, previous))
-                    {
-                        entry.get_mut().socket = Some(socket.clone());
-                    }
-                    entry.get().socket.clone().unwrap_or(socket)
-                }
-                Entry::Vacant(entry) if retained => {
-                    entry.insert(ReplySocketEntry {
-                        socket: Some(socket.clone()),
-                        users: 0,
-                    });
-                    socket
-                }
-                Entry::Vacant(_) => socket,
-            }
-        })
+        self.with_state(|state| state.replace_socket(key, previous, socket))
     }
 
     fn with_state<T>(&self, f: impl FnOnce(&mut ReplySocketState) -> T) -> io::Result<T> {
@@ -239,6 +201,85 @@ impl ReplySocketPool {
         self.state
             .lock()
             .map_err(|_| io::Error::other("reply socket state poisoned"))
+    }
+}
+
+impl ReplySocketState {
+    fn retained_dns_socket(&self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
+        self.retained_dns
+            .as_ref()
+            .filter(|retained| retained.key == key)
+            .map(|retained| retained.socket.clone())
+    }
+
+    fn retain_dns_socket(&mut self, key: ReplySocketKey, socket: Arc<TokioUdpSocket>) {
+        self.retained_dns = Some(RetainedDnsSocket { key, socket });
+    }
+
+    fn reserved_socket(&mut self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self
+            .sockets
+            .get(&key)
+            .and_then(|entry| entry.socket.clone())
+        {
+            return Some(socket);
+        }
+        let socket = self.retained_dns_socket(key)?;
+        if let Some(entry) = self.sockets.get_mut(&key) {
+            entry.socket = Some(socket.clone());
+        }
+        Some(socket)
+    }
+
+    fn retain_existing_dns_socket(&mut self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
+        if let Some(socket) = self.retained_dns_socket(key) {
+            return Some(socket);
+        }
+        let socket = self
+            .sockets
+            .get(&key)
+            .and_then(|entry| entry.socket.clone())?;
+        self.retain_dns_socket(key, socket.clone());
+        Some(socket)
+    }
+
+    fn replace_socket(
+        &mut self,
+        key: ReplySocketKey,
+        previous: &Arc<TokioUdpSocket>,
+        socket: Arc<TokioUdpSocket>,
+    ) -> Arc<TokioUdpSocket> {
+        let mut current = None;
+        let mut replaced = false;
+        if let Some(entry) = self.sockets.get_mut(&key) {
+            if entry
+                .socket
+                .as_ref()
+                .is_some_and(|current| Arc::ptr_eq(current, previous))
+            {
+                entry.socket = Some(socket.clone());
+                replaced = true;
+            }
+            current = entry.socket.clone();
+        }
+        if let Some(retained) = self
+            .retained_dns
+            .as_mut()
+            .filter(|retained| retained.key == key)
+        {
+            if Arc::ptr_eq(&retained.socket, previous) {
+                retained.socket = socket.clone();
+                replaced = true;
+            }
+            if current.is_none() {
+                current = Some(retained.socket.clone());
+            }
+        }
+        if replaced {
+            socket
+        } else {
+            current.unwrap_or(socket)
+        }
     }
 }
 
@@ -472,17 +513,20 @@ pub(crate) fn spawn_loop(
                                     source: destination,
                                     mark: snapshot.reply_mark,
                                 };
-                                if let Err(e) = reply_sockets.reserve_user(reply_key) {
-                                    report::io_with_details(
-                                        "nat66.udp_reply_reserve",
-                                        e,
-                                        [
-                                            ("client", client.to_string()),
-                                            ("destination", destination.to_string()),
-                                        ],
-                                    );
-                                    continue;
-                                }
+                                let reply_reservation = match reply_sockets.reserve_user(reply_key) {
+                                    Ok(reservation) => reservation,
+                                    Err(e) => {
+                                        report::io_with_details(
+                                            "nat66.udp_reply_reserve",
+                                            e,
+                                            [
+                                                ("client", client.to_string()),
+                                                ("destination", destination.to_string()),
+                                            ],
+                                        );
+                                        continue;
+                                    }
+                                };
                                 let icmp_errors = match upstream.local_addr() {
                                     Ok(SocketAddr::V6(source)) => {
                                         match icmp_dispatcher.register_udp_error(
@@ -542,12 +586,7 @@ pub(crate) fn spawn_loop(
                                     icmp_errors_registered,
                                 ) {
                                     UdpForwardResult::Sent => {}
-                                    UdpForwardResult::Dropped | UdpForwardResult::Failed => {
-                                        if let Err(e) = reply_sockets.release_user(reply_key) {
-                                            report::io("nat66.udp_reply_release", e);
-                                        }
-                                        continue;
-                                    }
+                                    UdpForwardResult::Dropped | UdpForwardResult::Failed => continue,
                                     UdpForwardResult::PacketTooBig(mtu) => {
                                         send_udp_packet_too_big(
                                             &snapshot,
@@ -559,9 +598,6 @@ pub(crate) fn spawn_loop(
                                             &buffer[..size],
                                         )
                                         .await;
-                                        if let Err(e) = reply_sockets.release_user(reply_key) {
-                                            report::io("nat66.udp_reply_release", e);
-                                        }
                                         continue;
                                     }
                                 }
@@ -572,8 +608,7 @@ pub(crate) fn spawn_loop(
                                     key,
                                     id: association_id,
                                     socket: upstream.clone(),
-                                    reply_sockets: reply_sockets.clone(),
-                                    reply_key,
+                                    reply_reservation,
                                     reply_socket: None,
                                     icmp_errors_registered,
                                     stop: association_stop.clone(),
@@ -620,8 +655,8 @@ impl AssociationTask {
                 result = self.socket.recv(&mut buffer) => match result {
                     Ok(size) => {
                         if let Err(e) = send_response(
-                            &self.reply_sockets,
-                            self.reply_key,
+                            &self.reply_reservation.pool,
+                            self.reply_reservation.key,
                             &mut self.reply_socket,
                             self.key.client,
                             &buffer[..size],
@@ -653,9 +688,6 @@ impl AssociationTask {
         }
         let cancelled = self.stop.is_cancelled();
         self.stop.cancel();
-        if let Err(e) = self.reply_sockets.release_user(self.reply_key) {
-            report::io("nat66.udp_reply_release", e);
-        }
         if self
             .association_event_tx
             .send(UdpAssociationEvent::Closed(self.key, self.id))
@@ -851,7 +883,7 @@ fn upstream_mtu(socket: &TokioUdpSocket) -> io::Result<u32> {
 }
 
 fn udp_ipv6_packet_exceeds_mtu(payload: &[u8], mtu: u32) -> bool {
-    IPV6_HEADER_LEN + UDP_HEADER_LEN + payload.len() as u64 > u64::from(mtu)
+    (Ipv6Header::LEN + UdpHeader::LEN + payload.len()) as u64 > u64::from(mtu)
 }
 
 fn forward_udp_datagram(

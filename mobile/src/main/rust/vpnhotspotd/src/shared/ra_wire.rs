@@ -7,6 +7,10 @@ use etherparse::icmpv6::{
 };
 use etherparse::{Icmpv6Header, Icmpv6Type};
 
+// Recursive DNS Server option, RFC 8106 section 5.1.
+const RDNSS_OPTION_TYPE: NdpOptionType = NdpOptionType(25);
+const RDNSS_OPTION_LENGTH_UNITS: u8 = 3;
+
 pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
     RaAdvertisement {
         dns_server: gateway.address(),
@@ -34,7 +38,7 @@ pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: boo
 }
 
 pub fn is_router_link_local(address: Ipv6Addr) -> bool {
-    address.is_unicast_link_local() && !address.is_loopback() && !address.is_multicast()
+    address.is_unicast_link_local()
 }
 
 struct RaAdvertisement {
@@ -91,8 +95,8 @@ impl RaAdvertisement {
 
         packet.extend_from_slice(
             &NdpOptionHeader {
-                option_type: NdpOptionType(25),
-                length_units: 3,
+                option_type: RDNSS_OPTION_TYPE,
+                length_units: RDNSS_OPTION_LENGTH_UNITS,
             }
             .to_bytes(),
         );

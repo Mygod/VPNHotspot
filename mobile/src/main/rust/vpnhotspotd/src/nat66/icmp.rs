@@ -1,41 +1,45 @@
 use std::collections::HashMap;
-use std::io::{self, IoSliceMut};
+use std::io;
 use std::net::{Ipv6Addr, SocketAddrV6};
-use std::os::fd::{AsFd, AsRawFd, RawFd};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard, Weak};
 use std::time::Instant;
 
-use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, Ipv6Slice, UdpHeader};
-use libc::c_int;
+use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Slice};
 use nfq::{Queue, Verdict};
-use nix::cmsg_space;
-use nix::sys::socket::{recvmsg, setsockopt, sockopt, ControlMessageOwned, MsgFlags, SockaddrIn6};
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
-use crate::socket::{await_writable, set_nonblocking};
-use crate::upstream::set_socket_network;
 use crate::{netlink, report};
 use vpnhotspotd::shared::icmp_nat::{
-    classify_nat66_destination, downstream_icmp_error_source, icmpv6_error_bytes, nat66_hop_limit,
-    EchoAllocation, EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_PACKET_TOO_BIG,
+    classify_nat66_destination, downstream_icmp_error_source, nat66_hop_limit, EchoAllocation,
+    EchoEntry, EchoMap, Nat66Destination, Nat66HopLimit, ICMPV6_PACKET_TOO_BIG,
     ICMPV6_TIME_EXCEEDED,
 };
 use vpnhotspotd::shared::icmp_wire::{
-    build_echo_packet_with_checksum, build_echo_packet_zero_checksum, build_icmp_error_packet,
-    build_icmp_quote, build_translated_udp_quote, build_udp_quote_with_hop_limit, UdpQuoteMetadata,
-    ICMPV6_ECHO_REPLY, ICMPV6_ECHO_REQUEST,
+    build_echo_reply_with_checksum, build_echo_request_with_checksum,
+    build_echo_request_zero_checksum, build_icmp_error_packet, build_icmp_quote,
+    build_translated_udp_quote, build_udp_quote_with_hop_limit,
 };
-use vpnhotspotd::shared::model::{select_network, Network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM};
+use vpnhotspotd::shared::model::{select_network, Network, SessionConfig};
 
-const SO_EE_ORIGIN_LOCAL: u8 = 1;
-const SO_EE_ORIGIN_ICMP6: u8 = 3;
-const NONLOCAL_PROBE_SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1);
+mod probe;
+mod raw_socket;
+
+use probe::{
+    classify_error_queue_echo, echo_error_response, normalize_udp_error_addr,
+    packet_icmp_error_metadata, quoted_echo_probe, quoted_udp_probe, EchoErrorProbe,
+    EchoErrorResponse, UdpErrorProbe,
+};
+use raw_socket::{
+    create_downstream_queue, create_upstream_socket, enable_ipv6_error_queue,
+    probe_downstream_send_socket, recv_error_queue, recv_raw_icmp_packet, send_downstream_icmp,
+    send_upstream_echo, set_upstream_echo_hop_limit, ReceivedIcmpPacket,
+};
 
 #[derive(Default)]
 struct EchoState {
@@ -125,52 +129,6 @@ enum QueuedEchoAction {
     Accept,
     Drop,
     Handle,
-}
-
-struct ReceivedIcmpPacket<'a> {
-    source: SocketAddrV6,
-    payload: &'a [u8],
-}
-
-struct ErrorQueueMessage {
-    error: libc::sock_extended_err,
-    offender: Option<SocketAddrV6>,
-    destination: Option<SocketAddrV6>,
-    payload: Vec<u8>,
-}
-
-struct EchoErrorProbe<'a> {
-    destination: Ipv6Addr,
-    id: u16,
-    seq: u16,
-    hop_limit: Option<u8>,
-    payload: &'a [u8],
-}
-
-struct UdpErrorProbe<'a> {
-    quote: UdpQuoteMetadata,
-    payload: &'a [u8],
-}
-
-struct EchoErrorResponse {
-    source: Ipv6Addr,
-    icmp_type: u8,
-    code: u8,
-    bytes5to8: [u8; 4],
-    destination: Ipv6Addr,
-    hop_limit: u8,
-}
-
-enum QueuedEchoError {
-    Upstream {
-        offender: SocketAddrV6,
-        icmp_type: u8,
-        code: u8,
-        bytes5to8: [u8; 4],
-    },
-    LocalPacketTooBig {
-        mtu: u32,
-    },
 }
 
 #[derive(Clone)]
@@ -401,7 +359,7 @@ impl EchoState {
             Ok(()) => true,
             Err(e) => {
                 report::io_with_details(
-                    "nat66.icmp_echo_error_queue",
+                    "nat66.icmp_error_queue",
                     e,
                     [("network", network.to_string())],
                 );
@@ -555,11 +513,7 @@ impl Dispatcher {
             ));
         }
         let input_interface = netlink::link_index(netlink, &initial.downstream).await?;
-        drop(create_downstream_send_socket(
-            &initial.downstream,
-            initial.reply_mark,
-            NONLOCAL_PROBE_SOURCE,
-        )?);
+        probe_downstream_send_socket(&initial.downstream, initial.reply_mark)?;
         self.ensure_started()?;
         let session_key = self.inner.next_session_key.fetch_add(1, Ordering::Relaxed);
         let session = Arc::new(IcmpSession {
@@ -929,7 +883,7 @@ async fn handle_downstream_echo(
             return;
         }
     };
-    let request = build_echo_packet_zero_checksum(ICMPV6_ECHO_REQUEST, id, seq, payload);
+    let request = build_echo_request_zero_checksum(id, seq, payload);
     if let Err(e) = set_upstream_echo_hop_limit(&socket.socket, upstream_hop_limit) {
         report::io_with_details(
             "nat66.icmp_hop_limit",
@@ -952,13 +906,7 @@ async fn handle_downstream_echo(
             Ok(()) => break,
             Err(e) => {
                 let checked_error_queue = if socket.error_queue {
-                    match drain_echo_error_queue(
-                        socket.socket.get_ref().as_raw_fd(),
-                        network,
-                        &state,
-                    )
-                    .await
-                    {
+                    match drain_echo_error_queue(&socket.socket, network, &state).await {
                         Ok(_) => true,
                         Err(error) => {
                             report::io_with_details(
@@ -1054,9 +1002,7 @@ fn spawn_upstream_loop(
                     break;
                 }
                 if error_queue {
-                    match drain_echo_error_queue(socket.get_ref().as_raw_fd(), network, &state)
-                        .await
-                    {
+                    match drain_echo_error_queue(&socket, network, &state).await {
                         Ok(_) => {}
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -1067,7 +1013,7 @@ fn spawn_upstream_loop(
                         ),
                     }
                 }
-                match recv_raw_icmp_packet(socket.get_ref().as_raw_fd(), &mut buffer) {
+                match recv_raw_icmp_packet(&socket, &mut buffer) {
                     Ok(Some(packet)) => handle_upstream_icmp_packet(network, &state, packet).await,
                     Ok(None) => continue,
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -1140,8 +1086,7 @@ async fn handle_upstream_echo_reply(
             return;
         }
     };
-    let reply = match build_echo_packet_with_checksum(
-        ICMPV6_ECHO_REPLY,
+    let reply = match build_echo_reply_with_checksum(
         *source.ip(),
         *entry.client.ip(),
         entry.original_id,
@@ -1309,13 +1254,13 @@ async fn handle_upstream_udp_error(
 }
 
 async fn drain_echo_error_queue(
-    fd: RawFd,
+    socket: &AsyncFd<Socket>,
     network: Network,
     state: &EchoState,
 ) -> io::Result<usize> {
     let mut drained = 0;
     loop {
-        let message = match recv_error_queue(fd) {
+        let message = match recv_error_queue(socket) {
             Ok(message) => message,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(drained),
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -1333,246 +1278,8 @@ async fn drain_echo_error_queue(
     }
 }
 
-fn classify_error_queue_echo(
-    message: &ErrorQueueMessage,
-) -> Option<(EchoErrorProbe<'_>, QueuedEchoError)> {
-    let probe = error_queue_echo_probe(message)?;
-    let error = match message.error.ee_origin {
-        SO_EE_ORIGIN_ICMP6 => {
-            let (icmp_type, bytes5to8) = error_type_bytes(&message.error)?;
-            QueuedEchoError::Upstream {
-                offender: message.offender?,
-                icmp_type,
-                code: message.error.ee_code,
-                bytes5to8,
-            }
-        }
-        SO_EE_ORIGIN_LOCAL if message.error.ee_errno == libc::EMSGSIZE as u32 => {
-            let mtu = message.error.ee_info;
-            if mtu == 0 {
-                return None;
-            }
-            QueuedEchoError::LocalPacketTooBig { mtu }
-        }
-        _ => return None,
-    };
-    Some((probe, error))
-}
-
-fn echo_error_response(
-    error: QueuedEchoError,
-    entry: &EchoEntry,
-    probe: &EchoErrorProbe<'_>,
-) -> EchoErrorResponse {
-    match error {
-        QueuedEchoError::Upstream {
-            offender,
-            icmp_type,
-            code,
-            bytes5to8,
-        } => EchoErrorResponse {
-            source: downstream_icmp_error_source(*offender.ip(), entry.gateway),
-            icmp_type,
-            code,
-            bytes5to8,
-            destination: probe.destination,
-            hop_limit: probe.hop_limit.unwrap_or(entry.upstream_hop_limit),
-        },
-        QueuedEchoError::LocalPacketTooBig { mtu } => EchoErrorResponse {
-            source: entry.gateway,
-            icmp_type: ICMPV6_PACKET_TOO_BIG,
-            code: 0,
-            bytes5to8: mtu.to_be_bytes(),
-            destination: probe.destination,
-            hop_limit: entry.downstream_hop_limit,
-        },
-    }
-}
-
-fn error_queue_echo_probe(message: &ErrorQueueMessage) -> Option<EchoErrorProbe<'_>> {
-    if let Some(probe) = quoted_echo_probe(&message.payload) {
-        return Some(probe);
-    }
-    let destination = *message.destination?.ip();
-    let (icmp, payload) = Icmpv6Header::from_slice(&message.payload).ok()?;
-    let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type else {
-        return None;
-    };
-    Some(EchoErrorProbe {
-        destination,
-        id: echo.id,
-        seq: echo.seq,
-        hop_limit: None,
-        payload,
-    })
-}
-
-fn quoted_echo_probe(payload: &[u8]) -> Option<EchoErrorProbe<'_>> {
-    let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
-    if ip.next_header != IpNumber::IPV6_ICMP {
-        return None;
-    }
-    let (icmp, payload) = Icmpv6Header::from_slice(rest).ok()?;
-    let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type else {
-        return None;
-    };
-    Some(EchoErrorProbe {
-        destination: ip.destination_addr(),
-        id: echo.id,
-        seq: echo.seq,
-        hop_limit: Some(ip.hop_limit),
-        payload,
-    })
-}
-
-fn quoted_udp_probe(payload: &[u8]) -> Option<UdpErrorProbe<'_>> {
-    let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
-    if ip.next_header != IpNumber::UDP {
-        return None;
-    }
-    let (udp, payload) = UdpHeader::from_slice(rest).ok()?;
-    if ip.payload_length != udp.length
-        || udp.length < UdpHeader::LEN_U16
-        || usize::from(udp.length) < UdpHeader::LEN + payload.len()
-    {
-        return None;
-    }
-    Some(UdpErrorProbe {
-        quote: UdpQuoteMetadata {
-            source: normalize_udp_error_addr(SocketAddrV6::new(
-                ip.source_addr(),
-                udp.source_port,
-                0,
-                0,
-            )),
-            destination: normalize_udp_error_addr(SocketAddrV6::new(
-                ip.destination_addr(),
-                udp.destination_port,
-                0,
-                0,
-            )),
-            hop_limit: ip.hop_limit,
-            length: udp.length,
-            checksum: udp.checksum,
-        },
-        payload,
-    })
-}
-
-fn packet_icmp_error_metadata(packet: &[u8], header: &Icmpv6Header) -> Option<(u8, u8, [u8; 4])> {
-    let type_u8 = header.icmp_type.type_u8();
-    if icmpv6_error_bytes(type_u8, 0).is_none() || packet.len() < 8 {
-        return None;
-    }
-    Some((
-        type_u8,
-        header.icmp_type.code_u8(),
-        packet[4..8].try_into().ok()?,
-    ))
-}
-
-fn normalize_udp_error_addr(address: SocketAddrV6) -> SocketAddrV6 {
-    SocketAddrV6::new(*address.ip(), address.port(), 0, 0)
-}
-
-fn recv_raw_icmp_packet<'a>(
-    fd: RawFd,
-    buffer: &'a mut [u8],
-) -> io::Result<Option<ReceivedIcmpPacket<'a>>> {
-    let (size, source) = {
-        let mut iov = [IoSliceMut::new(buffer)];
-        let message = recvmsg::<SockaddrIn6>(fd, &mut iov, None, MsgFlags::MSG_DONTWAIT)
-            .map_err(io::Error::from)?;
-        if message.bytes == 0 {
-            return Ok(None);
-        }
-        let Some(source) = message.address.map(SocketAddrV6::from) else {
-            return Ok(None);
-        };
-        (message.bytes, source)
-    };
-    Ok(Some(ReceivedIcmpPacket {
-        source,
-        payload: &buffer[..size],
-    }))
-}
-
-fn recv_error_queue(fd: RawFd) -> io::Result<ErrorQueueMessage> {
-    let mut buffer = vec![0u8; 2048];
-    let (size, destination, error, offender) = {
-        let mut control = cmsg_space!(libc::sock_extended_err, libc::sockaddr_in6);
-        let mut iov = [IoSliceMut::new(&mut buffer)];
-        let message = recvmsg::<SockaddrIn6>(
-            fd,
-            &mut iov,
-            Some(&mut control),
-            MsgFlags::MSG_DONTWAIT | MsgFlags::MSG_ERRQUEUE,
-        )
-        .map_err(io::Error::from)?;
-        let destination = message.address.map(SocketAddrV6::from);
-        let mut error = None;
-        let mut offender = None;
-        for cmsg in message.cmsgs().map_err(io::Error::from)? {
-            if let ControlMessageOwned::Ipv6RecvErr(value, raw_offender) = cmsg {
-                error = Some(value);
-                offender = raw_offender
-                    .filter(|raw| raw.sin6_family == libc::AF_INET6 as libc::sa_family_t)
-                    .map(|raw| SocketAddrV6::from(SockaddrIn6::from(raw)));
-            }
-        }
-        (message.bytes, destination, error, offender)
-    };
-    let error =
-        error.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 error"))?;
-    buffer.truncate(size);
-    Ok(ErrorQueueMessage {
-        error,
-        offender,
-        destination,
-        payload: buffer,
-    })
-}
-
-fn create_downstream_queue() -> io::Result<Queue> {
-    let mut queue = Queue::open()?;
-    queue.bind(DAEMON_ICMP_NFQUEUE_NUM)?;
-    queue.set_nonblocking(true);
-    set_nonblocking(queue.as_raw_fd())?;
-    Ok(queue)
-}
-
-fn create_downstream_send_socket(
-    interface: &str,
-    mark: u32,
-    source: Ipv6Addr,
-) -> io::Result<Socket> {
-    let socket = Socket::new(Domain::IPV6, Type::RAW, Some(Protocol::ICMPV6))?;
-    socket.bind_device(Some(interface.as_bytes()))?;
-    socket.set_mark(mark)?;
-    socket.set_ip_transparent_v6(true)?;
-    socket.bind(&SockAddr::from(SocketAddrV6::new(source, 0, 0, 0)))?;
-    socket.set_nonblocking(true)?;
-    Ok(socket)
-}
-
-fn create_upstream_socket(network: Network) -> io::Result<Socket> {
-    let socket = Socket::new(Domain::IPV6, Type::RAW, Some(Protocol::ICMPV6))?;
-    set_socket_network(network, socket.as_raw_fd())?;
-    socket.set_nonblocking(true)?;
-    Ok(socket)
-}
-
-fn enable_ipv6_error_queue(socket: &Socket) -> io::Result<()> {
-    setsockopt(socket, sockopt::Ipv6RecvErr, &true).map_err(io::Error::from)
-}
-
-fn set_upstream_echo_hop_limit(socket: &AsyncFd<Socket>, hop_limit: u8) -> io::Result<()> {
-    setsockopt(socket.get_ref(), sockopt::Ipv6Ttl, &c_int::from(hop_limit)).map_err(io::Error::from)
-}
-
 async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload: &[u8]) {
-    let request = match build_echo_packet_with_checksum(
-        ICMPV6_ECHO_REQUEST,
+    let request = match build_echo_request_with_checksum(
         *entry.client.ip(),
         response.destination,
         entry.original_id,
@@ -1648,94 +1355,4 @@ async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload:
             e
         );
     }
-}
-
-async fn send_upstream_echo(
-    socket: &AsyncFd<Socket>,
-    destination: SocketAddrV6,
-    packet: &[u8],
-) -> io::Result<()> {
-    sendto_all_async(socket, packet, SockAddr::from(destination)).await
-}
-
-async fn send_downstream_icmp(
-    interface: &str,
-    mark: u32,
-    source: Ipv6Addr,
-    target: SocketAddrV6,
-    packet: &[u8],
-) -> io::Result<()> {
-    let socket = create_downstream_send_socket(interface, mark, source)?;
-    sendto_all(
-        &socket,
-        packet,
-        SockAddr::from(SocketAddrV6::new(
-            *target.ip(),
-            0,
-            target.flowinfo(),
-            target.scope_id(),
-        )),
-    )
-    .await
-}
-
-async fn sendto_all(socket: &Socket, mut packet: &[u8], address: SockAddr) -> io::Result<()> {
-    while !packet.is_empty() {
-        let written = match socket.send_to(packet, &address) {
-            Ok(written) => written,
-            Err(error) => {
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if error.kind() == io::ErrorKind::WouldBlock {
-                    await_writable(socket.as_fd()).await?;
-                    continue;
-                }
-                return Err(error);
-            }
-        };
-        if written == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "socket write failed",
-            ));
-        }
-        packet = &packet[written..];
-    }
-    Ok(())
-}
-
-async fn sendto_all_async(
-    socket: &AsyncFd<Socket>,
-    mut packet: &[u8],
-    address: SockAddr,
-) -> io::Result<()> {
-    while !packet.is_empty() {
-        let mut ready = socket.writable().await?;
-        let written = match socket.get_ref().send_to(packet, &address) {
-            Ok(written) => written,
-            Err(error) => {
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if error.kind() == io::ErrorKind::WouldBlock {
-                    ready.clear_ready();
-                    continue;
-                }
-                return Err(error);
-            }
-        };
-        if written == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "socket write failed",
-            ));
-        }
-        packet = &packet[written..];
-    }
-    Ok(())
-}
-
-fn error_type_bytes(error: &libc::sock_extended_err) -> Option<(u8, [u8; 4])> {
-    icmpv6_error_bytes(error.ee_type, error.ee_info)
 }

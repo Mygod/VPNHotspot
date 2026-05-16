@@ -3,12 +3,12 @@ use std::io;
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::time::{Duration, Instant};
 
-use crate::shared::model::Network;
+pub use etherparse::icmpv6::TYPE_DST_UNREACH as ICMPV6_DESTINATION_UNREACHABLE;
+pub use etherparse::icmpv6::TYPE_PACKET_TOO_BIG as ICMPV6_PACKET_TOO_BIG;
+pub use etherparse::icmpv6::TYPE_PARAMETER_PROBLEM as ICMPV6_PARAMETER_PROBLEM;
+pub use etherparse::icmpv6::TYPE_TIME_EXCEEDED as ICMPV6_TIME_EXCEEDED;
 
-pub const ICMPV6_DESTINATION_UNREACHABLE: u8 = 1;
-pub const ICMPV6_PACKET_TOO_BIG: u8 = 2;
-pub const ICMPV6_TIME_EXCEEDED: u8 = 3;
-pub const ICMPV6_PARAMETER_PROBLEM: u8 = 4;
+use crate::shared::model::Network;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Nat66Destination {
@@ -121,10 +121,6 @@ pub fn icmp_echo_rule_args(
         "--queue-num".into(),
         queue_num.to_string(),
     ]
-}
-
-pub fn should_install_icmp_echo_rule(icmp_echo: bool) -> bool {
-    icmp_echo
 }
 
 pub fn downstream_icmp_error_source(offender: Ipv6Addr, gateway: Ipv6Addr) -> Ipv6Addr {
@@ -583,12 +579,6 @@ mod tests {
                 "30063",
             ]
         );
-    }
-
-    #[test]
-    fn icmp_echo_route_installation_follows_startup_capability() {
-        assert!(should_install_icmp_echo_rule(true));
-        assert!(!should_install_icmp_echo_rule(false));
     }
 
     #[test]

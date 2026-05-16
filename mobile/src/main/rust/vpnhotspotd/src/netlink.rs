@@ -46,8 +46,8 @@ pub(crate) struct Runtime {
     handle: Handle,
     ipv4_address_changed: Arc<Notify>,
     ipv6_address_changed: Arc<Notify>,
-    neighbour_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
-    link_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
+    neighbour_events: Arc<EventSlot>,
+    link_events: Arc<EventSlot>,
     task: JoinHandle<()>,
 }
 
@@ -61,9 +61,18 @@ impl Runtime {
         ])?;
         let ipv4_address_changed = Arc::new(Notify::new());
         let ipv6_address_changed = Arc::new(Notify::new());
-        let neighbour_events =
-            Arc::new(StdMutex::new(None::<UnboundedSender<RouteNetlinkMessage>>));
-        let link_events = Arc::new(StdMutex::new(None::<UnboundedSender<RouteNetlinkMessage>>));
+        let neighbour_events = Arc::new(EventSlot::new(
+            "neighbour monitor already active",
+            "neighbour monitor state poisoned",
+            "netlink.neighbour_registration.drop",
+            "netlink.send_neighbour_event",
+        ));
+        let link_events = Arc::new(EventSlot::new(
+            "link monitor already active",
+            "link monitor state poisoned",
+            "netlink.link_registration.drop",
+            "netlink.send_link_event",
+        ));
         let task_ipv4_address_changed = ipv4_address_changed.clone();
         let task_ipv6_address_changed = ipv6_address_changed.clone();
         let task_neighbour_events = neighbour_events.clone();
@@ -114,47 +123,13 @@ impl Runtime {
         NeighbourRegistration,
         UnboundedReceiver<RouteNetlinkMessage>,
     )> {
-        let (sender, receiver) = unbounded_channel();
-        let mut neighbour_events = self
-            .neighbour_events
-            .lock()
-            .map_err(|_| io::Error::other("neighbour monitor state poisoned"))?;
-        if neighbour_events.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "neighbour monitor already active",
-            ));
-        }
-        *neighbour_events = Some(sender);
-        Ok((
-            NeighbourRegistration {
-                neighbour_events: self.neighbour_events.clone(),
-            },
-            receiver,
-        ))
+        self.neighbour_events.register()
     }
 
     pub(crate) fn register_link_monitor(
         &self,
     ) -> io::Result<(LinkRegistration, UnboundedReceiver<RouteNetlinkMessage>)> {
-        let (sender, receiver) = unbounded_channel();
-        let mut link_events = self
-            .link_events
-            .lock()
-            .map_err(|_| io::Error::other("link monitor state poisoned"))?;
-        if link_events.is_some() {
-            return Err(io::Error::new(
-                io::ErrorKind::AlreadyExists,
-                "link monitor already active",
-            ));
-        }
-        *link_events = Some(sender);
-        Ok((
-            LinkRegistration {
-                link_events: self.link_events.clone(),
-            },
-            receiver,
-        ))
+        self.link_events.register()
     }
 }
 
@@ -164,38 +139,83 @@ impl Drop for Runtime {
     }
 }
 
-pub(crate) struct NeighbourRegistration {
-    neighbour_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
+pub(crate) type NeighbourRegistration = EventRegistration;
+pub(crate) type LinkRegistration = EventRegistration;
+
+pub(crate) struct EventRegistration {
+    events: Arc<EventSlot>,
 }
 
-impl Drop for NeighbourRegistration {
+impl Drop for EventRegistration {
     fn drop(&mut self) {
-        match self.neighbour_events.lock() {
-            Ok(mut neighbour_events) => {
-                neighbour_events.take();
-            }
-            Err(_) => report::io(
-                "netlink.neighbour_registration.drop",
-                io::Error::other("neighbour monitor state poisoned"),
-            ),
-        }
+        self.events.unregister();
     }
 }
 
-pub(crate) struct LinkRegistration {
-    link_events: Arc<StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>>,
+struct EventSlot {
+    events: StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
+    duplicate: &'static str,
+    poisoned: &'static str,
+    drop_context: &'static str,
+    send_context: &'static str,
 }
 
-impl Drop for LinkRegistration {
-    fn drop(&mut self) {
-        match self.link_events.lock() {
-            Ok(mut link_events) => {
-                link_events.take();
+impl EventSlot {
+    fn new(
+        duplicate: &'static str,
+        poisoned: &'static str,
+        drop_context: &'static str,
+        send_context: &'static str,
+    ) -> Self {
+        Self {
+            events: StdMutex::new(None),
+            duplicate,
+            poisoned,
+            drop_context,
+            send_context,
+        }
+    }
+
+    fn register(
+        self: &Arc<Self>,
+    ) -> io::Result<(EventRegistration, UnboundedReceiver<RouteNetlinkMessage>)> {
+        let (sender, receiver) = unbounded_channel();
+        let mut events = self
+            .events
+            .lock()
+            .map_err(|_| io::Error::other(self.poisoned))?;
+        if events.is_some() {
+            return Err(io::Error::new(io::ErrorKind::AlreadyExists, self.duplicate));
+        }
+        *events = Some(sender);
+        Ok((
+            EventRegistration {
+                events: self.clone(),
+            },
+            receiver,
+        ))
+    }
+
+    fn unregister(&self) {
+        match self.events.lock() {
+            Ok(mut events) => {
+                events.take();
             }
-            Err(_) => report::io(
-                "netlink.link_registration.drop",
-                io::Error::other("link monitor state poisoned"),
-            ),
+            Err(_) => report::io(self.drop_context, io::Error::other(self.poisoned)),
+        }
+    }
+
+    fn send(&self, message: RouteNetlinkMessage) {
+        match self.events.lock() {
+            Ok(mut events) => {
+                if events
+                    .as_ref()
+                    .is_some_and(|sender| sender.send(message).is_err())
+                {
+                    events.take();
+                }
+            }
+            Err(_) => report::io(self.send_context, io::Error::other(self.poisoned)),
         }
     }
 }
@@ -357,28 +377,18 @@ fn dispatch_message(
     payload: NetlinkPayload<RouteNetlinkMessage>,
     ipv4_address_changed: &Notify,
     ipv6_address_changed: &Notify,
-    neighbour_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
-    link_events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
+    neighbour_events: &EventSlot,
+    link_events: &EventSlot,
 ) {
     match payload {
         NetlinkPayload::InnerMessage(
             message @ (RouteNetlinkMessage::NewNeighbour(_) | RouteNetlinkMessage::DelNeighbour(_)),
-        ) => send_event(
-            neighbour_events,
-            message,
-            "netlink.send_neighbour_event",
-            "neighbour monitor state poisoned",
-        ),
+        ) => neighbour_events.send(message),
         NetlinkPayload::InnerMessage(
             message @ (RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_)),
         ) => {
             ipv4_address_changed.notify_waiters();
-            send_event(
-                link_events,
-                message,
-                "netlink.send_link_event",
-                "link monitor state poisoned",
-            );
+            link_events.send(message);
         }
         NetlinkPayload::InnerMessage(
             RouteNetlinkMessage::NewAddress(message) | RouteNetlinkMessage::DelAddress(message),
@@ -388,25 +398,6 @@ fn dispatch_message(
             _ => {}
         },
         _ => {}
-    }
-}
-
-fn send_event(
-    events: &StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
-    message: RouteNetlinkMessage,
-    context: &str,
-    poisoned: &str,
-) {
-    match events.lock() {
-        Ok(mut events) => {
-            if events
-                .as_ref()
-                .is_some_and(|sender| sender.send(message).is_err())
-            {
-                events.take();
-            }
-        }
-        Err(_) => report::io(context, io::Error::other(poisoned)),
     }
 }
 
