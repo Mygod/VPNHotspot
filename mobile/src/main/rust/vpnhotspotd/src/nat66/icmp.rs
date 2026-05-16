@@ -67,6 +67,7 @@ struct EchoStateInner {
 struct UpstreamSocket {
     socket: Arc<AsyncFd<Socket>>,
     stop: CancellationToken,
+    error_queue: bool,
 }
 
 enum UpstreamPrune {
@@ -158,7 +159,7 @@ impl EchoState {
     fn allocate_echo(
         state: &Arc<Self>,
         allocation: EchoAllocation,
-    ) -> io::Result<(u16, u16, Arc<AsyncFd<Socket>>)> {
+    ) -> io::Result<(u16, u16, UpstreamSocket)> {
         let network = allocation.network;
         let destination = allocation.destination;
         let (id, seq, socket) = {
@@ -166,10 +167,7 @@ impl EchoState {
             let (id, seq) = inner
                 .map
                 .allocate(Instant::now(), super::IDLE_TIMEOUT, allocation)?;
-            let socket = inner
-                .upstream
-                .get(&network)
-                .map(|upstream| upstream.socket.clone());
+            let socket = inner.upstream.get(&network).cloned();
             (id, seq, socket)
         };
         if let Some(socket) = socket {
@@ -229,6 +227,24 @@ impl EchoState {
         Ok(())
     }
 
+    fn has_allocation(
+        &self,
+        network: Network,
+        destination: Ipv6Addr,
+        id: u16,
+        seq: u16,
+    ) -> io::Result<bool> {
+        let mut inner = self.lock_inner()?;
+        Ok(inner.map.contains(
+            Instant::now(),
+            super::IDLE_TIMEOUT,
+            network,
+            destination,
+            id,
+            seq,
+        ))
+    }
+
     fn remove_session(&self, session_key: u64) -> io::Result<()> {
         let upstreams = {
             let mut inner = self.lock_inner()?;
@@ -270,12 +286,9 @@ impl EchoState {
         Ok(result)
     }
 
-    fn ensure_upstream_socket(
-        state: &Arc<Self>,
-        network: Network,
-    ) -> io::Result<Arc<AsyncFd<Socket>>> {
+    fn ensure_upstream_socket(state: &Arc<Self>, network: Network) -> io::Result<UpstreamSocket> {
         if let Some(upstream) = state.lock_inner()?.upstream.get(&network).cloned() {
-            return Ok(upstream.socket);
+            return Ok(upstream);
         }
         let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
         let stop = CancellationToken::new();
@@ -290,11 +303,16 @@ impl EchoState {
                 false
             }
         };
+        let upstream = UpstreamSocket {
+            socket: socket.clone(),
+            stop: stop.clone(),
+            error_queue,
+        };
         let mut start = false;
         let active = {
             let mut inner = state.lock_inner()?;
             if let Some(upstream) = inner.upstream.get(&network) {
-                upstream.socket.clone()
+                upstream.clone()
             } else {
                 if !inner
                     .map
@@ -306,18 +324,18 @@ impl EchoState {
                     ));
                 }
                 start = true;
-                inner.upstream.insert(
-                    network,
-                    UpstreamSocket {
-                        socket: socket.clone(),
-                        stop: stop.clone(),
-                    },
-                );
-                socket.clone()
+                inner.upstream.insert(network, upstream.clone());
+                upstream
             }
         };
         if start {
-            spawn_upstream_loop(network, active.clone(), error_queue, state.clone(), stop);
+            spawn_upstream_loop(
+                network,
+                active.socket.clone(),
+                active.error_queue,
+                state.clone(),
+                stop,
+            );
         }
         Ok(active)
     }
@@ -834,16 +852,9 @@ async fn handle_downstream_echo(
         }
     };
     let request = build_echo_packet_zero_checksum(ICMPV6_ECHO_REQUEST, id, seq, payload);
-    if let Err(e) = send_upstream_echo(
-        &socket,
-        SocketAddrV6::new(packet.destination, 0, 0, 0),
-        upstream_hop_limit,
-        &request,
-    )
-    .await
-    {
+    if let Err(e) = set_upstream_echo_hop_limit(&socket.socket, upstream_hop_limit) {
         report::io_with_details(
-            "nat66.icmp_upstream_send",
+            "nat66.icmp_hop_limit",
             e,
             [
                 ("client", packet.source.to_string()),
@@ -853,6 +864,62 @@ async fn handle_downstream_echo(
         );
         if let Err(e) = state.remove_allocation(network, packet.destination, id, seq) {
             report::io("nat66.icmp_echo_remove_failed_send", e);
+        }
+        return;
+    }
+    let destination = SocketAddrV6::new(packet.destination, 0, 0, 0);
+    let mut retried_after_error_queue = false;
+    loop {
+        match send_upstream_echo(&socket.socket, destination, &request).await {
+            Ok(()) => break,
+            Err(e) => {
+                let checked_error_queue = if socket.error_queue {
+                    match drain_echo_error_queue(
+                        socket.socket.get_ref().as_raw_fd(),
+                        network,
+                        &state,
+                    )
+                    .await
+                    {
+                        Ok(_) => true,
+                        Err(error) => {
+                            report::io_with_details(
+                                "nat66.icmp_echo_error_queue_recv",
+                                error,
+                                [("network", network.to_string())],
+                            );
+                            false
+                        }
+                    }
+                } else {
+                    false
+                };
+                match state.has_allocation(network, packet.destination, id, seq) {
+                    Ok(false) => break,
+                    Err(error) => {
+                        report::io("nat66.icmp_echo_lookup_failed_send", error);
+                    }
+                    Ok(true) => {
+                        if !retried_after_error_queue && checked_error_queue {
+                            retried_after_error_queue = true;
+                            continue;
+                        }
+                    }
+                }
+                report::io_with_details(
+                    "nat66.icmp_upstream_send",
+                    e,
+                    [
+                        ("client", packet.source.to_string()),
+                        ("destination", packet.destination.to_string()),
+                        ("network", network.to_string()),
+                    ],
+                );
+                if let Err(e) = state.remove_allocation(network, packet.destination, id, seq) {
+                    report::io("nat66.icmp_echo_remove_failed_send", e);
+                }
+                break;
+            }
         }
     }
 }
@@ -1001,14 +1068,15 @@ async fn drain_echo_error_queue(
     network: Network,
     state: &EchoState,
 ) -> io::Result<usize> {
-    let mut translated = 0;
+    let mut drained = 0;
     loop {
         let message = match recv_error_queue(fd) {
             Ok(message) => message,
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(translated),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(drained),
             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
             Err(e) => return Err(e),
         };
+        drained += 1;
         if message.error.ee_origin != SO_EE_ORIGIN_ICMP6 {
             continue;
         }
@@ -1103,7 +1171,6 @@ async fn drain_echo_error_queue(
             );
             continue;
         }
-        translated += 1;
     }
 }
 
@@ -1266,18 +1333,20 @@ fn enable_ipv6_error_queue(fd: RawFd) -> io::Result<()> {
     set_int_sockopt(fd, IPPROTO_IPV6, IPV6_RECVERR_OPT, 1)
 }
 
-async fn send_upstream_echo(
-    socket: &AsyncFd<Socket>,
-    destination: SocketAddrV6,
-    hop_limit: u8,
-    packet: &[u8],
-) -> io::Result<()> {
+fn set_upstream_echo_hop_limit(socket: &AsyncFd<Socket>, hop_limit: u8) -> io::Result<()> {
     set_int_sockopt(
         socket.get_ref().as_raw_fd(),
         IPPROTO_IPV6,
         libc::IPV6_UNICAST_HOPS,
         c_int::from(hop_limit),
-    )?;
+    )
+}
+
+async fn send_upstream_echo(
+    socket: &AsyncFd<Socket>,
+    destination: SocketAddrV6,
+    packet: &[u8],
+) -> io::Result<()> {
     sendto_all_async(socket, packet, SockAddr::from(destination)).await
 }
 

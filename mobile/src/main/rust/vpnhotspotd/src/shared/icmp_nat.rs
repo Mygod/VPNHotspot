@@ -207,6 +207,24 @@ impl EchoMap {
         })
     }
 
+    pub fn contains(
+        &mut self,
+        now: Instant,
+        timeout: Duration,
+        network: Network,
+        destination: Ipv6Addr,
+        id: u16,
+        seq: u16,
+    ) -> bool {
+        self.expire(now, timeout);
+        self.entries.contains_key(&EchoKey {
+            network,
+            destination,
+            id,
+            seq,
+        })
+    }
+
     pub fn remove_session(&mut self, now: Instant, timeout: Duration, session_key: u64) {
         self.expire(now, timeout);
         self.entries
@@ -449,7 +467,9 @@ mod tests {
             )
             .unwrap();
 
+        assert!(map.contains(now, TIMEOUT, 12, destination, id, seq));
         assert!(map.remove(now, TIMEOUT, 12, destination, id, seq).is_some());
+        assert!(!map.contains(now, TIMEOUT, 12, destination, id, seq));
         assert!(map
             .restore(now, TIMEOUT, 12, destination, id, seq)
             .is_none());
