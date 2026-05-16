@@ -59,6 +59,7 @@ Routing, firewall, address, route, and daemon changes should be reversible witho
 - Do not make cleanup depend on private app databases, preferences, caches, or in-memory bookkeeping when the state can outlive the app process.
 - Prefer idempotent mutations such as replace/delete-by-identifier over add-only operations that require remembering exactly what happened earlier.
 - Scope cleanup to mutations this app can identify deterministically. Do not delete or withdraw platform/user state just because it shares an interface or address family.
+- Rare platform/setup edge cases do not require extra compatibility machinery when supporting them would add disproportionate routing or lifecycle complexity. It is acceptable for setup to fail in such cases if the failure is explicit, non-silent, and fully reversible by normal cleanup or Clean.
 - Root-side changes must document their cleanup path, including what happens during normal stop, Clean, reapply, and interrupted startup.
 
 ## Platform API Reflection, Hidden API & Root Changes
