@@ -341,6 +341,11 @@ Routing must omit this rule when ICMP registration failed. Packets must not be
 queued unless the process-wide ICMP dispatcher has a live session registration
 for the downstream interface.
 
+ICMP Echo interception intentionally uses NFQUEUE rather than TCP/UDP-style
+TPROXY. ICMP has no destination port for a transparent listener, and the daemon
+must drop the original queued Echo Request after copying it so it cannot continue
+through another forwarding path alongside the daemon's translated probe.
+
 ### NAT66 TCP/UDP TPROXY
 
 Condition: per protocol when `SessionConfig.ipv6_nat != null` and NAT66 startup

@@ -191,7 +191,12 @@ error registrations. When the last entry for a network expires or is removed,
 the upstream socket is cancelled and removed.
 
 ICMP errors are translated only when they map to daemon-owned Echo or UDP state.
-Unmapped remote ICMP errors are not guessed into downstream errors.
+The translated error types are Destination Unreachable, Packet Too Big, Time
+Exceeded, and Parameter Problem. Generated downstream ICMP errors preserve the
+upstream offender source when that source is meaningful on the downstream link;
+link-local upstream offenders are rewritten to the NAT66 gateway. Error quotes
+are capped so the complete generated IPv6 packet stays within the IPv6 minimum
+MTU. Unmapped remote ICMP errors are not guessed into downstream errors.
 
 ## Router Advertisements
 
