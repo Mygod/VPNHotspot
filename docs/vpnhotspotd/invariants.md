@@ -20,9 +20,10 @@ compatibility or cleanup impact.
 
 - Never install routing/firewall interception for a runtime capability that did
   not start successfully.
-- DNS listener ports come from DNS startup. NAT66 TCP/UDP ports and ICMP Echo
-  capability come from NAT66 startup.
-- Optional NAT66 ICMP failure must not disable NAT66 TCP/UDP.
+- DNS TCP and UDP listener ports come from DNS startup independently. NAT66
+  TCP, UDP, and ICMP Echo capability come from NAT66 startup independently.
+- Optional NAT66 TCP, UDP, or ICMP failure must not disable the other NAT66
+  protocol capabilities that started successfully.
 - ICMPv6 local-link control traffic is not upstream NAT66 payload.
 
 ## Cleanup
@@ -47,8 +48,8 @@ compatibility or cleanup impact.
   commands.
 - Session replacement reconciles routing before publishing the new config
   snapshot to NAT66/DNS readers.
-- If NAT66 failed during session startup, replacements keep NAT66 disabled for
-  that session. Replacement does not retry NAT66 startup.
+- If NAT66 produced no runtime during session startup, replacements keep NAT66
+  disabled for that session. Replacement does not retry NAT66 startup.
 
 ## Errors
 

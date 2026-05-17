@@ -38,7 +38,7 @@ Use terminal errors when the requested operation cannot be completed:
 - duplicate active call ID;
 - duplicate session for a downstream;
 - missing session for replacement;
-- DNS or routing startup failure during session start;
+- downstream IPv4 discovery failure during session start;
 - static-address replacement failure;
 - Clean failure that prevents the command from completing.
 
@@ -55,7 +55,11 @@ or observes unexpected background state.
 
 Examples:
 
+- DNS TCP or UDP listener setup fails and routing omits only that redirect;
+- NAT66 TCP or UDP listener setup fails and routing omits only that protocol's
+  interception;
 - NAT66 ICMP startup fails but NAT66 TCP/UDP can continue;
+- a session routing mutation fails while other routing mutations remain useful;
 - neighbour data contains an invalid link-layer address length;
 - a background task join fails;
 - best-effort cleanup sees an unexpected error that does not invalidate the

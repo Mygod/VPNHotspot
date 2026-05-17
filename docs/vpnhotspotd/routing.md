@@ -21,8 +21,10 @@ represents session routing state as `RoutingMutation` values:
 | `NetdNat` | `ndc nat enable <downstream> <upstream> 0` | no-op; netd has no app-owned token |
 
 `Runtime::reconcile` deletes applied mutations that are no longer desired, then
-applies new desired mutations. Consecutive iptables rules for the same table and
-target are batched into one restore call.
+applies new desired mutations one at a time. Apply failures are structured
+nonfatal reports; successful mutations stay applied and are not rolled back only
+because a later best-effort mutation failed. A failed desired mutation is not
+recorded in `applied`, so a later reconcile can try it again.
 
 The `applied` list is only the current process rollback list. It is not
 persisted and is not a Clean source of truth.
@@ -55,8 +57,7 @@ path fails.
 
 ### IPv4 DNS Redirect
 
-Condition: always present for a started session because DNS startup provides TCP
-and UDP listener ports before routing starts.
+Condition: per protocol when DNS startup produced that listener port.
 
 External mutations:
 
@@ -65,7 +66,7 @@ External mutations:
 
 Rollback:
 
-- delete the same two rules.
+- delete the same protocol rules.
 
 Routing only redirects packets. DNS upstream selection belongs to
 [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs).
@@ -159,7 +160,8 @@ Rollback:
 - delete the corresponding IPv4 policy rule by full rule shape.
 
 Missing upstream links are skipped because upstream snapshots can race interface
-churn. Other netlink lookup errors are terminal for routing reconciliation.
+churn. Other netlink lookup errors are reported as structured nonfatals and
+that upstream interface is skipped for the current best-effort reconcile.
 
 ### Netd Masquerade
 
@@ -203,8 +205,8 @@ Clean:
 
 ### NAT66 Routes, Address, And Policy Rule
 
-Condition: `SessionConfig.ipv6_nat != null`. NAT66 startup must have returned
-runtime ports before these mutations are produced.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability in `SessionPorts.ipv6_nat`.
 
 External mutations:
 
@@ -233,7 +235,8 @@ table.
 
 ### NAT66 Firewall Chains
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutations:
 
@@ -255,7 +258,8 @@ Clean:
 
 ### NAT66 Filter Rules
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutations:
 
@@ -280,7 +284,8 @@ The mark value is `DAEMON_REPLY_MARK/DAEMON_REPLY_MARK_MASK`.
 
 ### NAT66 ACL Gate
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutation:
 
@@ -312,7 +317,8 @@ for the downstream interface.
 
 ### NAT66 TCP/UDP TPROXY
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: per protocol when `SessionConfig.ipv6_nat != null` and NAT66 startup
+returned that listener port.
 
 External mutations:
 
@@ -330,7 +336,8 @@ exact-bound UDP reply sockets.
 
 ### NAT66 ICMPv6 Control Returns
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutations:
 
@@ -347,7 +354,8 @@ Advertisement. They are local-link control traffic, not upstream NAT66 payload.
 
 ### NAT66 Filter Base Jumps
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutations:
 
@@ -363,7 +371,8 @@ Clean deletes these repeatedly before flushing and deleting the target chains.
 
 ### NAT66 TPROXY Base Jump
 
-Condition: `SessionConfig.ipv6_nat != null`.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup returned at least
+one runtime capability.
 
 External mutation:
 
@@ -401,8 +410,8 @@ Rollback:
 
 ### Client NAT66 Allow Rules
 
-Condition: `SessionConfig.ipv6_nat != null`, for each unique client MAC in
-`SessionConfig.clients`.
+Condition: `SessionConfig.ipv6_nat != null`, NAT66 startup returned at least
+one runtime capability, and for each unique client MAC in `SessionConfig.clients`.
 
 External mutation:
 
@@ -419,7 +428,9 @@ that drop.
 
 [`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) calls
 `ensure_ipv6_nat_firewall_base` before starting the first session that requests
-NAT66. This is outside per-session desired state.
+NAT66. This is outside per-session desired state. Failure is reported as a
+structured nonfatal tied to the start-session call and disables NAT66 for that
+session start; the IPv4 session may still continue.
 
 External mutations:
 

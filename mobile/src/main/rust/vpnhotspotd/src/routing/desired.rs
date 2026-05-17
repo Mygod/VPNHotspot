@@ -1,17 +1,15 @@
 use std::collections::HashSet;
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use cidr::Ipv4Inet;
 
-use crate::{firewall::IptablesTarget, netlink};
+use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     SessionConfig, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
     DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
-use vpnhotspotd::shared::protocol::IoResultReportExt;
 
 use super::iptables::IptablesRule;
 use super::ipv6_nat_firewall::Ipv6NatFirewall;
@@ -26,10 +24,7 @@ use super::{
 };
 
 impl Runtime {
-    pub(super) async fn desired_mutations(
-        &self,
-        config: &SessionConfig,
-    ) -> io::Result<Vec<RoutingMutation>> {
+    pub(super) async fn desired_mutations(&self, config: &SessionConfig) -> Vec<RoutingMutation> {
         let mut mutations = Vec::new();
         if config.ip_forward {
             push_unique(
@@ -96,10 +91,12 @@ impl Runtime {
                     Ok(ifindex) => ifindex,
                     Err(e) if netlink::is_missing_link(&e) => continue,
                     Err(e) => {
-                        return Err(e).with_report_context_details(
+                        report::io_with_details(
                             "routing.resolve_upstream_index",
+                            e,
                             [("upstream", ifname.as_str())],
                         );
+                        continue;
                     }
                 };
                 let upstream = UpstreamConfig {
@@ -151,11 +148,8 @@ impl Runtime {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
         }
-        if let Some(ipv6_nat) = &config.ipv6_nat {
-            let ports = self
-                .ports
-                .ipv6_nat
-                .ok_or_else(|| io::Error::other("missing IPv6 NAT ports"))?;
+        let ipv6_nat = config.ipv6_nat.as_ref().zip(self.ports.ipv6_nat);
+        if let Some((ipv6_nat, ports)) = ipv6_nat {
             push_unique(
                 &mut mutations,
                 RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
@@ -220,7 +214,7 @@ impl Runtime {
                     push_unique(&mut mutations, RoutingMutation::Iptables(rule));
                 }
             }
-            if config.ipv6_nat.is_some() && !client_macs_v6.contains(&client.mac) {
+            if ipv6_nat.is_some() && !client_macs_v6.contains(&client.mac) {
                 client_macs_v6.push(client.mac);
                 push_unique(
                     &mut mutations,
@@ -228,14 +222,15 @@ impl Runtime {
                 );
             }
         }
-        Ok(mutations)
+        mutations
     }
 
     fn dns_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
         [("tcp", self.ports.dns_tcp), ("udp", self.ports.dns_udp)]
             .into_iter()
-            .map(|(protocol, port)| {
-                IptablesRule::new(
+            .filter_map(|(protocol, port)| {
+                let port = port?;
+                Some(IptablesRule::new(
                     IptablesTarget::Ipv4,
                     "nat",
                     "PREROUTING",
@@ -253,7 +248,7 @@ impl Runtime {
                         "--to-destination".into(),
                         format!(":{port}"),
                     ],
-                )
+                ))
             })
             .collect()
     }

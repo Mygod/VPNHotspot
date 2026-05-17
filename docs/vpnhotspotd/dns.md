@@ -7,14 +7,16 @@ those listeners.
 ## Listener Ownership
 
 [`dns::Runtime::start`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs)
-binds TCP and UDP listeners to the session's downstream IPv4 address on
-ephemeral ports. The sockets are marked with the daemon reply mark and set
-nonblocking before Tokio takes ownership.
+attempts to bind TCP and UDP listeners to the session's downstream IPv4 address
+on ephemeral ports. Each listener is an independent best-effort capability. A
+listener that starts publishes its port to routing; a listener that fails is
+reported as a structured nonfatal tied to the start-session call and omitted
+from routing.
 
-Routing redirects downstream IPv4 DNS to those ephemeral ports with DNAT. NAT66
-TCP and UDP also special-case DNS to the NAT66 gateway on port 53 and call the
-same DNS handlers. This keeps resolver selection and DNS response generation in
-one runtime instead of duplicating DNS behavior in NAT66.
+Routing redirects downstream IPv4 DNS to the ephemeral ports that exist with
+DNAT. NAT66 TCP and UDP also special-case DNS to the NAT66 gateway on port 53
+and call the same DNS handlers. This keeps resolver selection and DNS response
+generation in one runtime instead of duplicating DNS behavior in NAT66.
 
 ## Config Snapshots
 
@@ -76,5 +78,5 @@ parsed enough to build one. If a SERVFAIL response cannot be generated, the
 query is dropped.
 
 Per-query resolver failures are logged but do not stop the DNS runtime. Listener
-setup failures are terminal for session startup because routing would otherwise
-redirect DNS to a listener that does not exist.
+setup failures do not stop the session. Routing omits the missing DNS redirect,
+so normal IP traffic and manually configured downstream DNS can still work.

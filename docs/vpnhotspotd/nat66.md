@@ -11,16 +11,19 @@ headers.
 optional per session. If `SessionConfig.ipv6_nat` is absent, NAT66 startup
 returns `None` and routing must not install NAT66 interception.
 
-When enabled, startup creates:
+When enabled, startup attempts to create:
 
-- one TCP TPROXY listener;
-- one UDP TPROXY listener;
-- a router-advertisement task;
+- one optional TCP TPROXY listener;
+- one optional UDP TPROXY listener;
+- an optional router-advertisement task;
 - an optional ICMPv6 Echo registration through the process-wide dispatcher.
 
-The TCP and UDP listener ports become routing inputs. ICMP Echo support is a
-capability flag; if ICMP registration fails, the daemon reports a structured
-nonfatal and continues NAT66 TCP/UDP without ICMP interception.
+The TCP and UDP listener ports become routing inputs only when their listeners
+start. ICMP Echo support is a capability flag. If one capability fails, the
+daemon reports a structured nonfatal and continues with the remaining NAT66
+capabilities. If both TCP and UDP fail to start, NAT66 returns no runtime and
+the session continues with IPv6 NAT disabled; ICMP alone does not keep NAT66
+enabled.
 
 NAT66 shares the session config through an `Arc<Mutex<SessionConfig>>`. Per-flow
 or per-packet work should clone a config snapshot at the point where a stable
@@ -34,7 +37,7 @@ NAT66 state is split by lifetime:
 | Lifetime | Owner | State |
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task, ICMP session registrations, shared Echo state, upstream ICMP sockets |
-| Session | `nat66::Runtime` | TCP/UDP listener ports, RA task, ICMP registration, cleanup prefixes |
+| Session | `nat66::Runtime` | optional TCP/UDP listener ports, optional RA task, ICMP registration, cleanup prefixes |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, reply socket pool |
 | Flow | TCP task or UDP association task | Upstream socket, downstream reply path, ICMP error registration where applicable |
 
@@ -64,14 +67,15 @@ and protocol state behind that interception.
 
 Startup returns `Ipv6NatPorts` to routing:
 
-- TCP and UDP listener ports are required for TPROXY rules;
+- TCP and UDP listener ports are optional and each only enables that protocol's
+  TPROXY rule;
 - `icmp_echo` is true only when the session is registered with the ICMP
   dispatcher;
 - missing NAT66 config returns no runtime and no NAT66 routing state.
 
 This is a hard boundary. Routing must not install a NAT66 interception rule
-unless the runtime capability exists. Optional ICMP failure must remove only
-ICMP interception from desired routing state; TCP/UDP NAT66 may continue.
+unless the runtime capability exists. Optional TCP, UDP, or ICMP failure must
+remove only that protocol's interception from desired routing state.
 
 The mangle path gates downstream traffic through `vpnhotspot_acl`, then through
 protocol-specific TPROXY/NFQUEUE handling. Client allow rules return from the
@@ -212,13 +216,14 @@ in-memory list.
 
 ## Failure Boundaries
 
-NAT66 startup has both terminal and optional pieces:
+NAT66 startup is best effort across these pieces:
 
-- TCP listener setup failure is terminal for NAT66 startup.
-- UDP listener setup failure cancels the NAT66 stop token and is terminal for
-  NAT66 startup.
-- RA task setup failure cancels the NAT66 stop token and is terminal for NAT66
-  startup.
+- TCP listener setup failure is nonfatal; NAT66 continues without TCP
+  interception when UDP started.
+- UDP listener setup failure is nonfatal; NAT66 continues without UDP
+  interception when TCP started.
+- RA task setup failure is nonfatal; existing NAT66 interception may continue,
+  but clients may need other configuration to discover the gateway.
 - ICMP registration failure is nonfatal; NAT66 continues without ICMP Echo
   interception.
 - ICMP error-queue setup failure is reported, but Echo and UDP may continue
@@ -226,9 +231,9 @@ NAT66 startup has both terminal and optional pieces:
 - Runtime packet parse failures, unmapped errors, and ordinary remote failures
   should be dropped or logged without stopping the session.
 
-Session startup treats terminal NAT66 startup failure as optional at the session
-level: it reports a nonfatal tied to the start call, disables `ipv6_nat` in the
-shared config, and starts routing without NAT66 interception.
+Session startup treats total NAT66 startup failure as optional at the session
+level: if NAT66 produces no TCP or UDP listener, it disables `ipv6_nat` in the
+shared config and starts routing without NAT66 interception.
 
 ## Cleanup
 

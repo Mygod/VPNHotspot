@@ -203,7 +203,8 @@ impl Ipv6NatFirewall {
     fn tproxy_port_rules(config: &SessionConfig, ports: Ipv6NatPorts) -> Vec<IptablesRule> {
         [("tcp", ports.tcp), ("udp", ports.udp)]
             .into_iter()
-            .map(|(protocol, port)| {
+            .filter_map(|(protocol, port)| {
+                let port = port?;
                 let mut args = vec![
                     "-i".into(),
                     config.downstream.clone(),
@@ -222,12 +223,12 @@ impl Ipv6NatFirewall {
                     "--tproxy-mark".into(),
                     "0x10000000/0x10000000".into(),
                 ]);
-                IptablesRule::new(
+                Some(IptablesRule::new(
                     IptablesTarget::Ipv6,
                     "mangle",
                     "vpnhotspot_v6_protocols",
                     args,
-                )
+                ))
             })
             .collect()
     }

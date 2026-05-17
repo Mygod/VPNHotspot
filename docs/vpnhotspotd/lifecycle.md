@@ -66,24 +66,27 @@ client connection and it is not an upstream network.
 
 `StartSessionCommand` reserves a session slot before doing setup. The daemon
 rejects a second active session for the same downstream interface. If IPv6 NAT
-is requested, the process-wide IPv6 NAT firewall base chains are installed
-before the session runtime starts.
+is requested, the process-wide IPv6 NAT firewall base chains are attempted
+before the session runtime starts. Failure there is reported as a structured
+nonfatal tied to the start call and IPv6 NAT is disabled for that session start.
 
 [`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
 constructs the session in this order:
 
 1. Wait for a downstream IPv4 address through netlink notifications and the
    caller's cancellation token.
-2. Start the DNS runtime bound to that downstream IPv4 address.
-3. Start NAT66 if requested. NAT66 startup failure is reported as a structured
-   nonfatal tied to the start call, then the session continues with IPv6 NAT
-   disabled.
-4. Start routing using the DNS ports and optional NAT66 ports produced by the
-   runtimes.
+2. Start the DNS runtime bound to that downstream IPv4 address. TCP and UDP
+   listener setup are independent best-effort capabilities.
+3. Start NAT66 if requested. NAT66 TCP, UDP, RA, and ICMP setup failures are
+   reported as structured nonfatals tied to the start call. If NAT66 produces
+   no TCP or UDP listener, the session continues with IPv6 NAT disabled.
+4. Start routing using the DNS ports and optional NAT66 capabilities produced
+   by the runtimes. Routing applies each mutation best effort and reports setup
+   failures without rolling back other successful mutations.
 
-DNS and routing startup failures are terminal for the start call. Any partial
-session startup must cancel the session stop token and remove the reserved
-session slot.
+Downstream IPv4 discovery is still required before a session can be established.
+After that point, DNS, NAT66, and routing setup failures remove only the
+affected capability or mutation from the best-effort setup result.
 
 After the session is installed, Rust sends an event ACK. The start-session task
 then waits for cancellation. When cancelled normally, it removes the session and
@@ -102,7 +105,8 @@ Replacement happens under the session's config mutex:
 - the shared config snapshot is replaced;
 - NAT66 is notified after the mutex is released.
 
-If NAT66 failed during startup, later replacements keep `ipv6_nat` disabled for
+If NAT66 produced no runtime during startup or was disabled by process-wide
+firewall-base setup failure, later replacements keep `ipv6_nat` disabled for
 that session. A replacement does not retry NAT66 startup.
 
 ## Shutdown And Clean

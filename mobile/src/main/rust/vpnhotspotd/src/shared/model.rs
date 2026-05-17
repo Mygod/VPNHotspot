@@ -84,15 +84,15 @@ pub struct Ipv6NatConfig {
 
 #[derive(Clone, Copy)]
 pub struct SessionPorts {
-    pub dns_tcp: u16,
-    pub dns_udp: u16,
+    pub dns_tcp: Option<u16>,
+    pub dns_udp: Option<u16>,
     pub ipv6_nat: Option<Ipv6NatPorts>,
 }
 
 #[derive(Clone, Copy)]
 pub struct Ipv6NatPorts {
-    pub tcp: u16,
-    pub udp: u16,
+    pub tcp: Option<u16>,
+    pub udp: Option<u16>,
     pub icmp_echo: bool,
 }
 

@@ -1,10 +1,9 @@
 use std::io;
 
-use crate::{firewall::IptablesTarget, netlink};
+use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 use vpnhotspotd::shared::proto::daemon::CleanRoutingCommand;
-use vpnhotspotd::shared::protocol::IoResultReportExt;
 
 mod desired;
 mod firewall_cleanup;
@@ -111,21 +110,15 @@ impl Runtime {
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
-    ) -> io::Result<Self> {
+    ) -> Self {
         let mut runtime = Self {
             ports,
             downstream_ipv4,
             netlink,
             applied: Vec::new(),
         };
-        if let Err(e) = runtime.setup(config).await.with_report_context_details(
-            "routing.start",
-            [("downstream", config.downstream.as_str())],
-        ) {
-            runtime.drain_applied().await;
-            return Err(e);
-        }
-        Ok(runtime)
+        runtime.setup(config).await;
+        runtime
     }
 
     pub(crate) async fn replace(
@@ -141,20 +134,21 @@ impl Runtime {
             ));
         }
         self.downstream_ipv4 = downstream_ipv4;
-        let desired = self.desired_mutations(next).await?;
-        self.reconcile(desired).await
+        let desired = self.desired_mutations(next).await;
+        self.reconcile(desired).await;
+        Ok(())
     }
 
     pub(crate) async fn stop(mut self) {
         self.drain_applied().await;
     }
 
-    async fn setup(&mut self, config: &SessionConfig) -> io::Result<()> {
-        let desired = self.desired_mutations(config).await?;
-        self.reconcile(desired).await
+    async fn setup(&mut self, config: &SessionConfig) {
+        let desired = self.desired_mutations(config).await;
+        self.reconcile(desired).await;
     }
 
-    async fn reconcile(&mut self, desired: Vec<RoutingMutation>) -> io::Result<()> {
+    async fn reconcile(&mut self, desired: Vec<RoutingMutation>) {
         let mut index = self.applied.len();
         while index > 0 {
             index -= 1;
@@ -165,37 +159,31 @@ impl Runtime {
                 }
             }
         }
-        let mut index = 0;
-        while index < desired.len() {
-            let mutation = &desired[index];
-            if self.applied.contains(mutation) {
-                index += 1;
-            } else if let RoutingMutation::Iptables(rule) = mutation {
-                let target = rule.target;
-                let table = rule.table;
-                let mut rules = Vec::new();
-                while let Some(RoutingMutation::Iptables(rule)) = desired.get(index) {
-                    if self.applied.contains(&desired[index])
-                        || rule.target != target
-                        || rule.table != table
+        for mutation in desired {
+            if self.applied.contains(&mutation) {
+                continue;
+            }
+            match &mutation {
+                RoutingMutation::Iptables(rule) => {
+                    match apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule))
+                        .await
                     {
-                        break;
+                        Ok(()) => self.applied.push(mutation),
+                        Err(e) => {
+                            report::io_with_details("routing.apply_iptables", e, rule.details())
+                        }
                     }
-                    rules.push(rule.clone());
-                    index += 1;
                 }
-                apply_iptables_batch(target, table, &rules).await?;
-                self.applied
-                    .extend(rules.into_iter().map(RoutingMutation::Iptables));
-            } else {
-                mutation.apply(&self.netlink).await?;
-                if !matches!(mutation, RoutingMutation::EnsureIptablesChain { .. }) {
-                    self.applied.push(mutation.clone());
-                }
-                index += 1;
+                _ => match mutation.apply(&self.netlink).await {
+                    Ok(()) => {
+                        if !matches!(mutation, RoutingMutation::EnsureIptablesChain { .. }) {
+                            self.applied.push(mutation);
+                        }
+                    }
+                    Err(e) => report::io("routing.apply", e),
+                },
             }
         }
-        Ok(())
     }
 
     async fn drain_applied(&mut self) {

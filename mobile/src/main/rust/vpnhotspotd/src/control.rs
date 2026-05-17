@@ -16,8 +16,8 @@ use crate::{nat66, netlink, report, routing};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
-    error_frame, read_session_config, traffic_counter_lines_frame, IoErrorReportExt,
-    IoResultReportExt,
+    daemon_io_error_report_with_details, error_frame, read_session_config,
+    traffic_counter_lines_frame, IoErrorReportExt, IoResultReportExt,
 };
 
 mod calls;
@@ -295,7 +295,7 @@ async fn handle_command(
 async fn start_session(
     id: u64,
     state: &State,
-    config: vpnhotspotd::shared::model::SessionConfig,
+    mut config: vpnhotspotd::shared::model::SessionConfig,
     sender: &UnboundedSender<Vec<u8>>,
     cancel: &CancellationToken,
 ) -> io::Result<()> {
@@ -331,8 +331,15 @@ async fn start_session(
                 [("downstream", downstream.as_str())],
             )
         {
-            remove_session_slot(state, &slot).await;
-            return Err(e);
+            report::report_for(
+                Some(id),
+                daemon_io_error_report_with_details(
+                    "control.start_session.ipv6_nat_firewall_base",
+                    e,
+                    [("downstream", downstream.as_str())],
+                ),
+            );
+            config.ipv6_nat = None;
         }
     }
     let mut guard = slot.session.lock().await;
