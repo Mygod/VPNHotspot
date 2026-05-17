@@ -149,7 +149,7 @@ pub fn build_translated_udp_quote(
     payload: &[u8],
 ) -> io::Result<Vec<u8>> {
     let length = usize::from(original.length);
-    if length < UdpHeader::LEN || length < UdpHeader::LEN + payload.len() {
+    if length < UdpHeader::LEN || payload.len() > length - UdpHeader::LEN {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "invalid udp quote length",
