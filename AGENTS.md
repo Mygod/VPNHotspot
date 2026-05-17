@@ -36,6 +36,18 @@ Prefer resource-owner concurrency over broad locks or global serialization.
 ## Rust Daemon Code Hygiene
 Rust daemon code should be event-driven and async-first. Prefer Tokio readiness, cancellation tokens, notifications, channels, and deadline timers over polling loops, fixed sleeps, or manually managed worker threads.
 
+- Keep [`docs/vpnhotspotd`](./docs/vpnhotspotd) in sync with daemon internals. When changing
+  `mobile/src/main/rust/vpnhotspotd`, `mobile/src/main/proto/daemon.proto`, or Kotlin daemon
+  control code under `mobile/src/main/java/be/mygod/vpnhotspot/root/daemon`, update the relevant
+  daemon docs if ownership, lifecycle, cleanup, NAT66, DNS, routing, neighbour monitoring, or
+  structured error semantics change. If no daemon doc update is needed, state why in the change
+  summary.
+- Do not let daemon docs gloss over external side effects. If a Rust daemon change adds, removes, or
+  changes kernel, netfilter, netd, resolver, socket, file descriptor, process, or Android system
+  state, document the trigger, exact external state or command shape, rollback/stop behavior, Clean
+  or process-death behavior, and expected missing-state/failure cases. For routing changes, every
+  route, policy rule, address, iptables/ip6tables rule or chain, `ndc` request, and Clean mutation
+  must be listed in `docs/vpnhotspotd/routing.md`.
 - Avoid large modules. Prefer adding new modules instead of growing existing ones.
 - Target Rust modules under 500 LoC, excluding tests.
 - If a file exceeds roughly 800 LoC, add new functionality in a new module instead of extending the existing file unless there is a strong documented reason not to.

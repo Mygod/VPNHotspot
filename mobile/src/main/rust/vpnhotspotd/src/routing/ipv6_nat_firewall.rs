@@ -175,7 +175,7 @@ impl Ipv6NatFirewall {
                     "-m".into(),
                     "mark".into(),
                     "--mark".into(),
-                    format!("{DAEMON_REPLY_MARK}/{DAEMON_REPLY_MARK_MASK}"),
+                    format!("0x{DAEMON_REPLY_MARK:08x}/0x{DAEMON_REPLY_MARK_MASK:08x}"),
                     "-j".into(),
                     "ACCEPT".into(),
                 ],
