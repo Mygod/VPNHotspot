@@ -12,7 +12,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::neighbour::Monitor;
 use crate::session::Session;
-use crate::{nat66, netlink, report, routing};
+use crate::{ipsec, nat66, netlink, report, routing};
+use vpnhotspotd::shared::ipsec::UpstreamTracker;
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
@@ -34,6 +35,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     report::init(sender.clone())?;
     let state = Arc::new(State {
         netlink: Mutex::new(None),
+        ipsec: Mutex::new(UpstreamTracker::default()),
         icmp: nat66::IcmpDispatcher::new(),
         sessions: Mutex::new(HashMap::new()),
         ipv6_nat_firewall_base: Mutex::new(false),
@@ -145,6 +147,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     netlink: Mutex<Option<Arc<netlink::Runtime>>>,
+    ipsec: Mutex<UpstreamTracker>,
     icmp: nat66::IcmpDispatcher,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     ipv6_nat_firewall_base: Mutex<bool>,
@@ -181,6 +184,7 @@ impl State {
         }
         let sessions = self.drain_sessions().await;
         stop_sessions(&sessions, withdraw_cleanup).await;
+        self.ipsec.lock().await.clear();
         self.stop_ipv6_nat_firewall_base().await;
     }
 
@@ -207,6 +211,21 @@ impl State {
         if *installed {
             routing::delete_ipv6_nat_firewall_base().await;
             *installed = false;
+        }
+    }
+
+    async fn update_ipsec_session(
+        &self,
+        id: u64,
+        config: &vpnhotspotd::shared::model::SessionConfig,
+        sender: &UnboundedSender<Vec<u8>>,
+    ) {
+        let entered = self.ipsec.lock().await.update_session(id, config);
+        if !entered.is_empty() {
+            let sender = sender.clone();
+            tokio::spawn(async move {
+                ipsec::scan(id, entered, &sender).await;
+            });
         }
     }
 }
@@ -250,6 +269,7 @@ async fn handle_command(
                 read_session_config(command.config.ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing replace session config")
                 })?)?,
+                sender,
             )
             .await?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
@@ -293,6 +313,7 @@ async fn handle_command(
                 }
             }
             stop_sessions(&sessions, true).await;
+            state.ipsec.lock().await.clear();
             state.stop_ipv6_nat_firewall_base().await;
             for id in complete_ids {
                 send_complete(id, sender);
@@ -372,6 +393,7 @@ async fn start_session(
         }
     }
     let mut guard = slot.session.lock().await;
+    let ipsec_config = config.clone();
     match Session::start(id, config, &netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
@@ -395,6 +417,7 @@ async fn start_session(
             "controller send failed",
         ));
     }
+    state.update_ipsec_session(id, &ipsec_config, sender).await;
     cancel.cancelled().await;
     if !slot.cleaning.load(Ordering::Acquire) {
         remove_session(state, &slot, false).await;
@@ -406,6 +429,7 @@ async fn replace_session(
     state: &State,
     session_id: u64,
     config: vpnhotspotd::shared::model::SessionConfig,
+    sender: &UnboundedSender<Vec<u8>>,
 ) -> io::Result<()> {
     let slot = state
         .sessions
@@ -435,6 +459,7 @@ async fn replace_session(
         ));
     }
     let mut guard = slot.session.lock().await;
+    let ipsec_config = config.clone();
     let session = guard.as_mut().ok_or_else(|| {
         io::Error::new(io::ErrorKind::NotFound, "session not established")
             .with_report_context_details(
@@ -448,7 +473,12 @@ async fn replace_session(
     session
         .replace_config(config)
         .await
-        .with_report_context("control.replace_session")
+        .with_report_context("control.replace_session")?;
+    drop(guard);
+    state
+        .update_ipsec_session(session_id, &ipsec_config, sender)
+        .await;
+    Ok(())
 }
 
 async fn remove_session(state: &State, slot: &Arc<SessionState>, withdraw_cleanup: bool) {
@@ -467,6 +497,8 @@ async fn remove_session_slot(state: &State, slot: &Arc<SessionState>) {
         .is_some_and(|current| Arc::ptr_eq(current, slot))
     {
         sessions.remove(&slot.id);
+        drop(sessions);
+        state.ipsec.lock().await.remove_session(slot.id);
     }
 }
 

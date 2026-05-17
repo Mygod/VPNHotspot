@@ -8,6 +8,7 @@ use std::process;
 use cidr::{Ipv6Cidr, Ipv6Inet};
 use prost::Message;
 
+use crate::shared::ipsec::IpSecForwardPolicyTarget;
 use crate::shared::model::{
     ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, SessionConfig,
     DAEMON_REPLY_MARK,
@@ -230,6 +231,19 @@ where
         daemon::event_frame::Payload::NeighbourMonitor(daemon::NeighbourMonitorUpdate {
             neighbour_deltas: neighbour_deltas.into_iter().collect(),
             link_topology,
+        }),
+    )
+}
+
+pub fn ipsec_forward_policy_frame(id: u64, target: &IpSecForwardPolicyTarget) -> Vec<u8> {
+    event_frame(
+        id,
+        daemon::event_frame::Payload::IpsecForwardPolicy(daemon::IpSecForwardPolicyRequest {
+            uid: target.uid,
+            source_address: target.source_address.clone(),
+            destination_address: target.destination_address.clone(),
+            mark_value: target.mark_value,
+            xfrm_interface_id: target.xfrm_interface_id,
         }),
     )
 }

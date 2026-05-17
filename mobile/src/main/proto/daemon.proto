@@ -105,6 +105,7 @@ message EventFrame {
   oneof payload {
     Ack ack = 2;
     NeighbourMonitorUpdate neighbour_monitor = 3;
+    IpSecForwardPolicyRequest ipsec_forward_policy = 4;
   }
 }
 
@@ -131,6 +132,14 @@ message TrafficCounterLines {
 message NeighbourMonitorUpdate {
   repeated NeighbourDelta neighbour_deltas = 1;
   LinkTopologySnapshot link_topology = 2;
+}
+
+message IpSecForwardPolicyRequest {
+  int32 uid = 1;
+  string source_address = 2;
+  string destination_address = 3;
+  int32 mark_value = 4;
+  int32 xfrm_interface_id = 5;
 }
 
 message LinkTopologySnapshot {

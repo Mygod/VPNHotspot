@@ -74,7 +74,7 @@ object DaemonController {
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
-    class SessionCall(val id: Long, val closed: Flow<Unit>) {
+    class SessionCall(val id: Long, val events: Flow<EventFrame>) {
         suspend fun close() = closeEventCall(id)
     }
 
@@ -93,11 +93,7 @@ object DaemonController {
             withContext(NonCancellable) { closeEventCall(call.id) }
             throw e
         }
-        return SessionCall(call.id, flow {
-            eventFlow(call, cancelOnClose = false).collect { event ->
-                throw IOException("Unexpected $BINARY_NAME session event $event")
-            }
-        })
+        return SessionCall(call.id, eventFlow(call, cancelOnClose = false))
     }
 
     suspend fun replaceSession(sessionId: Long, config: SessionConfig) {

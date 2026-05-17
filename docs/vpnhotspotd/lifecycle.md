@@ -24,6 +24,7 @@ bookkeeping:
 - one lazy rtnetlink runtime slot;
 - one NAT66 ICMP dispatcher shared by NAT66 sessions;
 - a session map keyed by the start-session call ID;
+- one process-wide upstream-interface aggregate for optional IPsec probes;
 - one optional neighbour monitor;
 - one process-wide flag for the NAT66 firewall base chains.
 
@@ -54,10 +55,12 @@ There are two call shapes:
 `ReplaceStaticAddressesCommand`, and `CleanRoutingCommand` are one-shot calls.
 
 `StartSessionCommand` sends an event ACK after the session is established, then
-keeps the call active as the session owner. `StartNeighbourMonitorCommand`
-sends an initial neighbour/topology snapshot and then streams updates. The
-protobuf schema still describes the frames; "event-style call" only describes
-the controller lifetime shape.
+keeps the call active as the session owner. The session event stream may later
+carry optional daemon-to-routing requests, such as an IPsec forwarding-policy
+update request. `StartNeighbourMonitorCommand` sends an initial
+neighbour/topology snapshot and then streams updates. The protobuf schema still
+describes the frames; "event-style call" only describes the controller lifetime
+shape.
 
 Call IDs are part of lifecycle ownership. A session is stored under the call ID
 that started it. Closing that event call is the normal request to stop that
@@ -99,6 +102,16 @@ After the session is installed, Rust sends an event ACK. The start-session task
 then waits for cancellation. When cancelled normally, it removes the session and
 stops the session runtimes.
 
+After the ACK, the daemon updates a process-wide aggregate of upstream interface
+names across all active sessions. On Android 12+, if an interface name enters
+that aggregate set, a detached IPsec probe runs `/system/bin/dumpsys ipsec`.
+When the probe finds a matching IPv4 tunnel forwarding policy target, it emits a
+session event asking the Kotlin routing owner to call
+`INetd.ipSecUpdateSecurityPolicy`. No-match is quiet; `dumpsys` or parser
+failures are structured nonfatals tied to the session call. The daemon does not
+track or clean up IPsec policy state; tunnel and policy teardown remain
+platform-owned.
+
 ## Session Replacement
 
 `ReplaceSessionCommand` updates the config for an existing session. The
@@ -115,6 +128,12 @@ Replacement happens under the session's config mutex:
 If NAT66 produced no runtime during startup or was disabled by process-wide
 firewall-base setup failure, later replacements keep `ipv6_nat` disabled for
 that session. A replacement does not retry NAT66 startup.
+
+After a successful replacement, the same process-wide IPsec upstream aggregate
+is updated from the session's new upstream interface set. A replacement only
+triggers an IPsec probe for interface names that enter the aggregate set; client
+changes, downstream changes, and primary/fallback role changes do not trigger a
+probe by themselves.
 
 ## Shutdown And Clean
 
@@ -133,6 +152,7 @@ writer, and exits.
   remove the same state again;
 - detaches and completes the corresponding event calls;
 - stops sessions with `withdraw_cleanup = true`;
+- clears the process-wide IPsec upstream aggregate;
 - removes the process-wide NAT66 firewall base chains;
 - runs deterministic routing cleanup that reconstructs app-owned state from
   current kernel/interface state and the prefix seed.

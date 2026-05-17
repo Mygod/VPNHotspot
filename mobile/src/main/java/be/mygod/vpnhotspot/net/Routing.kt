@@ -3,9 +3,7 @@ package be.mygod.vpnhotspot.net
 import android.annotation.SuppressLint
 import android.net.MacAddress
 import android.net.RouteInfo
-import android.os.Build
 import android.provider.Settings
-import androidx.collection.MutableOrderedScatterSet
 import androidx.collection.MutableObjectList
 import androidx.collection.MutableScatterMap
 import androidx.collection.MutableScatterSet
@@ -38,8 +36,9 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import timber.log.Timber
 import okio.ByteString.Companion.toByteString
+import timber.log.Timber
+import java.io.IOException
 import java.net.Inet4Address
 import java.net.Inet6Address
 import java.util.concurrent.atomic.AtomicBoolean
@@ -126,7 +125,28 @@ class Routing(private val caller: Any, private val downstream: String) {
                     }
                 }
                 session = DaemonController.startSession(nextConfig())
-                launch(start = CoroutineStart.UNDISPATCHED) { session.closed.collect { } }
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    session.events.collect { event ->
+                        event.ipsec_forward_policy?.let {
+                            try {
+                                RootManager.use { server ->
+                                    server.execute(IpSecForwardPolicyCommand(
+                                        uid = it.uid,
+                                        sourceAddress = it.source_address,
+                                        destinationAddress = it.destination_address,
+                                        markValue = it.mark_value,
+                                        xfrmInterfaceId = it.xfrm_interface_id,
+                                    ))
+                                }
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Timber.w(e)
+                                SmartSnackbar.make(e).show()
+                            }
+                        } ?: throw IOException("Unexpected session event $event")
+                    }
+                }
                 var blockedMacs = initialBlockedMacs.await()
                 var neighbours: Collection<NetlinkNeighbour> = emptyList()
                 Timber.i("Started routing for $downstream by $caller")
@@ -242,26 +262,14 @@ class Routing(private val caller: Any, private val downstream: String) {
     }
 
     private class UpstreamTracker {
-        private var interfaces = MutableOrderedScatterSet<String>()
+        private var interfaces = emptyList<String>()
         var upstream: Upstream? = null
             private set
 
-        suspend fun update(value: Upstream?): Boolean {
+        fun update(value: Upstream?): Boolean {
             if (upstream == value) return false
             upstream = value
-            val nextInterfaces = MutableOrderedScatterSet<String>()
-            for (ifname in value?.properties?.allInterfaceNames ?: emptyList()) {
-                nextInterfaces.add(ifname)
-                if (Build.VERSION.SDK_INT >= 31 && !interfaces.contains(ifname)) try {
-                    RootManager.use { it.execute(IpSecForwardPolicyCommand(ifname)) }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    SmartSnackbar.make(e).show()
-                    Timber.w(e)
-                }
-            }
-            interfaces = nextInterfaces
+            interfaces = value?.properties?.allInterfaceNames ?: emptyList()
             return true
         }
 

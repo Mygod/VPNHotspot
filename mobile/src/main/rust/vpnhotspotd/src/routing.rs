@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::{firewall::IptablesTarget, netlink, report};
+use crate::{firewall::IptablesTarget, netlink, platform, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 use vpnhotspotd::shared::proto::daemon::CleanRoutingCommand;
@@ -257,16 +257,9 @@ fn push_unique(mutations: &mut Vec<RoutingMutation>, mutation: RoutingMutation) 
 }
 
 fn rule_priority(base: u32) -> u32 {
-    rule_priority_for_api(base, android_api_level())
+    rule_priority_for_api(base, platform::android_api_level())
 }
 
 fn rule_priority_for_api(base: u32, api_level: i32) -> u32 {
     (base as i32 + if api_level < 31 { -3000 } else { 0 }) as u32
-}
-
-fn android_api_level() -> i32 {
-    extern "C" {
-        fn android_get_device_api_level() -> libc::c_int;
-    }
-    unsafe { android_get_device_api_level() as i32 }
 }

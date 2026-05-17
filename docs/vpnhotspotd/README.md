@@ -26,6 +26,10 @@ IPC documentations not included and should refer to [`mobile/src/main/proto/daem
   shared rtnetlink connection, notifications, and single-consumer event slots.
 - [`neighbour.rs`](../../mobile/src/main/rust/vpnhotspotd/src/neighbour.rs)
   converts netlink neighbour and bridge topology state into daemon events.
+- [`ipsec.rs`](../../mobile/src/main/rust/vpnhotspotd/src/ipsec.rs) owns the
+  optional Android 12+ IPsec forwarding-policy probe and emits session events
+  for the Kotlin routing owner to perform the hidden Netd write only when
+  needed.
 - [`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs) and
   [`shared/protocol.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/protocol.rs)
   build structured daemon reports.
