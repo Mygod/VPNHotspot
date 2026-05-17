@@ -216,14 +216,16 @@ External mutations:
   `<nat66-gateway>/<prefix-len> dev <downstream>`
 - replace IPv6 local route in table 900:
   `local ::/0 dev lo table 900`
+- NAT66 daemon policy-rule priority is `20600` on API 31+ and `17600` on
+  API 29..30.
 - in protocol-rule mode, replace one IPv6 policy rule per active NAT66
   listener protocol:
   - TCP listener present:
-    `iif <downstream> priority <daemon-priority> ipproto tcp lookup 900`
+    `iif <downstream> priority <nat66-daemon-priority> ipproto tcp lookup 900`
   - UDP listener present:
-    `iif <downstream> priority <daemon-priority> ipproto udp lookup 900`
+    `iif <downstream> priority <nat66-daemon-priority> ipproto udp lookup 900`
 - in fwmark fallback mode, replace one IPv6 policy rule:
-  `iif <downstream> priority <daemon-priority> fwmark 0x10000000/0x10000000 lookup 900`
+  `iif <downstream> priority <nat66-daemon-priority> fwmark 0x10000000/0x10000000 lookup 900`
 
 Rollback:
 
@@ -240,9 +242,10 @@ Clean never flushes table 99 because it is Android's shared `local_network`
 table.
 
 Before choosing protocol-rule mode, routing probes kernel `FRA_IP_PROTO`
-support through rtnetlink. The probe adds a temporary detached-interface rule
-at `<daemon-priority>`:
-`iif vpnhs_probe0 priority <daemon-priority> ipproto tcp lookup 900`. Routing
+support through rtnetlink once per daemon process and reuses the cached result
+for later NAT66 sessions. The probe adds a temporary detached-interface rule at
+`<nat66-daemon-priority>`:
+`iif vpnhs_probe0 priority <nat66-daemon-priority> ipproto tcp lookup 900`. Routing
 then dumps IPv6 rules and requires the echoed rule to include `ipproto tcp`.
 The probe deletes both the exact protocol rule and a possible no-protocol stale
 form. This detached interface is intentional: kernels without `FRA_IP_PROTO`
@@ -503,7 +506,7 @@ session rollback mechanism.
 
 External mutations:
 
-- repeatedly delete IPv6 policy rules at `<daemon-priority>`, including NAT66
+- repeatedly delete IPv6 policy rules at the NAT66 daemon priority, including
   protocol rules, fwmark fallback rules, and any interrupted detached probe
   rule.
 - repeatedly delete IPv4 policy rules at `<primary-priority>`.

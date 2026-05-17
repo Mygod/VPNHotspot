@@ -1,5 +1,6 @@
 use std::ffi::CStr;
 use std::io;
+use std::sync::OnceLock;
 
 use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::{
@@ -16,6 +17,7 @@ use vpnhotspotd::shared::{
 };
 
 use crate::{netlink, report};
+use tokio::sync::Mutex;
 
 use super::{
     netlink_commands::{
@@ -26,6 +28,7 @@ use super::{
 };
 
 const PROBE_IIF: &str = "vpnhs_probe0";
+static PROBE_RESULT: OnceLock<Mutex<Option<Ipv6NatInterceptProbeResult>>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum Ipv6NatInterceptMode {
@@ -33,37 +36,64 @@ pub(super) enum Ipv6NatInterceptMode {
     FwmarkFallback,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Ipv6NatInterceptProbeResult {
+    mode: Ipv6NatInterceptMode,
+    failure: Option<String>,
+    kernel_release: Option<String>,
+}
+
 impl Ipv6NatInterceptMode {
     pub(super) async fn detect(call_id: u64, handle: &netlink::Handle, downstream: &str) -> Self {
-        match probe_protocol_rules(handle).await {
-            Ok(()) => Self::ProtocolRules,
-            Err(reason) => {
-                if let Ok(release) = kernel_release() {
-                    if kernel_release_supports_fra_ip_proto(&release) == Some(true) {
-                        report::report_for(
-                            Some(call_id),
-                            daemon_error_report_with_details(
-                                "routing.ipv6_nat_fwmark_fallback",
-                                "IPv6 NAT protocol policy rule probe failed; using fwmark fallback",
-                                "KernelCapabilityProbe",
-                                [
-                                    ("downstream", downstream.to_owned()),
-                                    ("kernel_release", release),
-                                    ("probe_iif", PROBE_IIF.to_owned()),
-                                    (
-                                        "probe_priority",
-                                        rule_priority(RULE_PRIORITY_DAEMON_BASE).to_string(),
-                                    ),
-                                    ("probe_result", reason),
-                                    ("mode", "FwmarkFallback".to_owned()),
-                                ],
+        let result = {
+            let mut cached = PROBE_RESULT.get_or_init(|| Mutex::new(None)).lock().await;
+            if let Some(result) = cached.as_ref() {
+                result.clone()
+            } else {
+                let result = match probe_protocol_rules(handle).await {
+                    Ok(()) => Ipv6NatInterceptProbeResult {
+                        mode: Self::ProtocolRules,
+                        failure: None,
+                        kernel_release: None,
+                    },
+                    Err(reason) => Ipv6NatInterceptProbeResult {
+                        mode: Self::FwmarkFallback,
+                        failure: Some(reason),
+                        kernel_release: kernel_release().ok(),
+                    },
+                };
+                *cached = Some(result.clone());
+                result
+            }
+        };
+        if let (Self::FwmarkFallback, Some(release), Some(reason)) = (
+            result.mode,
+            result.kernel_release.as_ref(),
+            result.failure.as_ref(),
+        ) {
+            if kernel_release_supports_fra_ip_proto(release) == Some(true) {
+                report::report_for(
+                    Some(call_id),
+                    daemon_error_report_with_details(
+                        "routing.ipv6_nat_fwmark_fallback",
+                        "IPv6 NAT protocol policy rule probe failed; using fwmark fallback",
+                        "KernelCapabilityProbe",
+                        [
+                            ("downstream", downstream.to_owned()),
+                            ("kernel_release", release.clone()),
+                            ("probe_iif", PROBE_IIF.to_owned()),
+                            (
+                                "probe_priority",
+                                rule_priority(RULE_PRIORITY_DAEMON_BASE).to_string(),
                             ),
-                        );
-                    }
-                }
-                Self::FwmarkFallback
+                            ("probe_result", reason.clone()),
+                            ("mode", "FwmarkFallback".to_owned()),
+                        ],
+                    ),
+                );
             }
         }
+        result.mode
     }
 }
 
