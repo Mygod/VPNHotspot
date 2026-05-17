@@ -92,7 +92,7 @@ destination. The TCP runtime:
   handler;
 - selects an upstream Android network for ordinary unicast destinations;
 - connects an upstream TCP socket on that network;
-- relays bytes bidirectionally until either side closes or fails.
+- relays bytes bidirectionally, preserving TCP half-close semantics.
 
 Connection setup failures caused by the remote path are logged and consumed.
 Socket setup failures that indicate daemon or platform state problems are
@@ -100,8 +100,11 @@ terminal for that connection task and reported through the normal daemon report
 path.
 
 TCP is connection-local. It does not publish separate NAT66 state after the
-connection task starts. Closing either side ends the relay; the session runtime
-does not track completed TCP connections.
+connection task starts. A graceful EOF on one side shuts down only the write half
+of the opposite socket and the other direction keeps relaying until it also
+closes or an I/O error occurs. Reset, broken-pipe, timeout, and other connection
+errors end the connection task. The session runtime does not track completed TCP
+connections.
 
 ## UDP
 
