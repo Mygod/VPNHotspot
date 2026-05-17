@@ -8,6 +8,7 @@ use super::model::SessionConfig;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct IpSecForwardPolicyTarget {
+    pub interface: String,
     pub uid: i32,
     pub source_address: String,
     pub destination_address: String,
@@ -70,6 +71,12 @@ impl UpstreamTracker {
         self.sessions.clear();
         self.refcounts.clear();
     }
+
+    pub fn session_for_interface(&self, interface: &str) -> Option<u64> {
+        self.sessions.iter().find_map(|(session_id, interfaces)| {
+            interfaces.contains(interface).then_some(*session_id)
+        })
+    }
 }
 
 pub fn find_forward_policy_targets<'a>(
@@ -107,6 +114,7 @@ pub fn find_forward_policy_targets<'a>(
             continue;
         };
         targets.push(IpSecForwardPolicyTarget {
+            interface: tunnel[3].to_owned(),
             uid: parse_i32(&tunnel[2], "tunnel uid")?,
             source_address: inbound[1].to_owned(),
             destination_address: inbound[2].to_owned(),
@@ -158,6 +166,7 @@ mUserResourceTracker:
         assert_eq!(
             find_forward_policy_targets(["ipsec1"].into_iter(), DUMP).unwrap(),
             vec![IpSecForwardPolicyTarget {
+                interface: "ipsec1".to_owned(),
                 uid: 1000,
                 source_address: "162.120.192.11".to_owned(),
                 destination_address: "10.0.0.62".to_owned(),
@@ -199,6 +208,9 @@ mUserResourceTracker:
             tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])),
             vec!["ipsec1".to_owned()]
         );
+        assert_eq!(tracker.session_for_interface("ipsec1"), Some(2));
+        tracker.remove_session(2);
+        assert_eq!(tracker.session_for_interface("ipsec1"), None);
     }
 
     fn session_config(

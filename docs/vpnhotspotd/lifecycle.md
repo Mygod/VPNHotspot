@@ -104,13 +104,14 @@ stops the session runtimes.
 
 After the ACK, the daemon updates a process-wide aggregate of upstream interface
 names across all active sessions. On Android 12+, if an interface name enters
-that aggregate set, a detached IPsec probe runs `/system/bin/dumpsys ipsec`.
-When the probe finds a matching IPv4 tunnel forwarding policy target, it emits a
-session event asking the Kotlin routing owner to call
-`INetd.ipSecUpdateSecurityPolicy`. No-match is quiet; `dumpsys` or parser
-failures are structured nonfatals tied to the session call. The daemon does not
-track or clean up IPsec policy state; tunnel and policy teardown remain
-platform-owned.
+that aggregate set, the daemon spawns a best-effort probe that runs
+`/system/bin/dumpsys ipsec`. When the probe completes, each matching IPv4
+tunnel forwarding-policy request is emitted to one currently active session
+call that still references the target's upstream interface. No-match is quiet;
+`dumpsys` or parser failures are structured nonfatals tied to one currently
+active session call for the probed interfaces, if any. The daemon does not
+separately supervise a stuck `dumpsys` process, and it does not track or clean
+up IPsec policy state; tunnel and policy teardown remain platform-owned.
 
 ## Session Replacement
 
@@ -142,8 +143,8 @@ stops NAT66. NAT66 may withdraw router-advertised prefixes during stop.
 
 When the control connection closes, the daemon cancels active calls, waits for
 call tasks, stops the neighbour monitor, stops all sessions without extra
-withdraw-cleanup, removes process-wide IPv6 NAT firewall base state, drops the
-writer, and exits.
+withdraw-cleanup, clears the IPsec aggregate, removes process-wide IPv6 NAT
+firewall base state, drops the writer, and exits.
 
 `CleanRoutingCommand` is stronger than normal shutdown. It:
 

@@ -13,12 +13,12 @@ use tokio_util::sync::CancellationToken;
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::{ipsec, nat66, netlink, report, routing};
-use vpnhotspotd::shared::ipsec::UpstreamTracker;
+use vpnhotspotd::shared::ipsec::{IpSecForwardPolicyTarget, UpstreamTracker};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
-    daemon_io_error_report_with_details, error_frame, read_session_config,
-    traffic_counter_lines_frame, IoErrorReportExt, IoResultReportExt,
+    daemon_io_error_report_with_details, error_frame, ipsec_forward_policy_frame,
+    read_session_config, traffic_counter_lines_frame, IoErrorReportExt, IoResultReportExt,
 };
 
 mod calls;
@@ -215,17 +215,68 @@ impl State {
     }
 
     async fn update_ipsec_session(
-        &self,
-        id: u64,
+        self: &Arc<Self>,
+        slot: &Arc<SessionState>,
         config: &vpnhotspotd::shared::model::SessionConfig,
         sender: &UnboundedSender<Vec<u8>>,
     ) {
-        let entered = self.ipsec.lock().await.update_session(id, config);
+        let entered = {
+            let sessions = self.sessions.lock().await;
+            if slot.cleaning.load(Ordering::Acquire)
+                || !sessions
+                    .get(&slot.id)
+                    .is_some_and(|current| Arc::ptr_eq(current, slot))
+            {
+                return;
+            }
+            self.ipsec.lock().await.update_session(slot.id, config)
+        };
         if !entered.is_empty() {
+            let state = self.clone();
             let sender = sender.clone();
             tokio::spawn(async move {
-                ipsec::scan(id, entered, &sender).await;
+                let result = ipsec::scan(&entered).await;
+                state.finish_ipsec_probe(&entered, result, &sender).await;
             });
+        }
+    }
+
+    async fn finish_ipsec_probe(
+        &self,
+        interfaces: &[String],
+        result: io::Result<Vec<IpSecForwardPolicyTarget>>,
+        sender: &UnboundedSender<Vec<u8>>,
+    ) {
+        match result {
+            Ok(targets) => {
+                let frames = {
+                    let ipsec = self.ipsec.lock().await;
+                    targets
+                        .into_iter()
+                        .filter_map(|target| {
+                            let id = ipsec.session_for_interface(&target.interface)?;
+                            Some(ipsec_forward_policy_frame(id, &target))
+                        })
+                        .collect::<Vec<_>>()
+                };
+                for frame in frames {
+                    if sender.send(frame).is_err() {
+                        report::stderr!("controller send failed");
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                let call_id = {
+                    let ipsec = self.ipsec.lock().await;
+                    interfaces
+                        .iter()
+                        .find_map(|interface| ipsec.session_for_interface(interface))
+                };
+                if let Some(call_id) = call_id {
+                    report::report_for(Some(call_id), daemon_io_error_report("ipsec.scan", e));
+                }
+            }
         }
     }
 }
@@ -333,7 +384,7 @@ async fn handle_command(
 
 async fn start_session(
     id: u64,
-    state: &State,
+    state: &Arc<State>,
     mut config: vpnhotspotd::shared::model::SessionConfig,
     sender: &UnboundedSender<Vec<u8>>,
     cancel: &CancellationToken,
@@ -417,7 +468,9 @@ async fn start_session(
             "controller send failed",
         ));
     }
-    state.update_ipsec_session(id, &ipsec_config, sender).await;
+    state
+        .update_ipsec_session(&slot, &ipsec_config, sender)
+        .await;
     cancel.cancelled().await;
     if !slot.cleaning.load(Ordering::Acquire) {
         remove_session(state, &slot, false).await;
@@ -426,7 +479,7 @@ async fn start_session(
 }
 
 async fn replace_session(
-    state: &State,
+    state: &Arc<State>,
     session_id: u64,
     config: vpnhotspotd::shared::model::SessionConfig,
     sender: &UnboundedSender<Vec<u8>>,
@@ -476,7 +529,7 @@ async fn replace_session(
         .with_report_context("control.replace_session")?;
     drop(guard);
     state
-        .update_ipsec_session(session_id, &ipsec_config, sender)
+        .update_ipsec_session(&slot, &ipsec_config, sender)
         .await;
     Ok(())
 }

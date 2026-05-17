@@ -1,81 +1,41 @@
 use std::io;
 
 use tokio::process::Command;
-use tokio::sync::mpsc::UnboundedSender;
-use vpnhotspotd::shared::ipsec::find_forward_policy_targets;
-use vpnhotspotd::shared::protocol::{
-    daemon_io_error_report_with_details, ipsec_forward_policy_frame, IoErrorReportExt,
-    IoResultReportExt,
-};
+use vpnhotspotd::shared::ipsec::{find_forward_policy_targets, IpSecForwardPolicyTarget};
+use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 
-use crate::{platform, report};
+use crate::platform;
 
 const DUMPSYS: &str = "/system/bin/dumpsys";
 
-pub(crate) async fn scan(call_id: u64, interfaces: Vec<String>, sender: &UnboundedSender<Vec<u8>>) {
+pub(crate) async fn scan(interfaces: &[String]) -> io::Result<Vec<IpSecForwardPolicyTarget>> {
     if interfaces.is_empty() || platform::android_api_level() < 31 {
-        return;
+        return Ok(Vec::new());
     }
-    let output = match Command::new(DUMPSYS)
+    let interfaces_detail = interfaces.join(",");
+    let output = Command::new(DUMPSYS)
         .arg("ipsec")
         .kill_on_drop(true)
         .output()
         .await
-        .with_report_context("ipsec.dumpsys.spawn")
-    {
-        Ok(output) => output,
-        Err(e) => {
-            report::report_for(
-                Some(call_id),
-                daemon_io_error_report_with_details(
-                    "ipsec.dumpsys",
-                    e,
-                    [("interfaces", interfaces.join(","))],
-                ),
-            );
-            return;
-        }
-    };
+        .with_report_context_details(
+            "ipsec.dumpsys.spawn",
+            [("interfaces", interfaces_detail.as_str())],
+        )?;
     let dump = if output.status.success() {
         String::from_utf8_lossy(&output.stdout).into_owned()
     } else {
-        report::report_for(
-            Some(call_id),
-            daemon_io_error_report_with_details(
-                "ipsec.dumpsys",
-                io::Error::other(format!(
-                    "{DUMPSYS} ipsec exited with {} stdout={} stderr={}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stdout).trim_end(),
-                    String::from_utf8_lossy(&output.stderr).trim_end(),
-                ))
-                .with_report_context("ipsec.dumpsys.status"),
-                [("interfaces", interfaces.join(","))],
-            ),
-        );
-        return;
+        return Err(io::Error::other(format!(
+            "{DUMPSYS} ipsec exited with {} stdout={} stderr={}",
+            output.status,
+            String::from_utf8_lossy(&output.stdout).trim_end(),
+            String::from_utf8_lossy(&output.stderr).trim_end(),
+        ))
+        .with_report_context_details(
+            "ipsec.dumpsys.status",
+            [("interfaces", interfaces_detail.as_str())],
+        ));
     };
-    let targets = match find_forward_policy_targets(interfaces.iter().map(String::as_str), &dump) {
-        Ok(targets) => targets,
-        Err(e) => {
-            report::report_for(
-                Some(call_id),
-                daemon_io_error_report_with_details(
-                    "ipsec.parse",
-                    e,
-                    [("interfaces", interfaces.join(","))],
-                ),
-            );
-            return;
-        }
-    };
-    for target in targets {
-        if sender
-            .send(ipsec_forward_policy_frame(call_id, &target))
-            .is_err()
-        {
-            report::stderr!("controller send failed");
-            return;
-        }
-    }
+    find_forward_policy_targets(interfaces.iter().map(String::as_str), &dump)
+        .with_report_context_details("ipsec.parse", [("interfaces", interfaces_detail.as_str())])
 }
