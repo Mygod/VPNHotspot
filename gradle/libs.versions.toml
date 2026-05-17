@@ -1,7 +1,7 @@
 [versions]
 lifecycle = "2.11.0-beta01"
 room = "2.8.4"
-wire = "6.2.0"
+wire = "6.4.0"
 
 [libraries]
 browser = "androidx.browser:browser:1.10.0"
