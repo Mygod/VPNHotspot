@@ -11,7 +11,8 @@ compatibility or cleanup impact.
   change config details, but not `SessionConfig.downstream`.
 - DNS and NAT66 runtimes own listeners and proxy state. Routing owns system
   interception that sends traffic to those runtimes.
-- Netlink runtime owns the shared rtnetlink connection and event fan-out. It
+- Netlink runtime owns the shared rtnetlink connection and event fan-out. It is
+  created lazily on first netlink/routing use and then remains process-wide. It
   allows one neighbour monitor and one link monitor consumer at a time.
 - The process-wide ICMP dispatcher exists only for NAT66 ICMPv6 state that must
   be shared across sessions because the kernel queue is process-wide.

@@ -19,13 +19,19 @@ Android's linker from a root command. It creates:
 The Rust entry point accepts exactly one argument: that socket name. It connects
 back to the abstract Unix socket, splits the stream, starts a writer task for
 outbound frames, initializes the nonfatal reporter, and builds process-wide
-state:
+bookkeeping:
 
-- one rtnetlink runtime;
+- one lazy rtnetlink runtime slot;
 - one NAT66 ICMP dispatcher shared by NAT66 sessions;
 - a session map keyed by the start-session call ID;
 - one optional neighbour monitor;
 - one process-wide flag for the NAT66 firewall base chains.
+
+The rtnetlink runtime is created on the first command that needs netlink or
+routing state: session start, neighbour monitoring, static-address replacement,
+or Clean. Commands that do not need netlink, such as traffic-counter reads, do
+not open the rtnetlink connection. Once created, the runtime remains
+process-wide until daemon exit.
 
 The daemon does not listen for arbitrary clients. The app-side controller owns
 the listening socket and the daemon connects to that single controller.
@@ -73,8 +79,9 @@ nonfatal tied to the start call and IPv6 NAT is disabled for that session start.
 [`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
 constructs the session in this order:
 
-1. Wait for a downstream IPv4 address through netlink notifications and the
-   caller's cancellation token.
+1. Ensure the process-wide rtnetlink runtime exists, then wait for a downstream
+   IPv4 address through netlink notifications and the caller's cancellation
+   token.
 2. Start the DNS runtime bound to that downstream IPv4 address. TCP and UDP
    listener setup are independent best-effort capabilities.
 3. Start NAT66 if requested. NAT66 TCP, UDP, RA, and ICMP setup failures are

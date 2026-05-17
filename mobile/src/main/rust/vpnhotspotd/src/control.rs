@@ -33,7 +33,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let (sender, writer) = spawn_writer(controller_write);
     report::init(sender.clone())?;
     let state = Arc::new(State {
-        netlink: netlink::Runtime::new()?,
+        netlink: Mutex::new(None),
         icmp: nat66::IcmpDispatcher::new(),
         sessions: Mutex::new(HashMap::new()),
         ipv6_nat_firewall_base: Mutex::new(false),
@@ -144,7 +144,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 }
 
 struct State {
-    netlink: netlink::Runtime,
+    netlink: Mutex<Option<Arc<netlink::Runtime>>>,
     icmp: nat66::IcmpDispatcher,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     ipv6_nat_firewall_base: Mutex<bool>,
@@ -165,6 +165,16 @@ struct MonitorState {
 }
 
 impl State {
+    async fn netlink(&self) -> io::Result<Arc<netlink::Runtime>> {
+        let mut current = self.netlink.lock().await;
+        if let Some(netlink) = current.as_ref() {
+            return Ok(netlink.clone());
+        }
+        let netlink = Arc::new(netlink::Runtime::new()?);
+        *current = Some(netlink.clone());
+        Ok(netlink)
+    }
+
     async fn stop(&self, withdraw_cleanup: bool) {
         if let Some(monitor) = self.neighbour_monitor.lock().await.take() {
             monitor.monitor.stop().await;
@@ -255,7 +265,11 @@ async fn handle_command(
             Ok(CallOutput::NoFrame)
         }
         daemon::client_envelope::Command::ReplaceStaticAddresses(command) => {
-            let handle = state.netlink.handle();
+            let netlink = state
+                .netlink()
+                .await
+                .with_report_context("control.replace_static_addresses.netlink")?;
+            let handle = netlink.handle();
             routing::replace_static_addresses(&handle, &command)
                 .await
                 .with_report_context_details(
@@ -283,7 +297,11 @@ async fn handle_command(
             for id in complete_ids {
                 send_complete(id, sender);
             }
-            let handle = state.netlink.handle();
+            let netlink = state
+                .netlink()
+                .await
+                .with_report_context("control.clean_routing.netlink")?;
+            let handle = netlink.handle();
             routing::clean(&handle, &command)
                 .await
                 .with_report_context("control.clean_routing")?;
@@ -322,6 +340,17 @@ async fn start_session(
         }
         sessions.insert(id, slot.clone());
     }
+    let netlink = match state
+        .netlink()
+        .await
+        .with_report_context("control.start_session.netlink")
+    {
+        Ok(netlink) => netlink,
+        Err(e) => {
+            remove_session_slot(state, &slot).await;
+            return Err(e);
+        }
+    };
     if config.ipv6_nat.is_some() {
         if let Err(e) = state
             .ensure_ipv6_nat_firewall_base()
@@ -343,7 +372,7 @@ async fn start_session(
         }
     }
     let mut guard = slot.session.lock().await;
-    match Session::start(id, config, &state.netlink, &state.icmp, cancel)
+    match Session::start(id, config, &netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
             "control.start_session",
@@ -461,10 +490,14 @@ async fn start_neighbour_monitor(
     if let Some(monitor) = current.take() {
         monitor.monitor.stop().await;
     }
+    let netlink = state
+        .netlink()
+        .await
+        .with_report_context("control.start_neighbour_monitor.netlink")?;
     *current = Some(MonitorState {
         id,
         cancel: cancel.clone(),
-        monitor: Monitor::spawn(id, &state.netlink, sender)
+        monitor: Monitor::spawn(id, &netlink, sender)
             .await
             .with_report_context("control.start_neighbour_monitor")?,
     });
