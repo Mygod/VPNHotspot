@@ -19,11 +19,7 @@ use iptables::{
 };
 use ipv6_nat_firewall::Ipv6NatFirewall;
 use ndc::{add_ip_forward, remove_ip_forward, run_ndc};
-use netlink_commands::{
-    add_rule, apply_address, apply_route, delete_address_result, delete_route_result,
-    delete_rule_repeated, delete_rule_result, IpAddressCommand, IpFamily, IpRouteCommand,
-    IpRuleCommand,
-};
+use netlink_commands::{delete_rule_repeated, IpCommand, IpFamily};
 use static_addresses::clean_ip;
 
 pub(crate) use static_addresses::replace_static_addresses;
@@ -51,9 +47,7 @@ enum RoutingMutation {
     IpForward {
         downstream: String,
     },
-    IpRule(IpRuleCommand),
-    IpRoute(IpRouteCommand),
-    IpAddress(IpAddressCommand),
+    Ip(IpCommand),
     NetdNat {
         downstream: String,
         upstream: String,
@@ -75,9 +69,7 @@ impl RoutingMutation {
                 apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule)).await
             }
             Self::IpForward { downstream } => add_ip_forward(downstream).await,
-            Self::IpRule(command) => add_rule(handle, command.clone()).await,
-            Self::IpRoute(command) => apply_route(handle, command.clone()).await,
-            Self::IpAddress(command) => apply_address(handle, command.clone()).await,
+            Self::Ip(command) => command.apply(handle).await,
             Self::NetdNat {
                 downstream,
                 upstream,
@@ -93,9 +85,7 @@ impl RoutingMutation {
             Self::EnsureIptablesChain { .. } => true,
             Self::Iptables(rule) => rule.delete().await,
             Self::IpForward { downstream } => remove_ip_forward(downstream).await,
-            Self::IpRule(command) => delete_rule_result(handle, command.clone()).await,
-            Self::IpRoute(command) => delete_route_result(handle, command.clone()).await,
-            Self::IpAddress(command) => delete_address_result(handle, command.clone()).await,
+            Self::Ip(command) => command.delete_result(handle).await,
             // Revert is intentionally omitted because netd tracks forwarding state globally by
             // interface pair without ownership, so disabling here may tear down system-owned state.
             //

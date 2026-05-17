@@ -69,25 +69,62 @@ pub(super) struct IpRuleCommand {
     pub(super) fwmark: Option<(u32, u32)>,
 }
 
-pub(super) async fn add_rule(handle: &netlink::Handle, command: IpRuleCommand) -> io::Result<()> {
-    match apply_rule_command(handle, &command).await {
-        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
-        result => result,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum IpCommand {
+    Rule(IpRuleCommand),
+    Route(IpRouteCommand),
+    Address(IpAddressCommand),
+}
+
+impl IpCommand {
+    pub(super) async fn apply(&self, handle: &netlink::Handle) -> io::Result<()> {
+        ignore_existing(match self {
+            Self::Rule(command) => apply_rule_command(handle, command).await,
+            Self::Route(command) => apply_route_command(handle, command).await,
+            Self::Address(command) => apply_address_command(handle, command).await,
+        })
+    }
+
+    pub(super) async fn delete_result(&self, handle: &netlink::Handle) -> bool {
+        match self {
+            Self::Rule(command) => {
+                let mut command = command.clone();
+                command.operation = IpOperation::Delete;
+                report_delete_result(
+                    apply_rule_command(handle, &command).await,
+                    is_missing,
+                    "routing.delete_rule",
+                    || rule_details(&command),
+                )
+            }
+            Self::Route(command) => {
+                let mut command = command.clone();
+                command.operation = IpOperation::Delete;
+                report_delete_result(
+                    apply_route_command(handle, &command).await,
+                    is_missing,
+                    "routing.delete_route",
+                    || route_details(&command),
+                )
+            }
+            Self::Address(command) => {
+                let mut command = command.clone();
+                command.operation = IpOperation::Delete;
+                report_delete_result(
+                    apply_address_command(handle, &command).await,
+                    is_missing_address,
+                    "routing.delete_address",
+                    || address_details(&command),
+                )
+            }
+        }
     }
 }
 
-pub(super) async fn delete_rule_result(
-    handle: &netlink::Handle,
-    mut command: IpRuleCommand,
-) -> bool {
-    command.operation = IpOperation::Delete;
-    match apply_rule_command(handle, &command).await {
-        Ok(()) => true,
-        Err(e) if is_missing(&e) => true,
-        Err(e) => {
-            report::io_with_details("routing.delete_rule", e, rule_details(&command));
-            false
-        }
+fn ignore_existing(result: io::Result<()>) -> io::Result<()> {
+    match result {
+        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
+        result => result,
     }
 }
 
@@ -118,51 +155,22 @@ pub(super) async fn delete_rule_repeated(
     }
 }
 
-pub(super) async fn apply_route(
-    handle: &netlink::Handle,
-    command: IpRouteCommand,
-) -> io::Result<()> {
-    match apply_route_command(handle, &command).await {
-        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
-        result => result,
-    }
-}
-
-pub(super) async fn delete_route_result(
-    handle: &netlink::Handle,
-    mut command: IpRouteCommand,
-) -> bool {
-    command.operation = IpOperation::Delete;
-    match apply_route_command(handle, &command).await {
+fn report_delete_result<I, K, V>(
+    result: io::Result<()>,
+    is_missing: impl FnOnce(&io::Error) -> bool,
+    context: &str,
+    details: impl FnOnce() -> I,
+) -> bool
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: ToString,
+    V: ToString,
+{
+    match result {
         Ok(()) => true,
         Err(e) if is_missing(&e) => true,
         Err(e) => {
-            report::io_with_details("routing.delete_route", e, route_details(&command));
-            false
-        }
-    }
-}
-
-pub(super) async fn apply_address(
-    handle: &netlink::Handle,
-    command: IpAddressCommand,
-) -> io::Result<()> {
-    match apply_address_command(handle, &command).await {
-        Err(e) if error_errno(&e) == Some(libc::EEXIST) => Ok(()),
-        result => result,
-    }
-}
-
-pub(super) async fn delete_address_result(
-    handle: &netlink::Handle,
-    mut command: IpAddressCommand,
-) -> bool {
-    command.operation = IpOperation::Delete;
-    match apply_address_command(handle, &command).await {
-        Ok(()) => true,
-        Err(e) if is_missing_address(&e) => true,
-        Err(e) => {
-            report::io_with_details("routing.delete_address", e, address_details(&command));
+            report::io_with_details(context, e, details());
             false
         }
     }

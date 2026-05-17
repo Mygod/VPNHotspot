@@ -16,7 +16,8 @@ use vpnhotspotd::shared::protocol::IoResultReportExt;
 use super::iptables::IptablesRule;
 use super::ipv6_nat_firewall::Ipv6NatFirewall;
 use super::netlink_commands::{
-    IpAddressCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand, RouteType, RuleAction,
+    IpAddressCommand, IpCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand, RouteType,
+    RuleAction,
 };
 use super::{
     push_unique, rule_priority, RoutingMutation, Runtime, RULE_PRIORITY_DAEMON_BASE,
@@ -43,7 +44,7 @@ impl Runtime {
         }
         push_unique(
             &mut mutations,
-            RoutingMutation::IpRule(IpRuleCommand {
+            RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
                 operation: IpOperation::Replace,
                 family: IpFamily::Ipv4,
                 iif: config.downstream.clone(),
@@ -51,7 +52,7 @@ impl Runtime {
                 action: RuleAction::Unreachable,
                 table: 0,
                 fwmark: None,
-            }),
+            })),
         );
         for chain in ["vpnhotspot_acl", "vpnhotspot_stats"] {
             push_unique(
@@ -107,7 +108,7 @@ impl Runtime {
                 };
                 push_unique(
                     &mut mutations,
-                    RoutingMutation::IpRule(IpRuleCommand {
+                    RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
                         operation: IpOperation::Replace,
                         family: IpFamily::Ipv4,
                         iif: config.downstream.clone(),
@@ -119,7 +120,7 @@ impl Runtime {
                         // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
                         table: 1000 + ifindex,
                         fwmark: None,
-                    }),
+                    })),
                 );
                 match config.masquerade {
                     MasqueradeMode::None => {}
@@ -157,38 +158,38 @@ impl Runtime {
                 .ok_or_else(|| io::Error::other("missing IPv6 NAT ports"))?;
             push_unique(
                 &mut mutations,
-                RoutingMutation::IpRoute(IpRouteCommand {
+                RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
                     operation: IpOperation::Replace,
                     route_type: RouteType::Unicast,
                     destination: IpAddr::V6(ipv6_nat.gateway.first_address()),
                     prefix_len: ipv6_nat.gateway.network_length(),
                     interface: config.downstream.clone(),
                     table: LOCAL_NETWORK_TABLE,
-                }),
+                })),
             );
             push_unique(
                 &mut mutations,
-                RoutingMutation::IpAddress(IpAddressCommand {
+                RoutingMutation::Ip(IpCommand::Address(IpAddressCommand {
                     operation: IpOperation::Replace,
                     address: IpAddr::V6(ipv6_nat.gateway.address()),
                     prefix_len: ipv6_nat.gateway.network_length(),
                     interface: config.downstream.clone(),
-                }),
+                })),
             );
             push_unique(
                 &mut mutations,
-                RoutingMutation::IpRoute(IpRouteCommand {
+                RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
                     operation: IpOperation::Replace,
                     route_type: RouteType::Local,
                     destination: IpAddr::V6(Ipv6Addr::UNSPECIFIED),
                     prefix_len: 0,
                     interface: "lo".to_string(),
                     table: DAEMON_TABLE,
-                }),
+                })),
             );
             push_unique(
                 &mut mutations,
-                RoutingMutation::IpRule(IpRuleCommand {
+                RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
                     operation: IpOperation::Replace,
                     family: IpFamily::Ipv6,
                     iif: config.downstream.clone(),
@@ -196,7 +197,7 @@ impl Runtime {
                     action: RuleAction::Lookup,
                     table: DAEMON_TABLE,
                     fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-                }),
+                })),
             );
             Ipv6NatFirewall::append_session_mutations(&mut mutations, config, ipv6_nat, ports);
         }
