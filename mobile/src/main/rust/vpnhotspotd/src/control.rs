@@ -1,35 +1,30 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::io;
-use std::os::unix::ffi::OsStrExt;
-use std::os::unix::net::UnixStream as StdUnixStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use libc::EINPROGRESS;
 use prost::Message;
-use socket2::{Domain, SockAddr, Socket, Type};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::UnixStream;
 use tokio::select;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Mutex;
-use tokio::task::{JoinHandle, JoinSet};
+use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::neighbour::Monitor;
 use crate::session::Session;
-use crate::socket::await_connect;
 use crate::{nat66, netlink, report, routing};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
-    ack_event_frame, ack_reply_frame, complete_frame, daemon_error_report_with_details,
-    daemon_io_error_report, error_frame, read_session_config, traffic_counter_lines_frame,
-    IoErrorReportExt, IoResultReportExt,
+    ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
+    error_frame, read_session_config, traffic_counter_lines_frame, IoErrorReportExt,
+    IoResultReportExt,
 };
 
-// Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
-const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
+mod calls;
+mod wire;
+
+use calls::{detach_call, handle_call, send_complete, CallOutput, CallState};
+use wire::{connect_control_socket, recv_packet, spawn_writer};
 
 pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let controller = connect_control_socket(&socket_name).await?;
@@ -210,53 +205,6 @@ async fn stop_sessions(sessions: &[Arc<SessionState>], withdraw_cleanup: bool) {
     for session in sessions {
         if let Some(session) = session.session.lock().await.take() {
             session.stop(withdraw_cleanup).await;
-        }
-    }
-}
-
-struct CallState {
-    cancel: CancellationToken,
-}
-
-enum CallOutput {
-    Reply(Vec<u8>),
-    NoFrame,
-}
-
-async fn handle_call(
-    id: u64,
-    command: daemon::client_envelope::Command,
-    state: Arc<State>,
-    sender: UnboundedSender<Vec<u8>>,
-    active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>>,
-    call: Arc<CallState>,
-) {
-    match handle_command(
-        id,
-        command,
-        state,
-        &sender,
-        active_calls.clone(),
-        call.cancel.clone(),
-    )
-    .await
-    {
-        Ok(CallOutput::Reply(packet)) => {
-            send_terminal_frame(id, &active_calls, &call, &sender, packet).await;
-        }
-        Ok(CallOutput::NoFrame) => {
-            remove_call(id, &active_calls, &call).await;
-        }
-        Err(e) => {
-            let report = daemon_io_error_report("control.handle_call", e);
-            if call.cancel.is_cancelled() {
-                if remove_call(id, &active_calls, &call).await {
-                    report::report_for(Some(id), report);
-                }
-            } else {
-                send_terminal_frame(id, &active_calls, &call, &sender, error_frame(id, report))
-                    .await;
-            }
         }
     }
 }
@@ -526,120 +474,4 @@ async fn start_neighbour_monitor(
         monitor.monitor.stop().await;
     }
     Ok(())
-}
-
-async fn send_terminal_frame(
-    id: u64,
-    active_calls: &Mutex<HashMap<u64, Arc<CallState>>>,
-    call: &Arc<CallState>,
-    sender: &UnboundedSender<Vec<u8>>,
-    frame: Vec<u8>,
-) {
-    let cancelled = call.cancel.is_cancelled();
-    if remove_call(id, active_calls, call).await && !cancelled && sender.send(frame).is_err() {
-        report::stderr!("controller send failed");
-    }
-}
-
-async fn detach_call(id: u64, active_calls: &Mutex<HashMap<u64, Arc<CallState>>>) -> bool {
-    let call = active_calls.lock().await.remove(&id);
-    if let Some(call) = call {
-        call.cancel.cancel();
-        true
-    } else {
-        false
-    }
-}
-
-fn send_complete(id: u64, sender: &UnboundedSender<Vec<u8>>) {
-    if sender.send(complete_frame(id)).is_err() {
-        report::stderr!("controller send failed");
-    }
-}
-
-async fn remove_call(
-    id: u64,
-    active_calls: &Mutex<HashMap<u64, Arc<CallState>>>,
-    call: &Arc<CallState>,
-) -> bool {
-    let mut active = active_calls.lock().await;
-    if active
-        .get(&id)
-        .is_some_and(|current| Arc::ptr_eq(current, call))
-    {
-        active.remove(&id);
-        true
-    } else {
-        false
-    }
-}
-
-fn spawn_writer<W>(mut writer: W) -> (UnboundedSender<Vec<u8>>, JoinHandle<()>)
-where
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
-    let task = tokio::spawn(async move {
-        while let Some(packet) = receiver.recv().await {
-            if let Err(e) = send_packet(&mut writer, &packet).await {
-                report::stderr!("controller send failed: {e}");
-                break;
-            }
-        }
-    });
-    (sender, task)
-}
-
-async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
-    let address = SockAddr::unix(OsStr::from_bytes(format!("\0{socket_name}").as_bytes()))?;
-    let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
-    socket.set_nonblocking(true)?;
-    match socket.connect(&address) {
-        Ok(()) => {}
-        Err(error) => {
-            let raw_os_error = error.raw_os_error();
-            if error.kind() == io::ErrorKind::WouldBlock || raw_os_error == Some(EINPROGRESS) {
-                await_connect(&socket).await?;
-            } else {
-                return Err(error);
-            }
-        }
-    }
-    let stream: StdUnixStream = socket.into();
-    UnixStream::from_std(stream)
-}
-
-async fn recv_packet<R>(socket: &mut R) -> io::Result<Vec<u8>>
-where
-    R: AsyncRead + Unpin,
-{
-    let mut header = [0u8; 4];
-    socket.read_exact(&mut header).await?;
-    let length = u32::from_be_bytes(header) as usize;
-    if length == 0 || length > MAX_CONTROL_PACKET_SIZE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("invalid control frame length {length}"),
-        ));
-    }
-    let mut buffer = vec![0u8; length];
-    socket.read_exact(&mut buffer).await?;
-    Ok(buffer)
-}
-
-async fn send_packet<W>(socket: &mut W, packet: &[u8]) -> io::Result<()>
-where
-    W: AsyncWrite + Unpin,
-{
-    if packet.is_empty() || packet.len() > MAX_CONTROL_PACKET_SIZE {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("invalid control frame length {}", packet.len()),
-        ));
-    }
-    socket
-        .write_all(&(packet.len() as u32).to_be_bytes())
-        .await?;
-    socket.write_all(packet).await?;
-    socket.flush().await
 }
