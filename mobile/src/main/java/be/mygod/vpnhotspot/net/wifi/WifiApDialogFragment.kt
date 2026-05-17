@@ -234,9 +234,7 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
                 hexSsid = !hexSsid
                 dialogView.ssid.setText(newText)
             }
-            findViewById<View>(com.google.android.material.R.id.text_input_end_icon).apply {
-                tooltipText = contentDescription
-            }
+            setEndIconContentDescription(R.string.wifi_ssid_toggle_hex)
         }
         dialogView.ssid.addTextChangedListener(this@WifiApDialogFragment)
         if (!arg.p2pMode) dialogView.security.apply {
