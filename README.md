@@ -372,8 +372,11 @@ Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
-* (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`
-  and, on API 31+, `android.net.INetd*`, may be jarjar-relocated under the optional prefixes
+* (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`,
+  may be jarjar-relocated under the optional prefixes
+  `android.net.connectivity` or `com.android.connectivity`.
+* (since API 31) Relevant netd APEX classes used here, including `android.net.INetd*`,
+  may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
 * (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
@@ -386,27 +389,18 @@ Other:
   and the socket receive buffer can hold that result until the framework socket listener closes the
   client socket.
 * For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
-on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 175xx..179xx or 205xx..209xx
-gap between them.
-For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`
-TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
-Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
-deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
-and only deletes VPNHotspot prefixes reconstructed from current interface names. Background routing
-state is owned by the Rust root daemon: address, route, rule, and neighbour work uses rtnetlink
-instead of `/system/bin/ip`; firewall work runs through Android's bundled `/system/bin/iptables-restore`
-and `/system/bin/ip6tables-restore`; and netd forwarding/NAT requests run through native
-`/system/bin/ndc`. Clean batches one-shot iptables cleanup with `iptables-restore -w --noflush` and
-`ip6tables-restore -w --noflush`, which are assumed to be supported by Android's bundled iptables on
-API 29+. Traffic counters are read through `iptables-restore -w --noflush` with a read-only
-`*filter`/`-nvx -L <chain>` restore command.
-For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
-fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`. That fallback is
-expected on kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added
-in 4.17; on kernels reporting 4.17 or newer, reaching fallback mode is treated as unexpected and
-reported as a daemon nonfatal. Daemon reply sockets use the AOSP local-network protected mark
-`0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the `explicitlySelected` and `protectedFromVpn`
-fwmark bits.
+  on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 17500..17900 or 20500..20900
+  gap between them.
+* For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`
+  TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
+* Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
+  deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
+  and only deletes VPNHotspot prefixes reconstructed from current interface names.
+* For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
+* `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
+  That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.
+* Daemon reply sockets use the AOSP local-network protected mark `0x00030063`, which assumes
+  `LOCAL_NET_ID = 99` plus the `explicitlySelected` and `protectedFromVpn` fwmark bits.
 
 System/root command assumptions:
 
