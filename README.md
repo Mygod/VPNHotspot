@@ -401,9 +401,12 @@ and `/system/bin/ip6tables-restore`; and netd forwarding/NAT requests run throug
 API 29+. Traffic counters are read through `iptables-restore -w --noflush` with a read-only
 `*filter`/`-nvx -L <chain>` restore command.
 For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata; `IPv6 NAT`
-TPROXY uses masked high reserved bits `0x10000000/0x10000000`. Daemon reply sockets use the
-AOSP local-network protected mark `0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the
-`explicitlySelected` and `protectedFromVpn` fwmark bits.
+fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`. That fallback is
+expected on kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added
+in 4.17; on kernels reporting 4.17 or newer, reaching fallback mode is treated as unexpected and
+reported as a daemon nonfatal. Daemon reply sockets use the AOSP local-network protected mark
+`0x00030063`, which assumes `LOCAL_NET_ID = 99` plus the `explicitlySelected` and `protectedFromVpn`
+fwmark bits.
 
 System/root command assumptions:
 

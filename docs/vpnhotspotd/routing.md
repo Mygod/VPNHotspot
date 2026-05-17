@@ -216,7 +216,13 @@ External mutations:
   `<nat66-gateway>/<prefix-len> dev <downstream>`
 - replace IPv6 local route in table 900:
   `local ::/0 dev lo table 900`
-- replace IPv6 policy rule:
+- in protocol-rule mode, replace one IPv6 policy rule per active NAT66
+  listener protocol:
+  - TCP listener present:
+    `iif <downstream> priority <daemon-priority> ipproto tcp lookup 900`
+  - UDP listener present:
+    `iif <downstream> priority <daemon-priority> ipproto udp lookup 900`
+- in fwmark fallback mode, replace one IPv6 policy rule:
   `iif <downstream> priority <daemon-priority> fwmark 0x10000000/0x10000000 lookup 900`
 
 Rollback:
@@ -232,6 +238,23 @@ Clean:
 
 Clean never flushes table 99 because it is Android's shared `local_network`
 table.
+
+Before choosing protocol-rule mode, routing probes kernel `FRA_IP_PROTO`
+support through rtnetlink. The probe adds a temporary detached-interface rule
+at `<daemon-priority>`:
+`iif vpnhs_probe0 priority <daemon-priority> ipproto tcp lookup 900`. Routing
+then dumps IPv6 rules and requires the echoed rule to include `ipproto tcp`.
+The probe deletes both the exact protocol rule and a possible no-protocol stale
+form. This detached interface is intentional: kernels without `FRA_IP_PROTO`
+can silently ignore the unknown attribute and accept a bare `iif ... lookup
+900` rule, so probing with the real downstream would create a transient or
+leaked traffic-affecting rule.
+
+If the probe fails, routing uses fwmark fallback mode. When `uname.release`
+parses as Linux 4.17 or newer, the fallback is also reported as a structured
+nonfatal warning tied to the start-session call because upstream Linux has
+supported `FRA_IP_PROTO` since 4.17. Older or unparsable releases use fallback
+without that warning.
 
 ### NAT66 Firewall Chains
 
@@ -323,9 +346,12 @@ returned that listener port.
 External mutations:
 
 - TCP:
-  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -j TPROXY --on-port <nat66-tcp-port> --tproxy-mark 0x10000000/0x10000000`
+  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -j TPROXY --on-port <nat66-tcp-port>`
 - UDP:
-  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -j TPROXY --on-ip ::1 --on-port <nat66-udp-port> --tproxy-mark 0x10000000/0x10000000`
+  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -j TPROXY --on-ip ::1 --on-port <nat66-udp-port>`
+
+In fwmark fallback mode, both rules also append
+`--tproxy-mark 0x10000000/0x10000000`.
 
 Rollback:
 
@@ -477,7 +503,9 @@ session rollback mechanism.
 
 External mutations:
 
-- repeatedly delete IPv6 policy rules at `<daemon-priority>`.
+- repeatedly delete IPv6 policy rules at `<daemon-priority>`, including NAT66
+  protocol rules, fwmark fallback rules, and any interrupted detached probe
+  rule.
 - repeatedly delete IPv4 policy rules at `<primary-priority>`.
 - repeatedly delete IPv4 policy rules at `<fallback-priority>`.
 - repeatedly delete IPv4 policy rules at `<upstream-disable-priority>`.

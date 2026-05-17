@@ -9,6 +9,7 @@ mod desired;
 mod firewall_cleanup;
 mod iptables;
 mod ipv6_nat_firewall;
+mod ipv6_nat_intercept;
 mod ndc;
 mod netlink_commands;
 mod static_addresses;
@@ -17,6 +18,7 @@ use iptables::{
     apply_iptables_batch, ensure_iptables_chain, ensure_iptables_chain_result, IptablesRule,
 };
 use ipv6_nat_firewall::Ipv6NatFirewall;
+use ipv6_nat_intercept::Ipv6NatInterceptMode;
 use ndc::{add_ip_forward, remove_ip_forward, run_ndc};
 use netlink_commands::{delete_rule_repeated, IpCommand, IpFamily};
 use static_addresses::clean_ip;
@@ -100,20 +102,28 @@ impl RoutingMutation {
 pub(crate) struct Runtime {
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
+    ipv6_nat_intercept_mode: Ipv6NatInterceptMode,
     netlink: netlink::Handle,
     applied: Vec<RoutingMutation>,
 }
 
 impl Runtime {
     pub(crate) async fn start(
+        call_id: u64,
         config: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
     ) -> Self {
+        let ipv6_nat_intercept_mode = if config.ipv6_nat.is_some() && ports.ipv6_nat.is_some() {
+            Ipv6NatInterceptMode::detect(call_id, &netlink, &config.downstream).await
+        } else {
+            Ipv6NatInterceptMode::FwmarkFallback
+        };
         let mut runtime = Self {
             ports,
             downstream_ipv4,
+            ipv6_nat_intercept_mode,
             netlink,
             applied: Vec::new(),
         };

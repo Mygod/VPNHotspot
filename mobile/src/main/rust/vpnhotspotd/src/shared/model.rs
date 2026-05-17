@@ -19,8 +19,9 @@ pub type Network = u64;
 /// https://android.googlesource.com/platform/system/netd/+/android-16.0.0_r1/server/RouteController.cpp#605
 pub const DAEMON_REPLY_MARK: u32 = 0x0003_0063;
 pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
-/// Android fwmark uses the low bits for netId and platform routing metadata. Keep IPv6 NAT
-/// TPROXY marks in the high-bit reserved area and always match through the mask.
+/// Android fwmark uses the low bits for netId and platform routing metadata. When IPv6 NAT
+/// falls back to fwmark-based TPROXY routing, keep marks in the high-bit reserved area and
+/// always match through the mask.
 ///
 /// Sources:
 /// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/include/Fwmark.h#24
@@ -36,6 +37,19 @@ pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_063;
 /// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
 pub const DAEMON_TABLE: u32 = 900;
 pub const LOCAL_NETWORK_TABLE: u32 = 99;
+
+pub fn kernel_release_supports_fra_ip_proto(release: &str) -> Option<bool> {
+    let (major, rest) = release.split_once('.')?;
+    let minor_end = rest
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(rest.len());
+    if minor_end == 0 {
+        return None;
+    }
+    let major = major.parse::<u32>().ok()?;
+    let minor = rest[..minor_end].parse::<u32>().ok()?;
+    Some(major > 4 || major == 4 && minor >= 17)
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SessionConfig {
@@ -226,6 +240,28 @@ mod tests {
             ipv6_nat_gateway(prefix).address(),
             "fd8d:32f9:31e3:b417::1".parse::<Ipv6Addr>().unwrap()
         );
+    }
+
+    #[test]
+    fn kernel_release_supports_fra_ip_proto_from_4_17() {
+        assert_eq!(
+            kernel_release_supports_fra_ip_proto("4.16.18-android"),
+            Some(false)
+        );
+        assert_eq!(
+            kernel_release_supports_fra_ip_proto("4.17.0-g123"),
+            Some(true)
+        );
+        assert_eq!(
+            kernel_release_supports_fra_ip_proto("6.1.145-android14-11-gfa1d6308d1fe"),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn kernel_release_supports_fra_ip_proto_returns_none_for_unparsable_release() {
+        assert_eq!(kernel_release_supports_fra_ip_proto("android"), None);
+        assert_eq!(kernel_release_supports_fra_ip_proto("4.x"), None);
     }
 
     fn config(

@@ -62,7 +62,8 @@ impl Session {
             ipv6_nat: nat66.as_ref().map(|runtime| runtime.ports),
         };
         let routing =
-            routing::Runtime::start(&config, downstream_ipv4, ports, netlink.handle()).await;
+            routing::Runtime::start(call_id, &config, downstream_ipv4, ports, netlink.handle())
+                .await;
         Ok(Self {
             config: shared,
             _dns: dns,

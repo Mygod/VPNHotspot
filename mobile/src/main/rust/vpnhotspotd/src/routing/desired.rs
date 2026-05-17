@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use cidr::Ipv4Inet;
+use rtnetlink::packet_route::IpProtocol;
 
 use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
@@ -13,6 +14,7 @@ use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
 
 use super::iptables::IptablesRule;
 use super::ipv6_nat_firewall::Ipv6NatFirewall;
+use super::ipv6_nat_intercept::Ipv6NatInterceptMode;
 use super::netlink_commands::{
     IpAddressCommand, IpCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand, RouteType,
     RuleAction,
@@ -47,6 +49,7 @@ impl Runtime {
                 action: RuleAction::Unreachable,
                 table: 0,
                 fwmark: None,
+                ip_protocol: None,
             })),
         );
         for chain in ["vpnhotspot_acl", "vpnhotspot_stats"] {
@@ -117,6 +120,7 @@ impl Runtime {
                         // https://android.googlesource.com/platform/system/netd/+/android-5.0.0_r1/server/RouteController.h#37
                         table: 1000 + ifindex,
                         fwmark: None,
+                        ip_protocol: None,
                     })),
                 );
                 match config.masquerade {
@@ -181,19 +185,49 @@ impl Runtime {
                     table: DAEMON_TABLE,
                 })),
             );
-            push_unique(
+            match self.ipv6_nat_intercept_mode {
+                Ipv6NatInterceptMode::ProtocolRules => {
+                    for (port, protocol) in
+                        [(ports.tcp, IpProtocol::Tcp), (ports.udp, IpProtocol::Udp)]
+                    {
+                        if port.is_some() {
+                            push_unique(
+                                &mut mutations,
+                                RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
+                                    operation: IpOperation::Replace,
+                                    family: IpFamily::Ipv6,
+                                    iif: config.downstream.clone(),
+                                    priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
+                                    action: RuleAction::Lookup,
+                                    table: DAEMON_TABLE,
+                                    fwmark: None,
+                                    ip_protocol: Some(protocol),
+                                })),
+                            );
+                        }
+                    }
+                }
+                Ipv6NatInterceptMode::FwmarkFallback => push_unique(
+                    &mut mutations,
+                    RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
+                        operation: IpOperation::Replace,
+                        family: IpFamily::Ipv6,
+                        iif: config.downstream.clone(),
+                        priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
+                        action: RuleAction::Lookup,
+                        table: DAEMON_TABLE,
+                        fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
+                        ip_protocol: None,
+                    })),
+                ),
+            }
+            Ipv6NatFirewall::append_session_mutations(
                 &mut mutations,
-                RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
-                    operation: IpOperation::Replace,
-                    family: IpFamily::Ipv6,
-                    iif: config.downstream.clone(),
-                    priority: rule_priority(RULE_PRIORITY_DAEMON_BASE),
-                    action: RuleAction::Lookup,
-                    table: DAEMON_TABLE,
-                    fwmark: Some((DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_INTERCEPT_FWMARK_MASK)),
-                })),
+                config,
+                ipv6_nat,
+                ports,
+                self.ipv6_nat_intercept_mode,
             );
-            Ipv6NatFirewall::append_session_mutations(&mut mutations, config, ipv6_nat, ports);
         }
         let mut client_macs_v4 = Vec::new();
         let mut client_ips = Vec::new();

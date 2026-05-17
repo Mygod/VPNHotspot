@@ -9,7 +9,7 @@ use rtnetlink::packet_route::{
         RouteType as NetlinkRouteType,
     },
     rule::{RuleAction as NetlinkRuleAction, RuleAttribute, RuleMessage},
-    AddressFamily,
+    AddressFamily, IpProtocol,
 };
 
 use crate::{netlink, report};
@@ -67,6 +67,7 @@ pub(super) struct IpRuleCommand {
     pub(super) action: RuleAction,
     pub(super) table: u32,
     pub(super) fwmark: Option<(u32, u32)>,
+    pub(super) ip_protocol: Option<IpProtocol>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -144,6 +145,7 @@ pub(super) async fn delete_rule_repeated(
                 action: RuleAction::Any,
                 table: 0,
                 fwmark: None,
+                ip_protocol: None,
             },
         )
         .await;
@@ -232,7 +234,10 @@ pub(super) async fn apply_route_command(
     .with_report_context_details("routing.route", route_details(command))
 }
 
-async fn apply_rule_command(handle: &netlink::Handle, command: &IpRuleCommand) -> io::Result<()> {
+pub(super) async fn apply_rule_command(
+    handle: &netlink::Handle,
+    command: &IpRuleCommand,
+) -> io::Result<()> {
     match command.operation {
         IpOperation::Replace => {
             let mut request = handle.raw().rule().add();
@@ -373,6 +378,9 @@ fn fill_rule_message(message: &mut RuleMessage, command: &IpRuleCommand) -> io::
         message.attributes.push(RuleAttribute::FwMark(mark));
         message.attributes.push(RuleAttribute::FwMask(mask));
     }
+    if let Some(protocol) = command.ip_protocol {
+        message.attributes.push(RuleAttribute::IpProtocol(protocol));
+    }
     Ok(())
 }
 
@@ -421,7 +429,7 @@ pub(super) fn is_missing_address(error: &io::Error) -> bool {
     is_missing(error) || error_errno(error) == Some(libc::EADDRNOTAVAIL)
 }
 
-fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
+pub(super) fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
     vec![
         ("operation".to_owned(), format!("{:?}", command.operation)),
         ("family".to_owned(), format!("{:?}", command.family)),
@@ -434,6 +442,13 @@ fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {
             command
                 .fwmark
                 .map(|(mark, mask)| format!("{mark:#x}/{mask:#x}"))
+                .unwrap_or_default(),
+        ),
+        (
+            "ip_protocol".to_owned(),
+            command
+                .ip_protocol
+                .map(|protocol| format!("{protocol:?}"))
                 .unwrap_or_default(),
         ),
     ]

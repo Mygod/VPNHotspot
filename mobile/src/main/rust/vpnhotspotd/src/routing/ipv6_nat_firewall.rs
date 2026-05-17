@@ -1,11 +1,13 @@
 use crate::firewall::IptablesTarget;
 use vpnhotspotd::shared::icmp_nat::icmp_echo_rule_args;
 use vpnhotspotd::shared::model::{
-    Ipv6NatConfig, Ipv6NatPorts, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM, DAEMON_REPLY_MARK,
+    Ipv6NatConfig, Ipv6NatPorts, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM,
+    DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK,
     DAEMON_REPLY_MARK_MASK, DAEMON_UDP_TPROXY_ADDRESS,
 };
 
 use super::iptables::{IptablesChain, IptablesRule};
+use super::ipv6_nat_intercept::Ipv6NatInterceptMode;
 use super::{push_unique, RoutingMutation};
 
 pub(super) struct Ipv6NatFirewall;
@@ -39,6 +41,7 @@ impl Ipv6NatFirewall {
         config: &SessionConfig,
         ipv6_nat: &Ipv6NatConfig,
         ports: Ipv6NatPorts,
+        intercept_mode: Ipv6NatInterceptMode,
     ) {
         for chain in Self::NAT_FILTER_JUMPS
             .into_iter()
@@ -67,7 +70,7 @@ impl Ipv6NatFirewall {
                 RoutingMutation::Iptables(Self::icmp_echo_rule(config, ipv6_nat)),
             );
         }
-        for rule in Self::tproxy_port_rules(config, ports) {
+        for rule in Self::tproxy_port_rules(config, ports, intercept_mode) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
         // Iptables rules are installed with -I; these land before the ACL gate.
@@ -200,7 +203,11 @@ impl Ipv6NatFirewall {
         )
     }
 
-    fn tproxy_port_rules(config: &SessionConfig, ports: Ipv6NatPorts) -> Vec<IptablesRule> {
+    fn tproxy_port_rules(
+        config: &SessionConfig,
+        ports: Ipv6NatPorts,
+        intercept_mode: Ipv6NatInterceptMode,
+    ) -> Vec<IptablesRule> {
         [("tcp", ports.tcp), ("udp", ports.udp)]
             .into_iter()
             .filter_map(|(protocol, port)| {
@@ -217,12 +224,15 @@ impl Ipv6NatFirewall {
                     // Keep listener socket lookup disjoint from exact-bound UDP reply sockets.
                     args.extend(["--on-ip".into(), DAEMON_UDP_TPROXY_ADDRESS.to_string()]);
                 }
-                args.extend([
-                    "--on-port".into(),
-                    port.to_string(),
-                    "--tproxy-mark".into(),
-                    "0x10000000/0x10000000".into(),
-                ]);
+                args.extend(["--on-port".into(), port.to_string()]);
+                if intercept_mode == Ipv6NatInterceptMode::FwmarkFallback {
+                    args.extend([
+                        "--tproxy-mark".into(),
+                        format!(
+                            "0x{DAEMON_INTERCEPT_FWMARK_VALUE:08x}/0x{DAEMON_INTERCEPT_FWMARK_MASK:08x}"
+                        ),
+                    ]);
+                }
                 Some(IptablesRule::new(
                     IptablesTarget::Ipv6,
                     "mangle",
