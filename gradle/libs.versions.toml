@@ -21,7 +21,7 @@ ktor-io-jvm = "io.ktor:ktor-io-jvm:3.4.3"
 librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha04"
 lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
-material = "com.google.android.material:material:1.13.0"
+material = "com.google.android.material:material:1.14.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
