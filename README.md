@@ -83,7 +83,7 @@ Default settings are picked to suit general use cases and maximize compatibility
   - Block:
     Prevent IPv6 leaks on downstream interfaces.
   - NAT:
-    Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP through a shared root daemon.
+    Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP plus best-effort ICMPv6 through a shared root daemon. This is not full packet NAT and does not forward arbitrary IPv6 next-header protocols.
     This mode operates in userspace thus performance might be degraded.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.

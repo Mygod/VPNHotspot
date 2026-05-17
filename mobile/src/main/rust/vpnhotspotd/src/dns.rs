@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Arc;
 
-use libc::{c_int, fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
+use libc::c_int;
 use socket2::SockRef;
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, Interest, Ready};
@@ -15,7 +15,7 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::report;
-use crate::socket::is_connection_closed;
+use crate::socket::{is_connection_closed, set_nonblocking};
 use vpnhotspotd::shared::dns_wire;
 use vpnhotspotd::shared::model::{Network, SessionConfig};
 
@@ -88,18 +88,6 @@ impl Drop for ResolverQuery {
                 android_res_cancel(fd);
             }
         }
-    }
-}
-
-fn set_nonblocking(fd: RawFd) -> io::Result<()> {
-    let flags = unsafe { fcntl(fd, F_GETFL) };
-    if flags < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    if unsafe { fcntl(fd, F_SETFL, flags | O_NONBLOCK) } < 0 {
-        Err(io::Error::last_os_error())
-    } else {
-        Ok(())
     }
 }
 

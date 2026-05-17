@@ -20,7 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::neighbour::Monitor;
 use crate::session::Session;
 use crate::socket::await_connect;
-use crate::{netlink, report, routing};
+use crate::{nat66, netlink, report, routing};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, complete_frame, daemon_error_report_with_details,
@@ -39,7 +39,9 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     report::init(sender.clone())?;
     let state = Arc::new(State {
         netlink: netlink::Runtime::new()?,
+        icmp: nat66::IcmpDispatcher::new(),
         sessions: Mutex::new(HashMap::new()),
+        ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
     });
     let active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>> =
@@ -148,7 +150,9 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     netlink: netlink::Runtime,
+    icmp: nat66::IcmpDispatcher,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
+    ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
 }
 
@@ -172,6 +176,7 @@ impl State {
         }
         let sessions = self.drain_sessions().await;
         stop_sessions(&sessions, withdraw_cleanup).await;
+        self.stop_ipv6_nat_firewall_base().await;
     }
 
     async fn drain_sessions(&self) -> Vec<Arc<SessionState>> {
@@ -181,6 +186,23 @@ impl State {
             .drain()
             .map(|(_, session)| session)
             .collect()
+    }
+
+    async fn ensure_ipv6_nat_firewall_base(&self) -> io::Result<()> {
+        let mut installed = self.ipv6_nat_firewall_base.lock().await;
+        if !*installed {
+            routing::ensure_ipv6_nat_firewall_base().await?;
+            *installed = true;
+        }
+        Ok(())
+    }
+
+    async fn stop_ipv6_nat_firewall_base(&self) {
+        let mut installed = self.ipv6_nat_firewall_base.lock().await;
+        if *installed {
+            routing::delete_ipv6_nat_firewall_base().await;
+            *installed = false;
+        }
     }
 }
 
@@ -309,6 +331,7 @@ async fn handle_command(
                 }
             }
             stop_sessions(&sessions, true).await;
+            state.stop_ipv6_nat_firewall_base().await;
             for id in complete_ids {
                 send_complete(id, sender);
             }
@@ -351,8 +374,21 @@ async fn start_session(
         }
         sessions.insert(id, slot.clone());
     }
+    if config.ipv6_nat.is_some() {
+        if let Err(e) = state
+            .ensure_ipv6_nat_firewall_base()
+            .await
+            .with_report_context_details(
+                "control.start_session.ipv6_nat_firewall_base",
+                [("downstream", downstream.as_str())],
+            )
+        {
+            remove_session_slot(state, &slot).await;
+            return Err(e);
+        }
+    }
     let mut guard = slot.session.lock().await;
-    match Session::start(id, config, &state.netlink, cancel)
+    match Session::start(id, config, &state.netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
             "control.start_session",

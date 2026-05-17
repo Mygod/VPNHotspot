@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io;
 use std::mem::{take, MaybeUninit};
 use std::net::{IpAddr, Ipv6Addr, SocketAddrV6};
-use std::os::fd::AsFd;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -23,7 +22,7 @@ use cidr::Ipv6Inet;
 
 use crate::netlink;
 use crate::report;
-use crate::socket::await_writable;
+use crate::socket::send_packet_to;
 use vpnhotspotd::shared::model::SessionConfig;
 use vpnhotspotd::shared::ra_wire::{
     is_router_link_local, make_current_ra_packet, make_zero_lifetime_ra_packet,
@@ -475,7 +474,7 @@ async fn send_ra(
     let destination =
         target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index));
     let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
-    sendto_all(&fd, &packet, SockAddr::from(destination)).await
+    send_packet_to(&fd, &packet, SockAddr::from(destination)).await
 }
 
 async fn send_zero_lifetime_ra(
@@ -487,31 +486,5 @@ async fn send_zero_lifetime_ra(
 ) -> io::Result<()> {
     let destination = SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index);
     let packet = make_zero_lifetime_ra_packet(prefix, mtu, keep_router);
-    sendto_all(socket, &packet, SockAddr::from(destination)).await
-}
-
-async fn sendto_all(socket: &Socket, mut packet: &[u8], address: SockAddr) -> io::Result<()> {
-    while !packet.is_empty() {
-        let written = match socket.send_to(packet, &address) {
-            Ok(written) => written,
-            Err(error) => {
-                if error.kind() == io::ErrorKind::Interrupted {
-                    continue;
-                }
-                if error.kind() == io::ErrorKind::WouldBlock {
-                    await_writable(socket.as_fd()).await?;
-                    continue;
-                }
-                return Err(error);
-            }
-        };
-        if written == 0 {
-            return Err(io::Error::new(
-                io::ErrorKind::WriteZero,
-                "socket write failed",
-            ));
-        }
-        packet = &packet[written..];
-    }
-    Ok(())
+    send_packet_to(socket, &packet, SockAddr::from(destination)).await
 }

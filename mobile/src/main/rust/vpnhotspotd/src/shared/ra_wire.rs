@@ -1,6 +1,15 @@
 use std::net::Ipv6Addr;
 
 use cidr::{Ipv6Cidr, Ipv6Inet};
+use etherparse::icmpv6::{
+    NdpOptionHeader, NdpOptionType, PrefixInformation, RouterAdvertisementHeader,
+    RouterAdvertisementPayload,
+};
+use etherparse::{Icmpv6Header, Icmpv6Type};
+
+// Recursive DNS Server option, RFC 8106 section 5.1.
+const RDNSS_OPTION_TYPE: NdpOptionType = NdpOptionType(25);
+const RDNSS_OPTION_LENGTH_UNITS: u8 = 3;
 
 pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
     RaAdvertisement {
@@ -29,7 +38,7 @@ pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: boo
 }
 
 pub fn is_router_link_local(address: Ipv6Addr) -> bool {
-    address.is_unicast_link_local() && !address.is_loopback() && !address.is_multicast()
+    address.is_unicast_link_local()
 }
 
 struct RaAdvertisement {
@@ -45,31 +54,52 @@ struct RaAdvertisement {
 impl RaAdvertisement {
     fn encode(self) -> Vec<u8> {
         let mut packet = Vec::with_capacity(80);
-        packet.push(134);
-        packet.push(0);
-        packet.extend_from_slice(&0u16.to_be_bytes());
-        packet.push(64);
-        packet.push(0);
-        packet.extend_from_slice(&self.router_lifetime.to_be_bytes());
-        packet.extend_from_slice(&0u32.to_be_bytes());
-        packet.extend_from_slice(&0u32.to_be_bytes());
+        packet.extend_from_slice(
+            &Icmpv6Header::new(Icmpv6Type::RouterAdvertisement(RouterAdvertisementHeader {
+                cur_hop_limit: 64,
+                managed_address_config: false,
+                other_config: false,
+                router_lifetime: self.router_lifetime,
+            }))
+            .to_bytes(),
+        );
+        packet.extend_from_slice(
+            &RouterAdvertisementPayload {
+                reachable_time: 0,
+                retrans_timer: 0,
+            }
+            .to_bytes(),
+        );
 
-        packet.push(3);
-        packet.push(4);
-        packet.push(self.advertised_prefix.network_length());
-        packet.push(0xc0);
-        packet.extend_from_slice(&self.valid_lifetime.to_be_bytes());
-        packet.extend_from_slice(&self.preferred_lifetime.to_be_bytes());
-        packet.extend_from_slice(&0u32.to_be_bytes());
-        packet.extend_from_slice(&self.advertised_prefix.first_address().octets());
+        packet.extend_from_slice(
+            &PrefixInformation {
+                prefix_length: self.advertised_prefix.network_length(),
+                on_link: true,
+                autonomous_address_configuration: true,
+                valid_lifetime: self.valid_lifetime,
+                preferred_lifetime: self.preferred_lifetime,
+                prefix: self.advertised_prefix.first_address().octets(),
+            }
+            .to_bytes(),
+        );
 
-        packet.push(5);
-        packet.push(1);
+        packet.extend_from_slice(
+            &NdpOptionHeader {
+                option_type: NdpOptionType::MTU,
+                length_units: 1,
+            }
+            .to_bytes(),
+        );
         packet.extend_from_slice(&0u16.to_be_bytes());
         packet.extend_from_slice(&self.mtu.to_be_bytes());
 
-        packet.push(25);
-        packet.push(3);
+        packet.extend_from_slice(
+            &NdpOptionHeader {
+                option_type: RDNSS_OPTION_TYPE,
+                length_units: RDNSS_OPTION_LENGTH_UNITS,
+            }
+            .to_bytes(),
+        );
         packet.extend_from_slice(&0u16.to_be_bytes());
         packet.extend_from_slice(&self.rdnss_lifetime.to_be_bytes());
         packet.extend_from_slice(&self.dns_server.octets());
