@@ -160,9 +160,19 @@ object DaemonController {
                     }
                 }
                 withTimeoutOrNull(10.seconds) { serverSocket.accept() }.also {
-                    socket = it ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
-                    input = it.openReadChannel()
-                    output = it.openWriteChannel()
+                    val daemonSocket = it ?: throw IOException("Timed out waiting for $BINARY_NAME to connect")
+                    val peerUid = try {
+                        daemonSocket.getPeerCredentials().uid
+                    } catch (e: ErrnoException) {
+                        throw IOException("Failed to verify $BINARY_NAME peer credentials", e)
+                    }
+                    if (peerUid != 0) {
+                        daemonSocket.close()
+                        throw IOException("Unexpected $BINARY_NAME peer uid $peerUid")
+                    }
+                    socket = daemonSocket
+                    input = daemonSocket.openReadChannel()
+                    output = daemonSocket.openWriteChannel()
                     startReaderLocked(input!!)
                     Timber.d("Started $BINARY_NAME")
                 }
