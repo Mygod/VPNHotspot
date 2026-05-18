@@ -88,6 +88,10 @@ source to the existing persistence shape:
 
 The structured counter source is the stable active-recorder key. The persisted
 `upstream` marker is only the current no-migration storage representation.
+Routing keeps the recorder's active client set in sync with allowed MACs, while
+IPv4 neighbour entries only add or remove IPv4 forwarding rows. A client losing
+its IPv4 neighbour therefore does not stop DNS or NAT66 polling while the MAC is
+still allowed.
 When duplicate IPv4 forwarding counter rules exist after interrupted cleanup,
 the daemon keeps the first matching iptables rule per direction because that is
 the rule whose counters the kernel updates.

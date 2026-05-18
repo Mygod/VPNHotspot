@@ -65,7 +65,6 @@ object TrafficRecorder {
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
-            activeClients.add(ClientKey(mac, downstream))
             Timber.d("Registering $key")
             records.compute(key) { _, old ->
                 check(old == null)

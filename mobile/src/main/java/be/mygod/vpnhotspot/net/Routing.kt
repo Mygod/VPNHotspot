@@ -234,6 +234,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                                 removed.forEach { TrafficRecorder.unregister(it, downstream) }
                                 removedMacs.forEach { TrafficRecorder.unregister(it, downstream) }
                             }
+                            addedMacs.forEach { TrafficRecorder.register(it, downstream) }
                             added.forEach { ip ->
                                 try {
                                     TrafficRecorder.register(ip, downstream, committedClients[ip]!!)
@@ -243,11 +244,6 @@ class Routing(private val caller: Any, private val downstream: String) {
                                     Timber.w(e)
                                     SmartSnackbar.make(e).show()
                                 }
-                            }
-                            addedMacs.forEach { mac ->
-                                var hasIpv4 = false
-                                committedClients.forEach { _, clientMac -> if (clientMac == mac) hasIpv4 = true }
-                                if (!hasIpv4) TrafficRecorder.register(mac, downstream)
                             }
                             clients.clear()
                             clients.putAll(committedClients)
