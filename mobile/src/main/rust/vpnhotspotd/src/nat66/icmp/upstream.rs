@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use super::super::sleep_until_deadline;
 use super::probe::{
     classify_error_queue_echo, echo_error_response, packet_icmp_error_metadata, quoted_echo_probe,
-    quoted_udp_probe, EchoErrorProbe, EchoErrorResponse, UdpErrorProbe,
+    quoted_udp_probe, EchoErrorProbe, EchoErrorResponse, QueuedEchoError, UdpErrorProbe,
 };
 use super::raw_socket::{
     recv_error_queue, recv_raw_icmp_packet, send_downstream_icmp, ReceivedIcmpPacket,
@@ -25,6 +25,16 @@ use vpnhotspotd::shared::icmp_wire::{
     build_icmp_quote, build_translated_udp_quote,
 };
 use vpnhotspotd::shared::model::Network;
+use vpnhotspotd::shared::nat66_counter::Nat66CounterSource;
+
+#[derive(Clone, Copy)]
+struct IcmpErrorMetadata {
+    offender: SocketAddrV6,
+    icmp_type: u8,
+    code: u8,
+    bytes5to8: [u8; 4],
+    message_len: usize,
+}
 
 pub(super) fn spawn_loop(
     network: Network,
@@ -124,8 +134,16 @@ async fn handle_upstream_icmp_packet(
     };
     match header.icmp_type {
         Icmpv6Type::EchoReply(echo) => {
-            handle_upstream_echo_reply(network, state, packet.source, echo.id, echo.seq, payload)
-                .await;
+            handle_upstream_echo_reply(
+                network,
+                state,
+                packet.source,
+                echo.id,
+                echo.seq,
+                packet.payload.len(),
+                payload,
+            )
+            .await;
         }
         _ => {
             if let Some((icmp_type, code, bytes5to8)) =
@@ -134,10 +152,13 @@ async fn handle_upstream_icmp_packet(
                 handle_upstream_icmp_error(
                     network,
                     state,
-                    packet.source,
-                    icmp_type,
-                    code,
-                    bytes5to8,
+                    IcmpErrorMetadata {
+                        offender: packet.source,
+                        icmp_type,
+                        code,
+                        bytes5to8,
+                        message_len: packet.payload.len(),
+                    },
                     payload,
                 )
                 .await;
@@ -152,6 +173,7 @@ async fn handle_upstream_echo_reply(
     source: SocketAddrV6,
     id: u16,
     seq: u16,
+    message_len: usize,
     payload: &[u8],
 ) {
     let entry = match state.restore(network, *source.ip(), id, seq) {
@@ -175,6 +197,9 @@ async fn handle_upstream_echo_reply(
             return;
         }
     };
+    if let Err(e) = count_icmp_received(state, &entry, message_len) {
+        report::io("nat66.icmp_counter", e);
+    }
     if let Err(e) = send_downstream_icmp(
         &entry.downstream,
         entry.reply_mark,
@@ -196,30 +221,22 @@ async fn handle_upstream_echo_reply(
 async fn handle_upstream_icmp_error(
     network: Network,
     state: &EchoState,
-    offender: SocketAddrV6,
-    icmp_type: u8,
-    code: u8,
-    bytes5to8: [u8; 4],
+    error: IcmpErrorMetadata,
     quote: &[u8],
 ) {
     if let Some(probe) = quoted_echo_probe(quote) {
-        handle_upstream_echo_error(network, state, offender, icmp_type, code, bytes5to8, probe)
-            .await;
+        handle_upstream_echo_error(network, state, error, probe).await;
         return;
     }
     if let Some(probe) = quoted_udp_probe(quote) {
-        handle_upstream_udp_error(network, state, offender, icmp_type, code, bytes5to8, probe)
-            .await;
+        handle_upstream_udp_error(network, state, error, probe).await;
     }
 }
 
 async fn handle_upstream_echo_error(
     network: Network,
     state: &EchoState,
-    offender: SocketAddrV6,
-    icmp_type: u8,
-    code: u8,
-    bytes5to8: [u8; 4],
+    error: IcmpErrorMetadata,
     probe: EchoErrorProbe<'_>,
 ) {
     let entry = match state.restore(network, probe.destination, probe.id, probe.seq) {
@@ -230,18 +247,20 @@ async fn handle_upstream_echo_error(
             return;
         }
     };
-    let source = downstream_icmp_error_source(*offender.ip(), entry.gateway);
+    let source = downstream_icmp_error_source(*error.offender.ip(), entry.gateway);
     let hop_limit = probe.hop_limit.unwrap_or(entry.upstream_hop_limit);
     send_echo_error(
+        state,
         entry,
         EchoErrorResponse {
             source,
-            icmp_type,
-            code,
-            bytes5to8,
+            icmp_type: error.icmp_type,
+            code: error.code,
+            bytes5to8: error.bytes5to8,
             destination: probe.destination,
             hop_limit,
         },
+        Some(error.message_len),
         probe.payload,
     )
     .await
@@ -250,10 +269,7 @@ async fn handle_upstream_echo_error(
 async fn handle_upstream_udp_error(
     network: Network,
     state: &EchoState,
-    offender: SocketAddrV6,
-    icmp_type: u8,
-    code: u8,
-    bytes5to8: [u8; 4],
+    error: IcmpErrorMetadata,
     probe: UdpErrorProbe<'_>,
 ) {
     let context = match state.lookup_udp_error(network, probe.quote.source, probe.quote.destination)
@@ -265,7 +281,7 @@ async fn handle_upstream_udp_error(
             return;
         }
     };
-    let source = downstream_icmp_error_source(*offender.ip(), context.gateway);
+    let source = downstream_icmp_error_source(*error.offender.ip(), context.gateway);
     let quote = match build_translated_udp_quote(
         probe.quote,
         context.client,
@@ -286,9 +302,9 @@ async fn handle_upstream_udp_error(
         }
     };
     let packet = match build_icmp_error_packet(
-        icmp_type,
-        code,
-        bytes5to8,
+        error.icmp_type,
+        error.code,
+        error.bytes5to8,
         source,
         *context.client.ip(),
         &quote,
@@ -306,6 +322,13 @@ async fn handle_upstream_udp_error(
             return;
         }
     };
+    if let Err(e) = context.counters.add_received_packet(
+        context.client_mac,
+        Nat66CounterSource::Icmpv6,
+        error.message_len,
+    ) {
+        report::io("nat66.icmp_counter", e);
+    }
     if let Err(e) = send_downstream_icmp(
         &context.downstream,
         context.reply_mark,
@@ -345,12 +368,23 @@ pub(super) async fn drain_echo_error_queue(
         let Some(entry) = state.restore(network, probe.destination, probe.id, probe.seq)? else {
             continue;
         };
+        let count_len = if matches!(error, QueuedEchoError::Upstream { .. }) {
+            Some(message.payload.len())
+        } else {
+            None
+        };
         let response = echo_error_response(error, &entry, &probe);
-        send_echo_error(entry, response, probe.payload).await
+        send_echo_error(state, entry, response, count_len, probe.payload).await
     }
 }
 
-async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload: &[u8]) {
+async fn send_echo_error(
+    state: &EchoState,
+    entry: EchoEntry,
+    response: EchoErrorResponse,
+    count_len: Option<usize>,
+    payload: &[u8],
+) {
     let request = match build_echo_request_with_checksum(
         *entry.client.ip(),
         response.destination,
@@ -411,6 +445,11 @@ async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload:
             return;
         }
     };
+    if let Some(message_len) = count_len {
+        if let Err(e) = count_icmp_received(state, &entry, message_len) {
+            report::io("nat66.icmp_counter", e);
+        }
+    }
     if let Err(e) = send_downstream_icmp(
         &entry.downstream,
         entry.reply_mark,
@@ -427,4 +466,11 @@ async fn send_echo_error(entry: EchoEntry, response: EchoErrorResponse, payload:
             e
         );
     }
+}
+
+fn count_icmp_received(state: &EchoState, entry: &EchoEntry, message_len: usize) -> io::Result<()> {
+    if let Some(counters) = state.session_counters(entry.session_key)? {
+        counters.add_received_packet(entry.client_mac, Nat66CounterSource::Icmpv6, message_len)?;
+    }
+    Ok(())
 }

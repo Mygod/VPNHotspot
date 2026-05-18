@@ -85,6 +85,10 @@ Default settings are picked to suit general use cases and maximize compatibility
   - NAT:
     Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP plus best-effort ICMPv6 through a shared root daemon. This is not full packet NAT and does not forward arbitrary IPv6 next-header protocols.
     This mode operates in userspace thus performance might be degraded.
+* Client blocking and traffic counters:
+    Client blocking and counters apply only to traffic VPNHotspot forwards or proxies upstream.
+    Local downstream traffic is not blocked or counted by this feature.
+    The client identity is MAC-based; IPv4 addresses may still be used internally for IPv4 forwarding counters.
 * Tethering hardware acceleration:
     This is a shortcut to the same setting in system Developer options.
     Turning this option off is probably a must for making VPN tethering over system tethering work,
@@ -371,7 +375,10 @@ Nonexported system resources:
 Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
-* `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
+* `IPv6 NAT` mode depends on the iptables `TPROXY` and `NFQUEUE` targets and
+  transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
+  and assumes queued downstream packets expose six-byte source hardware-address
+  metadata through `NFQA_HWADDR`.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.

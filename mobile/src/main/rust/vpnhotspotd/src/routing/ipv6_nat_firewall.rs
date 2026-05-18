@@ -1,7 +1,7 @@
 use crate::firewall::IptablesTarget;
 use vpnhotspotd::shared::icmp_nat::icmp_echo_rule_args;
 use vpnhotspotd::shared::model::{
-    Ipv6NatConfig, Ipv6NatPorts, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM,
+    mac_string, Ipv6NatConfig, Ipv6NatPorts, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM,
     DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_REPLY_MARK,
     DAEMON_REPLY_MARK_MASK, DAEMON_UDP_TPROXY_ADDRESS,
 };
@@ -40,7 +40,7 @@ impl Ipv6NatFirewall {
         mutations: &mut Vec<RoutingMutation>,
         config: &SessionConfig,
         ipv6_nat: &Ipv6NatConfig,
-        ports: Ipv6NatPorts,
+        ports: &Ipv6NatPorts,
         intercept_mode: Ipv6NatInterceptMode,
     ) {
         for chain in Self::NAT_FILTER_JUMPS
@@ -205,45 +205,76 @@ impl Ipv6NatFirewall {
 
     fn tproxy_port_rules(
         config: &SessionConfig,
-        ports: Ipv6NatPorts,
+        ports: &Ipv6NatPorts,
         intercept_mode: Ipv6NatInterceptMode,
     ) -> Vec<IptablesRule> {
-        [("tcp", ports.tcp), ("udp", ports.udp)]
-            .into_iter()
-            .filter_map(|(protocol, port)| {
-                let port = port?;
-                let mut args = vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-p".into(),
-                    protocol.into(),
-                    "-j".into(),
-                    "TPROXY".into(),
-                ];
-                if protocol == "udp" {
-                    // Keep listener socket lookup disjoint from exact-bound UDP reply sockets.
-                    args.extend(["--on-ip".into(), DAEMON_UDP_TPROXY_ADDRESS.to_string()]);
-                }
-                args.extend(["--on-port".into(), port.to_string()]);
-                if intercept_mode == Ipv6NatInterceptMode::FwmarkFallback {
-                    args.extend([
-                        "--tproxy-mark".into(),
-                        format!(
-                            "0x{DAEMON_INTERCEPT_FWMARK_VALUE:08x}/0x{DAEMON_INTERCEPT_FWMARK_MASK:08x}"
-                        ),
-                    ]);
-                }
-                Some(IptablesRule::new(
-                    IptablesTarget::Ipv6,
-                    "mangle",
-                    "vpnhotspot_v6_protocols",
-                    args,
-                ))
-            })
-            .collect()
+        let mut rules = Vec::new();
+        let mut client_macs = Vec::new();
+        for client in &config.clients {
+            if client_macs.contains(&client.mac) {
+                continue;
+            }
+            client_macs.push(client.mac);
+            let Some(ports) = ports.clients.iter().find(|ports| ports.mac == client.mac) else {
+                continue;
+            };
+            for (protocol, port) in [("tcp", ports.tcp), ("udp", ports.udp)] {
+                let Some(port) = port else {
+                    continue;
+                };
+                rules.push(Self::tproxy_port_rule(
+                    config,
+                    client.mac,
+                    protocol,
+                    port,
+                    intercept_mode,
+                ));
+            }
+        }
+        rules
     }
 
-    fn icmp_echo_rule(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> IptablesRule {
+    pub(super) fn tproxy_port_rule(
+        config: &SessionConfig,
+        mac: [u8; 6],
+        protocol: &str,
+        port: u16,
+        intercept_mode: Ipv6NatInterceptMode,
+    ) -> IptablesRule {
+        let mut args = vec![
+            "-i".into(),
+            config.downstream.clone(),
+            "-p".into(),
+            protocol.into(),
+            "-m".into(),
+            "mac".into(),
+            "--mac-source".into(),
+            mac_string(&mac),
+            "-j".into(),
+            "TPROXY".into(),
+        ];
+        if protocol == "udp" {
+            // Keep listener socket lookup disjoint from exact-bound UDP reply sockets.
+            args.extend(["--on-ip".into(), DAEMON_UDP_TPROXY_ADDRESS.to_string()]);
+        }
+        args.extend(["--on-port".into(), port.to_string()]);
+        if intercept_mode == Ipv6NatInterceptMode::FwmarkFallback {
+            args.extend([
+                "--tproxy-mark".into(),
+                format!(
+                    "0x{DAEMON_INTERCEPT_FWMARK_VALUE:08x}/0x{DAEMON_INTERCEPT_FWMARK_MASK:08x}"
+                ),
+            ]);
+        }
+        IptablesRule::new(
+            IptablesTarget::Ipv6,
+            "mangle",
+            "vpnhotspot_v6_protocols",
+            args,
+        )
+    }
+
+    pub(super) fn icmp_echo_rule(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> IptablesRule {
         IptablesRule::new(
             IptablesTarget::Ipv6,
             "mangle",

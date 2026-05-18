@@ -38,6 +38,7 @@ pub struct EchoEntry {
     pub downstream: String,
     pub reply_mark: u32,
     pub client: SocketAddrV6,
+    pub client_mac: [u8; 6],
     pub original_id: u16,
     pub original_seq: u16,
     pub downstream_hop_limit: u8,
@@ -53,6 +54,7 @@ pub struct EchoAllocation {
     pub network: Network,
     pub destination: Ipv6Addr,
     pub client: SocketAddrV6,
+    pub client_mac: [u8; 6],
     pub original_id: u16,
     pub original_seq: u16,
     pub downstream_hop_limit: u8,
@@ -156,6 +158,7 @@ impl EchoMap {
                         downstream: allocation.downstream,
                         reply_mark: allocation.reply_mark,
                         client: allocation.client,
+                        client_mac: allocation.client_mac,
                         original_id: allocation.original_id,
                         original_seq: allocation.original_seq,
                         downstream_hop_limit: allocation.downstream_hop_limit,
@@ -228,6 +231,18 @@ impl EchoMap {
         self.expire(now, timeout);
         self.entries
             .retain(|_, entry| entry.session_key != session_key);
+    }
+
+    pub fn remove_session_client(
+        &mut self,
+        now: Instant,
+        timeout: Duration,
+        session_key: u64,
+        client_mac: [u8; 6],
+    ) {
+        self.expire(now, timeout);
+        self.entries
+            .retain(|_, entry| entry.session_key != session_key || entry.client_mac != client_mac);
     }
 
     pub fn has_network_entries(
@@ -335,6 +350,7 @@ mod tests {
                     network: 12,
                     destination,
                     client,
+                    client_mac: [2, 3, 5, 7, 11, 13],
                     original_id: 345,
                     original_seq: 678,
                     downstream_hop_limit: 64,
@@ -350,6 +366,7 @@ mod tests {
         assert_eq!(entry.downstream, "ncm0");
         assert_eq!(entry.reply_mark, 123);
         assert_eq!(entry.client, client);
+        assert_eq!(entry.client_mac, [2, 3, 5, 7, 11, 13]);
         assert_eq!(entry.original_id, 345);
         assert_eq!(entry.original_seq, 678);
         assert_eq!(entry.downstream_hop_limit, 64);
@@ -377,6 +394,7 @@ mod tests {
                     network: 12,
                     destination,
                     client,
+                    client_mac: [2, 3, 5, 7, 11, 13],
                     original_id: 1,
                     original_seq: 2,
                     downstream_hop_limit: 64,
@@ -408,6 +426,7 @@ mod tests {
                     network: 12,
                     destination,
                     client,
+                    client_mac: [2, 3, 5, 7, 11, 13],
                     original_id: 1,
                     original_seq: 2,
                     downstream_hop_limit: 64,
@@ -427,6 +446,7 @@ mod tests {
                     network: 12,
                     destination,
                     client,
+                    client_mac: [2, 3, 5, 7, 11, 13],
                     original_id: 3,
                     original_seq: 4,
                     downstream_hop_limit: 64,
@@ -447,6 +467,74 @@ mod tests {
     }
 
     #[test]
+    fn echo_map_removes_session_client_entries() {
+        let mut map = EchoMap::default();
+        let now = Instant::now();
+        let removed_destination: Ipv6Addr = "2001:db8::1".parse().unwrap();
+        let kept_destination: Ipv6Addr = "2001:db8::2".parse().unwrap();
+        let client = SocketAddrV6::new("fd00::2".parse().unwrap(), 0, 0, 0);
+        let removed_mac = [2, 3, 5, 7, 11, 13];
+        let kept_mac = [13, 11, 7, 5, 3, 2];
+
+        let (removed_id, removed_seq) = map
+            .allocate(
+                now,
+                TIMEOUT,
+                EchoAllocation {
+                    session_key: 1,
+                    downstream: "ncm0".into(),
+                    reply_mark: 123,
+                    network: 12,
+                    destination: removed_destination,
+                    client,
+                    client_mac: removed_mac,
+                    original_id: 1,
+                    original_seq: 2,
+                    downstream_hop_limit: 64,
+                    upstream_hop_limit: 63,
+                    gateway: "fd00::1".parse().unwrap(),
+                },
+            )
+            .unwrap();
+        let (kept_id, kept_seq) = map
+            .allocate(
+                now,
+                TIMEOUT,
+                EchoAllocation {
+                    session_key: 1,
+                    downstream: "ncm0".into(),
+                    reply_mark: 123,
+                    network: 12,
+                    destination: kept_destination,
+                    client,
+                    client_mac: kept_mac,
+                    original_id: 3,
+                    original_seq: 4,
+                    downstream_hop_limit: 64,
+                    upstream_hop_limit: 63,
+                    gateway: "fd00::1".parse().unwrap(),
+                },
+            )
+            .unwrap();
+
+        map.remove_session_client(now, TIMEOUT, 1, removed_mac);
+
+        assert!(map
+            .restore(
+                now,
+                TIMEOUT,
+                12,
+                removed_destination,
+                removed_id,
+                removed_seq
+            )
+            .is_none());
+        assert!(map
+            .restore(now, TIMEOUT, 12, kept_destination, kept_id, kept_seq)
+            .is_some());
+    }
+
+    #[test]
     fn echo_map_removes_specific_allocation() {
         let mut map = EchoMap::default();
         let now = Instant::now();
@@ -463,6 +551,7 @@ mod tests {
                     network: 12,
                     destination,
                     client,
+                    client_mac: [2, 3, 5, 7, 11, 13],
                     original_id: 1,
                     original_seq: 2,
                     downstream_hop_limit: 64,
@@ -496,6 +585,7 @@ mod tests {
                 network: 12,
                 destination,
                 client,
+                client_mac: [2, 3, 5, 7, 11, 13],
                 original_id: 1,
                 original_seq: 2,
                 downstream_hop_limit: 64,
@@ -514,6 +604,7 @@ mod tests {
                 network: 13,
                 destination,
                 client,
+                client_mac: [2, 3, 5, 7, 11, 13],
                 original_id: 3,
                 original_seq: 4,
                 downstream_hop_limit: 64,
@@ -543,6 +634,7 @@ mod tests {
                 network: 12,
                 destination,
                 client,
+                client_mac: [2, 3, 5, 7, 11, 13],
                 original_id: 1,
                 original_seq: 2,
                 downstream_hop_limit: 64,
@@ -576,7 +668,7 @@ mod tests {
                 "-j",
                 "NFQUEUE",
                 "--queue-num",
-                "30063",
+                "30000",
             ]
         );
     }

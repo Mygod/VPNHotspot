@@ -114,7 +114,7 @@ impl Runtime {
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
-    ) -> Self {
+    ) -> (Self, SessionPorts) {
         let ipv6_nat_intercept_mode = if config.ipv6_nat.is_some() && ports.ipv6_nat.is_some() {
             Ipv6NatInterceptMode::detect(call_id, &netlink, &config.downstream).await
         } else {
@@ -128,7 +128,9 @@ impl Runtime {
             applied: Vec::new(),
         };
         runtime.setup(config).await;
-        runtime
+        let committed = runtime.committed_ports(config);
+        runtime.ports = committed.clone();
+        (runtime, committed)
     }
 
     pub(crate) async fn replace(
@@ -136,7 +138,8 @@ impl Runtime {
         previous: &SessionConfig,
         next: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
-    ) -> io::Result<()> {
+        ports: SessionPorts,
+    ) -> io::Result<SessionPorts> {
         if previous.downstream != next.downstream {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -144,9 +147,12 @@ impl Runtime {
             ));
         }
         self.downstream_ipv4 = downstream_ipv4;
+        self.ports = ports;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;
-        Ok(())
+        let committed = self.committed_ports(next);
+        self.ports = committed.clone();
+        Ok(committed)
     }
 
     pub(crate) async fn stop(mut self) {

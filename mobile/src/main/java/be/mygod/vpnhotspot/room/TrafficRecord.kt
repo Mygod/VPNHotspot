@@ -25,10 +25,14 @@ data class TrafficRecord(
          */
         val mac: MacAddress,
         /**
-         * For now only stats for IPv4 will be recorded. But I'm going to put the more general class here just in case.
+         * IPv4 forwarding rows store the real client IPv4 address. Daemon-owned MAC-only counter sources use
+         * 0.0.0.0 as a schema-compatibility marker.
          */
         val ip: InetAddress,
-        @Deprecated("This field is no longer used.")
+        /**
+         * Compatibility column. Historical rows used this as an upstream interface name; daemon-owned MAC-only
+         * counter sources store reserved source markers such as /dns or /nat66/tcp.
+         */
         val upstream: String? = null,
         val downstream: String,
         var sentPackets: Long = 0,

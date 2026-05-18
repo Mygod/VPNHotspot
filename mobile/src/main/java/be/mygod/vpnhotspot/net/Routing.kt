@@ -183,22 +183,30 @@ class Routing(private val caller: Any, private val downstream: String) {
                         var nextAllowedMacs: ScatterSet<MacAddress>? = null
                         var added = MutableObjectList<Inet4Address>(0)
                         var removed = MutableObjectList<Inet4Address>(0)
+                        var addedMacs = MutableObjectList<MacAddress>(0)
+                        var removedMacs = MutableObjectList<MacAddress>(0)
                         val clientsChanged = if (clientPolicyChanged) {
                             val candidateClients = MutableScatterMap<Inet4Address, MacAddress>(neighbours.size)
                             val candidateAllowedMacs = MutableScatterSet<MacAddress>()
                             for (neighbour in neighbours) {
-                                val lladdr = neighbour.validIpv4ClientMac ?: continue
+                                val lladdr = neighbour.validClientMac ?: continue
                                 if (neighbour.dev != downstream || lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
-                                candidateClients[neighbour.ip as Inet4Address] = lladdr
+                                if (neighbour.ip is Inet4Address) candidateClients[neighbour.ip] = lladdr
                             }
                             if (candidateClients == clients && candidateAllowedMacs == allowedMacs) false else {
                                 removed = MutableObjectList(clients.size)
-                                clients.forEach { ip, _ -> if (!candidateClients.containsKey(ip)) removed.add(ip) }
+                                clients.forEach { ip, mac -> if (candidateClients[ip] != mac) removed.add(ip) }
+                                removedMacs = MutableObjectList(allowedMacs.size)
+                                allowedMacs.forEach { mac -> if (mac !in candidateAllowedMacs) removedMacs.add(mac) }
                                 // record stats before removing rules to prevent stats losing
-                                if (removed.isNotEmpty()) withContext(NonCancellable) { TrafficRecorder.update() }
+                                if (removed.isNotEmpty() || removedMacs.isNotEmpty()) {
+                                    withContext(NonCancellable) { TrafficRecorder.update() }
+                                }
                                 added = MutableObjectList(candidateClients.size)
-                                candidateClients.forEach { ip, _ -> if (!clients.containsKey(ip)) added.add(ip) }
+                                candidateClients.forEach { ip, mac -> if (clients[ip] != mac) added.add(ip) }
+                                addedMacs = MutableObjectList(candidateAllowedMacs.size)
+                                candidateAllowedMacs.forEach { mac -> if (mac !in allowedMacs) addedMacs.add(mac) }
                                 clientSnapshot = candidateClients
                                 allowedMacSnapshot = candidateAllowedMacs
                                 nextClients = candidateClients
@@ -222,6 +230,10 @@ class Routing(private val caller: Any, private val downstream: String) {
                         }
                         if (clientsChanged) {
                             val committedClients = nextClients!!
+                            withContext(NonCancellable) {
+                                removed.forEach { TrafficRecorder.unregister(it, downstream) }
+                                removedMacs.forEach { TrafficRecorder.unregister(it, downstream) }
+                            }
                             added.forEach { ip ->
                                 try {
                                     TrafficRecorder.register(ip, downstream, committedClients[ip]!!)
@@ -232,8 +244,10 @@ class Routing(private val caller: Any, private val downstream: String) {
                                     SmartSnackbar.make(e).show()
                                 }
                             }
-                            withContext(NonCancellable) {
-                                removed.forEach { TrafficRecorder.unregister(it, downstream) }
+                            addedMacs.forEach { mac ->
+                                var hasIpv4 = false
+                                committedClients.forEach { _, clientMac -> if (clientMac == mac) hasIpv4 = true }
+                                if (!hasIpv4) TrafficRecorder.register(mac, downstream)
                             }
                             clients.clear()
                             clients.putAll(committedClients)
@@ -252,7 +266,7 @@ class Routing(private val caller: Any, private val downstream: String) {
             } finally {
                 withContext(NonCancellable) {
                     // record stats before exiting to prevent stats losing
-                    if (clients.isNotEmpty()) TrafficRecorder.update()
+                    if (clients.isNotEmpty() || allowedMacs.isNotEmpty()) TrafficRecorder.update()
                     session?.close()
                     Timber.i("Stopped routing for $downstream by $caller")
                 }
@@ -319,6 +333,7 @@ class Routing(private val caller: Any, private val downstream: String) {
     suspend fun revert() = withContext(NonCancellable) {
         job.cancelAndJoin()
         clients.forEach { ip, _ -> TrafficRecorder.unregister(ip, downstream) }
+        allowedMacs.forEach { TrafficRecorder.unregister(it, downstream) }
         clients.clear()
         allowedMacs.clear()
     }

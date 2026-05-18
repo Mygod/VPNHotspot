@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io;
 use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
@@ -16,8 +17,12 @@ use tokio_util::sync::CancellationToken;
 
 use crate::report;
 use crate::socket::{is_connection_closed, set_nonblocking};
+use vpnhotspotd::shared::dns_counter::DnsCounters;
 use vpnhotspotd::shared::dns_wire;
-use vpnhotspotd::shared::model::{Network, SessionConfig};
+use vpnhotspotd::shared::model::{
+    daemon_counter_epoch, mac_string, ClientDnsPorts, Network, SessionConfig,
+};
+use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
 
 pub(crate) const DNS_PORT: u16 = 53;
@@ -27,9 +32,38 @@ const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
 const DNS_MAX_PACKET: usize = 65_535;
 
 pub(crate) struct Runtime {
-    pub(crate) tcp_port: Option<u16>,
-    pub(crate) udp_port: Option<u16>,
+    call_id: u64,
+    downstream: String,
+    bind_address: Ipv4Addr,
+    reply_mark: u32,
+    config: Arc<Mutex<SessionConfig>>,
+    stop: CancellationToken,
+    clients: HashMap<[u8; 6], ClientRuntime>,
+    counters: DnsCounters,
 }
+
+struct ClientRuntime {
+    tcp: Option<ClientListenerRuntime>,
+    udp: Option<ClientListenerRuntime>,
+}
+
+struct ClientListenerRuntime {
+    port: u16,
+    stop: CancellationToken,
+}
+
+struct DnsCounterContext {
+    counters: DnsCounters,
+    mac: [u8; 6],
+}
+
+struct DnsResponse {
+    bytes: Vec<u8>,
+    sent_to_resolver: bool,
+    received_from_resolver: bool,
+}
+
+pub(crate) type CounterSink = DnsCounters;
 
 impl Runtime {
     pub(crate) fn start(
@@ -39,30 +73,184 @@ impl Runtime {
         reply_mark: u32,
         config: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
+        initial_config: &SessionConfig,
     ) -> Self {
-        let tcp_port = match create_tcp_listener(bind_address, reply_mark).and_then(|listener| {
+        let mut runtime = Self {
+            call_id,
+            downstream: downstream.to_owned(),
+            bind_address,
+            reply_mark,
+            config,
+            stop,
+            clients: HashMap::new(),
+            counters: DnsCounters::new(daemon_counter_epoch(b"dns", call_id)),
+        };
+        runtime.replace_clients(initial_config);
+        runtime
+    }
+
+    pub(crate) fn replace_clients(&mut self, config: &SessionConfig) {
+        let mut next_macs = Vec::new();
+        for client in &config.clients {
+            if !next_macs.contains(&client.mac) {
+                next_macs.push(client.mac);
+            }
+        }
+        self.clients.retain(|mac, client| {
+            if next_macs.contains(mac) {
+                true
+            } else {
+                client.cancel();
+                false
+            }
+        });
+        for mac in next_macs {
+            let needs_tcp = self
+                .clients
+                .get(&mac)
+                .is_none_or(|client| client.tcp.is_none());
+            let needs_udp = self
+                .clients
+                .get(&mac)
+                .is_none_or(|client| client.udp.is_none());
+            let tcp = if needs_tcp { self.start_tcp(mac) } else { None };
+            let udp = if needs_udp { self.start_udp(mac) } else { None };
+            let client = self.clients.entry(mac).or_insert(ClientRuntime {
+                tcp: None,
+                udp: None,
+            });
+            if needs_tcp {
+                client.tcp = tcp;
+            }
+            if needs_udp {
+                client.udp = udp;
+            }
+        }
+    }
+
+    pub(crate) fn ports(&self) -> Vec<ClientDnsPorts> {
+        self.clients
+            .iter()
+            .filter_map(|(mac, client)| client.ports(*mac))
+            .collect()
+    }
+
+    pub(crate) fn retain_ports(&mut self, committed: &[ClientDnsPorts]) {
+        self.clients.retain(|mac, client| {
+            let committed = committed.iter().find(|ports| ports.mac == *mac);
+            if committed.and_then(|ports| ports.tcp).is_none() {
+                if let Some(runtime) = client.tcp.take() {
+                    runtime.stop.cancel();
+                }
+            }
+            if committed.and_then(|ports| ports.udp).is_none() {
+                if let Some(runtime) = client.udp.take() {
+                    runtime.stop.cancel();
+                }
+            }
+            if client.tcp.is_some() || client.udp.is_some() {
+                true
+            } else {
+                client.cancel();
+                false
+            }
+        });
+    }
+
+    pub(crate) fn counter_sink(&self) -> CounterSink {
+        self.counters.clone()
+    }
+
+    pub(crate) async fn counters(&self) -> Vec<daemon::TrafficCounter> {
+        match self
+            .counters
+            .counters(&self.downstream, self.clients.keys().copied())
+        {
+            Ok(counters) => counters,
+            Err(e) => {
+                report::io("dns.counter", e);
+                Vec::new()
+            }
+        }
+    }
+
+    fn start_tcp(&self, mac: [u8; 6]) -> Option<ClientListenerRuntime> {
+        let stop = self.stop.child_token();
+        match create_tcp_listener(self.bind_address, self.reply_mark).and_then(|listener| {
             let port = listener.local_addr()?.port();
-            spawn_tcp_loop(listener, config.clone(), stop.clone())?;
+            spawn_tcp_loop(
+                listener,
+                self.config.clone(),
+                stop.clone(),
+                self.counters.clone(),
+                mac,
+            )?;
             Ok(port)
         }) {
-            Ok(port) => Some(port),
+            Ok(port) => Some(ClientListenerRuntime { port, stop }),
             Err(e) => {
-                report_start_error(call_id, "dns.tcp_start", e, downstream, bind_address);
+                stop.cancel();
+                report_start_error(
+                    self.call_id,
+                    "dns.tcp_start",
+                    e,
+                    &self.downstream,
+                    self.bind_address,
+                    mac,
+                );
                 None
             }
-        };
-        let udp_port = match create_udp_listener(bind_address, reply_mark).and_then(|socket| {
+        }
+    }
+
+    fn start_udp(&self, mac: [u8; 6]) -> Option<ClientListenerRuntime> {
+        let stop = self.stop.child_token();
+        match create_udp_listener(self.bind_address, self.reply_mark).and_then(|socket| {
             let port = socket.local_addr()?.port();
-            spawn_udp_loop(socket, config, stop.clone())?;
+            spawn_udp_loop(
+                socket,
+                self.config.clone(),
+                stop.clone(),
+                self.counters.clone(),
+                mac,
+            )?;
             Ok(port)
         }) {
-            Ok(port) => Some(port),
+            Ok(port) => Some(ClientListenerRuntime { port, stop }),
             Err(e) => {
-                report_start_error(call_id, "dns.udp_start", e, downstream, bind_address);
+                stop.cancel();
+                report_start_error(
+                    self.call_id,
+                    "dns.udp_start",
+                    e,
+                    &self.downstream,
+                    self.bind_address,
+                    mac,
+                );
                 None
             }
-        };
-        Self { tcp_port, udp_port }
+        }
+    }
+}
+
+impl ClientRuntime {
+    fn ports(&self, mac: [u8; 6]) -> Option<ClientDnsPorts> {
+        let tcp = self.tcp.as_ref().map(|runtime| runtime.port);
+        let udp = self.udp.as_ref().map(|runtime| runtime.port);
+        if tcp.is_some() || udp.is_some() {
+            Some(ClientDnsPorts { mac, tcp, udp })
+        } else {
+            None
+        }
+    }
+
+    fn cancel(&self) {
+        if let Some(runtime) = self.tcp.as_ref() {
+            runtime.stop.cancel();
+        }
+        if let Some(runtime) = self.udp.as_ref() {
+            runtime.stop.cancel();
+        }
     }
 }
 
@@ -72,6 +260,7 @@ fn report_start_error(
     error: io::Error,
     downstream: &str,
     bind_address: Ipv4Addr,
+    mac: [u8; 6],
 ) {
     report::report_for(
         Some(call_id),
@@ -81,6 +270,7 @@ fn report_start_error(
             [
                 ("downstream", downstream.to_owned()),
                 ("bind_address", bind_address.to_string()),
+                ("mac", mac_string(&mac)),
             ],
         ),
     );
@@ -152,6 +342,8 @@ fn spawn_tcp_loop(
     listener: TcpListener,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    counters: DnsCounters,
+    mac: [u8; 6],
 ) -> io::Result<()> {
     let listener = TokioTcpListener::from_std(listener)?;
     spawn(async move {
@@ -161,13 +353,14 @@ fn spawn_tcp_loop(
                 accepted = listener.accept() => match accepted {
                     Ok((socket, _)) => {
                         let config = config.clone();
+                        let counters = counters.clone();
                         let connection_stop = stop.child_token();
                         spawn(async move {
                             select! {
                                 _ = connection_stop.cancelled() => {}
                                 result = async {
                                     let snapshot = config.lock().await.clone();
-                                    handle_tcp_connection(socket, snapshot).await
+                                    handle_tcp_connection_counted(socket, snapshot, counters, mac).await
                                 } => if let Err(e) = result {
                                     if is_connection_closed(&e) {
                                         report::stderr!("dns tcp connection closed: {e}");
@@ -186,9 +379,28 @@ fn spawn_tcp_loop(
     Ok(())
 }
 
-pub(crate) async fn handle_tcp_connection(
+async fn handle_tcp_connection_counted(
+    socket: TokioTcpStream,
+    config: SessionConfig,
+    counters: DnsCounters,
+    mac: [u8; 6],
+) -> io::Result<()> {
+    handle_tcp_connection_counted_with_sink(socket, config, counters, mac).await
+}
+
+pub(crate) async fn handle_tcp_connection_counted_with_sink(
+    socket: TokioTcpStream,
+    config: SessionConfig,
+    counters: CounterSink,
+    mac: [u8; 6],
+) -> io::Result<()> {
+    handle_tcp_connection_inner(socket, config, Some(DnsCounterContext { counters, mac })).await
+}
+
+async fn handle_tcp_connection_inner(
     mut socket: TokioTcpStream,
     config: SessionConfig,
+    counter: Option<DnsCounterContext>,
 ) -> io::Result<()> {
     loop {
         let mut header = [0u8; 2];
@@ -203,10 +415,21 @@ pub(crate) async fn handle_tcp_connection(
         let Some(response) = resolve_or_error(&config, &query).await else {
             continue;
         };
+        if let Some(counter) = counter.as_ref() {
+            if let Err(e) = counter.counters.add_exchange(
+                counter.mac,
+                query.len(),
+                response.bytes.len(),
+                response.sent_to_resolver,
+                response.received_from_resolver,
+            ) {
+                report::io("dns.counter", e);
+            }
+        }
         socket
-            .write_all(&(response.len() as u16).to_be_bytes())
+            .write_all(&(response.bytes.len() as u16).to_be_bytes())
             .await?;
-        socket.write_all(&response).await?;
+        socket.write_all(&response.bytes).await?;
         socket.flush().await?;
     }
 }
@@ -215,6 +438,8 @@ fn spawn_udp_loop(
     socket: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    counters: DnsCounters,
+    mac: [u8; 6],
 ) -> io::Result<()> {
     let socket = Arc::new(TokioUdpSocket::from_std(socket)?);
     spawn(async move {
@@ -228,12 +453,22 @@ fn spawn_udp_loop(
                         let query = buffer[..size].to_vec();
                         let socket = socket.clone();
                         let query_stop = stop.child_token();
+                        let counters = counters.clone();
                         spawn(async move {
                             select! {
                                 _ = query_stop.cancelled() => {}
                                 response = resolve_or_error(&snapshot, &query) => {
                                     if let Some(response) = response {
-                                        if let Err(e) = socket.send_to(&response, source).await {
+                                        if let Err(e) = counters.add_exchange(
+                                            mac,
+                                            query.len(),
+                                            response.bytes.len(),
+                                            response.sent_to_resolver,
+                                            response.received_from_resolver,
+                                        ) {
+                                            report::io("dns.counter", e);
+                                        }
+                                        if let Err(e) = socket.send_to(&response.bytes, source).await {
                                             report::io_with_details(
                                                 "dns.udp_response",
                                                 e,
@@ -253,30 +488,64 @@ fn spawn_udp_loop(
     Ok(())
 }
 
-pub(crate) async fn resolve_query(config: &SessionConfig, query: &[u8]) -> io::Result<Vec<u8>> {
+async fn resolve_query_accounted(
+    config: &SessionConfig,
+    query: &[u8],
+) -> (io::Result<Vec<u8>>, bool) {
     if let Some(primary) = config.primary_network {
         return query_network(primary, query).await;
     }
     if let Some(fallback) = config.fallback_network {
         return query_network(fallback, query).await;
     }
-    Err(io::Error::new(
-        io::ErrorKind::NotConnected,
-        "no DNS upstream",
-    ))
+    (
+        Err(io::Error::new(
+            io::ErrorKind::NotConnected,
+            "no DNS upstream",
+        )),
+        false,
+    )
 }
 
-pub(crate) async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<Vec<u8>> {
-    match resolve_query(config, query).await {
-        Ok(response) => Some(response),
+async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<DnsResponse> {
+    let (result, sent_to_resolver) = resolve_query_accounted(config, query).await;
+    match result {
+        Ok(response) => Some(DnsResponse {
+            bytes: response,
+            sent_to_resolver,
+            received_from_resolver: true,
+        }),
         Err(e) => {
             report::stderr!("dns resolve failed: {e}");
-            dns_wire::servfail_response(query)
+            dns_wire::servfail_response(query).map(|response| DnsResponse {
+                bytes: response,
+                sent_to_resolver,
+                received_from_resolver: false,
+            })
         }
     }
 }
 
-async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
+pub(crate) async fn resolve_or_error_counted(
+    config: &SessionConfig,
+    query: &[u8],
+    counters: &CounterSink,
+    mac: [u8; 6],
+) -> Option<Vec<u8>> {
+    let response = resolve_or_error(config, query).await?;
+    if let Err(e) = counters.add_exchange(
+        mac,
+        query.len(),
+        response.bytes.len(),
+        response.sent_to_resolver,
+        response.received_from_resolver,
+    ) {
+        report::io("dns.counter", e);
+    }
+    Some(response.bytes)
+}
+
+async fn query_network(network: Network, query: &[u8]) -> (io::Result<Vec<u8>>, bool) {
     let fd = unsafe {
         android_res_nsend(
             network,
@@ -286,11 +555,17 @@ async fn query_network(network: Network, query: &[u8]) -> io::Result<Vec<u8>> {
         )
     };
     if fd < 0 {
-        return Err(io::Error::from_raw_os_error(-fd));
+        return (Err(io::Error::from_raw_os_error(-fd)), false);
     }
     let fd = ResolverQuery { fd: Some(fd) };
-    set_nonblocking(fd.as_raw_fd())?;
-    read_resolver_result(AsyncFd::new(fd)?).await
+    if let Err(e) = set_nonblocking(fd.as_raw_fd()) {
+        return (Err(e), true);
+    }
+    let fd = match AsyncFd::new(fd) {
+        Ok(fd) => fd,
+        Err(e) => return (Err(e), true),
+    };
+    (read_resolver_result(fd).await, true)
 }
 
 async fn read_resolver_result(fd: AsyncFd<ResolverQuery>) -> io::Result<Vec<u8>> {

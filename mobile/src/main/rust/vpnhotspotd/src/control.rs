@@ -18,7 +18,7 @@ use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
     daemon_io_error_report_with_details, error_frame, ipsec_forward_policy_frame,
-    read_session_config, traffic_counter_lines_frame, IoErrorReportExt, IoResultReportExt,
+    read_session_config, traffic_counters_frame, IoErrorReportExt, IoResultReportExt,
 };
 
 mod calls;
@@ -214,6 +214,31 @@ impl State {
         }
     }
 
+    async fn session_traffic_snapshots(
+        &self,
+    ) -> (
+        Vec<vpnhotspotd::shared::model::SessionConfig>,
+        Vec<daemon::TrafficCounter>,
+    ) {
+        let sessions = self
+            .sessions
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut configs = Vec::with_capacity(sessions.len());
+        let mut counters = Vec::new();
+        for slot in sessions {
+            let guard = slot.session.lock().await;
+            if let Some(session) = guard.as_ref() {
+                configs.push(session.config_snapshot().await);
+                counters.extend(session.traffic_counters().await);
+            }
+        }
+        (configs, counters)
+    }
+
     async fn update_ipsec_session(
         self: &Arc<Self>,
         slot: &Arc<SessionState>,
@@ -326,10 +351,13 @@ async fn handle_command(
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
         daemon::client_envelope::Command::ReadTrafficCounters(_) => {
-            let lines = crate::traffic::read_counter_lines()
-                .await
-                .with_report_context("control.read_traffic_counters")?;
-            Ok(CallOutput::Reply(traffic_counter_lines_frame(id, &lines)))
+            let (configs, mut counters) = state.session_traffic_snapshots().await;
+            counters.extend(
+                crate::traffic::read_counters(&configs)
+                    .await
+                    .with_report_context("control.read_traffic_counters")?,
+            );
+            Ok(CallOutput::Reply(traffic_counters_frame(id, counters)))
         }
         daemon::client_envelope::Command::StartNeighbourMonitor(_) => {
             start_neighbour_monitor(id, &state, sender.clone(), cancel).await?;
@@ -445,7 +473,7 @@ async fn start_session(
     }
     let mut guard = slot.session.lock().await;
     let ipsec_config = config.clone();
-    match Session::start(id, config, &netlink, &state.icmp, cancel)
+    match Session::start(id, config, netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
             "control.start_session",

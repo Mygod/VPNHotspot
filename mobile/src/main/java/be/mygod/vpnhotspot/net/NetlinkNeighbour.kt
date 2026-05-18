@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.shareIn
 import timber.log.Timber
 import okio.ByteString
 import java.io.IOException
-import java.net.Inet4Address
 import java.net.InetAddress
 
 data class NetlinkNeighbour(val proto: Neighbour) {
@@ -32,8 +31,8 @@ data class NetlinkNeighbour(val proto: Neighbour) {
         if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
     }?.let(MacAddress::fromBytes)
     inline val state get() = proto.state
-    val validIpv4ClientMac: MacAddress? get() {
-        if (state != NeighbourState.NEIGHBOUR_STATE_VALID || ip !is Inet4Address) return null
+    val validClientMac: MacAddress? get() {
+        if (state != NeighbourState.NEIGHBOUR_STATE_VALID) return null
         return lladdr
     }
 

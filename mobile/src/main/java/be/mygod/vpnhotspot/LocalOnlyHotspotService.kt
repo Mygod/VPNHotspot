@@ -329,7 +329,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
 
     override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
         super.onNetlinkNeighboursChanged(neighbours)
-        timeoutMonitor?.onClientsChanged(neighbours.none { it.validIpv4ClientMac != null })
+        timeoutMonitor?.onClientsChanged(neighbours.none { it.validClientMac != null })
     }
 
     override fun onDestroy() {

@@ -19,10 +19,15 @@ use vpnhotspotd::shared::icmp_wire::{
     build_echo_request_zero_checksum, build_icmp_error_packet, build_icmp_quote,
     build_udp_quote_with_hop_limit,
 };
-use vpnhotspotd::shared::model::{select_network, SessionConfig};
+use vpnhotspotd::shared::model::{
+    mac_string, select_network, SessionConfig, DAEMON_ICMP_NFQUEUE_NUM,
+};
+use vpnhotspotd::shared::nat66_counter::{Nat66CounterSource, Nat66Counters};
+use vpnhotspotd::shared::protocol::daemon_error_report_with_details;
 
 struct DownstreamIcmpPacket {
     input_interface: u32,
+    source_mac: [u8; 6],
     source: SocketAddrV6,
     destination: Ipv6Addr,
     hop_limit: u8,
@@ -88,7 +93,19 @@ pub(super) async fn run_queue(
                 }
             };
             let Some(session) = session else {
-                if let Err(e) = accept_queued_packet(ready.get_mut().get_mut(), message) {
+                report::report(daemon_error_report_with_details(
+                    "nat66.icmp_session",
+                    "queued packet has no live ICMP session",
+                    "NotFound",
+                    [
+                        ("queue", DAEMON_ICMP_NFQUEUE_NUM.to_string()),
+                        ("input_interface", packet.input_interface.to_string()),
+                        ("source_mac", mac_string(&packet.source_mac)),
+                        ("client", packet.source.to_string()),
+                        ("destination", packet.destination.to_string()),
+                    ],
+                ));
+                if let Err(e) = drop_queued_packet(ready.get_mut().get_mut(), message) {
                     report::io("nat66.icmp_queue_verdict", e);
                     break;
                 }
@@ -96,6 +113,50 @@ pub(super) async fn run_queue(
             };
             drop(ready);
             let snapshot = session.config.lock().await.clone();
+            if !snapshot
+                .clients
+                .iter()
+                .any(|client| client.mac == packet.source_mac)
+            {
+                report::report(daemon_error_report_with_details(
+                    "nat66.icmp_source_mac",
+                    "queued packet source MAC is not committed",
+                    "PermissionDenied",
+                    [
+                        ("queue", DAEMON_ICMP_NFQUEUE_NUM.to_string()),
+                        ("downstream", snapshot.downstream.clone()),
+                        ("input_interface", packet.input_interface.to_string()),
+                        ("source_mac", mac_string(&packet.source_mac)),
+                        ("client", packet.source.to_string()),
+                        ("destination", packet.destination.to_string()),
+                    ],
+                ));
+                if let Err(e) = drop_queued_packet(queue.get_mut(), message) {
+                    report::io("nat66.icmp_queue_verdict", e);
+                    break;
+                }
+                break;
+            }
+            if snapshot.ipv6_nat.is_none() {
+                report::report(daemon_error_report_with_details(
+                    "nat66.icmp_session",
+                    "queued packet has no committed IPv6 NAT config",
+                    "NotFound",
+                    [
+                        ("queue", DAEMON_ICMP_NFQUEUE_NUM.to_string()),
+                        ("downstream", snapshot.downstream.clone()),
+                        ("input_interface", packet.input_interface.to_string()),
+                        ("source_mac", mac_string(&packet.source_mac)),
+                        ("client", packet.source.to_string()),
+                        ("destination", packet.destination.to_string()),
+                    ],
+                ));
+                if let Err(e) = drop_queued_packet(queue.get_mut(), message) {
+                    report::io("nat66.icmp_queue_verdict", e);
+                    break;
+                }
+                break;
+            }
             match queued_echo_action(&packet, &snapshot) {
                 QueuedEchoAction::Accept => {
                     if let Err(e) = accept_queued_packet(queue.get_mut(), message) {
@@ -114,8 +175,14 @@ pub(super) async fn run_queue(
                         report::io("nat66.icmp_queue_verdict", e);
                         break;
                     }
-                    handle_downstream_echo(packet, &snapshot, session.session_key, state.clone())
-                        .await;
+                    handle_downstream_echo(
+                        packet,
+                        &snapshot,
+                        session.session_key,
+                        state.clone(),
+                        session.counters.clone(),
+                    )
+                    .await;
                 }
             }
             break;
@@ -131,7 +198,7 @@ fn queued_echo_action(packet: &DownstreamIcmpPacket, config: &SessionConfig) -> 
         return QueuedEchoAction::Drop;
     }
     let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
-        return QueuedEchoAction::Accept;
+        return QueuedEchoAction::Drop;
     };
     match classify_nat66_destination(packet.destination, ipv6_nat.gateway.address()) {
         Nat66Destination::Gateway | Nat66Destination::Special => QueuedEchoAction::Accept,
@@ -158,19 +225,51 @@ fn downstream_packet(message: &nfq::Message) -> Option<DownstreamIcmpPacket> {
     let header = ipv6.header();
     let source_ip = header.source_addr();
     let input_interface = message.get_indev();
+    let source = SocketAddrV6::new(
+        source_ip,
+        0,
+        0,
+        if source_ip.is_unicast_link_local() {
+            input_interface
+        } else {
+            0
+        },
+    );
+    let destination = header.destination_addr();
+    let Some(source_hw_addr) = message.get_hw_addr() else {
+        report::report(daemon_error_report_with_details(
+            "nat66.icmp_source_mac",
+            "missing queued packet source hardware address",
+            "InvalidData",
+            [
+                ("queue", DAEMON_ICMP_NFQUEUE_NUM.to_string()),
+                ("input_interface", input_interface.to_string()),
+                ("client", source.to_string()),
+                ("destination", destination.to_string()),
+            ],
+        ));
+        return None;
+    };
+    let Ok(source_mac) = <[u8; 6]>::try_from(source_hw_addr) else {
+        report::report(daemon_error_report_with_details(
+            "nat66.icmp_source_mac",
+            "invalid queued packet source hardware address length",
+            "InvalidData",
+            [
+                ("queue", DAEMON_ICMP_NFQUEUE_NUM.to_string()),
+                ("input_interface", input_interface.to_string()),
+                ("length", source_hw_addr.len().to_string()),
+                ("client", source.to_string()),
+                ("destination", destination.to_string()),
+            ],
+        ));
+        return None;
+    };
     Some(DownstreamIcmpPacket {
         input_interface,
-        source: SocketAddrV6::new(
-            source_ip,
-            0,
-            0,
-            if source_ip.is_unicast_link_local() {
-                input_interface
-            } else {
-                0
-            },
-        ),
-        destination: header.destination_addr(),
+        source_mac,
+        source,
+        destination,
         hop_limit: header.hop_limit(),
         payload: payload.payload.to_vec(),
     })
@@ -228,6 +327,7 @@ async fn handle_downstream_echo(
     config: &SessionConfig,
     session_key: u64,
     state: Arc<EchoState>,
+    counters: Nat66Counters,
 ) {
     let Ok((header, payload)) = Icmpv6Header::from_slice(&packet.payload) else {
         return;
@@ -311,6 +411,7 @@ async fn handle_downstream_echo(
             network,
             destination: packet.destination,
             client: packet.source,
+            client_mac: packet.source_mac,
             original_id: echo.id,
             original_seq: echo.seq,
             downstream_hop_limit: packet.hop_limit,
@@ -344,7 +445,16 @@ async fn handle_downstream_echo(
     let mut retried_after_error_queue = false;
     loop {
         match send_upstream_echo(&socket.socket, destination, &request).await {
-            Ok(()) => break,
+            Ok(()) => {
+                if let Err(e) = counters.add_sent_packet(
+                    packet.source_mac,
+                    Nat66CounterSource::Icmpv6,
+                    request.len(),
+                ) {
+                    report::io("nat66.icmp_counter", e);
+                }
+                break;
+            }
             Err(e) => {
                 let checked_error_queue = if socket.error_queue {
                     match super::upstream::drain_echo_error_queue(&socket.socket, network, &state)

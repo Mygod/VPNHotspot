@@ -12,12 +12,13 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use super::{sleep_until_deadline, IDLE_TIMEOUT};
-use crate::dns::{resolve_or_error, DNS_PORT};
+use crate::dns::{resolve_or_error_counted, DNS_PORT};
 use crate::nat66::icmp;
 use crate::report;
 use crate::upstream::connect_udp;
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
-use vpnhotspotd::shared::model::{select_network, SessionConfig};
+use vpnhotspotd::shared::model::{mac_string, select_network, SessionConfig};
+use vpnhotspotd::shared::nat66_counter::{Nat66CounterSource, Nat66Counters};
 
 mod icmp_error;
 mod reply_socket;
@@ -53,8 +54,10 @@ enum UdpAssociationEvent {
 
 struct AssociationTask {
     key: AssociationKey,
+    mac: [u8; 6],
     id: u64,
     socket: Arc<TokioUdpSocket>,
+    counters: Nat66Counters,
     reply_reservation: ReplySocketReservation,
     reply_socket: Option<Arc<TokioUdpSocket>>,
     icmp_errors_registered: bool,
@@ -67,6 +70,9 @@ pub(crate) fn spawn_loop(
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
     icmp_dispatcher: icmp::Dispatcher,
+    counters: Nat66Counters,
+    dns: crate::dns::CounterSink,
+    mac: [u8; 6],
 ) -> io::Result<()> {
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
@@ -161,11 +167,12 @@ pub(crate) fn spawn_loop(
                                     };
                                     let reply_sockets = reply_sockets.clone();
                                     let query_stop = stop.child_token();
+                                    let dns = dns.clone();
                                     spawn(async move {
                                         let mut reply_socket = Some(reply_socket);
                                         select! {
                                             _ = query_stop.cancelled() => {}
-                                            response = resolve_or_error(&snapshot, &query) => {
+                                            response = resolve_or_error_counted(&snapshot, &query, &dns, mac) => {
                                                 if let Some(response) = response {
                                                     if let Err(e) = send_response(
                                                         &reply_sockets,
@@ -216,6 +223,7 @@ pub(crate) fn spawn_loop(
                                                 "nat66.udp_time_exceeded",
                                                 e,
                                                 [
+                                                    ("mac", mac_string(&mac)),
                                                     ("client", client.to_string()),
                                                     ("destination", destination.to_string()),
                                                 ],
@@ -249,6 +257,13 @@ pub(crate) fn spawn_loop(
                                         icmp_errors_registered,
                                     ) {
                                         UdpForwardResult::Sent => {
+                                            if let Err(e) = counters.add_sent_packet(
+                                                mac,
+                                                Nat66CounterSource::Udp,
+                                                size,
+                                            ) {
+                                                report::io("nat66.udp_counter", e);
+                                            }
                                             if let Some(association) = associations.get_mut(&key) {
                                                 association.last_active = activity;
                                             }
@@ -256,10 +271,15 @@ pub(crate) fn spawn_loop(
                                         UdpForwardResult::Dropped => {}
                                         UdpForwardResult::PacketTooBig(mtu) => {
                                             send_udp_packet_too_big(
-                                                &snapshot,
-                                                ipv6_nat.gateway.address(),
-                                                client,
-                                                destination,
+                                                icmp::UdpErrorContext {
+                                                    downstream: snapshot.downstream.clone(),
+                                                    reply_mark: snapshot.reply_mark,
+                                                    gateway: ipv6_nat.gateway.address(),
+                                                    client,
+                                                    client_mac: mac,
+                                                    destination,
+                                                    counters: counters.clone(),
+                                                },
                                                 mtu,
                                                 downstream_hop_limit,
                                                 &buffer[..size],
@@ -281,6 +301,7 @@ pub(crate) fn spawn_loop(
                                             "nat66.udp_connect",
                                             e,
                                             [
+                                                ("mac", mac_string(&mac)),
                                                 ("client", client.to_string()),
                                                 ("destination", destination.to_string()),
                                             ],
@@ -299,6 +320,7 @@ pub(crate) fn spawn_loop(
                                             "nat66.udp_reply_reserve",
                                             e,
                                             [
+                                                ("mac", mac_string(&mac)),
                                                 ("client", client.to_string()),
                                                 ("destination", destination.to_string()),
                                             ],
@@ -317,7 +339,9 @@ pub(crate) fn spawn_loop(
                                                 reply_mark: snapshot.reply_mark,
                                                 gateway: ipv6_nat.gateway.address(),
                                                 client,
+                                                client_mac: mac,
                                                 destination,
+                                                counters: counters.clone(),
                                             },
                                         ) {
                                             Ok(registration) => Some(registration),
@@ -326,6 +350,7 @@ pub(crate) fn spawn_loop(
                                                     "nat66.udp_icmp_register",
                                                     e,
                                                     [
+                                                        ("mac", mac_string(&mac)),
                                                         ("client", client.to_string()),
                                                         ("destination", destination.to_string()),
                                                     ],
@@ -347,6 +372,7 @@ pub(crate) fn spawn_loop(
                                             "nat66.udp_icmp_register",
                                             e,
                                             [
+                                                ("mac", mac_string(&mac)),
                                                 ("client", client.to_string()),
                                                 ("destination", destination.to_string()),
                                             ],
@@ -364,14 +390,27 @@ pub(crate) fn spawn_loop(
                                     destination,
                                     icmp_errors_registered,
                                 ) {
-                                    UdpForwardResult::Sent => {}
+                                    UdpForwardResult::Sent => {
+                                        if let Err(e) = counters.add_sent_packet(
+                                            mac,
+                                            Nat66CounterSource::Udp,
+                                            size,
+                                        ) {
+                                            report::io("nat66.udp_counter", e);
+                                        }
+                                    }
                                     UdpForwardResult::Dropped | UdpForwardResult::Failed => continue,
                                     UdpForwardResult::PacketTooBig(mtu) => {
                                         send_udp_packet_too_big(
-                                            &snapshot,
-                                            ipv6_nat.gateway.address(),
-                                            client,
-                                            destination,
+                                            icmp::UdpErrorContext {
+                                                downstream: snapshot.downstream.clone(),
+                                                reply_mark: snapshot.reply_mark,
+                                                gateway: ipv6_nat.gateway.address(),
+                                                client,
+                                                client_mac: mac,
+                                                destination,
+                                                counters: counters.clone(),
+                                            },
                                             mtu,
                                             downstream_hop_limit,
                                             &buffer[..size],
@@ -385,8 +424,10 @@ pub(crate) fn spawn_loop(
                                 next_association_id = next_association_id.wrapping_add(1);
                                 spawn(AssociationTask {
                                     key,
+                                    mac,
                                     id: association_id,
                                     socket: upstream.clone(),
+                                    counters: counters.clone(),
                                     reply_reservation,
                                     reply_socket: None,
                                     icmp_errors_registered,
@@ -433,6 +474,13 @@ impl AssociationTask {
                 _ = self.stop.cancelled() => break,
                 result = self.socket.recv(&mut buffer) => match result {
                     Ok(size) => {
+                        if let Err(e) = self.counters.add_received_packet(
+                            self.mac,
+                            Nat66CounterSource::Udp,
+                            size,
+                        ) {
+                            report::io("nat66.udp_counter", e);
+                        }
                         if let Err(e) = send_response(
                             &self.reply_reservation.pool,
                             self.reply_reservation.key,
@@ -456,6 +504,7 @@ impl AssociationTask {
                             "nat66.udp_upstream_recv",
                             e,
                             [
+                                ("mac", mac_string(&self.mac)),
                                 ("client", self.key.client.to_string()),
                                 ("destination", self.key.destination.to_string()),
                             ],

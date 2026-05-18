@@ -24,7 +24,9 @@ Use context strings that name the owning subsystem and operation, such as
 `routing.start`, `control.replace_session`, or `nat66.udp_connect`. Details
 should include the concrete identifiers needed to debug the failing operation,
 such as downstream interface, upstream interface, session ID, client, or
-destination.
+destination. Per-MAC admission and accounting failures should include the MAC,
+downstream interface, protocol/source, and queue number or listener port when
+that state exists.
 
 ## Terminal Call Errors
 
@@ -55,10 +57,16 @@ or observes unexpected background state.
 
 Examples:
 
-- DNS TCP or UDP listener setup fails and routing omits only that redirect;
-- NAT66 TCP or UDP listener setup fails and routing omits only that protocol's
-  interception;
+- DNS TCP or UDP listener setup fails for one MAC and routing omits only that
+  MAC/protocol redirect;
+- NAT66 TCP or UDP listener setup fails for one MAC and routing omits only that
+  MAC/protocol interception;
+- routing fails to install one staged MAC/protocol DNS or NAT66 rule, so the
+  daemon cancels that staged listener and omits only that capability;
 - NAT66 ICMP startup fails but NAT66 TCP/UDP can continue;
+- NAT66 ICMPv6 NFQUEUE receives a packet without a live IPv6 NAT owner, without
+  usable six-byte source hardware-address metadata, or with a MAC outside the
+  committed client set;
 - a session routing mutation fails while other routing mutations remain useful;
 - neighbour data contains an invalid link-layer address length;
 - a background task join fails;

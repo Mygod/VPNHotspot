@@ -22,7 +22,8 @@ outbound frames, initializes the nonfatal reporter, and builds process-wide
 bookkeeping:
 
 - one lazy rtnetlink runtime slot;
-- one NAT66 ICMP dispatcher shared by NAT66 sessions;
+- one NAT66 ICMP dispatcher shared by NAT66 sessions and bound to the
+  app-owned NFQUEUE number `30000`;
 - a session map keyed by the start-session call ID;
 - one process-wide upstream-interface aggregate for optional IPsec probes;
 - one optional neighbour monitor;
@@ -88,17 +89,26 @@ constructs the session in this order:
    IPv4 address through netlink notifications and the caller's cancellation
    token.
 2. Start the DNS runtime bound to that downstream IPv4 address. TCP and UDP
-   listener setup are independent best-effort capabilities.
-3. Start NAT66 if requested. NAT66 TCP, UDP, RA, and ICMP setup failures are
-   reported as structured nonfatals tied to the start call. If NAT66 produces
-   no TCP or UDP listener, the session continues with IPv6 NAT disabled.
-4. Start routing using the DNS ports and optional NAT66 capabilities produced
+   listener setup is staged per MAC and protocol as independent best-effort
+   capabilities.
+3. Start NAT66 if requested. NAT66 TCP and UDP listener setup is staged per MAC
+   and protocol; RA and ICMP setup remain session-level capabilities. Failures
+   are reported as structured nonfatals tied to the start call. If the initial
+   client set is empty, NAT66 is deferred with no interception. If clients are
+   present and NAT66 produces no commit-ready TCP or UDP listener, the session
+   continues with IPv6 NAT disabled.
+4. Start routing using the staged DNS and optional NAT66 capabilities produced
    by the runtimes. Routing applies each mutation best effort and reports setup
-   failures without rolling back other successful mutations.
+   failures without rolling back unrelated successful mutations.
+5. Publish only capabilities whose daemon resource and routing rule both
+   committed. Staged per-MAC resources whose routing rules failed are cancelled
+   before the ACK. If clients are present and routing commits no NAT66 TCP or
+   UDP capability, NAT66 is stopped and the session is published with IPv6 NAT
+   disabled.
 
 Downstream IPv4 discovery is still required before a session can be established.
 After that point, DNS, NAT66, and routing setup failures remove only the
-affected capability or mutation from the best-effort setup result.
+affected MAC/protocol capability or mutation from the best-effort setup result.
 
 After the session is installed, Rust sends an event ACK. The start-session task
 then waits for cancellation. When cancelled normally, it removes the session and
@@ -121,16 +131,35 @@ up IPsec policy state; tunnel and policy teardown remain platform-owned.
 downstream interface is immutable; replacing it is rejected because routing and
 session ownership are keyed to that interface.
 
-Replacement happens under the session's config mutex:
+Replacement happens while holding the session's config mutex as a commit gate
+for DNS and NAT66 readers:
 
-- routing reconciles from the previous config to the next desired config;
+- routing reconciles from the previous committed config/capability set to the
+  next desired config/capability set;
 - NAT66 records replacement state that matters for later cleanup;
 - the shared config snapshot is replaced;
 - NAT66 is notified after the mutex is released.
 
-If NAT66 produced no runtime during startup or was disabled by process-wide
-firewall-base setup failure, later replacements keep `ipv6_nat` disabled for
-that session. A replacement does not retry NAT66 startup.
+This means active DNS/NAT66 work that needs a config snapshot can pause behind
+replacement, but it cannot observe the next config before routing has committed
+the matching interception state.
+
+Client changes are MAC-scoped. Replacement stages DNS and NAT66 resources for
+new MAC/protocol capabilities, reconciles routing, publishes only committed
+capabilities, and cancels removed or uncommitted per-MAC resources. Before a MAC
+or counter source is removed, the session exposes its final daemon-owned
+counters through the next traffic-counter read.
+
+When the next client set is empty, replacement publishes no NAT66 routing
+capabilities. Existing NAT66 runtime state may stay alive only to preserve
+session-owned counters and deferred NAT66 eligibility for a later non-empty
+client set.
+
+If process-wide firewall-base setup failed, NAT66 produced no runtime for a
+non-empty client set, or routing committed no NAT66 TCP/UDP capability for a
+non-empty client set, later replacements keep `ipv6_nat` disabled for that
+session. An empty client set is not failure; replacement may start NAT66 when a
+later neighbour snapshot adds a MAC.
 
 After a successful replacement, the same process-wide IPsec upstream aggregate
 is updated from the session's new upstream interface set. A replacement only
@@ -162,6 +191,9 @@ firewall base state, drops the writer, and exits.
 
 Clean must not depend on private app databases, preferences, or daemon memory.
 Anything that can outlive the process needs a deterministic cleanup path.
+Traffic history is not a cleanup input. Per-MAC listeners, redirect rules,
+TPROXY rules, and the single NAT66 ICMPv6 NFQUEUE rule are removed through
+normal routing cleanup or deterministic Clean reconstruction.
 
 ## Neighbour Monitor
 
