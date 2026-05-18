@@ -118,9 +118,11 @@ class ClientsFragment : Fragment() {
                 val headerEnd = message.length
                 message.setSpan(StyleSpan(Typeface.BOLD), headerStart, headerEnd, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 if (stats.source == TrafficStatsSource.NAT66_TCP) {
-                    message.append(": ")
-                    message.append(resources.getQuantityString(R.plurals.clients_stats_connections,
-                            stats.sentPackets.toPluralInt(), format.format(stats.sentPackets)))
+                    if (stats.connectionCountKnown) {
+                        message.append(": ")
+                        message.append(resources.getQuantityString(R.plurals.clients_stats_connections,
+                                stats.sentPackets.toPluralInt(), format.format(stats.sentPackets)))
+                    }
                     message.append('\n')
                     message.append(getString(R.string.clients_stats_sent_bytes,
                             Formatter.formatFileSize(context, stats.sentBytes)))

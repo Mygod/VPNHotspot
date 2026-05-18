@@ -489,6 +489,14 @@ rules are hidden counter leaves for accurate forwarded byte and packet
 accounting, especially reply-direction accounting. A committed MAC may have no
 IPv4 address leaves and can still be authorized for DNS or NAT66.
 
+During session replacement, if a client IPv4 address remains committed but its
+owning MAC changes, routing first deletes that address's two
+`vpnhotspot_stats` rules from the applied mutation set. Normal reconciliation
+then reinserts the same rule shape for the new committed config, which resets
+the kernel iptables counters before Kotlin associates the source with the new
+MAC. Missing rules are treated the same way as normal best-effort rule deletion:
+the delete is reported and the rest of reconciliation continues.
+
 ### Client NAT66 Allow Rules
 
 Condition: `SessionConfig.ipv6_nat != null`, NAT66 startup committed at least

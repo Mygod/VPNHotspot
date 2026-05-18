@@ -25,13 +25,17 @@ pub struct Ipv4ForwardCounterLine {
     pub bytes: u64,
 }
 
+#[derive(Clone, Copy, Default)]
+struct CounterValue {
+    packets: u64,
+    bytes: u64,
+}
+
 #[derive(Clone)]
 pub struct Ipv4ForwardCounter {
     mac: [u8; 6],
-    sent_packets: u64,
-    sent_bytes: u64,
-    received_packets: u64,
-    received_bytes: u64,
+    sent: Option<CounterValue>,
+    received: Option<CounterValue>,
 }
 
 pub fn changed_ipv4_forward_counter_addresses(
@@ -99,27 +103,23 @@ impl Ipv4ForwardCounter {
     pub fn new(mac: [u8; 6]) -> Self {
         Self {
             mac,
-            sent_packets: 0,
-            sent_bytes: 0,
-            received_packets: 0,
-            received_bytes: 0,
+            sent: None,
+            received: None,
         }
     }
 
-    pub fn update(&mut self, direction: Direction, packets: u64, bytes: u64) {
+    pub fn update_if_missing(&mut self, direction: Direction, packets: u64, bytes: u64) {
+        let value = CounterValue { packets, bytes };
         match direction {
-            Direction::Sent => {
-                self.sent_packets = packets;
-                self.sent_bytes = bytes;
-            }
-            Direction::Received => {
-                self.received_packets = packets;
-                self.received_bytes = bytes;
-            }
+            Direction::Sent if self.sent.is_none() => self.sent = Some(value),
+            Direction::Received if self.received.is_none() => self.received = Some(value),
+            _ => {}
         }
     }
 
     pub fn into_proto(self, key: Ipv4ForwardKey) -> daemon::TrafficCounter {
+        let sent = self.sent.unwrap_or_default();
+        let received = self.received.unwrap_or_default();
         daemon::TrafficCounter {
             mac: self.mac.to_vec(),
             downstream: key.downstream,
@@ -129,10 +129,10 @@ impl Ipv4ForwardCounter {
                 )),
             }),
             counter_epoch: IPV4_FORWARD_EPOCH.to_vec(),
-            sent_packets: self.sent_packets,
-            sent_bytes: self.sent_bytes,
-            received_packets: self.received_packets,
-            received_bytes: self.received_bytes,
+            sent_packets: sent.packets,
+            sent_bytes: sent.bytes,
+            received_packets: received.packets,
+            received_bytes: received.bytes,
         }
     }
 }
@@ -193,8 +193,8 @@ mod tests {
             address: Ipv4Addr::new(192, 0, 2, 8),
         };
         let mut counter = Ipv4ForwardCounter::new(MAC);
-        counter.update(Direction::Sent, 5, 500);
-        counter.update(Direction::Received, 7, 700);
+        counter.update_if_missing(Direction::Sent, 5, 500);
+        counter.update_if_missing(Direction::Received, 7, 700);
 
         let proto = counter.into_proto(key);
         assert_eq!(proto.mac, MAC);
@@ -210,6 +210,25 @@ mod tests {
                 [192, 0, 2, 8].to_vec(),
             )),
         );
+    }
+
+    #[test]
+    fn ipv4_forward_counter_keeps_first_line_per_direction() {
+        let key = Ipv4ForwardKey {
+            downstream: "ncm0".to_owned(),
+            address: Ipv4Addr::new(192, 0, 2, 8),
+        };
+        let mut counter = Ipv4ForwardCounter::new(MAC);
+        counter.update_if_missing(Direction::Sent, 0, 0);
+        counter.update_if_missing(Direction::Sent, 5, 500);
+        counter.update_if_missing(Direction::Received, 7, 700);
+        counter.update_if_missing(Direction::Received, 9, 900);
+
+        let proto = counter.into_proto(key);
+        assert_eq!(proto.sent_packets, 0);
+        assert_eq!(proto.sent_bytes, 0);
+        assert_eq!(proto.received_packets, 7);
+        assert_eq!(proto.received_bytes, 700);
     }
 
     fn client(mac: [u8; 6], ipv4: Vec<Ipv4Addr>) -> ClientConfig {

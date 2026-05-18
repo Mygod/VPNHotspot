@@ -29,12 +29,25 @@ class TrafficRecordTest {
             assertEquals(2L, stats?.sentBytes)
             assertEquals(3L, stats?.receivedPackets)
             assertEquals(4L, stats?.receivedBytes)
+            assertEquals(true, stats?.connectionCountKnown)
         }
     }
 
     @Test
     fun clientStatsRowRejectsUnknownDaemonMarker() {
         assertNull(ClientStatsRow(marker = "/unknown").toStats())
+    }
+
+    @Test
+    fun clientStatsRowMarksLegacyNat66TcpConnectionCountUnknown() {
+        val stats = ClientStatsRow(
+            marker = TrafficRecord.DAEMON_SOURCE_NAT66_TCP,
+            sentBytes = 1,
+            hasLegacyNat66TcpRows = true,
+        ).toStats()
+
+        assertEquals(TrafficStatsSource.NAT66_TCP, stats?.source)
+        assertEquals(false, stats?.connectionCountKnown)
     }
 
     @Test

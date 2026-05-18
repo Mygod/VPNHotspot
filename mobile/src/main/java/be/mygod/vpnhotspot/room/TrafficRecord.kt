@@ -69,7 +69,15 @@ data class TrafficRecord(
                     SUM(TrafficRecord.sentPackets) AS sentPackets,
                     SUM(TrafficRecord.sentBytes) AS sentBytes,
                     SUM(TrafficRecord.receivedPackets) AS receivedPackets,
-                    SUM(TrafficRecord.receivedBytes) AS receivedBytes
+                    SUM(TrafficRecord.receivedBytes) AS receivedBytes,
+                    MAX(CASE
+                        WHEN TrafficRecord.ip = :daemonSourceAddress AND
+                            TrafficRecord.upstream = '/nat66/tcp' AND
+                            TrafficRecord.sentPackets = 0 AND (
+                                TrafficRecord.sentBytes != 0 OR TrafficRecord.receivedBytes != 0
+                            ) THEN 1
+                        ELSE 0
+                    END) AS hasLegacyNat66TcpRows
                 FROM TrafficRecord LEFT JOIN TrafficRecord AS Next ON TrafficRecord.id = Next.previousId
                 /* We only want to find the last record for each chain so that we don't double count */
                 WHERE TrafficRecord.mac = :mac AND Next.id IS NULL AND (
@@ -105,7 +113,8 @@ data class ClientStatsEntry(
         val sentPackets: Long = 0,
         val sentBytes: Long = 0,
         val receivedPackets: Long = 0,
-        val receivedBytes: Long = 0
+        val receivedBytes: Long = 0,
+        val connectionCountKnown: Boolean = true
 ) : Parcelable {
     val isEmpty get() = sentPackets == 0L && sentBytes == 0L && receivedPackets == 0L && receivedBytes == 0L
 }
@@ -124,7 +133,8 @@ data class ClientStatsRow(
         val sentPackets: Long = 0,
         val sentBytes: Long = 0,
         val receivedPackets: Long = 0,
-        val receivedBytes: Long = 0
+        val receivedBytes: Long = 0,
+        val hasLegacyNat66TcpRows: Boolean = false
 ) {
     fun toStats(): ClientStatsEntry? {
         val source = when (marker) {
@@ -135,6 +145,8 @@ data class ClientStatsRow(
             TrafficRecord.DAEMON_SOURCE_NAT66_ICMPV6 -> TrafficStatsSource.NAT66_ICMPV6
             else -> return null
         }
-        return ClientStatsEntry(source, timestamp, sentPackets, sentBytes, receivedPackets, receivedBytes)
+        return ClientStatsEntry(
+                source, timestamp, sentPackets, sentBytes, receivedPackets, receivedBytes,
+                source != TrafficStatsSource.NAT66_TCP || !hasLegacyNat66TcpRows)
     }
 }

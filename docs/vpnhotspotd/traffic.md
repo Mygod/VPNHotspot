@@ -88,6 +88,9 @@ source to the existing persistence shape:
 
 The structured counter source is the stable active-recorder key. The persisted
 `upstream` marker is only the current no-migration storage representation.
+When duplicate IPv4 forwarding counter rules exist after interrupted cleanup,
+the daemon keeps the first matching iptables rule per direction because that is
+the rule whose counters the kernel updates.
 
 Packet counters are meaningful only for sources with discrete messages:
 
@@ -97,8 +100,13 @@ Packet counters are meaningful only for sources with discrete messages:
 - NAT66 UDP: one sent or received packet per UDP datagram;
 - NAT66 ICMPv6: one sent or received packet per daemon-owned Echo or upstream
   ICMPv6 error message;
-- NAT66 TCP: packet counters are zero because the daemon sees a byte stream, not
-  packets.
+- NAT66 TCP: sent packet count is a connection count for successfully opened
+  upstream TCP connections; byte counters carry the actual stream volume.
+
+Persisted NAT66 TCP rows from versions before the connection counter existed may
+contain byte totals with no connection count. Kotlin treats the connection count
+as unknown for any aggregate that includes those rows and omits that line from
+the stats dialog.
 
 Byte counters are authoritative for all daemon-owned sources. DNS counts the
 payload bytes handed to and returned from Android's resolver API. NAT66 counts
@@ -143,7 +151,10 @@ routing rule both exist. The committed session must not keep a hidden listener
 with no reachable rule, and routing must not keep a rule whose daemon resource
 was rolled back.
 
-IPv4 client removal removes allow rules and hidden IPv4 counter leaves, but the
-daemon does not manage conntrack state. DNS and NAT66 are daemon-owned, so
-removing a MAC cancels that MAC's DNS children, TCP tasks, UDP associations,
-ICMP Echo allocations, and ICMP/UDP error registrations.
+IPv4 client removal removes allow rules and hidden IPv4 counter leaves. If an
+IPv4 address remains present but moves to a different MAC, routing deletes the
+address's hidden counter leaves before reconciliation so the reinserted leaves
+start a new kernel counter epoch for the new owner. The daemon does not manage
+conntrack state. DNS and NAT66 are daemon-owned, so removing a MAC cancels that
+MAC's DNS children, TCP tasks, UDP associations, ICMP Echo allocations, and
+ICMP/UDP error registrations.

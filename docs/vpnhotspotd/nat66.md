@@ -122,8 +122,9 @@ closes or an I/O error occurs. Reset, broken-pipe, timeout, and other connection
 errors end the connection task. The session runtime does not track completed TCP
 connections.
 
-TCP byte counters update during relay. NAT66 TCP records byte counts only;
-stream relay cannot reconstruct packet counts.
+TCP byte counters update during relay. NAT66 TCP also increments its sent packet
+counter once after a remote upstream socket is successfully opened; that counter
+is a connection count, not an IP or TCP segment count.
 
 ## UDP
 

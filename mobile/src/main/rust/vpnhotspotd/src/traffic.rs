@@ -30,7 +30,7 @@ pub(crate) async fn read_counters(
         let counter = counters
             .entry(line.key)
             .or_insert_with(|| Ipv4ForwardCounter::new(*mac));
-        counter.update(line.direction, line.packets, line.bytes);
+        counter.update_if_missing(line.direction, line.packets, line.bytes);
     }
     Ok(counters
         .into_iter()
