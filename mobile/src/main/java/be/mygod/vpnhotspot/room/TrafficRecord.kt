@@ -44,7 +44,7 @@ data class TrafficRecord(
          */
         val previousId: Long? = null) {
     companion object {
-        val DAEMON_SOURCE_ADDRESS: InetAddress = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0))
+        val DAEMON_SOURCE_ADDRESS = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0))
         const val DAEMON_SOURCE_DNS = "/dns"
         const val DAEMON_SOURCE_NAT66_TCP = "/nat66/tcp"
         const val DAEMON_SOURCE_NAT66_UDP = "/nat66/udp"

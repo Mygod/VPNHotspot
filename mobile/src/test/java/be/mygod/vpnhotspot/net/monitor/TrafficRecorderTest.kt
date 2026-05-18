@@ -57,7 +57,7 @@ class TrafficRecorderTest {
             val recordSource = TrafficRecorder.counterSource(
                 TrafficCounter(source = TrafficCounterSource(daemon_source = source)),
             )
-            assertEquals(TrafficRecorder.DAEMON_SOURCE_ADDRESS, recordSource?.ip)
+            assertEquals(TrafficRecord.DAEMON_SOURCE_ADDRESS, recordSource?.ip)
             assertEquals(marker, recordSource?.upstream)
         }
     }

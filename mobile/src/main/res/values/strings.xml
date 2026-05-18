@@ -116,25 +116,25 @@
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Vendor</string>
     <string name="clients_stats_title">Stats for ^1</string>
     <string name="clients_stats_empty">No traffic recorded</string>
-    <string name="clients_stats_since">Since %1$s</string>
-    <string name="clients_stats_ipv4">IPv4</string>
-    <string name="clients_stats_dns">DNS</string>
-    <string name="clients_stats_nat66_tcp">NAT66 TCP</string>
-    <string name="clients_stats_nat66_udp">NAT66 UDP</string>
-    <string name="clients_stats_nat66_icmpv6">NAT66 ICMPv6</string>
+    <string name="clients_stats_since">Since ^1</string>
+    <string name="clients_stats_ipv4"><b>IPv4</b></string>
+    <string name="clients_stats_dns"><b>DNS</b></string>
+    <string name="clients_stats_nat66_tcp"><b>NAT66 TCP</b></string>
+    <string name="clients_stats_nat66_udp"><b>NAT66 UDP</b></string>
+    <string name="clients_stats_nat66_icmpv6"><b>NAT66 ICMPv6</b></string>
     <plurals name="clients_stats_connections">
-        <item quantity="one">1 connection</item>
-        <item quantity="other">%1$s connections</item>
+        <item quantity="one">: 1 connection</item>
+        <item quantity="other">: ^1 connections</item>
     </plurals>
-    <string name="clients_stats_sent_bytes">Sent %1$s</string>
-    <string name="clients_stats_received_bytes">Received %1$s</string>
+    <string name="clients_stats_sent_bytes">\nSent ^1</string>
+    <string name="clients_stats_received_bytes">\nReceived ^1</string>
     <plurals name="clients_stats_message_2">
-        <item quantity="one">Sent 1 packet, %2$s</item>
-        <item quantity="other">Sent %1$s packets, %2$s</item>
+        <item quantity="one">\nSent 1 packet, ^2</item>
+        <item quantity="other">\nSent ^1 packets, ^2</item>
     </plurals>
     <plurals name="clients_stats_message_3">
-        <item quantity="one">Received 1 packet, %2$s</item>
-        <item quantity="other">Received %1$s packets, %2$s</item>
+        <item quantity="one">\nReceived 1 packet, ^2</item>
+        <item quantity="other">\nReceived ^1 packets, ^2</item>
     </plurals>
 
     <string name="settings_upstream">Upstream</string>

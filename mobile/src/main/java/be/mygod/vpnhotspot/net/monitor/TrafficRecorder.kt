@@ -34,7 +34,6 @@ import java.util.concurrent.TimeUnit
 object TrafficRecorder {
     private const val FOREGROUND_POLL_MS = 1015L
     private val IPV4_FORWARD_EPOCH = "ipv4-forward".encodeUtf8()
-    internal val DAEMON_SOURCE_ADDRESS: InetAddress = TrafficRecord.DAEMON_SOURCE_ADDRESS
 
     data class ForegroundUpdate(
         val newRecords: ObjectList<TrafficRecord>,
@@ -272,7 +271,7 @@ object TrafficRecorder {
             if (it.size != 4) return@let null
             val ip = InetAddress.getByAddress(it.toByteArray())
             CounterSource(ip, null)
-        } ?: counterSource?.daemon_source?.marker?.let { CounterSource(DAEMON_SOURCE_ADDRESS, it) }
+        } ?: counterSource?.daemon_source?.marker?.let { CounterSource(TrafficRecord.DAEMON_SOURCE_ADDRESS, it) }
     }
 
     private val DaemonTrafficSource.marker get() = when (this) {
