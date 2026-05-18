@@ -107,11 +107,6 @@ Packet counters are meaningful only for sources with discrete messages:
 - NAT66 TCP: sent packet count is a connection count for successfully opened
   upstream TCP connections; byte counters carry the actual stream volume.
 
-Persisted NAT66 TCP rows from versions before the connection counter existed may
-contain byte totals with no connection count. Kotlin treats the connection count
-as unknown for any aggregate that includes those rows and omits that line from
-the stats dialog.
-
 Byte counters are authoritative for all daemon-owned sources. DNS counts the
 payload bytes handed to and returned from Android's resolver API. NAT66 counts
 daemon-owned upstream socket I/O at the proxy boundary; it does not estimate IP

@@ -81,15 +81,13 @@ object TrafficRecorder {
         update()    // flush stats before removing
         synchronized(this) {
             var removed = false
-            val removedKeys = MutableObjectList<CounterKey>(0)
-            records.forEach { key, _ ->
-                if (key.downstream == downstream && key.source.ip == ip && key.source.upstream == null) {
-                    removedKeys.add(key)
+            records.removeIf { key, _ ->
+                (key.downstream == downstream && key.source.ip == ip && key.source.upstream == null).also {
+                    if (it) {
+                        Timber.d("Unregistering $key")
+                        removed = true
+                    }
                 }
-            }
-            removedKeys.forEach {
-                Timber.d("Unregistering $it")
-                removed = records.remove(it) != null || removed
             }
             if (!removed) Timber.w("Failed to find traffic record for ${ip to downstream}.")
         }
@@ -100,11 +98,7 @@ object TrafficRecorder {
             val clientKey = ClientKey(mac, downstream)
             Timber.d("Unregistering $clientKey")
             if (!activeClients.remove(clientKey)) Timber.w("Failed to find traffic client for $clientKey.")
-            val removedKeys = MutableObjectList<CounterKey>(0)
-            records.forEach { key, _ ->
-                if (key.mac == mac && key.downstream == downstream && key.source.upstream != null) removedKeys.add(key)
-            }
-            removedKeys.forEach { records.remove(it) }
+            records.removeIf { key, _ -> key.mac == mac && key.downstream == downstream && key.source.upstream != null }
         }
     }
 
@@ -149,12 +143,10 @@ object TrafficRecorder {
                         if (key.source.upstream == null) continue@loop
                         if (counter.sent_packets == 0L && counter.sent_bytes == 0L &&
                             counter.received_packets == 0L && counter.received_bytes == 0L) continue@loop
-                        val removedKeys = MutableObjectList<CounterKey>(0)
-                        records.forEach { existingKey, _ ->
-                            if (existingKey.mac == key.mac && existingKey.downstream == key.downstream &&
-                                existingKey.source == key.source) removedKeys.add(existingKey)
+                        records.removeIf { existingKey, _ ->
+                            existingKey.mac == key.mac && existingKey.downstream == key.downstream &&
+                                    existingKey.source == key.source
                         }
-                        removedKeys.forEach { records.remove(it) }
                         TrafficRecord(
                             timestamp = timestamp,
                             mac = key.mac,
@@ -164,25 +156,25 @@ object TrafficRecorder {
                             sentPackets = counter.sent_packets,
                             sentBytes = counter.sent_bytes,
                             receivedPackets = counter.received_packets,
-                            receivedBytes = counter.received_bytes)
+                            receivedBytes = counter.received_bytes,
+                        )
                     } else if (oldRecord.id == null) oldRecord.apply {
                         sentPackets = counter.sent_packets
                         sentBytes = counter.sent_bytes
                         receivedPackets = counter.received_packets
                         receivedBytes = counter.received_bytes
-                    } else {
-                        TrafficRecord(
-                            timestamp = timestamp,
-                            mac = oldRecord.mac,
-                            ip = oldRecord.ip,
-                            upstream = oldRecord.upstream,
-                            downstream = oldRecord.downstream,
-                            sentPackets = counter.sent_packets,
-                            sentBytes = counter.sent_bytes,
-                            receivedPackets = counter.received_packets,
-                            receivedBytes = counter.received_bytes,
-                            previousId = oldRecord.id)
-                    }
+                    } else TrafficRecord(
+                        timestamp = timestamp,
+                        mac = oldRecord.mac,
+                        ip = oldRecord.ip,
+                        upstream = oldRecord.upstream,
+                        downstream = oldRecord.downstream,
+                        sentPackets = counter.sent_packets,
+                        sentBytes = counter.sent_bytes,
+                        receivedPackets = counter.received_packets,
+                        receivedBytes = counter.received_bytes,
+                        previousId = oldRecord.id,
+                    )
                     if (oldRecord == null) {
                         records[key] = record
                     } else oldRecord.id?.let { oldId ->
@@ -194,19 +186,14 @@ object TrafficRecorder {
                     Timber.w(e)
                 }
             }
-            val staleDaemonKeys = MutableObjectList<CounterKey>(0)
-            records.forEach { key, _ ->
-                if (key.source.upstream != null && key !in seenKeys) staleDaemonKeys.add(key)
-            }
-            staleDaemonKeys.forEach { records.remove(it) }
+            records.removeIf { key, _ -> key.source.upstream != null && key !in seenKeys }
             records.forEachValue { record ->
-                if (record.id == null) {
-                    check(record.sentPackets >= 0)
-                    check(record.sentBytes >= 0)
-                    check(record.receivedPackets >= 0)
-                    check(record.receivedBytes >= 0)
-                    AppDatabase.instance.trafficRecordDao.insert(record)
-                }
+                if (record.id != null) return@forEachValue
+                check(record.sentPackets >= 0)
+                check(record.sentBytes >= 0)
+                check(record.receivedPackets >= 0)
+                check(record.receivedBytes >= 0)
+                AppDatabase.instance.trafficRecordDao.insert(record)
             }
             val newRecords = MutableObjectList<TrafficRecord>(records.size)
             records.forEachValue { newRecords.add(it) }

@@ -111,9 +111,8 @@ class ClientsFragment : Fragment() {
                         TrafficStatsSource.NAT66_ICMPV6 -> R.string.clients_stats_nat66_icmpv6
                     }))
                     if (stats.source == TrafficStatsSource.NAT66_TCP) {
-                        if (stats.connectionCountKnown) append(TextUtils.expandTemplate(resources.getQuantityText(
-                            R.plurals.clients_stats_connections, stats.sentPackets.toPluralInt()),
-                            format.format(stats.sentPackets)))
+                        append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_connections,
+                            stats.sentPackets.toPluralInt()), format.format(stats.sentPackets)))
                         append(TextUtils.expandTemplate(getText(R.string.clients_stats_sent_bytes),
                             Formatter.formatFileSize(context, stats.sentBytes)))
                         append(TextUtils.expandTemplate(getText(R.string.clients_stats_received_bytes),
