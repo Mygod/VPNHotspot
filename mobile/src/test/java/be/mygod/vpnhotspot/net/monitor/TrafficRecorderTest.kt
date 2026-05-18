@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net.monitor
 import be.mygod.vpnhotspot.root.daemon.DaemonTrafficSource
 import be.mygod.vpnhotspot.root.daemon.TrafficCounter
 import be.mygod.vpnhotspot.root.daemon.TrafficCounterSource
+import be.mygod.vpnhotspot.room.TrafficRecord
 import okio.ByteString.Companion.toByteString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -48,10 +49,10 @@ class TrafficRecorderTest {
     @Test
     fun counterSourceMapsDaemonSourcesToMarkerRows() {
         for ((source, marker) in listOf(
-            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS to "/dns",
-            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_TCP to "/nat66/tcp",
-            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_UDP to "/nat66/udp",
-            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 to "/nat66/icmpv6",
+            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS to TrafficRecord.DAEMON_SOURCE_DNS,
+            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_TCP to TrafficRecord.DAEMON_SOURCE_NAT66_TCP,
+            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_UDP to TrafficRecord.DAEMON_SOURCE_NAT66_UDP,
+            DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 to TrafficRecord.DAEMON_SOURCE_NAT66_ICMPV6,
         )) {
             val recordSource = TrafficRecorder.counterSource(
                 TrafficCounter(source = TrafficCounterSource(daemon_source = source)),

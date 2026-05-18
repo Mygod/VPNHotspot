@@ -329,7 +329,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
 
     override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
         super.onNetlinkNeighboursChanged(neighbours)
-        timeoutMonitor?.onClientsChanged(neighbours.none { it.validClientMac != null })
+        val ifaces = activeIfaces
+        timeoutMonitor?.onClientsChanged(neighbours.none { it.dev in ifaces && it.validClientMac != null })
     }
 
     override fun onDestroy() {

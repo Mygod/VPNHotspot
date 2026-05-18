@@ -1,6 +1,6 @@
-use std::net::Ipv4Addr;
+use std::{collections::HashMap, net::Ipv4Addr};
 
-use crate::shared::proto::daemon;
+use crate::shared::{model::ClientConfig, proto::daemon};
 
 const ANYWHERE: &str = "0.0.0.0/0";
 pub const IPV4_FORWARD_EPOCH: &[u8] = b"ipv4-forward";
@@ -32,6 +32,31 @@ pub struct Ipv4ForwardCounter {
     sent_bytes: u64,
     received_packets: u64,
     received_bytes: u64,
+}
+
+pub fn changed_ipv4_forward_counter_addresses(
+    previous: &[ClientConfig],
+    next: &[ClientConfig],
+) -> Vec<Ipv4Addr> {
+    let mut previous_owners = HashMap::new();
+    for client in previous {
+        for address in &client.ipv4 {
+            previous_owners.insert(*address, client.mac);
+        }
+    }
+    let mut result = Vec::new();
+    for client in next {
+        for address in &client.ipv4 {
+            if previous_owners
+                .get(address)
+                .is_some_and(|previous_mac| *previous_mac != client.mac)
+                && !result.contains(address)
+            {
+                result.push(*address);
+            }
+        }
+    }
+    result
 }
 
 pub fn parse_ipv4_forward_counter_line(
@@ -119,6 +144,26 @@ mod tests {
     const MAC: [u8; 6] = [2, 3, 5, 7, 11, 13];
 
     #[test]
+    fn changed_ipv4_forward_counter_addresses_finds_addresses_reassigned_to_another_mac() {
+        let unchanged = Ipv4Addr::new(192, 0, 2, 8);
+        let changed = Ipv4Addr::new(192, 0, 2, 9);
+        let added = Ipv4Addr::new(192, 0, 2, 10);
+        let previous = [
+            client(MAC, vec![unchanged, changed]),
+            client([17, 19, 23, 29, 31, 37], vec![Ipv4Addr::new(192, 0, 2, 11)]),
+        ];
+        let next = [
+            client(MAC, vec![unchanged]),
+            client([41, 43, 47, 53, 59, 61], vec![changed, added, changed]),
+        ];
+
+        assert_eq!(
+            changed_ipv4_forward_counter_addresses(&previous, &next),
+            vec![changed]
+        );
+    }
+
+    #[test]
     fn parse_counter_line_reads_direction_downstream_and_address() {
         let line =
             parse_ipv4_forward_counter_line("5 500 RETURN all -- ncm0 * 192.0.2.8 0.0.0.0/0")
@@ -165,5 +210,9 @@ mod tests {
                 [192, 0, 2, 8].to_vec(),
             )),
         );
+    }
+
+    fn client(mac: [u8; 6], ipv4: Vec<Ipv4Addr>) -> ClientConfig {
+        ClientConfig { mac, ipv4 }
     }
 }

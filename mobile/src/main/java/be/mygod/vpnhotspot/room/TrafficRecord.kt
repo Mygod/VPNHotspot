@@ -43,6 +43,14 @@ data class TrafficRecord(
          * ID for the previous traffic record.
          */
         val previousId: Long? = null) {
+    companion object {
+        val DAEMON_SOURCE_ADDRESS: InetAddress = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0))
+        const val DAEMON_SOURCE_DNS = "/dns"
+        const val DAEMON_SOURCE_NAT66_TCP = "/nat66/tcp"
+        const val DAEMON_SOURCE_NAT66_UDP = "/nat66/udp"
+        const val DAEMON_SOURCE_NAT66_ICMPV6 = "/nat66/icmpv6"
+    }
+
     @androidx.room.Dao
     abstract class Dao {
         @Insert
@@ -53,26 +61,80 @@ data class TrafficRecord(
         }
 
         @Query("""
-            SELECT  MIN(TrafficRecord.timestamp) AS timestamp,
-                    COUNT(TrafficRecord.id) AS count,
+            SELECT  CASE
+                        WHEN TrafficRecord.ip != :daemonSourceAddress THEN NULL
+                        ELSE TrafficRecord.upstream
+                    END AS marker,
+                    MIN(TrafficRecord.timestamp) AS timestamp,
                     SUM(TrafficRecord.sentPackets) AS sentPackets,
                     SUM(TrafficRecord.sentBytes) AS sentBytes,
                     SUM(TrafficRecord.receivedPackets) AS receivedPackets,
                     SUM(TrafficRecord.receivedBytes) AS receivedBytes
                 FROM TrafficRecord LEFT JOIN TrafficRecord AS Next ON TrafficRecord.id = Next.previousId
                 /* We only want to find the last record for each chain so that we don't double count */
-                WHERE TrafficRecord.mac = :mac AND Next.id IS NULL
+                WHERE TrafficRecord.mac = :mac AND Next.id IS NULL AND (
+                    TrafficRecord.ip != :daemonSourceAddress OR
+                    TrafficRecord.upstream IN ('/dns', '/nat66/tcp', '/nat66/udp', '/nat66/icmpv6')
+                )
+                GROUP BY CASE
+                    WHEN TrafficRecord.ip != :daemonSourceAddress THEN NULL
+                    ELSE TrafficRecord.upstream
+                END
+                HAVING SUM(TrafficRecord.sentPackets) != 0 OR SUM(TrafficRecord.sentBytes) != 0 OR
+                    SUM(TrafficRecord.receivedPackets) != 0 OR SUM(TrafficRecord.receivedBytes) != 0
                 """)
-        abstract suspend fun queryStats(mac: MacAddress): ClientStats
+        protected abstract suspend fun queryStatsRows(
+                mac: MacAddress,
+                daemonSourceAddress: InetAddress
+        ): List<ClientStatsRow>
+        suspend fun queryStats(mac: MacAddress) = ClientStats(queryStatsRows(mac, DAEMON_SOURCE_ADDRESS).mapNotNull {
+            it.toStats()
+        }.sortedBy { it.source.ordinal })
     }
 }
 
 @Parcelize
-data class ClientStats(
+data class ClientStats(val entries: List<ClientStatsEntry> = emptyList()) : Parcelable {
+    val timestamp get() = entries.minOfOrNull { it.timestamp } ?: 0
+}
+
+@Parcelize
+data class ClientStatsEntry(
+        val source: TrafficStatsSource,
         val timestamp: Long = 0,
-        val count: Long = 0,
         val sentPackets: Long = 0,
         val sentBytes: Long = 0,
         val receivedPackets: Long = 0,
         val receivedBytes: Long = 0
-) : Parcelable
+) : Parcelable {
+    val isEmpty get() = sentPackets == 0L && sentBytes == 0L && receivedPackets == 0L && receivedBytes == 0L
+}
+
+enum class TrafficStatsSource {
+    IPV4,
+    DNS,
+    NAT66_TCP,
+    NAT66_UDP,
+    NAT66_ICMPV6,
+}
+
+data class ClientStatsRow(
+        val marker: String?,
+        val timestamp: Long = 0,
+        val sentPackets: Long = 0,
+        val sentBytes: Long = 0,
+        val receivedPackets: Long = 0,
+        val receivedBytes: Long = 0
+) {
+    fun toStats(): ClientStatsEntry? {
+        val source = when (marker) {
+            null -> TrafficStatsSource.IPV4
+            TrafficRecord.DAEMON_SOURCE_DNS -> TrafficStatsSource.DNS
+            TrafficRecord.DAEMON_SOURCE_NAT66_TCP -> TrafficStatsSource.NAT66_TCP
+            TrafficRecord.DAEMON_SOURCE_NAT66_UDP -> TrafficStatsSource.NAT66_UDP
+            TrafficRecord.DAEMON_SOURCE_NAT66_ICMPV6 -> TrafficStatsSource.NAT66_ICMPV6
+            else -> return null
+        }
+        return ClientStatsEntry(source, timestamp, sentPackets, sentBytes, receivedPackets, receivedBytes)
+    }
+}

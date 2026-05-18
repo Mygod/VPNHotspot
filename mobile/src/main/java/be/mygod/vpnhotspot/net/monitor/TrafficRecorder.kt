@@ -34,7 +34,7 @@ import java.util.concurrent.TimeUnit
 object TrafficRecorder {
     private const val FOREGROUND_POLL_MS = 1015L
     private val IPV4_FORWARD_EPOCH = "ipv4-forward".encodeUtf8()
-    internal val DAEMON_SOURCE_ADDRESS: InetAddress = InetAddress.getByAddress(byteArrayOf(0, 0, 0, 0))
+    internal val DAEMON_SOURCE_ADDRESS: InetAddress = TrafficRecord.DAEMON_SOURCE_ADDRESS
 
     data class ForegroundUpdate(
         val newRecords: ObjectList<TrafficRecord>,
@@ -277,10 +277,10 @@ object TrafficRecorder {
     }
 
     private val DaemonTrafficSource.marker get() = when (this) {
-        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS -> "/dns"
-        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_TCP -> "/nat66/tcp"
-        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_UDP -> "/nat66/udp"
-        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 -> "/nat66/icmpv6"
+        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS -> TrafficRecord.DAEMON_SOURCE_DNS
+        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_TCP -> TrafficRecord.DAEMON_SOURCE_NAT66_TCP
+        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_UDP -> TrafficRecord.DAEMON_SOURCE_NAT66_UDP
+        DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 -> TrafficRecord.DAEMON_SOURCE_NAT66_ICMPV6
         else -> null
     }
 }

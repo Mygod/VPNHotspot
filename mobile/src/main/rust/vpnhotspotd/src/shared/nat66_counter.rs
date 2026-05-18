@@ -83,6 +83,12 @@ impl Nat66Counters {
         })
     }
 
+    pub fn add_tcp_connection(&self, mac: [u8; 6]) -> io::Result<()> {
+        self.update(mac, Nat66CounterSource::Tcp, |counter| {
+            counter.sent_packets += 1;
+        })
+    }
+
     pub fn counters(
         &self,
         downstream: &str,
@@ -165,6 +171,7 @@ mod tests {
         counters
             .add_received_bytes(MAC, Nat66CounterSource::Tcp, 34)
             .unwrap();
+        counters.add_tcp_connection(MAC).unwrap();
         counters
             .add_sent_packet(MAC, Nat66CounterSource::Udp, 56)
             .unwrap();
@@ -190,6 +197,7 @@ mod tests {
                     ))
             })
             .unwrap();
+        assert_eq!(tcp.sent_packets, 1);
         assert_eq!(tcp.sent_bytes, 12);
         assert_eq!(tcp.received_bytes, 34);
         let udp = first

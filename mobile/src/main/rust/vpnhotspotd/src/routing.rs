@@ -2,6 +2,7 @@ use std::io;
 
 use crate::{firewall::IptablesTarget, netlink, platform, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
+use vpnhotspotd::shared::ipv4_forward_counter::changed_ipv4_forward_counter_addresses;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 use vpnhotspotd::shared::proto::daemon::CleanRoutingCommand;
 
@@ -148,6 +149,7 @@ impl Runtime {
         }
         self.downstream_ipv4 = downstream_ipv4;
         self.ports = ports;
+        self.reset_changed_ipv4_counter_rules(previous, next).await;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;
         let committed = self.committed_ports(next);
@@ -162,6 +164,25 @@ impl Runtime {
     async fn setup(&mut self, config: &SessionConfig) {
         let desired = self.desired_mutations(config).await;
         self.reconcile(desired).await;
+    }
+
+    async fn reset_changed_ipv4_counter_rules(
+        &mut self,
+        previous: &SessionConfig,
+        next: &SessionConfig,
+    ) {
+        for address in changed_ipv4_forward_counter_addresses(&previous.clients, &next.clients) {
+            for rule in Self::client_ip_stats_rules(next, address) {
+                let mutation = RoutingMutation::Iptables(rule);
+                let mut index = self.applied.len();
+                while index > 0 {
+                    index -= 1;
+                    if self.applied[index] == mutation && mutation.delete(&self.netlink).await {
+                        self.applied.remove(index);
+                    }
+                }
+            }
+        }
     }
 
     async fn reconcile(&mut self, desired: Vec<RoutingMutation>) {

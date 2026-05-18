@@ -547,7 +547,10 @@ impl Runtime {
         ]
     }
 
-    fn client_ip_stats_rules(config: &SessionConfig, address: Ipv4Addr) -> Vec<IptablesRule> {
+    pub(super) fn client_ip_stats_rules(
+        config: &SessionConfig,
+        address: Ipv4Addr,
+    ) -> Vec<IptablesRule> {
         let address = address.to_string();
         vec![
             IptablesRule::new(

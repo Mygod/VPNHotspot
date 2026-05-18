@@ -118,6 +118,9 @@ async fn handle_connection(
         }
         Err(TcpConnectError::Setup(e)) => return Err(e),
     };
+    if let Err(e) = counters.add_tcp_connection(mac) {
+        report::io("nat66.tcp_counter", e);
+    }
     if let Err(e) = relay(inbound, outbound, counters, mac).await {
         if is_connection_closed(&e) {
             log_connection_error("relay", mac, client, destination, selection, &e);
