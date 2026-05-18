@@ -35,7 +35,9 @@ not open the rtnetlink connection. Once created, the runtime remains
 process-wide until daemon exit.
 
 The daemon does not listen for arbitrary clients. The app-side controller owns
-the listening socket and the daemon connects to that single controller.
+the listening socket and accepts only a peer whose Unix socket credentials have
+`uid=0`; non-root peers are closed and the controller keeps waiting within the
+startup timeout. The daemon connects to that single controller.
 
 ## Calls
 
