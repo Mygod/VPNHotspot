@@ -73,29 +73,23 @@ object TrafficRecorder {
         activeClients.add(ClientKey(mac, downstream))
         scheduleUpdateLocked()
     }
-    suspend fun unregister(ip: InetAddress, downstream: String) {
-        update()    // flush stats before removing
-        synchronized(this) {
-            var removed = false
-            records.removeIf { key, _ ->
-                (key.downstream == downstream && key.source.ip == ip && key.source.upstream == null).also {
-                    if (it) {
-                        Timber.d("Unregistering $key")
-                        removed = true
-                    }
+    fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
+        var removed = false
+        records.removeIf { key, _ ->
+            (key.downstream == downstream && key.source.ip == ip && key.source.upstream == null).also {
+                if (it) {
+                    Timber.d("Unregistering $key")
+                    removed = true
                 }
             }
-            if (!removed) Timber.w("Failed to find traffic record for ${ip to downstream}.")
         }
+        if (!removed) Timber.w("Failed to find traffic record for ${ip to downstream}.")
     }
-    suspend fun unregister(mac: MacAddress, downstream: String) {
-        update()    // flush stats before removing
-        synchronized(this) {
-            val clientKey = ClientKey(mac, downstream)
-            Timber.d("Unregistering $clientKey")
-            if (!activeClients.remove(clientKey)) Timber.w("Failed to find traffic client for $clientKey.")
-            records.removeIf { key, _ -> key.mac == mac && key.downstream == downstream && key.source.upstream != null }
-        }
+    fun unregister(mac: MacAddress, downstream: String) = synchronized(this) {
+        val clientKey = ClientKey(mac, downstream)
+        Timber.d("Unregistering $clientKey")
+        if (!activeClients.remove(clientKey)) Timber.w("Failed to find traffic client for $clientKey.")
+        records.removeIf { key, _ -> key.mac == mac && key.downstream == downstream && key.source.upstream != null }
     }
 
     private var updateJob: Job? = null
@@ -113,7 +107,7 @@ object TrafficRecorder {
         }
         updateJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
             delay(timeout)
-            update(true)
+            update(bypassThrottling = true)
         }
     }
 
@@ -192,14 +186,14 @@ object TrafficRecorder {
             foregroundUpdatesState.tryEmit(ForegroundUpdate(newRecords, oldRecords))
         }
     }
-    suspend fun update(timeout: Boolean = false) {
+    suspend fun update(bypassThrottling: Boolean = false) {
         updateMutex.withLock {
             val currentJob = currentCoroutineContext()[Job]
             val timestamp = synchronized(this) {
                 if (updateJob === currentJob) updateJob = null else unscheduleUpdateLocked()
                 if (records.isEmpty() && activeClients.isEmpty()) return@withLock
                 val timestamp = System.currentTimeMillis()
-                if (!timeout && timestamp - lastUpdate <= 100) return@withLock
+                if (!bypassThrottling && timestamp - lastUpdate <= 100) return@withLock
                 timestamp
             }
             try {
@@ -217,7 +211,7 @@ object TrafficRecorder {
     }
 
     suspend fun clean() {
-        update()
+        update(bypassThrottling = true)
         synchronized(this) {
             unscheduleUpdateLocked()
             Timber.d("Cleaning records")
