@@ -165,7 +165,7 @@
         mode.</string>
     <string name="settings_service_temp_hotspot_use_system">Use system configuration for temporary hotspot</string>
     <string name="settings_service_temp_hotspot_use_system_summary">Will conflict with other apps using local only
-        hotspot</string>
+        hotspot. Also uses more resources in the background unless installed as a system app</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
