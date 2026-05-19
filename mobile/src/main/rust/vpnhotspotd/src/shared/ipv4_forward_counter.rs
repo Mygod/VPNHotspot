@@ -66,7 +66,7 @@ pub fn parse_ipv4_forward_counter_line(
     line: &str,
 ) -> Result<Option<Ipv4ForwardCounterLine>, String> {
     let columns = line.split_whitespace().collect::<Vec<_>>();
-    if columns.len() < 9 || columns[2] != "RETURN" {
+    if columns.len() < 9 || columns[2] != "ACCEPT" {
         return Ok(None);
     }
     let packets = columns[0]
@@ -163,10 +163,11 @@ mod tests {
 
     #[test]
     fn parse_counter_line_reads_direction_downstream_and_address() {
-        let line =
-            parse_ipv4_forward_counter_line("5 500 RETURN all -- ncm0 * 192.0.2.8 0.0.0.0/0")
-                .unwrap()
-                .unwrap();
+        let line = parse_ipv4_forward_counter_line(
+            "5 500 ACCEPT all -- ncm0 * 192.0.2.8 0.0.0.0/0 MAC 02:03:05:07:0b:0d",
+        )
+        .unwrap()
+        .unwrap();
         assert_eq!(line.direction, Direction::Sent);
         assert_eq!(line.packets, 5);
         assert_eq!(line.bytes, 500);
@@ -174,7 +175,7 @@ mod tests {
         assert_eq!(line.key.address, Ipv4Addr::new(192, 0, 2, 8));
 
         let line =
-            parse_ipv4_forward_counter_line("7 700 RETURN all -- * ncm0 0.0.0.0/0 192.0.2.8")
+            parse_ipv4_forward_counter_line("7 700 ACCEPT all -- * ncm0 0.0.0.0/0 192.0.2.8")
                 .unwrap()
                 .unwrap();
         assert_eq!(line.direction, Direction::Received);

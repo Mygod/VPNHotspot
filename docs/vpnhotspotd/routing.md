@@ -512,41 +512,45 @@ Clean deletes this repeatedly before flushing and deleting NAT66 mangle chains.
 
 ### Client IPv4 Allow And Stats Rules
 
-Condition: for each committed unique client MAC in `SessionConfig.clients`.
+Condition: for each committed unique `(client MAC, client IPv4 address)` pair
+in `SessionConfig.clients`.
 
 External mutations:
 
-- `iptables -t filter -I vpnhotspot_acl -i <downstream> -m mac --mac-source <mac> -j ACCEPT`
-- `iptables -t filter -I vpnhotspot_acl -i <downstream> -m mac --mac-source <mac> -j vpnhotspot_stats`
+- `iptables -t filter -I vpnhotspot_acl -i <downstream> -m mac --mac-source <mac> -s <client-ipv4> -j vpnhotspot_stats`
+
+Rollback:
+
+- delete the same rule.
+
+Condition: for each committed unique `(client MAC, client IPv4 address)` pair
+in `SessionConfig.clients`.
+
+External mutations:
+
+- `iptables -t filter -I vpnhotspot_stats -i <downstream> -m mac --mac-source <mac> -s <client-ipv4> -j ACCEPT`
+- `iptables -t filter -I vpnhotspot_stats -o <downstream> -d <client-ipv4> -j ACCEPT`
 
 Rollback:
 
 - delete the same rules.
 
-Condition: for each unique client IPv4 address in committed
-`SessionConfig.clients`.
-
-External mutations:
-
-- `iptables -t filter -I vpnhotspot_stats -i <downstream> -s <client-ipv4> -j RETURN`
-- `iptables -t filter -I vpnhotspot_stats -o <downstream> -d <client-ipv4> -j RETURN`
-
-Rollback:
-
-- delete the same rules.
-
-The MAC rules are the IPv4 forwarding admission whitelist. The IPv4 address
-rules are hidden counter leaves for accurate forwarded byte and packet
-accounting, especially reply-direction accounting. A committed MAC may have no
-IPv4 address leaves and can still be authorized for DNS or NAT66.
+The IPv4 forwarding admission whitelist is the committed `(MAC, IPv4)` pair.
+Sent-direction packets must match both the client MAC and IPv4 source before
+entering the stats chain, and the stats leaf that increments the counter is also
+the rule that accepts the packet. Reply-direction packets are counted by
+destination IPv4 after the generic `ESTABLISHED,RELATED` ACL path sends them
+through `vpnhotspot_stats`; the client MAC is not available as the Ethernet
+source on replies. A committed MAC with no IPv4 address leaves has no IPv4
+forwarding capability and can still be authorized for DNS or NAT66.
 
 During session replacement, if a client IPv4 address remains committed but its
 owning MAC changes, routing first deletes that address's two
 `vpnhotspot_stats` rules from the applied mutation set. Normal reconciliation
 then reinserts the same rule shape for the new committed config, which resets
 the kernel iptables counters before Kotlin associates the source with the new
-MAC. Missing rules are treated the same way as normal best-effort rule deletion:
-the delete is reported and the rest of reconciliation continues.
+MAC. Missing rules only clear the current process applied entry; command
+execution failures are reported and the rest of reconciliation continues.
 
 ### Client NAT66 Allow Rules
 

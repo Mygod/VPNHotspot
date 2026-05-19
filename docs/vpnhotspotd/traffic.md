@@ -37,8 +37,9 @@ has a six-byte link-layer address; an IPv4 address is not required for IPv6
 NAT66 proxying or accounting.
 
 IPv4 forwarding still uses real client IPv4 addresses as hidden kernel counter
-leaves. Those addresses keep reply-direction counters accurate without using
-Android connmark bits, but they do not become the UI identity.
+leaves. A committed `(MAC, IPv4)` pair is required for sent-direction IPv4
+forwarding, and the IPv4 address keeps reply-direction counters accurate
+without using Android connmark bits. Neither value becomes the UI identity.
 
 Daemon-owned MAC-only sources persist with `TrafficRecord.ip = 0.0.0.0` and a
 reserved source marker in `TrafficRecord.upstream`:
@@ -96,8 +97,8 @@ The structured counter source is the stable active-recorder key. The persisted
 `upstream` marker is only the current no-migration storage representation.
 Routing keeps the recorder's active client set in sync with allowed MACs, while
 IPv4 neighbour entries only add or remove IPv4 forwarding rows. A client losing
-its IPv4 neighbour therefore does not stop DNS or NAT66 polling while the MAC is
-still allowed.
+its IPv4 neighbour therefore loses IPv4 forwarding until ARP returns, but does
+not stop DNS or NAT66 polling while the MAC is still allowed.
 When duplicate IPv4 forwarding counter rules exist after interrupted cleanup,
 the daemon keeps the first matching iptables rule per direction because that is
 the rule whose counters the kernel updates.

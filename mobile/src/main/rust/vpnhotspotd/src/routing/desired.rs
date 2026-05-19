@@ -265,22 +265,15 @@ impl Runtime {
                 intercept_mode,
             );
         }
-        let mut client_macs_v4 = Vec::new();
-        let mut client_ips = Vec::new();
+        let mut client_ip_v4 = Vec::new();
         let mut client_macs_v6 = Vec::new();
         for client in &config.clients {
-            if !client_macs_v4.contains(&client.mac) {
-                client_macs_v4.push(client.mac);
-                for rule in Self::client_mac_v4_rules(config, client.mac) {
-                    push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-                }
-            }
             for address in &client.ipv4 {
-                if client_ips.contains(address) {
+                if client_ip_v4.contains(&(client.mac, *address)) {
                     continue;
                 }
-                client_ips.push(*address);
-                for rule in Self::client_ip_stats_rules(config, *address) {
+                client_ip_v4.push((client.mac, *address));
+                for rule in Self::client_ipv4_forward_rules(config, client.mac, *address) {
                     push_unique(&mut mutations, RoutingMutation::Iptables(rule));
                 }
             }
@@ -640,46 +633,41 @@ impl Runtime {
         )
     }
 
-    fn client_mac_v4_rules(config: &SessionConfig, mac: [u8; 6]) -> Vec<IptablesRule> {
-        let mac = mac_string(&mac);
-        vec![
-            IptablesRule::new(
-                IptablesTarget::Ipv4,
-                "filter",
-                "vpnhotspot_acl",
-                vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-m".into(),
-                    "mac".into(),
-                    "--mac-source".into(),
-                    mac.clone(),
-                    "-j".into(),
-                    "ACCEPT".into(),
-                ],
-            ),
-            IptablesRule::new(
-                IptablesTarget::Ipv4,
-                "filter",
-                "vpnhotspot_acl",
-                vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-m".into(),
-                    "mac".into(),
-                    "--mac-source".into(),
-                    mac,
-                    "-j".into(),
-                    "vpnhotspot_stats".into(),
-                ],
-            ),
-        ]
+    fn client_ipv4_forward_rules(
+        config: &SessionConfig,
+        mac: [u8; 6],
+        address: Ipv4Addr,
+    ) -> Vec<IptablesRule> {
+        let mut rules = Vec::with_capacity(3);
+        let mac_string = mac_string(&mac);
+        let address_string = address.to_string();
+        rules.push(IptablesRule::new(
+            IptablesTarget::Ipv4,
+            "filter",
+            "vpnhotspot_acl",
+            vec![
+                "-i".into(),
+                config.downstream.clone(),
+                "-m".into(),
+                "mac".into(),
+                "--mac-source".into(),
+                mac_string,
+                "-s".into(),
+                address_string,
+                "-j".into(),
+                "vpnhotspot_stats".into(),
+            ],
+        ));
+        rules.extend(Self::client_ip_stats_rules(config, mac, address));
+        rules
     }
 
     pub(super) fn client_ip_stats_rules(
         config: &SessionConfig,
+        mac: [u8; 6],
         address: Ipv4Addr,
     ) -> Vec<IptablesRule> {
+        let mac = mac_string(&mac);
         let address = address.to_string();
         vec![
             IptablesRule::new(
@@ -689,10 +677,14 @@ impl Runtime {
                 vec![
                     "-i".into(),
                     config.downstream.clone(),
+                    "-m".into(),
+                    "mac".into(),
+                    "--mac-source".into(),
+                    mac,
                     "-s".into(),
                     address.clone(),
                     "-j".into(),
-                    "RETURN".into(),
+                    "ACCEPT".into(),
                 ],
             ),
             IptablesRule::new(
@@ -705,7 +697,7 @@ impl Runtime {
                     "-d".into(),
                     address,
                     "-j".into(),
-                    "RETURN".into(),
+                    "ACCEPT".into(),
                 ],
             ),
         ]

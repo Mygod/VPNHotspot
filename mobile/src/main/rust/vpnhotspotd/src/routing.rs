@@ -175,7 +175,14 @@ impl Runtime {
         next: &SessionConfig,
     ) {
         for address in changed_ipv4_forward_counter_addresses(&previous.clients, &next.clients) {
-            for rule in Self::client_ip_stats_rules(next, address) {
+            let Some(client) = previous
+                .clients
+                .iter()
+                .find(|client| client.ipv4.contains(&address))
+            else {
+                continue;
+            };
+            for rule in Self::client_ip_stats_rules(previous, client.mac, address) {
                 let mutation = RoutingMutation::Iptables(rule);
                 let mut index = self.applied.len();
                 while index > 0 {
