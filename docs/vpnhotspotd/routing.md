@@ -297,9 +297,9 @@ detached-interface rule at `<nat66-daemon-priority>`:
 then dumps IPv6 rules and requires the echoed rule to include `ipproto tcp`.
 The probe deletes both the exact protocol rule and a possible no-protocol stale
 form. This detached interface is intentional: kernels without `FRA_IP_PROTO`
-can silently ignore the unknown attribute and accept a bare `iif ... lookup
-900` rule, so probing with the real downstream would create a transient or
-leaked traffic-affecting rule.
+can silently ignore the unknown attribute and accept a bare
+`iif ... lookup 900` rule, so probing with the real downstream would create a
+transient or leaked traffic-affecting rule.
 
 If the probe fails, routing uses fwmark fallback mode. When `uname.release`
 parses as Linux 4.17 or newer, the fallback is also reported as a structured
@@ -413,21 +413,21 @@ daemon-owned upstream proxy path.
 External mutations:
 
 - gateway DNS TCP ACL/protocol prelude:
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
 - gateway DNS UDP ACL/protocol prelude:
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
 - local/special destination returns before the generic upstream ACL/proxy path:
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <nat66-prefix> -j RETURN`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d fe80::/10 -j RETURN`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ff00::/8 -j RETURN`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::1/128 -j RETURN`
-  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::/128 -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <nat66-prefix> -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d fe80::/10 -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ff00::/8 -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::1/128 -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::/128 -j RETURN`
 - TCP listener:
-  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-tcp-port-for-mac>`
+  - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-tcp-port-for-mac>`
 - UDP listener:
-  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-udp-port-for-mac>`
+  - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-udp-port-for-mac>`
 
 Effective mangle order is gateway DNS `:53` ACL gate, gateway DNS `:53`
 protocol interception, local/special destination returns, generic upstream ACL
