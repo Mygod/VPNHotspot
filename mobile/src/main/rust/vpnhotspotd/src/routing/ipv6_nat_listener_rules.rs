@@ -167,8 +167,7 @@ impl Ipv6NatFirewall {
             ),
             "fe80::/10".to_owned(),
             "ff00::/8".to_owned(),
-            "::1/128".to_owned(),
-            "::/128".to_owned(),
+            "::/127".to_owned(),
         ]
     }
 }

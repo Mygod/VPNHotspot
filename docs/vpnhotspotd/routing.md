@@ -422,8 +422,7 @@ External mutations:
   - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <nat66-prefix> -j RETURN`
   - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d fe80::/10 -j RETURN`
   - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ff00::/8 -j RETURN`
-  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::1/128 -j RETURN`
-  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::/128 -j RETURN`
+  - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::/127 -j RETURN`
 - TCP listener:
   - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-tcp-port-for-mac>`
 - UDP listener:
