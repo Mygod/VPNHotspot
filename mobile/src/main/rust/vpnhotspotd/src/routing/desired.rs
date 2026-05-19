@@ -27,7 +27,10 @@ use super::{
 };
 
 impl Runtime {
-    pub(super) async fn desired_mutations(&self, config: &SessionConfig) -> Vec<RoutingMutation> {
+    pub(super) async fn desired_mutations(
+        &mut self,
+        config: &SessionConfig,
+    ) -> Vec<RoutingMutation> {
         let mut mutations = Vec::new();
         if config.ip_forward {
             push_unique(
@@ -161,8 +164,25 @@ impl Runtime {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
         }
-        let ipv6_nat = config.ipv6_nat.as_ref().zip(self.ports.ipv6_nat.as_ref());
-        if let Some((ipv6_nat, ports)) = ipv6_nat {
+        if config.ipv6_nat.is_some()
+            && self.ipv6_nat_intercept_mode.is_none()
+            && self.ports.ipv6_nat.as_ref().is_some_and(|ports| {
+                ports
+                    .clients
+                    .iter()
+                    .any(|client| client.tcp.is_some() || client.udp.is_some())
+            })
+        {
+            self.ipv6_nat_intercept_mode = Some(
+                Ipv6NatInterceptMode::detect(self.call_id, &self.netlink, &config.downstream).await,
+            );
+        }
+        let ipv6_nat = config
+            .ipv6_nat
+            .as_ref()
+            .zip(self.ports.ipv6_nat.as_ref())
+            .zip(self.ipv6_nat_intercept_mode);
+        if let Some(((ipv6_nat, ports), intercept_mode)) = ipv6_nat {
             push_unique(
                 &mut mutations,
                 RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
@@ -194,7 +214,7 @@ impl Runtime {
                     table: DAEMON_TABLE,
                 })),
             );
-            match self.ipv6_nat_intercept_mode {
+            match intercept_mode {
                 Ipv6NatInterceptMode::ProtocolRules => {
                     for (enabled, protocol) in [
                         (
@@ -242,7 +262,7 @@ impl Runtime {
                 config,
                 ipv6_nat,
                 ports,
-                self.ipv6_nat_intercept_mode,
+                intercept_mode,
             );
         }
         let mut client_macs_v4 = Vec::new();
@@ -367,6 +387,9 @@ impl Runtime {
         port: u16,
         session_rules_committed: bool,
     ) -> bool {
+        let Some(intercept_mode) = self.ipv6_nat_intercept_mode else {
+            return false;
+        };
         session_rules_committed
             && self.has_applied_iptables_rules(Ipv6NatFirewall::gateway_dns_prelude_rules(
                 config, ipv6_nat, protocol,
@@ -376,7 +399,7 @@ impl Runtime {
                 mac,
                 protocol,
                 port,
-                self.ipv6_nat_intercept_mode,
+                intercept_mode,
             ))
     }
 

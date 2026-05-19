@@ -287,10 +287,12 @@ Clean:
 Clean never flushes table 99 because it is Android's shared `local_network`
 table.
 
-Before choosing protocol-rule mode, routing probes kernel `FRA_IP_PROTO`
-support through rtnetlink once per daemon process and reuses the cached result
-for later NAT66 sessions. The probe adds a temporary detached-interface rule at
-`<nat66-daemon-priority>`:
+Before routing the first candidate NAT66 TCP/UDP listener ports, routing probes
+kernel `FRA_IP_PROTO` support through rtnetlink once per daemon process and
+reuses the cached result for later NAT66 sessions. NAT66-enabled sessions with
+no candidate TCP/UDP listener ports do not probe yet because there is no
+listener interception rule to choose. The probe adds a temporary
+detached-interface rule at `<nat66-daemon-priority>`:
 `iif vpnhs_probe0 priority <nat66-daemon-priority> ipproto tcp lookup 900`. Routing
 then dumps IPv6 rules and requires the echoed rule to include `ipproto tcp`.
 The probe deletes both the exact protocol rule and a possible no-protocol stale

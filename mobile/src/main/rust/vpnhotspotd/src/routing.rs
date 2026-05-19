@@ -102,9 +102,10 @@ impl RoutingMutation {
 }
 
 pub(crate) struct Runtime {
+    call_id: u64,
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
-    ipv6_nat_intercept_mode: Ipv6NatInterceptMode,
+    ipv6_nat_intercept_mode: Option<Ipv6NatInterceptMode>,
     netlink: netlink::Handle,
     applied: Vec<RoutingMutation>,
 }
@@ -117,15 +118,11 @@ impl Runtime {
         ports: SessionPorts,
         netlink: netlink::Handle,
     ) -> (Self, SessionPorts) {
-        let ipv6_nat_intercept_mode = if config.ipv6_nat.is_some() && ports.ipv6_nat.is_some() {
-            Ipv6NatInterceptMode::detect(call_id, &netlink, &config.downstream).await
-        } else {
-            Ipv6NatInterceptMode::FwmarkFallback
-        };
         let mut runtime = Self {
+            call_id,
             ports,
             downstream_ipv4,
-            ipv6_nat_intercept_mode,
+            ipv6_nat_intercept_mode: None,
             netlink,
             applied: Vec::new(),
         };
