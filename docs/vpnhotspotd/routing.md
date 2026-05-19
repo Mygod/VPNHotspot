@@ -57,14 +57,17 @@ path fails.
 
 ### IPv4 DNS Redirect
 
-Condition: per committed client MAC and protocol when DNS startup produced that
-MAC/protocol listener port and routing can also install the matching direct-port
-guard.
+Condition: the owned nat chain and PREROUTING jump are present for a started
+session with downstream IPv4. Per-MAC redirect rules are present per committed
+client MAC and protocol when DNS startup produced that MAC/protocol listener
+port and routing can also install the matching direct-port guard.
 
 External mutations:
 
-- `iptables -t nat -I PREROUTING -i <downstream> -p tcp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-tcp-port-for-mac>`
-- `iptables -t nat -I PREROUTING -i <downstream> -p udp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-udp-port-for-mac>`
+- ensure `iptables -t nat` chain `vpnhotspot_dns_nat`
+- `iptables -t nat -I PREROUTING -j vpnhotspot_dns_nat`
+- `iptables -t nat -I vpnhotspot_dns_nat -i <downstream> -p tcp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-tcp-port-for-mac>`
+- `iptables -t nat -I vpnhotspot_dns_nat -i <downstream> -p udp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-udp-port-for-mac>`
 - `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
 - `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -j REJECT --reject-with tcp-reset`
 - `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p udp -d <downstream-ipv4> --dport <dns-udp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
@@ -84,7 +87,8 @@ effective chain order.
 
 Rollback:
 
-- delete the same MAC/protocol redirect and guard rules.
+- delete the PREROUTING jump and the same MAC/protocol redirect and guard rules.
+- no session rollback for the `vpnhotspot_dns_nat` chain itself.
 
 Routing only redirects packets. MAC ownership and DNS upstream selection belong
 to [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs). A DNS
@@ -110,9 +114,10 @@ Rollback:
 Clean:
 
 - delete the INPUT jump, then flush and delete `vpnhotspot_dns_input`.
+- delete the PREROUTING jump, then flush and delete `vpnhotspot_dns_nat`.
 
 Allowed DNS packets have already been DNATed to per-MAC daemon listener ports in
-`nat PREROUTING`, so these rules catch blocked clients and missing DNS
+`vpnhotspot_dns_nat`, so these rules catch blocked clients and missing DNS
 capability cases that remain addressed to the gateway on port 53. They do not
 block manually configured external DNS except through the normal upstream
 admission rules.
@@ -659,19 +664,18 @@ External mutations:
 - repeatedly delete `iptables -t mangle PREROUTING -j vpnhotspot_dns_tproxy`.
 - repeatedly delete `iptables -t filter INPUT -j vpnhotspot_dns_input`.
 - repeatedly delete `iptables -t filter FORWARD -j vpnhotspot_acl`.
+- repeatedly delete `iptables -t nat PREROUTING -j vpnhotspot_dns_nat`.
 - repeatedly delete `iptables -t nat POSTROUTING -j vpnhotspot_masquerade`.
 - restore IPv4 mangle table input that flushes or creates
   `vpnhotspot_dns_tproxy`, then deletes it.
 - restore IPv4 filter table input that flushes or creates
   `vpnhotspot_dns_input`, `vpnhotspot_acl`, and `vpnhotspot_stats`, then
   deletes them.
-- restore IPv4 nat table input that flushes `PREROUTING`, flushes or creates
-  `vpnhotspot_masquerade`, then deletes `vpnhotspot_masquerade`.
+- restore IPv4 nat table input that flushes or creates `vpnhotspot_dns_nat`
+  and `vpnhotspot_masquerade`, then deletes them.
 
 The IPv4 mangle `vpnhotspot_dns_tproxy` cleanup is legacy-shaped cleanup kept
-in Clean. The IPv4 nat `PREROUTING` flush is a broad external mutation and must
-be treated as part of Clean's current contract when changing DNS redirect
-cleanup.
+in Clean. IPv4 nat cleanup must stay scoped to app-owned jumps and chains.
 
 ### IPv6 Firewall Cleanup
 
@@ -739,6 +743,4 @@ it.
   rules failed.
 - Do not disable netd NAT unless the daemon has an app-owned ownership token for
   the exact state being disabled.
-- Do not flush shared platform tables. When a broad flush exists, such as the
-  current IPv4 nat `PREROUTING` Clean step, keep it explicitly documented and
-  re-evaluate it before extending nearby behavior.
+- Do not flush shared platform tables or shared firewall base chains.

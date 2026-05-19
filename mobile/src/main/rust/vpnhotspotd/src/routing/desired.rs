@@ -44,6 +44,14 @@ impl Runtime {
             &mut mutations,
             RoutingMutation::EnsureIptablesChain {
                 target: IptablesTarget::Ipv4,
+                table: "nat",
+                chain: "vpnhotspot_dns_nat",
+            },
+        );
+        push_unique(
+            &mut mutations,
+            RoutingMutation::EnsureIptablesChain {
+                target: IptablesTarget::Ipv4,
                 table: "filter",
                 chain: "vpnhotspot_dns_input",
             },
@@ -364,7 +372,8 @@ impl Runtime {
         protocol: &str,
         port: u16,
     ) -> bool {
-        self.has_applied_iptables_rule(Self::dns_input_jump_rule())
+        self.has_applied_iptables_rule(Self::dns_nat_jump_rule())
+            && self.has_applied_iptables_rule(Self::dns_input_jump_rule())
             && self.has_applied_iptables_rules(
                 std::iter::once(self.dns_port_rule(config, mac, protocol, port))
                     .chain(self.dns_port_guard_rules(config, protocol, port)),
@@ -427,6 +436,7 @@ impl Runtime {
                 rules.push(allow);
             }
         }
+        rules.push(Self::dns_nat_jump_rule());
         rules.push(Self::dns_input_jump_rule());
         rules.extend(["tcp", "udp"].into_iter().map(|protocol| {
             IptablesRule::new(
@@ -466,7 +476,7 @@ impl Runtime {
         IptablesRule::new(
             IptablesTarget::Ipv4,
             "nat",
-            "PREROUTING",
+            "vpnhotspot_dns_nat",
             vec![
                 "-i".into(),
                 config.downstream.clone(),
@@ -485,6 +495,15 @@ impl Runtime {
                 "--to-destination".into(),
                 format!(":{port}"),
             ],
+        )
+    }
+
+    fn dns_nat_jump_rule() -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv4,
+            "nat",
+            "PREROUTING",
+            vec!["-j".into(), "vpnhotspot_dns_nat".into()],
         )
     }
 
