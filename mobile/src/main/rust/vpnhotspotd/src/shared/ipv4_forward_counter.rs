@@ -25,7 +25,7 @@ pub struct Ipv4ForwardCounterLine {
     pub bytes: u64,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct CounterValue {
     packets: u64,
     bytes: u64,
@@ -117,10 +117,10 @@ impl Ipv4ForwardCounter {
         }
     }
 
-    pub fn into_proto(self, key: Ipv4ForwardKey) -> daemon::TrafficCounter {
-        let sent = self.sent.unwrap_or_default();
-        let received = self.received.unwrap_or_default();
-        daemon::TrafficCounter {
+    pub fn into_proto(self, key: Ipv4ForwardKey) -> Option<daemon::TrafficCounter> {
+        let sent = self.sent?;
+        let received = self.received?;
+        Some(daemon::TrafficCounter {
             mac: self.mac.to_vec(),
             downstream: key.downstream,
             source: Some(daemon::TrafficCounterSource {
@@ -133,7 +133,7 @@ impl Ipv4ForwardCounter {
             sent_bytes: sent.bytes,
             received_packets: received.packets,
             received_bytes: received.bytes,
-        }
+        })
     }
 }
 
@@ -196,7 +196,7 @@ mod tests {
         counter.update_if_missing(Direction::Sent, 5, 500);
         counter.update_if_missing(Direction::Received, 7, 700);
 
-        let proto = counter.into_proto(key);
+        let proto = counter.into_proto(key).unwrap();
         assert_eq!(proto.mac, MAC);
         assert_eq!(proto.downstream, "ncm0");
         assert_eq!(proto.counter_epoch, IPV4_FORWARD_EPOCH);
@@ -224,11 +224,30 @@ mod tests {
         counter.update_if_missing(Direction::Received, 7, 700);
         counter.update_if_missing(Direction::Received, 9, 900);
 
-        let proto = counter.into_proto(key);
+        let proto = counter.into_proto(key).unwrap();
         assert_eq!(proto.sent_packets, 0);
         assert_eq!(proto.sent_bytes, 0);
         assert_eq!(proto.received_packets, 7);
         assert_eq!(proto.received_bytes, 700);
+    }
+
+    #[test]
+    fn ipv4_forward_counter_skips_incomplete_direction_pairs() {
+        let key = Ipv4ForwardKey {
+            downstream: "ncm0".to_owned(),
+            address: Ipv4Addr::new(192, 0, 2, 8),
+        };
+        let mut counter = Ipv4ForwardCounter::new(MAC);
+        counter.update_if_missing(Direction::Sent, 5, 500);
+        assert!(counter.into_proto(key).is_none());
+
+        let key = Ipv4ForwardKey {
+            downstream: "ncm0".to_owned(),
+            address: Ipv4Addr::new(192, 0, 2, 8),
+        };
+        let mut counter = Ipv4ForwardCounter::new(MAC);
+        counter.update_if_missing(Direction::Received, 7, 700);
+        assert!(counter.into_proto(key).is_none());
     }
 
     fn client(mac: [u8; 6], ipv4: Vec<Ipv4Addr>) -> ClientConfig {

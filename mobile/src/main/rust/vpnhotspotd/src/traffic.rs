@@ -34,7 +34,7 @@ pub(crate) async fn read_counters(
     }
     Ok(counters
         .into_iter()
-        .map(|(key, counter)| counter.into_proto(key))
+        .filter_map(|(key, counter)| counter.into_proto(key))
         .collect())
 }
 

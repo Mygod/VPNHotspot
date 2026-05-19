@@ -144,6 +144,9 @@ snapshot. A traffic counter read returns active plus retired counters and then
 drops the retired entries. Retired delivery is at-most-once; normal stop,
 replacement, and routing teardown paths must still read counters before
 destroying daemon-owned state.
+The read snapshots daemon-owned counters while holding the session slot so a
+concurrent stop or Clean cannot destroy counters after the read has observed the
+session as active.
 
 ## Failure Semantics
 
@@ -164,3 +167,10 @@ start a new kernel counter epoch for the new owner. The daemon does not manage
 conntrack state. DNS and NAT66 are daemon-owned, so removing a MAC cancels that
 MAC's DNS children, TCP tasks, UDP associations, ICMP Echo allocations, and
 ICMP/UDP error registrations.
+
+If IPv4 forwarding counter readout fails, the daemon reports a structured
+nonfatal tied to the traffic-counter call and still replies with any
+daemon-owned DNS/NAT66 counters it already snapshotted. IPv4 forwarding counters
+live in kernel rules, so later reads can recover them while those rules still
+exist; daemon-owned retired counters are more volatile and must not be discarded
+because the IPv4 read failed.

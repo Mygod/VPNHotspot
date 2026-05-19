@@ -67,6 +67,8 @@ Examples:
 - NAT66 ICMPv6 NFQUEUE receives a packet without a live IPv6 NAT owner, without
   usable six-byte source hardware-address metadata, or with a MAC outside the
   committed client set;
+- IPv4 forwarding counter readout fails during a traffic-counter read, while
+  daemon-owned DNS/NAT66 counters can still be returned;
 - a session routing mutation fails while other routing mutations remain useful;
 - neighbour data contains an invalid link-layer address length;
 - a background task join fails;

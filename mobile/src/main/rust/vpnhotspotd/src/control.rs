@@ -214,31 +214,6 @@ impl State {
         }
     }
 
-    async fn session_traffic_snapshots(
-        &self,
-    ) -> (
-        Vec<vpnhotspotd::shared::model::SessionConfig>,
-        Vec<daemon::TrafficCounter>,
-    ) {
-        let sessions = self
-            .sessions
-            .lock()
-            .await
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-        let mut configs = Vec::with_capacity(sessions.len());
-        let mut counters = Vec::new();
-        for slot in sessions {
-            let guard = slot.session.lock().await;
-            if let Some(session) = guard.as_ref() {
-                configs.push(session.config_snapshot().await);
-                counters.extend(session.traffic_counters().await);
-            }
-        }
-        (configs, counters)
-    }
-
     async fn update_ipsec_session(
         self: &Arc<Self>,
         slot: &Arc<SessionState>,
@@ -351,12 +326,34 @@ async fn handle_command(
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
         daemon::client_envelope::Command::ReadTrafficCounters(_) => {
-            let (configs, mut counters) = state.session_traffic_snapshots().await;
-            counters.extend(
-                crate::traffic::read_counters(&configs)
-                    .await
-                    .with_report_context("control.read_traffic_counters")?,
-            );
+            let sessions = state
+                .sessions
+                .lock()
+                .await
+                .values()
+                .cloned()
+                .collect::<Vec<_>>();
+            let mut configs = Vec::with_capacity(sessions.len());
+            let mut counters = Vec::new();
+            for slot in sessions {
+                let guard = slot.session.lock().await;
+                if let Some(session) = guard.as_ref() {
+                    configs.push(session.config_snapshot().await);
+                    counters.extend(session.traffic_counters().await);
+                }
+            }
+            match crate::traffic::read_counters(&configs)
+                .await
+                .with_report_context("control.read_traffic_counters")
+            {
+                Ok(ipv4_counters) => counters.extend(ipv4_counters),
+                Err(e) => {
+                    report::report_for(
+                        Some(id),
+                        daemon_io_error_report("control.read_traffic_counters", e),
+                    );
+                }
+            }
             Ok(CallOutput::Reply(traffic_counters_frame(id, counters)))
         }
         daemon::client_envelope::Command::StartNeighbourMonitor(_) => {
