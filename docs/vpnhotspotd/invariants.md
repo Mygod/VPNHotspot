@@ -67,10 +67,8 @@ compatibility or cleanup impact.
   addresses and still be a valid DNS/NAT66 authorization input.
 - Session replacement reconciles routing before publishing the new config
   snapshot to NAT66/DNS readers.
-- An empty client set must not permanently disable NAT66. If process-wide
-  firewall setup failed, NAT66 produced no runtime for a non-empty client set,
-  or routing committed no NAT66 TCP/UDP capability for a non-empty client set,
-  replacements keep NAT66 disabled for that session.
+- An empty client set is a deferred NAT66 state, not a failure. Later
+  replacements may start NAT66 when clients appear.
 
 ## Errors
 

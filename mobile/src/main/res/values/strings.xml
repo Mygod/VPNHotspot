@@ -128,6 +128,14 @@
     </plurals>
     <string name="clients_stats_sent_bytes">\nSent ^1</string>
     <string name="clients_stats_received_bytes">\nReceived ^1</string>
+    <plurals name="clients_stats_dns_queries">
+        <item quantity="one">\nSent 1 query, ^2</item>
+        <item quantity="other">\nSent ^1 queries, ^2</item>
+    </plurals>
+    <plurals name="clients_stats_dns_responses">
+        <item quantity="one">\nReceived 1 response, ^2</item>
+        <item quantity="other">\nReceived ^1 responses, ^2</item>
+    </plurals>
     <plurals name="clients_stats_message_2">
         <item quantity="one">\nSent 1 packet, ^2</item>
         <item quantity="other">\nSent ^1 packets, ^2</item>

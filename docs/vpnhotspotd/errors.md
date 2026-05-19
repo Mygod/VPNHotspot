@@ -55,24 +55,15 @@ it and shows an app-visible warning. Nonfatal reports are appropriate when the
 daemon preserves the broader requested operation but loses an optional behavior
 or observes unexpected background state.
 
-Examples:
+Representative examples:
 
-- DNS TCP or UDP listener setup fails for one MAC and routing omits only that
-  MAC/protocol redirect;
-- NAT66 TCP or UDP listener setup fails for one MAC and routing omits only that
-  MAC/protocol interception;
-- routing fails to install one staged MAC/protocol DNS or NAT66 rule, so the
-  daemon cancels that staged listener and omits only that capability;
-- NAT66 ICMP startup fails but NAT66 TCP/UDP can continue;
-- NAT66 ICMPv6 NFQUEUE receives a packet without a live IPv6 NAT owner, without
-  usable six-byte source hardware-address metadata, or with a MAC outside the
-  committed client set;
+- a per-MAC DNS or NAT66 listener/routing capability fails, and the daemon omits
+  only that MAC/protocol capability;
+- NAT66 ICMPv6 receives a packet without usable committed-client attribution and
+  drops that packet while preserving the broader NAT66 session;
 - IPv4 forwarding counter readout fails during a traffic-counter read, while
   daemon-owned DNS/NAT66 counters can still be returned;
-- a session routing mutation fails while other routing mutations remain useful;
-- neighbour data contains an invalid link-layer address length;
-- a background task join fails;
-- best-effort cleanup sees an unexpected error that does not invalidate the
+- a background task or best-effort cleanup step fails without invalidating the
   command's main result.
 
 Tie the report to a call ID when the failure belongs to a specific active call.

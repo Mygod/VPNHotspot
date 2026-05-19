@@ -110,20 +110,31 @@ class ClientsFragment : Fragment() {
                         TrafficStatsSource.NAT66_UDP -> R.string.clients_stats_nat66_udp
                         TrafficStatsSource.NAT66_ICMPV6 -> R.string.clients_stats_nat66_icmpv6
                     }))
-                    if (stats.source == TrafficStatsSource.NAT66_TCP) {
-                        append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_connections,
-                            stats.sentPackets.toPluralInt()), format.format(stats.sentPackets)))
-                        append(TextUtils.expandTemplate(getText(R.string.clients_stats_sent_bytes),
-                            Formatter.formatFileSize(context, stats.sentBytes)))
-                        append(TextUtils.expandTemplate(getText(R.string.clients_stats_received_bytes),
-                            Formatter.formatFileSize(context, stats.receivedBytes)))
-                    } else {
-                        append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_2,
-                            stats.sentPackets.toPluralInt()), format.format(stats.sentPackets),
-                            Formatter.formatFileSize(context, stats.sentBytes)))
-                        append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_3,
-                            stats.receivedPackets.toPluralInt()), format.format(stats.receivedPackets),
-                            Formatter.formatFileSize(context, stats.receivedBytes)))
+                    when (stats.source) {
+                        TrafficStatsSource.NAT66_TCP -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_connections,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets)))
+                            append(TextUtils.expandTemplate(getText(R.string.clients_stats_sent_bytes),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(getText(R.string.clients_stats_received_bytes),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
+                        TrafficStatsSource.DNS -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_queries,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_responses,
+                                stats.receivedPackets.toPluralInt()), format.format(stats.receivedPackets),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
+                        else -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_2,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_3,
+                                stats.receivedPackets.toPluralInt()), format.format(stats.receivedPackets),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
                     }
                 }
             }.ifEmpty { getText(R.string.clients_stats_empty) })
