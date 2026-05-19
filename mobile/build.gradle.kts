@@ -4,6 +4,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -26,17 +27,21 @@ abstract class GenerateGitJavaTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
+    @get:Internal
+    abstract val repositoryDir: DirectoryProperty
+
     @TaskAction
     fun generate() {
+        val repositoryDir = repositoryDir.get().asFile
         val gitSha = try {
-            ProcessBuilder("git", "rev-parse", "HEAD").directory(project.rootDir).redirectErrorStream(true).start().run {
+            ProcessBuilder("git", "rev-parse", "HEAD").directory(repositoryDir).redirectErrorStream(true).start().run {
                 inputStream.bufferedReader().readText().trimEnd().takeIf { waitFor() == 0 }
             }
         } catch (_: Exception) {
             null
         }
         val gitStatus = if (includeStatus.get()) try {
-            ProcessBuilder("git", "status", "--porcelain=v1").directory(project.rootDir).redirectErrorStream(true)
+            ProcessBuilder("git", "status", "--porcelain=v1").directory(repositoryDir).redirectErrorStream(true)
                 .start().run { inputStream.bufferedReader().readText().trimEnd().takeIf { waitFor() == 0 } }
         } catch (_: Exception) {
             null
@@ -73,10 +78,13 @@ abstract class BuildDaemonNativeLibsTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
+    @get:Internal
+    abstract val targetDir: DirectoryProperty
+
     @TaskAction
     fun build() {
         val cargoDir = sourceDir.get().asFile
-        val targetDir = project.layout.buildDirectory.dir("rust/vpnhotspotd").get().asFile
+        val targetDir = targetDir.get().asFile
         outputDir.get().asFile.apply {
             deleteRecursively()
             mkdirs()
@@ -172,6 +180,7 @@ androidComponents.onVariants { variant ->
     val task = tasks.register<GenerateGitJavaTask>("generate${variant.name.replaceFirstChar(Char::titlecase)}GitJava") {
         includeStatus.set(variant.buildType == "debug")
         outputDir.set(layout.buildDirectory.dir("generated/source/git/${variant.name}"))
+        repositoryDir.set(rootProject.layout.projectDirectory)
         outputs.upToDateWhen { false }
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
@@ -182,6 +191,7 @@ androidComponents.onVariants { variant ->
         cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
         androidPlatform.set(android.defaultConfig.minSdk!!)
         outputDir.set(layout.buildDirectory.dir("generated/nativeLibs/daemon/${variant.name}"))
+        targetDir.set(layout.buildDirectory.dir("rust/vpnhotspotd"))
     }
     variant.sources.jniLibs?.addGeneratedSourceDirectory(daemonTask, BuildDaemonNativeLibsTask::outputDir)
 }

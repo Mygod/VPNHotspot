@@ -98,6 +98,7 @@ ancho de banda de ^3, tiempo de espera de inactividad desactivado</string>
 
     <string name="clients_empty">No hay clientes conectados</string>
     <string name="clients_popup_nickname">Apodo…</string>
+    <string name="clients_nickname_hint">Apodo</string>
     <string name="clients_popup_block">Bloquear</string>
     <string name="clients_popup_block_service_inactive">Este cliente se bloqueará cuando se active el servicio de esta interfaz.</string>
     <string name="clients_popup_unblock">Desbloquear</string>
@@ -174,7 +175,6 @@ ancho de banda de ^3, tiempo de espera de inactividad desactivado</string>
     </plurals>
 
     <string name="failure_reason_unknown">desconocido #%d</string>
-    <string name="noisy_su_failure">Algo salió mal, por favor verifica la información de depuración.</string>
     <string name="permission_missing">Permiso faltante</string>
 
     <string name="configuration_view">Configuración Wi\u2011Fi</string>

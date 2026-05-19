@@ -103,6 +103,7 @@
 
     <string name="clients_empty">尚未有裝置連線</string>
     <string name="clients_popup_nickname">暱稱…</string>
+    <string name="clients_nickname_hint">暱稱</string>
     <string name="clients_popup_block">封鎖</string>
     <string name="clients_popup_block_service_inactive">啟用此介面的服務後，此裝置將會被封鎖。</string>
     <string name="clients_popup_unblock">解除封鎖</string>
@@ -169,7 +170,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">未知錯誤 #%d</string>
-    <string name="noisy_su_failure">發生錯誤，請檢查偵錯資訊。</string>
     <string name="permission_missing">權限不足</string>
 
     <string name="configuration_view">Wi\u2011Fi 設定</string>

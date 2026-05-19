@@ -83,6 +83,7 @@
     <string name="connected_state_failed">" (perdido)"</string>
 
     <string name="clients_popup_nickname">Apelido…</string>
+    <string name="clients_nickname_hint">Apelido</string>
     <string name="clients_popup_block">Bloquear</string>
     <string name="clients_popup_block_service_inactive">Este cliente será bloqueado quando o serviço desta interface for ativado.</string>
     <string name="clients_popup_unblock">Desbloquear</string>
@@ -157,7 +158,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">desconhecido #%d</string>
-    <string name="noisy_su_failure">Algo se saiu errado. Por favor, verifique o log de depuração</string>
     <string name="permission_missing">Permissão faltando.</string>
 
     <string name="configuration_view">Configuração Wi\u2011Fi</string>

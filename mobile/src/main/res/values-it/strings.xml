@@ -63,6 +63,7 @@
     <string name="connected_state_failed">" (perso)"</string>
 
     <string name="clients_popup_nickname">Nickname…</string>
+    <string name="clients_nickname_hint">Nickname</string>
     <string name="clients_popup_block">Blocca</string>
     <string name="clients_popup_block_service_inactive">Questo client verrà bloccato quando il servizio per questa interfaccia sarà attivato.</string>
     <string name="clients_popup_unblock">Sblocca</string>
@@ -132,7 +133,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">sconosciuta #%d</string>
-    <string name="noisy_su_failure">Qualcosa è andato storto, per favore controlla le informazioni di debug.</string>
 
     <string name="configuration_view">Configurazione Wi\u2011Fi</string>
     <string name="configuration_share">Condividi con Codice QR</string>

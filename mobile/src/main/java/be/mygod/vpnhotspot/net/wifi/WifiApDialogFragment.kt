@@ -8,6 +8,7 @@ import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
+import android.os.PersistableBundle
 import android.os.Parcelable
 import android.text.Editable
 import android.text.InputFilter
@@ -23,7 +24,6 @@ import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.persistableBundleOf
 import androidx.core.view.isGone
 import be.mygod.vpnhotspot.AlertDialogFragment
 import be.mygod.vpnhotspot.App.Companion.app
@@ -586,7 +586,9 @@ class WifiApDialogFragment : AlertDialogFragment<WifiApDialogFragment.Arg, WifiA
             android.R.id.copy -> try {
                 app.clipboard.setPrimaryClip(ClipData.newPlainText(null,
                         Base64.encodeToString(generateConfig().toByteArray(), BASE64_FLAGS)).apply {
-                    description.extras = persistableBundleOf(ClipDescription.EXTRA_IS_SENSITIVE to true)
+                    description.extras = PersistableBundle().apply {
+                        putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                    }
                 })
                 true
             } catch (e: RuntimeException) {

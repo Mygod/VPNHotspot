@@ -5,9 +5,9 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
-import androidx.core.os.bundleOf
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.withStarted
 import androidx.preference.EditTextPreferenceDialogFragmentCompat
@@ -20,7 +20,7 @@ import kotlinx.coroutines.launch
 
 class AutoCompleteNetworkPreferenceDialogFragment : EditTextPreferenceDialogFragmentCompat() {
     fun setArguments(key: String) {
-        arguments = bundleOf(ARG_KEY to key)
+        arguments = Bundle().apply { putString(ARG_KEY, key) }
     }
 
     private lateinit var editText: AlwaysAutoCompleteEditText

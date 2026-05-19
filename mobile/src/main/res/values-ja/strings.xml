@@ -87,6 +87,7 @@
     <string name="connected_state_failed">" (ロスト)"</string>
     <string name="clients_empty">クライアントが接続されていません</string>
     <string name="clients_popup_nickname">ニックネーム…</string>
+    <string name="clients_nickname_hint">ニックネーム</string>
     <string name="clients_popup_block">ブロック</string>
     <string name="clients_popup_block_service_inactive">このインターフェースのサービスを ON にすると、このクライアントはブロックされます。</string>
     <string name="clients_popup_unblock">ブロックを解除</string>
@@ -155,7 +156,6 @@
         <item quantity="other">%d 個のデバイス</item>
     </plurals>
     <string name="failure_reason_unknown">不明 #%d</string>
-    <string name="noisy_su_failure">問題が発生しました。デバッグ情報を確認してください。</string>
     <string name="permission_missing">権限がありません</string>
     <string name="configuration_view">Wi\u2011Fi の構成</string>
     <string name="configuration_invalid">無効な設定の可能性があります</string>

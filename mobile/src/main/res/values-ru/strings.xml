@@ -31,6 +31,7 @@
     <string name="connected_state_failed">" (потеря)"</string>
 
     <string name="clients_popup_nickname">Никнэйм…</string>
+    <string name="clients_nickname_hint">Никнэйм</string>
     <string name="clients_popup_block">Блок</string>
     <string name="clients_popup_block_service_inactive">Этот клиент будет заблокирован, когда служба для этого интерфейса будет включена.</string>
     <string name="clients_popup_unblock">Разблокировать</string>
@@ -52,7 +53,6 @@
     </plurals>
 
     <string name="failure_reason_unknown">Неизвестно #%d</string>
-    <string name="noisy_su_failure">Что-то пошло не так, пожалуйста, проверьте отладочную информацию.</string>
 
     <string name="configuration_view">Настройка Wi-Fi ретранслятора</string>
     <string name="wifi_ssid" msgid="5519636102673067319">"Имя сети"</string>

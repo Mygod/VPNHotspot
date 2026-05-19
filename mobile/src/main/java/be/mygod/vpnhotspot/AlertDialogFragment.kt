@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.os.Parcelable
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatDialogFragment
-import androidx.core.os.bundleOf
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.setFragmentResult
 import androidx.fragment.app.setFragmentResultListener
@@ -56,7 +55,9 @@ abstract class AlertDialogFragment<Arg : Parcelable, Ret : Parcelable> :
 
     override fun onDismiss(dialog: DialogInterface) {
         super.onDismiss(dialog)
-        setFragmentResult(resultKey ?: return, bundleOf(KEY_WHICH to Activity.RESULT_CANCELED))
+        setFragmentResult(resultKey ?: return, Bundle().apply {
+            putInt(KEY_WHICH, Activity.RESULT_CANCELED)
+        })
     }
 }
 

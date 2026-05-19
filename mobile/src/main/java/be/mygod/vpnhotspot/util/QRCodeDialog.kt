@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.Toast
-import androidx.core.os.bundleOf
 import androidx.fragment.app.DialogFragment
 import be.mygod.vpnhotspot.R
 import com.google.zxing.BarcodeFormat
@@ -24,7 +23,7 @@ class QRCodeDialog : DialogFragment() {
         private val iso88591 = StandardCharsets.ISO_8859_1.newEncoder()
     }
 
-    fun withArg(arg: String) = apply { arguments = bundleOf(KEY_ARG to arg) }
+    fun withArg(arg: String) = apply { arguments = Bundle().apply { putString(KEY_ARG, arg) } }
     private val arg get() = arguments?.getString(KEY_ARG)
 
     /**

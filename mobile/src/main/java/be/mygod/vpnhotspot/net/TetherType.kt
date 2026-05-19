@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import timber.log.Timber
 import java.util.regex.Pattern
 
-enum class TetherType(@DrawableRes val icon: Int) {
+enum class TetherType(@get:DrawableRes val icon: Int) {
     NONE(R.drawable.ic_device_wifi_tethering),
     WIFI_P2P(R.drawable.ic_action_settings_input_antenna),
     USB(R.drawable.ic_device_usb),
