@@ -371,7 +371,10 @@ Nonexported system resources:
 Other:
 
 * Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
-* `IPv6 NAT` mode depends on the iptables `TPROXY` target and transparent sockets.
+* `IPv6 NAT` mode depends on the iptables `TPROXY` and `NFQUEUE` targets and
+  transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
+  and assumes queued downstream packets expose six-byte source hardware-address
+  metadata through `NFQA_HWADDR`.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.

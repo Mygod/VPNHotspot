@@ -96,7 +96,7 @@ message ReplyFrame {
   uint64 call_id = 1;
   oneof payload {
     Ack ack = 2;
-    TrafficCounterLines traffic_counter_lines = 3;
+    TrafficCounters traffic_counters = 3;
   }
 }
 
@@ -125,8 +125,33 @@ message CompleteFrame {
 
 message Ack {}
 
-message TrafficCounterLines {
-  repeated string lines = 1;
+message TrafficCounters {
+  repeated TrafficCounter counters = 1;
+}
+
+message TrafficCounter {
+  bytes mac = 1;
+  string downstream = 2;
+  TrafficCounterSource source = 3;
+  uint64 sent_packets = 4;
+  uint64 sent_bytes = 5;
+  uint64 received_packets = 6;
+  uint64 received_bytes = 7;
+}
+
+message TrafficCounterSource {
+  oneof source {
+    bytes ipv4_forward_address = 1;
+    DaemonTrafficSource daemon_source = 2;
+  }
+}
+
+enum DaemonTrafficSource {
+  DAEMON_TRAFFIC_SOURCE_UNSPECIFIED = 0;
+  DAEMON_TRAFFIC_SOURCE_DNS = 1;
+  DAEMON_TRAFFIC_SOURCE_NAT66_TCP = 2;
+  DAEMON_TRAFFIC_SOURCE_NAT66_UDP = 3;
+  DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 = 4;
 }
 
 message NeighbourMonitorUpdate {

@@ -2,6 +2,7 @@ use std::io;
 
 use crate::{firewall::IptablesTarget, netlink, platform, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
+use vpnhotspotd::shared::ipv4_forward_counter::changed_ipv4_forward_counter_addresses;
 use vpnhotspotd::shared::model::{SessionConfig, SessionPorts};
 use vpnhotspotd::shared::proto::daemon::CleanRoutingCommand;
 
@@ -10,6 +11,7 @@ mod firewall_cleanup;
 mod iptables;
 mod ipv6_nat_firewall;
 mod ipv6_nat_intercept;
+mod ipv6_nat_listener_rules;
 mod ndc;
 mod netlink_commands;
 mod static_addresses;
@@ -100,9 +102,10 @@ impl RoutingMutation {
 }
 
 pub(crate) struct Runtime {
+    call_id: u64,
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
-    ipv6_nat_intercept_mode: Ipv6NatInterceptMode,
+    ipv6_nat_intercept_mode: Option<Ipv6NatInterceptMode>,
     netlink: netlink::Handle,
     applied: Vec<RoutingMutation>,
 }
@@ -114,21 +117,18 @@ impl Runtime {
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
         netlink: netlink::Handle,
-    ) -> Self {
-        let ipv6_nat_intercept_mode = if config.ipv6_nat.is_some() && ports.ipv6_nat.is_some() {
-            Ipv6NatInterceptMode::detect(call_id, &netlink, &config.downstream).await
-        } else {
-            Ipv6NatInterceptMode::FwmarkFallback
-        };
+    ) -> (Self, SessionPorts) {
         let mut runtime = Self {
+            call_id,
             ports,
             downstream_ipv4,
-            ipv6_nat_intercept_mode,
+            ipv6_nat_intercept_mode: None,
             netlink,
             applied: Vec::new(),
         };
         runtime.setup(config).await;
-        runtime
+        let committed = runtime.reconcile_committed_ports(config).await;
+        (runtime, committed)
     }
 
     pub(crate) async fn replace(
@@ -136,7 +136,8 @@ impl Runtime {
         previous: &SessionConfig,
         next: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
-    ) -> io::Result<()> {
+        ports: SessionPorts,
+    ) -> io::Result<SessionPorts> {
         if previous.downstream != next.downstream {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -144,9 +145,11 @@ impl Runtime {
             ));
         }
         self.downstream_ipv4 = downstream_ipv4;
+        self.ports = ports;
+        self.reset_changed_ipv4_counter_rules(previous, next).await;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;
-        Ok(())
+        Ok(self.reconcile_committed_ports(next).await)
     }
 
     pub(crate) async fn stop(mut self) {
@@ -156,6 +159,40 @@ impl Runtime {
     async fn setup(&mut self, config: &SessionConfig) {
         let desired = self.desired_mutations(config).await;
         self.reconcile(desired).await;
+    }
+
+    async fn reconcile_committed_ports(&mut self, config: &SessionConfig) -> SessionPorts {
+        let committed = self.committed_ports(config);
+        self.ports = committed.clone();
+        let desired = self.desired_mutations(config).await;
+        self.reconcile(desired).await;
+        committed
+    }
+
+    async fn reset_changed_ipv4_counter_rules(
+        &mut self,
+        previous: &SessionConfig,
+        next: &SessionConfig,
+    ) {
+        for address in changed_ipv4_forward_counter_addresses(&previous.clients, &next.clients) {
+            let Some(client) = previous
+                .clients
+                .iter()
+                .find(|client| client.ipv4.contains(&address))
+            else {
+                continue;
+            };
+            for rule in Self::client_ip_stats_rules(previous, client.mac, address) {
+                let mutation = RoutingMutation::Iptables(rule);
+                let mut index = self.applied.len();
+                while index > 0 {
+                    index -= 1;
+                    if self.applied[index] == mutation && mutation.delete(&self.netlink).await {
+                        self.applied.remove(index);
+                    }
+                }
+            }
+        }
     }
 
     async fn reconcile(&mut self, desired: Vec<RoutingMutation>) {

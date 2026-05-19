@@ -28,11 +28,11 @@ pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
 /// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
 pub const DAEMON_INTERCEPT_FWMARK_VALUE: u32 = 0x1000_0000;
 pub const DAEMON_INTERCEPT_FWMARK_MASK: u32 = 0x1000_0000;
-/// Internal UDP TPROXY listener address. Intercepted packets still carry their original
-/// destination through IPV6_RECVORIGDSTADDR.
-pub const DAEMON_UDP_TPROXY_ADDRESS: Ipv6Addr = Ipv6Addr::LOCALHOST;
+/// Internal TCP/UDP TPROXY listener address. Intercepted packets still carry their original
+/// destination through TCP transparent socket state or IPV6_RECVORIGDSTADDR.
+pub const DAEMON_TPROXY_ADDRESS: Ipv6Addr = Ipv6Addr::LOCALHOST;
 /// Internal NFQUEUE number for NAT66 ICMPv6 Echo interception.
-pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_063;
+pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_000;
 /// Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
 /// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
 pub const DAEMON_TABLE: u32 = 900;
@@ -96,18 +96,37 @@ pub struct Ipv6NatConfig {
     pub gateway: Ipv6Inet,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct SessionPorts {
-    pub dns_tcp: Option<u16>,
-    pub dns_udp: Option<u16>,
+    pub dns: Vec<ClientDnsPorts>,
     pub ipv6_nat: Option<Ipv6NatPorts>,
 }
 
 #[derive(Clone, Copy)]
-pub struct Ipv6NatPorts {
+pub struct ClientDnsPorts {
+    pub mac: [u8; 6],
     pub tcp: Option<u16>,
     pub udp: Option<u16>,
+}
+
+#[derive(Clone)]
+pub struct Ipv6NatPorts {
+    pub clients: Vec<ClientIpv6NatPorts>,
     pub icmp_echo: bool,
+}
+
+#[derive(Clone, Copy)]
+pub struct ClientIpv6NatPorts {
+    pub mac: [u8; 6],
+    pub tcp: Option<u16>,
+    pub udp: Option<u16>,
+}
+
+pub fn mac_string(mac: &[u8; 6]) -> String {
+    format!(
+        "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+    )
 }
 
 pub fn ipv6_nat_prefix(seed: &str, interface: &str) -> Ipv6Cidr {
@@ -166,6 +185,17 @@ pub fn select_upstream_network(
 
 fn route_matches(routes: &[Ipv6Cidr], destination: Ipv6Addr) -> bool {
     routes.iter().any(|route| route.contains(&destination))
+}
+
+pub fn has_client_scoped_ipv6_nat_demand(config: &SessionConfig) -> bool {
+    config.ipv6_nat.is_some() && !config.clients.is_empty()
+}
+
+pub fn should_disable_uncommitted_ipv6_nat(
+    config: &SessionConfig,
+    committed_ports: &SessionPorts,
+) -> bool {
+    has_client_scoped_ipv6_nat_demand(config) && committed_ports.ipv6_nat.is_none()
 }
 
 #[cfg(test)]
@@ -264,6 +294,56 @@ mod tests {
         assert_eq!(kernel_release_supports_fra_ip_proto("4.x"), None);
     }
 
+    #[test]
+    fn uncommitted_ipv6_nat_is_deferred_without_clients() {
+        let mut config = config(None, Vec::new(), None);
+        config.ipv6_nat = Some(ipv6_nat_config());
+        assert!(!should_disable_uncommitted_ipv6_nat(
+            &config,
+            &SessionPorts {
+                dns: Vec::new(),
+                ipv6_nat: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn uncommitted_ipv6_nat_is_disabled_with_clients() {
+        let mut config = config(None, Vec::new(), None);
+        config.clients.push(ClientConfig {
+            mac: [2, 3, 5, 7, 11, 13],
+            ipv4: Vec::new(),
+        });
+        config.ipv6_nat = Some(ipv6_nat_config());
+        assert!(should_disable_uncommitted_ipv6_nat(
+            &config,
+            &SessionPorts {
+                dns: Vec::new(),
+                ipv6_nat: None,
+            },
+        ));
+    }
+
+    #[test]
+    fn committed_ipv6_nat_is_kept_with_clients() {
+        let mut config = config(None, Vec::new(), None);
+        config.clients.push(ClientConfig {
+            mac: [2, 3, 5, 7, 11, 13],
+            ipv4: Vec::new(),
+        });
+        config.ipv6_nat = Some(ipv6_nat_config());
+        assert!(!should_disable_uncommitted_ipv6_nat(
+            &config,
+            &SessionPorts {
+                dns: Vec::new(),
+                ipv6_nat: Some(Ipv6NatPorts {
+                    clients: Vec::new(),
+                    icmp_echo: false,
+                }),
+            },
+        ));
+    }
+
     fn config(
         primary_network: Option<Network>,
         primary_routes: Vec<Ipv6Cidr>,
@@ -289,5 +369,11 @@ mod tests {
         Ipv6Inet::new(address.parse::<Ipv6Addr>().unwrap(), prefix_len)
             .unwrap()
             .network()
+    }
+
+    fn ipv6_nat_config() -> Ipv6NatConfig {
+        Ipv6NatConfig {
+            gateway: Ipv6Inet::new("fd00::1".parse().unwrap(), 64).unwrap(),
+        }
     }
 }

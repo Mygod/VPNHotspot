@@ -11,6 +11,7 @@ use tokio::task::JoinHandle;
 
 use crate::{netlink, report};
 use vpnhotspotd::shared::model::{Network, SessionConfig};
+use vpnhotspotd::shared::nat66_counter::Nat66Counters;
 
 mod downstream;
 mod probe;
@@ -60,6 +61,7 @@ struct IcmpSession {
     session_key: u64,
     state: Arc<EchoState>,
     config: Arc<Mutex<SessionConfig>>,
+    counters: Nat66Counters,
 }
 
 #[derive(Clone)]
@@ -68,7 +70,9 @@ pub(crate) struct UdpErrorContext {
     pub(crate) reply_mark: u32,
     pub(crate) gateway: Ipv6Addr,
     pub(crate) client: SocketAddrV6,
+    pub(crate) client_mac: [u8; 6],
     pub(crate) destination: SocketAddrV6,
+    pub(crate) counters: Nat66Counters,
 }
 
 impl Dispatcher {
@@ -87,6 +91,7 @@ impl Dispatcher {
         &self,
         initial: &SessionConfig,
         config: Arc<Mutex<SessionConfig>>,
+        counters: Nat66Counters,
         netlink: &netlink::Handle,
     ) -> io::Result<Registration> {
         if initial.ipv6_nat.is_none() {
@@ -103,7 +108,9 @@ impl Dispatcher {
             session_key,
             state: self.inner.state.clone(),
             config,
+            counters: counters.clone(),
         });
+        self.inner.state.register_session(session_key, counters)?;
         self.inner
             .registrations
             .lock()
@@ -166,6 +173,14 @@ impl Drop for Registration {
                 "PoisonError",
             ),
         }
+    }
+}
+
+impl Registration {
+    pub(crate) fn remove_client(&self, mac: [u8; 6]) -> io::Result<()> {
+        self.session
+            .state
+            .remove_session_client(self.session.session_key, mac)
     }
 }
 

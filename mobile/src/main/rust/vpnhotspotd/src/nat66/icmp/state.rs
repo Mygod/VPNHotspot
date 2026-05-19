@@ -16,6 +16,7 @@ use super::UdpErrorContext;
 use crate::report;
 use vpnhotspotd::shared::icmp_nat::{EchoAllocation, EchoEntry, EchoMap};
 use vpnhotspotd::shared::model::Network;
+use vpnhotspotd::shared::nat66_counter::Nat66Counters;
 
 #[derive(Default)]
 pub(super) struct EchoState {
@@ -25,6 +26,7 @@ pub(super) struct EchoState {
 #[derive(Default)]
 struct EchoStateInner {
     map: EchoMap,
+    session_counters: HashMap<u64, Nat66Counters>,
     upstream: HashMap<Network, UpstreamSocket>,
     udp_errors: HashMap<UdpErrorKey, UdpErrorContext>,
 }
@@ -68,6 +70,17 @@ impl Drop for UdpErrorRegistration {
 }
 
 impl EchoState {
+    pub(super) fn register_session(
+        &self,
+        session_key: u64,
+        counters: Nat66Counters,
+    ) -> io::Result<()> {
+        self.lock_inner()?
+            .session_counters
+            .insert(session_key, counters);
+        Ok(())
+    }
+
     pub(super) fn allocate_echo(
         state: &Arc<Self>,
         allocation: EchoAllocation,
@@ -230,12 +243,40 @@ impl EchoState {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
             inner.map.remove_session(now, IDLE_TIMEOUT, session_key);
+            inner.session_counters.remove(&session_key);
             Self::remove_idle_upstreams_locked(&mut inner, now)
         };
         for upstream in upstreams {
             upstream.stop.cancel();
         }
         Ok(())
+    }
+
+    pub(super) fn remove_session_client(
+        &self,
+        session_key: u64,
+        client_mac: [u8; 6],
+    ) -> io::Result<()> {
+        let upstreams = {
+            let mut inner = self.lock_inner()?;
+            let now = Instant::now();
+            inner
+                .map
+                .remove_session_client(now, IDLE_TIMEOUT, session_key, client_mac);
+            Self::remove_idle_upstreams_locked(&mut inner, now)
+        };
+        for upstream in upstreams {
+            upstream.stop.cancel();
+        }
+        Ok(())
+    }
+
+    pub(super) fn session_counters(&self, session_key: u64) -> io::Result<Option<Nat66Counters>> {
+        Ok(self
+            .lock_inner()?
+            .session_counters
+            .get(&session_key)
+            .cloned())
     }
 
     pub(super) fn upstream_activity(&self, network: Network) -> io::Result<UpstreamActivity> {

@@ -100,9 +100,9 @@ object DaemonController {
         request(ClientEnvelope(replace_session = ReplaceSessionCommand(sessionId, config))).requireAck()
     }
 
-    suspend fun readTrafficCounterLines(): List<String> {
+    suspend fun readTrafficCounters(): List<TrafficCounter> {
         val reply = request(ClientEnvelope(read_traffic_counters = ReadTrafficCountersCommand()))
-        return reply.traffic_counter_lines?.lines ?: throw IOException("Unexpected daemon reply $reply")
+        return reply.traffic_counters?.counters ?: throw IOException("Unexpected daemon reply $reply")
     }
 
     fun neighbourMonitor(): Flow<NeighbourMonitorUpdate> = flow {

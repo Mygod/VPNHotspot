@@ -28,6 +28,13 @@ pub(super) async fn clean() {
     delete_iptables_repeated(
         IptablesTarget::Ipv4,
         "filter",
+        "INPUT",
+        &["-j", "vpnhotspot_dns_input"],
+    )
+    .await;
+    delete_iptables_repeated(
+        IptablesTarget::Ipv4,
+        "filter",
         "FORWARD",
         &["-j", "vpnhotspot_acl"],
     )
@@ -46,8 +53,10 @@ pub(super) async fn clean() {
 -X vpnhotspot_dns_tproxy
 COMMIT
 *filter
+:vpnhotspot_dns_input - [0:0]
 :vpnhotspot_acl - [0:0]
 :vpnhotspot_stats - [0:0]
+-X vpnhotspot_dns_input
 -X vpnhotspot_acl
 -X vpnhotspot_stats
 COMMIT

@@ -7,7 +7,8 @@ use rtnetlink::packet_route::IpProtocol;
 use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
-    SessionConfig, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
+    mac_string, ClientDnsPorts, ClientIpv6NatPorts, Ipv6NatConfig, Ipv6NatPorts, SessionConfig,
+    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
     DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
@@ -26,7 +27,10 @@ use super::{
 };
 
 impl Runtime {
-    pub(super) async fn desired_mutations(&self, config: &SessionConfig) -> Vec<RoutingMutation> {
+    pub(super) async fn desired_mutations(
+        &mut self,
+        config: &SessionConfig,
+    ) -> Vec<RoutingMutation> {
         let mut mutations = Vec::new();
         if config.ip_forward {
             push_unique(
@@ -36,6 +40,14 @@ impl Runtime {
                 },
             );
         }
+        push_unique(
+            &mut mutations,
+            RoutingMutation::EnsureIptablesChain {
+                target: IptablesTarget::Ipv4,
+                table: "filter",
+                chain: "vpnhotspot_dns_input",
+            },
+        );
         for rule in self.dns_rules(config) {
             push_unique(&mut mutations, RoutingMutation::Iptables(rule));
         }
@@ -152,8 +164,25 @@ impl Runtime {
                 push_unique(&mut mutations, RoutingMutation::Iptables(rule));
             }
         }
-        let ipv6_nat = config.ipv6_nat.as_ref().zip(self.ports.ipv6_nat);
-        if let Some((ipv6_nat, ports)) = ipv6_nat {
+        if config.ipv6_nat.is_some()
+            && self.ipv6_nat_intercept_mode.is_none()
+            && self.ports.ipv6_nat.as_ref().is_some_and(|ports| {
+                ports
+                    .clients
+                    .iter()
+                    .any(|client| client.tcp.is_some() || client.udp.is_some())
+            })
+        {
+            self.ipv6_nat_intercept_mode = Some(
+                Ipv6NatInterceptMode::detect(self.call_id, &self.netlink, &config.downstream).await,
+            );
+        }
+        let ipv6_nat = config
+            .ipv6_nat
+            .as_ref()
+            .zip(self.ports.ipv6_nat.as_ref())
+            .zip(self.ipv6_nat_intercept_mode);
+        if let Some(((ipv6_nat, ports), intercept_mode)) = ipv6_nat {
             push_unique(
                 &mut mutations,
                 RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
@@ -185,12 +214,19 @@ impl Runtime {
                     table: DAEMON_TABLE,
                 })),
             );
-            match self.ipv6_nat_intercept_mode {
+            match intercept_mode {
                 Ipv6NatInterceptMode::ProtocolRules => {
-                    for (port, protocol) in
-                        [(ports.tcp, IpProtocol::Tcp), (ports.udp, IpProtocol::Udp)]
-                    {
-                        if port.is_some() {
+                    for (enabled, protocol) in [
+                        (
+                            ports.clients.iter().any(|client| client.tcp.is_some()),
+                            IpProtocol::Tcp,
+                        ),
+                        (
+                            ports.clients.iter().any(|client| client.udp.is_some()),
+                            IpProtocol::Udp,
+                        ),
+                    ] {
+                        if enabled {
                             push_unique(
                                 &mut mutations,
                                 RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
@@ -226,25 +262,18 @@ impl Runtime {
                 config,
                 ipv6_nat,
                 ports,
-                self.ipv6_nat_intercept_mode,
+                intercept_mode,
             );
         }
-        let mut client_macs_v4 = Vec::new();
-        let mut client_ips = Vec::new();
+        let mut client_ip_v4 = Vec::new();
         let mut client_macs_v6 = Vec::new();
         for client in &config.clients {
-            if !client_macs_v4.contains(&client.mac) {
-                client_macs_v4.push(client.mac);
-                for rule in Self::client_mac_v4_rules(config, client.mac) {
-                    push_unique(&mut mutations, RoutingMutation::Iptables(rule));
-                }
-            }
             for address in &client.ipv4 {
-                if client_ips.contains(address) {
+                if client_ip_v4.contains(&(client.mac, *address)) {
                     continue;
                 }
-                client_ips.push(*address);
-                for rule in Self::client_ip_stats_rules(config, *address) {
+                client_ip_v4.push((client.mac, *address));
+                for rule in Self::client_ipv4_forward_rules(config, client.mac, *address) {
                     push_unique(&mut mutations, RoutingMutation::Iptables(rule));
                 }
             }
@@ -259,32 +288,267 @@ impl Runtime {
         mutations
     }
 
-    fn dns_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
-        [("tcp", self.ports.dns_tcp), ("udp", self.ports.dns_udp)]
+    pub(super) fn committed_ports(&self, config: &SessionConfig) -> SessionPorts {
+        let mut dns = Vec::new();
+        for ports in &self.ports.dns {
+            let tcp = ports
+                .tcp
+                .filter(|port| self.dns_port_committed(config, ports.mac, "tcp", *port));
+            let udp = ports
+                .udp
+                .filter(|port| self.dns_port_committed(config, ports.mac, "udp", *port));
+            if tcp.is_some() || udp.is_some() {
+                dns.push(ClientDnsPorts {
+                    mac: ports.mac,
+                    tcp,
+                    udp,
+                });
+            }
+        }
+        let ipv6_nat = config.ipv6_nat.as_ref().and_then(|ipv6_nat| {
+            let ports = self.ports.ipv6_nat.as_ref()?;
+            let mut clients = Vec::new();
+            let session_rules_committed = self.has_applied_iptables_rules(
+                Ipv6NatFirewall::local_special_return_rules(config, ipv6_nat),
+            ) && self
+                .has_applied_iptables_rule(Ipv6NatFirewall::filter_input_jump_rule())
+                && self.has_applied_iptables_rules(Ipv6NatFirewall::input_filter_rules(config));
+            for ports in &ports.clients {
+                let tcp = ports.tcp.filter(|port| {
+                    self.ipv6_nat_port_committed(
+                        config,
+                        ipv6_nat,
+                        ports.mac,
+                        "tcp",
+                        *port,
+                        session_rules_committed,
+                    )
+                });
+                let udp = ports.udp.filter(|port| {
+                    self.ipv6_nat_port_committed(
+                        config,
+                        ipv6_nat,
+                        ports.mac,
+                        "udp",
+                        *port,
+                        session_rules_committed,
+                    )
+                });
+                if tcp.is_some() || udp.is_some() {
+                    clients.push(ClientIpv6NatPorts {
+                        mac: ports.mac,
+                        tcp,
+                        udp,
+                    });
+                }
+            }
+            if clients.is_empty() {
+                None
+            } else {
+                Some(Ipv6NatPorts {
+                    clients,
+                    icmp_echo: ports.icmp_echo
+                        && self.applied.contains(&RoutingMutation::Iptables(
+                            Ipv6NatFirewall::icmp_echo_rule(config, ipv6_nat),
+                        )),
+                })
+            }
+        });
+        SessionPorts { dns, ipv6_nat }
+    }
+
+    fn dns_port_committed(
+        &self,
+        config: &SessionConfig,
+        mac: [u8; 6],
+        protocol: &str,
+        port: u16,
+    ) -> bool {
+        self.has_applied_iptables_rule(Self::dns_input_jump_rule())
+            && self.has_applied_iptables_rules(
+                std::iter::once(self.dns_port_rule(config, mac, protocol, port))
+                    .chain(self.dns_port_guard_rules(config, protocol, port)),
+            )
+    }
+
+    fn ipv6_nat_port_committed(
+        &self,
+        config: &SessionConfig,
+        ipv6_nat: &Ipv6NatConfig,
+        mac: [u8; 6],
+        protocol: &str,
+        port: u16,
+        session_rules_committed: bool,
+    ) -> bool {
+        let Some(intercept_mode) = self.ipv6_nat_intercept_mode else {
+            return false;
+        };
+        session_rules_committed
+            && self.has_applied_iptables_rules(Ipv6NatFirewall::gateway_dns_prelude_rules(
+                config, ipv6_nat, protocol,
+            ))
+            && self.has_applied_iptables_rule(Ipv6NatFirewall::tproxy_listener_rule(
+                config,
+                mac,
+                protocol,
+                port,
+                intercept_mode,
+            ))
+    }
+
+    fn has_applied_iptables_rule(&self, rule: IptablesRule) -> bool {
+        self.applied.contains(&RoutingMutation::Iptables(rule))
+    }
+
+    fn has_applied_iptables_rules(&self, rules: impl IntoIterator<Item = IptablesRule>) -> bool {
+        rules
             .into_iter()
-            .filter_map(|(protocol, port)| {
-                let port = port?;
-                Some(IptablesRule::new(
-                    IptablesTarget::Ipv4,
-                    "nat",
-                    "PREROUTING",
-                    vec![
-                        "-i".into(),
-                        config.downstream.clone(),
-                        "-p".into(),
-                        protocol.into(),
-                        "-d".into(),
-                        self.downstream_ipv4.address.to_string(),
-                        "--dport".into(),
-                        "53".into(),
-                        "-j".into(),
-                        "DNAT".into(),
-                        "--to-destination".into(),
-                        format!(":{port}"),
-                    ],
-                ))
-            })
-            .collect()
+            .all(|rule| self.has_applied_iptables_rule(rule))
+    }
+
+    fn dns_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
+        let mut rules = Vec::new();
+        let mut client_macs = Vec::new();
+        for client in &config.clients {
+            if client_macs.contains(&client.mac) {
+                continue;
+            }
+            client_macs.push(client.mac);
+            let Some(ports) = self.ports.dns.iter().find(|ports| ports.mac == client.mac) else {
+                continue;
+            };
+            for (protocol, port) in [("tcp", ports.tcp), ("udp", ports.udp)] {
+                let Some(port) = port else {
+                    continue;
+                };
+                rules.push(self.dns_port_rule(config, client.mac, protocol, port));
+                let [allow, reject] = self.dns_port_guard_rules(config, protocol, port);
+                rules.push(reject);
+                rules.push(allow);
+            }
+        }
+        rules.push(Self::dns_input_jump_rule());
+        rules.extend(["tcp", "udp"].into_iter().map(|protocol| {
+            IptablesRule::new(
+                IptablesTarget::Ipv4,
+                "filter",
+                "vpnhotspot_dns_input",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-p".into(),
+                    protocol.into(),
+                    "-d".into(),
+                    self.downstream_ipv4.address.to_string(),
+                    "--dport".into(),
+                    "53".into(),
+                    "-j".into(),
+                    "REJECT".into(),
+                    "--reject-with".into(),
+                    if protocol == "tcp" {
+                        "tcp-reset".into()
+                    } else {
+                        "icmp-port-unreachable".into()
+                    },
+                ],
+            )
+        }));
+        rules
+    }
+
+    fn dns_port_rule(
+        &self,
+        config: &SessionConfig,
+        mac: [u8; 6],
+        protocol: &str,
+        port: u16,
+    ) -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv4,
+            "nat",
+            "PREROUTING",
+            vec![
+                "-i".into(),
+                config.downstream.clone(),
+                "-p".into(),
+                protocol.into(),
+                "-m".into(),
+                "mac".into(),
+                "--mac-source".into(),
+                mac_string(&mac),
+                "-d".into(),
+                self.downstream_ipv4.address.to_string(),
+                "--dport".into(),
+                "53".into(),
+                "-j".into(),
+                "DNAT".into(),
+                "--to-destination".into(),
+                format!(":{port}"),
+            ],
+        )
+    }
+
+    fn dns_port_guard_rules(
+        &self,
+        config: &SessionConfig,
+        protocol: &str,
+        port: u16,
+    ) -> [IptablesRule; 2] {
+        let base_args = [
+            "-i".to_owned(),
+            config.downstream.clone(),
+            "-p".to_owned(),
+            protocol.to_owned(),
+            "-d".to_owned(),
+            self.downstream_ipv4.address.to_string(),
+            "--dport".to_owned(),
+            port.to_string(),
+        ];
+        let mut allow_args = base_args.to_vec();
+        allow_args.extend([
+            "-m".to_owned(),
+            "conntrack".to_owned(),
+            "--ctorigdst".to_owned(),
+            self.downstream_ipv4.address.to_string(),
+            "--ctorigdstport".to_owned(),
+            "53".to_owned(),
+            "-j".to_owned(),
+            "RETURN".to_owned(),
+        ]);
+        let mut reject_args = base_args.to_vec();
+        reject_args.extend([
+            "-j".to_owned(),
+            "REJECT".to_owned(),
+            "--reject-with".to_owned(),
+            if protocol == "tcp" {
+                "tcp-reset".to_owned()
+            } else {
+                "icmp-port-unreachable".to_owned()
+            },
+        ]);
+        [
+            IptablesRule::new(
+                IptablesTarget::Ipv4,
+                "filter",
+                "vpnhotspot_dns_input",
+                allow_args,
+            ),
+            IptablesRule::new(
+                IptablesTarget::Ipv4,
+                "filter",
+                "vpnhotspot_dns_input",
+                reject_args,
+            ),
+        ]
+    }
+
+    fn dns_input_jump_rule() -> IptablesRule {
+        IptablesRule::new(
+            IptablesTarget::Ipv4,
+            "filter",
+            "INPUT",
+            vec!["-j".into(), "vpnhotspot_dns_input".into()],
+        )
     }
 
     fn forward_rules(&self, config: &SessionConfig) -> Vec<IptablesRule> {
@@ -369,43 +633,41 @@ impl Runtime {
         )
     }
 
-    fn client_mac_v4_rules(config: &SessionConfig, mac: [u8; 6]) -> Vec<IptablesRule> {
-        let mac = mac_string(&mac);
-        vec![
-            IptablesRule::new(
-                IptablesTarget::Ipv4,
-                "filter",
-                "vpnhotspot_acl",
-                vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-m".into(),
-                    "mac".into(),
-                    "--mac-source".into(),
-                    mac.clone(),
-                    "-j".into(),
-                    "ACCEPT".into(),
-                ],
-            ),
-            IptablesRule::new(
-                IptablesTarget::Ipv4,
-                "filter",
-                "vpnhotspot_acl",
-                vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-m".into(),
-                    "mac".into(),
-                    "--mac-source".into(),
-                    mac,
-                    "-j".into(),
-                    "vpnhotspot_stats".into(),
-                ],
-            ),
-        ]
+    fn client_ipv4_forward_rules(
+        config: &SessionConfig,
+        mac: [u8; 6],
+        address: Ipv4Addr,
+    ) -> Vec<IptablesRule> {
+        let mut rules = Vec::with_capacity(3);
+        let mac_string = mac_string(&mac);
+        let address_string = address.to_string();
+        rules.push(IptablesRule::new(
+            IptablesTarget::Ipv4,
+            "filter",
+            "vpnhotspot_acl",
+            vec![
+                "-i".into(),
+                config.downstream.clone(),
+                "-m".into(),
+                "mac".into(),
+                "--mac-source".into(),
+                mac_string,
+                "-s".into(),
+                address_string,
+                "-j".into(),
+                "vpnhotspot_stats".into(),
+            ],
+        ));
+        rules.extend(Self::client_ip_stats_rules(config, mac, address));
+        rules
     }
 
-    fn client_ip_stats_rules(config: &SessionConfig, address: Ipv4Addr) -> Vec<IptablesRule> {
+    pub(super) fn client_ip_stats_rules(
+        config: &SessionConfig,
+        mac: [u8; 6],
+        address: Ipv4Addr,
+    ) -> Vec<IptablesRule> {
+        let mac = mac_string(&mac);
         let address = address.to_string();
         vec![
             IptablesRule::new(
@@ -415,10 +677,14 @@ impl Runtime {
                 vec![
                     "-i".into(),
                     config.downstream.clone(),
+                    "-m".into(),
+                    "mac".into(),
+                    "--mac-source".into(),
+                    mac,
                     "-s".into(),
                     address.clone(),
                     "-j".into(),
-                    "RETURN".into(),
+                    "ACCEPT".into(),
                 ],
             ),
             IptablesRule::new(
@@ -431,7 +697,7 @@ impl Runtime {
                     "-d".into(),
                     address,
                     "-j".into(),
-                    "RETURN".into(),
+                    "ACCEPT".into(),
                 ],
             ),
         ]
@@ -499,11 +765,4 @@ fn host_subnet(downstream_ipv4: DownstreamIpv4) -> String {
     let subnet = Ipv4Inet::new(downstream_ipv4.address, downstream_ipv4.prefix_len)
         .expect("downstream IPv4 prefix length must be <= 32");
     format!("{}/{}", subnet.first_address(), subnet.network_length())
-}
-
-fn mac_string(mac: &[u8; 6]) -> String {
-    format!(
-        "{:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
-    )
 }

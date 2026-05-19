@@ -64,6 +64,7 @@ pub(crate) fn spawn_loop(
         let mut address_changed = false;
         let mut refresh_downstream_prefixes = true;
         let mut waiting_logged = false;
+        let mut advertising_current_prefix = false;
         loop {
             let now = Instant::now();
             let current = {
@@ -73,6 +74,52 @@ pub(crate) fn spawn_loop(
                 }
                 current.clone()
             };
+            if current.clients.is_empty() {
+                if advertising_current_prefix {
+                    let mut withdrew_current_prefix = false;
+                    if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
+                        let mtu = downstream_mtu(
+                            &netlink,
+                            &current.downstream,
+                            "nat66.ra_idle_mtu_lookup",
+                        )
+                        .await;
+                        match link_local_router(&netlink, &current.downstream).await {
+                            Ok(Some(router)) => {
+                                withdraw_prefixes_once_with_router(
+                                    &current,
+                                    &[ipv6_nat.gateway],
+                                    false,
+                                    router,
+                                    mtu,
+                                )
+                                .await;
+                                withdrew_current_prefix = true;
+                            }
+                            Ok(None) => {}
+                            Err(e) if netlink::is_missing_link(&e) => {}
+                            Err(e) => {
+                                report::io_with_details(
+                                    "nat66.ra_idle_link_local_lookup",
+                                    e,
+                                    [("interface", current.downstream.clone())],
+                                );
+                            }
+                        }
+                    }
+                    if withdrew_current_prefix || current.ipv6_nat.is_none() {
+                        advertising_current_prefix = false;
+                    }
+                }
+                suppressed_prefixes.clear();
+                next_suppressed_ra = None;
+                select! {
+                    _ = stop.cancelled() => break,
+                    _ = config_changed.notified() => refresh_downstream_prefixes = true,
+                    _ = ipv6_address_changed.notified() => address_changed = true,
+                }
+                continue;
+            }
             let send_address_changed = take(&mut address_changed);
             let mut send_current = false;
             if take(&mut refresh_downstream_prefixes) || send_address_changed {
@@ -162,12 +209,15 @@ pub(crate) fn spawn_loop(
                     next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
                 }
                 if send_current || router_changed || send_address_changed || next_ra <= now {
-                    if let Err(e) = send_ra(&current, router, None, mtu).await {
-                        report::io_with_details(
-                            "nat66.ra_send_current",
-                            e,
-                            [("interface", current.downstream.clone())],
-                        );
+                    match send_ra(&current, router, None, mtu).await {
+                        Ok(()) => advertising_current_prefix = true,
+                        Err(e) => {
+                            report::io_with_details(
+                                "nat66.ra_send_current",
+                                e,
+                                [("interface", current.downstream.clone())],
+                            );
+                        }
                     }
                     next_ra = now + RA_PERIOD;
                 }
@@ -195,15 +245,18 @@ pub(crate) fn spawn_loop(
                         match recv_request(socket.get_ref(), &mut buffer) {
                             Ok(RaRequest::RouterSolicitation(source)) => {
                                 if let Some(router) = router {
-                                    if let Err(e) = send_ra(&current, router, Some(source), mtu).await {
-                                        report::io_with_details(
-                                            "nat66.ra_send_solicited",
-                                            e,
-                                            [
-                                                ("interface", current.downstream.clone()),
-                                                ("target", source.to_string()),
-                                            ],
-                                        );
+                                    match send_ra(&current, router, Some(source), mtu).await {
+                                        Ok(()) => advertising_current_prefix = true,
+                                        Err(e) => {
+                                            report::io_with_details(
+                                                "nat66.ra_send_solicited",
+                                                e,
+                                                [
+                                                    ("interface", current.downstream.clone()),
+                                                    ("target", source.to_string()),
+                                                ],
+                                            );
+                                        }
                                     }
                                 }
                             }

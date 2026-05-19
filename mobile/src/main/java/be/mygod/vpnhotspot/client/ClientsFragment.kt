@@ -5,6 +5,7 @@ import android.net.MacAddress
 import android.os.Build
 import android.os.Bundle
 import android.os.Parcelable
+import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.format.Formatter
 import android.text.method.LinkMovementMethod
@@ -42,6 +43,7 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
+import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.showAllowingStateLoss
 import be.mygod.vpnhotspot.util.toPluralInt
@@ -96,15 +98,46 @@ class ClientsFragment : Fragment() {
             val locale = resources.configuration.locales[0]
             setTitle(TextUtils.expandTemplate(getText(R.string.clients_stats_title), arg.title))
             val format = NumberFormat.getIntegerInstance(locale)
-            setMessage("%s\n%s\n%s".format(
-                    resources.getQuantityString(R.plurals.clients_stats_message_1, arg.stats.count.toPluralInt(),
-                            format.format(arg.stats.count), context.formatTimestamp(arg.stats.timestamp)),
-                    resources.getQuantityString(R.plurals.clients_stats_message_2, arg.stats.sentPackets.toPluralInt(),
-                            format.format(arg.stats.sentPackets),
-                            Formatter.formatFileSize(context, arg.stats.sentBytes)),
-                    resources.getQuantityString(R.plurals.clients_stats_message_3, arg.stats.sentPackets.toPluralInt(),
-                            format.format(arg.stats.receivedPackets),
-                            Formatter.formatFileSize(context, arg.stats.receivedBytes))))
+            setMessage(SpannableStringBuilder().apply {
+                if (arg.stats.timestamp > 0) append(TextUtils.expandTemplate(getText(R.string.clients_stats_since),
+                    context.formatTimestamp(arg.stats.timestamp)))
+                for (stats in arg.stats.entries) if (!stats.isEmpty) {
+                    if (isNotEmpty()) append("\n\n")
+                    append(getText(when (stats.source) {
+                        TrafficStatsSource.IPV4 -> R.string.clients_stats_ipv4
+                        TrafficStatsSource.DNS -> R.string.clients_stats_dns
+                        TrafficStatsSource.NAT66_TCP -> R.string.clients_stats_nat66_tcp
+                        TrafficStatsSource.NAT66_UDP -> R.string.clients_stats_nat66_udp
+                        TrafficStatsSource.NAT66_ICMPV6 -> R.string.clients_stats_nat66_icmpv6
+                    }))
+                    when (stats.source) {
+                        TrafficStatsSource.NAT66_TCP -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_connections,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets)))
+                            append(TextUtils.expandTemplate(getText(R.string.clients_stats_sent_bytes),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(getText(R.string.clients_stats_received_bytes),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
+                        TrafficStatsSource.DNS -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_queries,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_responses,
+                                stats.receivedPackets.toPluralInt()), format.format(stats.receivedPackets),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
+                        else -> {
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_2,
+                                stats.sentPackets.toPluralInt()), format.format(stats.sentPackets),
+                                Formatter.formatFileSize(context, stats.sentBytes)))
+                            append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_3,
+                                stats.receivedPackets.toPluralInt()), format.format(stats.receivedPackets),
+                                Formatter.formatFileSize(context, stats.receivedBytes)))
+                        }
+                    }
+                }
+            }.ifEmpty { getText(R.string.clients_stats_empty) })
             setPositiveButton(android.R.string.ok, null)
         }
     }

@@ -59,10 +59,10 @@ val Throwable.readableMessage: String get() = getRootCause().run { localizedMess
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
  * marvelously for everybody.
  */
-fun Long.toPluralInt(): Int {
-    check(this >= 0)    // please don't mess with me
-    if (this <= Int.MAX_VALUE) return toInt()
-    return (this % 1000000000).toInt() + 1000000000
+fun Long.toPluralInt() = when (this) {
+    in Int.MIN_VALUE..Int.MAX_VALUE -> toInt()
+    in 0..Long.MAX_VALUE -> (this % 1000000000).toInt() + 1000000000
+    else -> (this % 1000000000).toInt() - 1000000000
 }
 
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&

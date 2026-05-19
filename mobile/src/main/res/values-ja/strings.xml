@@ -95,14 +95,11 @@
     <string name="clients_nickname_title">%s のニックネーム</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 ベンダー</string>
     <string name="clients_stats_title">^1 の状態</string>
-    <plurals name="clients_stats_message_1">
-        <item quantity="other">%1$s 回、%2$s に接続しました</item>
-    </plurals>
     <plurals name="clients_stats_message_2">
-        <item quantity="other">送信: %1$s | パケット: %2$s</item>
+        <item quantity="other">\n送信: ^1 | パケット: ^2</item>
     </plurals>
     <plurals name="clients_stats_message_3">
-        <item quantity="other">受信: %1$s | パケット: %2$s</item>
+        <item quantity="other">\n受信: ^1 | パケット: ^2</item>
     </plurals>
     <string name="settings_upstream">アップストリーム</string>
     <string name="settings_downstream">ダウンストリーム</string>

@@ -115,17 +115,34 @@
     <string name="clients_nickname_title">Nickname for %s</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Vendor</string>
     <string name="clients_stats_title">Stats for ^1</string>
-    <plurals name="clients_stats_message_1">
-        <item quantity="one">Connected 1 time since %2$s</item>
-        <item quantity="other">Connected %1$s times since %2$s</item>
+    <string name="clients_stats_empty">No traffic recorded</string>
+    <string name="clients_stats_since">Since ^1</string>
+    <string name="clients_stats_ipv4"><b>IPv4</b></string>
+    <string name="clients_stats_dns"><b>DNS</b></string>
+    <string name="clients_stats_nat66_tcp"><b>NAT66 TCP</b></string>
+    <string name="clients_stats_nat66_udp"><b>NAT66 UDP</b></string>
+    <string name="clients_stats_nat66_icmpv6"><b>NAT66 ICMPv6</b></string>
+    <plurals name="clients_stats_connections">
+        <item quantity="one">: 1 connection</item>
+        <item quantity="other">: ^1 connections</item>
+    </plurals>
+    <string name="clients_stats_sent_bytes">\nSent ^1</string>
+    <string name="clients_stats_received_bytes">\nReceived ^1</string>
+    <plurals name="clients_stats_dns_queries">
+        <item quantity="one">\nSent 1 query, ^2</item>
+        <item quantity="other">\nSent ^1 queries, ^2</item>
+    </plurals>
+    <plurals name="clients_stats_dns_responses">
+        <item quantity="one">\nReceived 1 response, ^2</item>
+        <item quantity="other">\nReceived ^1 responses, ^2</item>
     </plurals>
     <plurals name="clients_stats_message_2">
-        <item quantity="one">Sent 1 packet, %2$s</item>
-        <item quantity="other">Sent %1$s packets, %2$s</item>
+        <item quantity="one">\nSent 1 packet, ^2</item>
+        <item quantity="other">\nSent ^1 packets, ^2</item>
     </plurals>
     <plurals name="clients_stats_message_3">
-        <item quantity="one">Received 1 packet, %2$s</item>
-        <item quantity="other">Received %1$s packets, %2$s</item>
+        <item quantity="one">\nReceived 1 packet, ^2</item>
+        <item quantity="other">\nReceived ^1 packets, ^2</item>
     </plurals>
 
     <string name="settings_upstream">Upstream</string>
