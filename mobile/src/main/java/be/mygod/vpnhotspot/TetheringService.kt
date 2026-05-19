@@ -190,6 +190,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
     }
 
     override fun onDestroy() {
+        ServiceNotification.stopForeground(this)
         launch {
             unregisterReceiver()
             val oldDownstreams = downstreams

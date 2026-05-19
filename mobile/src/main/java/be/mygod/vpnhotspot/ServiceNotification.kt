@@ -20,7 +20,9 @@ object ServiceNotification {
 
     private fun buildNotification(context: Context): Notification {
         val deviceCounts = deviceCountsMap.values.flatMap { it.entries }.sortedBy { it.key }
-        val inactive = inactiveMap.values.flatten()
+        val activeIfaces = deviceCounts.mapTo(HashSet(deviceCounts.size)) { it.key }
+        val inactive = inactiveMap.values.asSequence().flatten()
+                .filter { it !in activeIfaces }.distinct().sorted().toList()
         val isInactive = inactive.isNotEmpty() && deviceCounts.isEmpty()
         val builder = Notification.Builder(context, if (isInactive) CHANNEL_INACTIVE else CHANNEL_ACTIVE).apply {
             setWhen(0)
@@ -68,7 +70,9 @@ object ServiceNotification {
         }
     }
     fun stopForeground(service: Service) = synchronized(this) {
-        deviceCountsMap.remove(service) ?: return@synchronized
+        val wasForeground = deviceCountsMap.remove(service) != null
+        inactiveMap.remove(service)
+        if (!wasForeground) return@synchronized
         val shutdown = deviceCountsMap.isEmpty()
         service.stopForeground(if (shutdown) Service.STOP_FOREGROUND_REMOVE else Service.STOP_FOREGROUND_DETACH)
         if (!shutdown) manager.notify(NOTIFICATION_ID, buildNotification(service))
