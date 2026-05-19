@@ -142,9 +142,10 @@ snapshot. A traffic counter read returns active plus retired counters and then
 drops the retired entries. Retired delivery is at-most-once; normal stop,
 replacement, and routing teardown paths must still read counters before
 destroying daemon-owned state.
-The read snapshots daemon-owned counters while holding the session slot so a
-concurrent stop or Clean cannot destroy counters after the read has observed the
-session as active.
+The control path enqueues counter reads while holding the session control slot.
+Stop and Clean take the same slot before enqueuing stop, so any read that has
+observed the session as active is ordered in the session owner before a later
+stop can destroy counters.
 
 ## Failure Semantics
 

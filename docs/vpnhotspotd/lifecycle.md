@@ -110,9 +110,12 @@ Downstream IPv4 discovery is still required before a session can be established.
 After that point, DNS, NAT66, and routing setup failures remove only the
 affected MAC/protocol capability or mutation from the best-effort setup result.
 
-After the session is installed, Rust sends an event ACK. The start-session task
-then waits for cancellation. When cancelled normally, it removes the session and
-stops the session runtimes.
+After the session is installed, Rust publishes a session-control handle and
+sends an event ACK. Read, replace, and stop operations enqueue commands through
+that handle; the start-session task owns the session runtime and processes those
+commands in order. When cancelled normally, it removes the control handle from
+the slot, drains already queued commands, removes the session from daemon state,
+and stops the session runtimes.
 
 After the ACK, the daemon updates a process-wide aggregate of upstream interface
 names across all active sessions. On Android 12+, if an interface name enters
@@ -129,10 +132,12 @@ up IPsec policy state; tunnel and policy teardown remain platform-owned.
 
 `ReplaceSessionCommand` updates the config for an existing session. The
 downstream interface is immutable; replacing it is rejected because routing and
-session ownership are keyed to that interface.
+session ownership are keyed to that interface. Replacement is ordered through
+the session-control command loop, so it cannot interleave with traffic-counter
+reads or session stop.
 
-Replacement happens while holding the session's config mutex as a commit gate
-for DNS and NAT66 readers:
+Inside that ordered replacement, the session holds its config mutex as a commit
+gate for DNS and NAT66 readers:
 
 - routing reconciles from the previous committed config/capability set to the
   next desired config/capability set;

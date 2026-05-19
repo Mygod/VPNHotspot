@@ -22,9 +22,11 @@ use vpnhotspotd::shared::protocol::{
 };
 
 mod calls;
+mod session_control;
 mod wire;
 
 use calls::{detach_call, handle_call, send_complete, CallOutput, CallState};
+use session_control::{read_session_counters, run_session, stop_sessions, SessionControl};
 use wire::{connect_control_socket, recv_packet, spawn_writer};
 
 pub(crate) async fn run(socket_name: String) -> io::Result<()> {
@@ -158,7 +160,7 @@ struct SessionState {
     id: u64,
     downstream: String,
     cleaning: AtomicBool,
-    session: Mutex<Option<Session>>,
+    control: Mutex<Option<SessionControl>>,
 }
 
 struct MonitorState {
@@ -281,14 +283,6 @@ impl State {
     }
 }
 
-async fn stop_sessions(sessions: &[Arc<SessionState>], withdraw_cleanup: bool) {
-    for session in sessions {
-        if let Some(session) = session.session.lock().await.take() {
-            session.stop(withdraw_cleanup).await;
-        }
-    }
-}
-
 async fn handle_command(
     id: u64,
     command: daemon::client_envelope::Command,
@@ -336,10 +330,9 @@ async fn handle_command(
             let mut configs = Vec::with_capacity(sessions.len());
             let mut counters = Vec::new();
             for slot in sessions {
-                let guard = slot.session.lock().await;
-                if let Some(session) = guard.as_ref() {
-                    configs.push(session.config_snapshot().await);
-                    counters.extend(session.traffic_counters().await);
+                if let Some(snapshot) = read_session_counters(&slot).await {
+                    configs.push(snapshot.config);
+                    counters.extend(snapshot.counters);
                 }
             }
             match crate::traffic::read_counters(&configs)
@@ -419,7 +412,7 @@ async fn start_session(
         id,
         downstream: downstream.clone(),
         cleaning: AtomicBool::new(false),
-        session: Mutex::new(None),
+        control: Mutex::new(None),
     });
     {
         let mut sessions = state.sessions.lock().await;
@@ -468,26 +461,28 @@ async fn start_session(
             config.ipv6_nat = None;
         }
     }
-    let mut guard = slot.session.lock().await;
+    let mut guard = slot.control.lock().await;
     let ipsec_config = config.clone();
-    match Session::start(id, config, netlink, &state.icmp, cancel)
+    let session = match Session::start(id, config, netlink, &state.icmp, cancel)
         .await
         .with_report_context_details(
             "control.start_session",
             [("downstream", downstream.as_str())],
         ) {
-        Ok(session) => {
-            *guard = Some(session);
-        }
+        Ok(session) => session,
         Err(e) => {
             drop(guard);
             remove_session_slot(state, &slot).await;
             return Err(e);
         }
-    }
+    };
+    let (control, command_receiver) = session_control::channel();
+    *guard = Some(control);
     drop(guard);
     if sender.send(ack_event_frame(id)).is_err() {
-        remove_session(state, &slot, false).await;
+        *slot.control.lock().await = None;
+        session.stop(false).await;
+        remove_session_slot(state, &slot).await;
         return Err(io::Error::new(
             io::ErrorKind::BrokenPipe,
             "controller send failed",
@@ -496,10 +491,7 @@ async fn start_session(
     state
         .update_ipsec_session(&slot, &ipsec_config, sender)
         .await;
-    cancel.cancelled().await;
-    if !slot.cleaning.load(Ordering::Acquire) {
-        remove_session(state, &slot, false).await;
-    }
+    run_session(state, slot, session, command_receiver, cancel).await;
     Ok(())
 }
 
@@ -536,36 +528,30 @@ async fn replace_session(
             ],
         ));
     }
-    let mut guard = slot.session.lock().await;
     let ipsec_config = config.clone();
-    let session = guard.as_mut().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::NotFound, "session not established")
-            .with_report_context_details(
-                "control.replace_session",
-                [
-                    ("session_id", session_id.to_string()),
-                    ("downstream", config.downstream.clone()),
-                ],
-            )
-    })?;
-    session
-        .replace_config(config)
+    let pending = {
+        let guard = slot.control.lock().await;
+        let control = guard.as_ref().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::NotFound, "session not established")
+                .with_report_context_details(
+                    "control.replace_session",
+                    [
+                        ("session_id", session_id.to_string()),
+                        ("downstream", config.downstream.clone()),
+                    ],
+                )
+        })?;
+        control.replace_config(config)?
+    };
+    pending
+        .receive()
         .await
+        .with_report_context("control.replace_session")?
         .with_report_context("control.replace_session")?;
-    drop(guard);
     state
         .update_ipsec_session(&slot, &ipsec_config, sender)
         .await;
     Ok(())
-}
-
-async fn remove_session(state: &State, slot: &Arc<SessionState>, withdraw_cleanup: bool) {
-    let mut guard = slot.session.lock().await;
-    if let Some(session) = guard.take() {
-        session.stop(withdraw_cleanup).await;
-    }
-    drop(guard);
-    remove_session_slot(state, slot).await;
 }
 
 async fn remove_session_slot(state: &State, slot: &Arc<SessionState>) {
