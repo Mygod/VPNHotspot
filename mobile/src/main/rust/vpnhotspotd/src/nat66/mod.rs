@@ -13,9 +13,7 @@ use cidr::Ipv6Inet;
 
 use crate::report;
 use crate::{dns, netlink};
-use vpnhotspotd::shared::model::{
-    daemon_counter_epoch, mac_string, ClientIpv6NatPorts, Ipv6NatPorts, SessionConfig,
-};
+use vpnhotspotd::shared::model::{mac_string, ClientIpv6NatPorts, Ipv6NatPorts, SessionConfig};
 use vpnhotspotd::shared::nat66_counter::{Nat66CounterKey, Nat66CounterSource, Nat66Counters};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
@@ -86,7 +84,7 @@ impl Runtime {
             stop,
             dns,
             clients: HashMap::new(),
-            counters: Nat66Counters::new(daemon_counter_epoch(b"nat66", call_id)),
+            counters: Nat66Counters::default(),
             cleanup_prefixes: Vec::new(),
             netlink: netlink_handle,
             config_changed: config_changed.clone(),

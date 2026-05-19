@@ -133,11 +133,10 @@ message TrafficCounter {
   bytes mac = 1;
   string downstream = 2;
   TrafficCounterSource source = 3;
-  bytes counter_epoch = 4;
-  uint64 sent_packets = 5;
-  uint64 sent_bytes = 6;
-  uint64 received_packets = 7;
-  uint64 received_bytes = 8;
+  uint64 sent_packets = 4;
+  uint64 sent_bytes = 5;
+  uint64 received_packets = 6;
+  uint64 received_bytes = 7;
 }
 
 message TrafficCounterSource {

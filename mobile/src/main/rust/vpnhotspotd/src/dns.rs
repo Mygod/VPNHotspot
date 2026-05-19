@@ -19,9 +19,7 @@ use crate::report;
 use crate::socket::{is_connection_closed, set_nonblocking};
 use vpnhotspotd::shared::dns_counter::DnsCounters;
 use vpnhotspotd::shared::dns_wire;
-use vpnhotspotd::shared::model::{
-    daemon_counter_epoch, mac_string, ClientDnsPorts, Network, SessionConfig,
-};
+use vpnhotspotd::shared::model::{mac_string, ClientDnsPorts, Network, SessionConfig};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
 
@@ -83,7 +81,7 @@ impl Runtime {
             config,
             stop,
             clients: HashMap::new(),
-            counters: DnsCounters::new(daemon_counter_epoch(b"dns", call_id)),
+            counters: DnsCounters::default(),
         };
         runtime.replace_clients(initial_config);
         runtime

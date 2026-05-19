@@ -25,15 +25,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okio.ByteString
-import okio.ByteString.Companion.encodeUtf8
 import timber.log.Timber
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 object TrafficRecorder {
     private const val FOREGROUND_POLL_MS = 1015L
-    private val IPV4_FORWARD_EPOCH = "ipv4-forward".encodeUtf8()
 
     data class ForegroundUpdate(
         val newRecords: ObjectList<TrafficRecord>,
@@ -46,7 +43,6 @@ object TrafficRecorder {
         val mac: MacAddress,
         val downstream: String,
         val source: CounterSource,
-        val epoch: ByteString,
     )
 
     private var lastUpdate = 0L
@@ -60,7 +56,7 @@ object TrafficRecorder {
     val foregroundUpdates = foregroundUpdatesState.asSharedFlow()
 
     fun register(ip: InetAddress, downstream: String, mac: MacAddress) {
-        val key = CounterKey(mac, downstream, CounterSource(ip, null), IPV4_FORWARD_EPOCH)
+        val key = CounterKey(mac, downstream, CounterSource(ip, null))
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
         synchronized(this) {
@@ -143,10 +139,6 @@ object TrafficRecorder {
                         if (key.source.upstream == null) continue@loop
                         if (counter.sent_packets == 0L && counter.sent_bytes == 0L &&
                             counter.received_packets == 0L && counter.received_bytes == 0L) continue@loop
-                        records.removeIf { existingKey, _ ->
-                            existingKey.mac == key.mac && existingKey.downstream == key.downstream &&
-                                    existingKey.source == key.source
-                        }
                         TrafficRecord(
                             timestamp = timestamp,
                             mac = key.mac,
@@ -244,13 +236,10 @@ object TrafficRecorder {
     }
 
     internal fun counterKey(counter: TrafficCounter): CounterKey? {
-        val epoch = counterEpoch(counter) ?: return null
         val recordSource = counterSource(counter) ?: return null
         val mac = counter.mac.takeIf { it.size == 6 }?.toByteArray() ?: return null
-        return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource, epoch)
+        return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource)
     }
-
-    internal fun counterEpoch(counter: TrafficCounter): ByteString? = counter.counter_epoch.takeIf { it.size > 0 }
 
     internal fun counterSource(counter: TrafficCounter): CounterSource? {
         val counterSource = counter.source

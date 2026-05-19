@@ -17,10 +17,9 @@ pub struct Nat66CounterKey {
     pub source: Nat66CounterSource,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Nat66Counters {
     inner: Arc<StdMutex<HashMap<Nat66CounterKey, Nat66Counter>>>,
-    counter_epoch: Arc<[u8]>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -32,13 +31,6 @@ struct Nat66Counter {
 }
 
 impl Nat66Counters {
-    pub fn new(counter_epoch: Vec<u8>) -> Self {
-        Self {
-            inner: Arc::new(StdMutex::new(HashMap::new())),
-            counter_epoch: counter_epoch.into(),
-        }
-    }
-
     pub fn add_sent_bytes(
         &self,
         mac: [u8; 6],
@@ -101,7 +93,7 @@ impl Nat66Counters {
             .map_err(|_| io::Error::other("nat66 counter state poisoned"))?;
         let result = counters
             .iter()
-            .map(|(key, counter)| counter.proto(*key, downstream, &self.counter_epoch))
+            .map(|(key, counter)| counter.proto(*key, downstream))
             .collect();
         counters.retain(|key, _| active.contains(key));
         Ok(result)
@@ -133,12 +125,7 @@ impl Nat66CounterSource {
 }
 
 impl Nat66Counter {
-    fn proto(
-        &self,
-        key: Nat66CounterKey,
-        downstream: &str,
-        counter_epoch: &[u8],
-    ) -> daemon::TrafficCounter {
+    fn proto(&self, key: Nat66CounterKey, downstream: &str) -> daemon::TrafficCounter {
         daemon::TrafficCounter {
             mac: key.mac.to_vec(),
             downstream: downstream.to_owned(),
@@ -147,7 +134,6 @@ impl Nat66Counter {
                     key.source.proto() as i32,
                 )),
             }),
-            counter_epoch: counter_epoch.to_vec(),
             sent_packets: self.sent_packets,
             sent_bytes: self.sent_bytes,
             received_packets: self.received_packets,
@@ -164,7 +150,7 @@ mod tests {
 
     #[test]
     fn counters_report_sources_and_drain_retired_entries() {
-        let counters = Nat66Counters::new(b"nat66/test".to_vec());
+        let counters = Nat66Counters::default();
         counters
             .add_sent_bytes(MAC, Nat66CounterSource::Tcp, 12)
             .unwrap();
@@ -219,6 +205,5 @@ mod tests {
 
         let second = counters.counters("ncm0", active).unwrap();
         assert_eq!(second.len(), 1);
-        assert_eq!(second[0].counter_epoch, b"nat66/test");
     }
 }

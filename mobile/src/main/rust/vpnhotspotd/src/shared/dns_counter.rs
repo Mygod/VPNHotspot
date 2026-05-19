@@ -4,10 +4,9 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use crate::shared::proto::daemon;
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct DnsCounters {
     inner: Arc<StdMutex<HashMap<[u8; 6], DnsCounter>>>,
-    counter_epoch: Arc<[u8]>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -19,13 +18,6 @@ struct DnsCounter {
 }
 
 impl DnsCounters {
-    pub fn new(counter_epoch: Vec<u8>) -> Self {
-        Self {
-            inner: Arc::new(StdMutex::new(HashMap::new())),
-            counter_epoch: counter_epoch.into(),
-        }
-    }
-
     pub fn add_exchange(
         &self,
         mac: [u8; 6],
@@ -59,7 +51,7 @@ impl DnsCounters {
             .map_err(|_| io::Error::other("dns counter state poisoned"))?;
         let result = counters
             .iter()
-            .map(|(mac, counter)| counter.proto(*mac, downstream, &self.counter_epoch))
+            .map(|(mac, counter)| counter.proto(*mac, downstream))
             .collect();
         counters.retain(|mac, _| active.contains(mac));
         Ok(result)
@@ -84,12 +76,7 @@ impl DnsCounter {
         }
     }
 
-    fn proto(
-        &self,
-        mac: [u8; 6],
-        downstream: &str,
-        counter_epoch: &[u8],
-    ) -> daemon::TrafficCounter {
+    fn proto(&self, mac: [u8; 6], downstream: &str) -> daemon::TrafficCounter {
         daemon::TrafficCounter {
             mac: mac.to_vec(),
             downstream: downstream.to_owned(),
@@ -98,7 +85,6 @@ impl DnsCounter {
                     daemon::DaemonTrafficSource::Dns as i32,
                 )),
             }),
-            counter_epoch: counter_epoch.to_vec(),
             sent_packets: self.sent_packets,
             sent_bytes: self.sent_bytes,
             received_packets: self.received_packets,
@@ -138,13 +124,12 @@ mod tests {
 
     #[test]
     fn counters_report_dns_source_and_drain_retired_entries() {
-        let counters = DnsCounters::new(b"dns/test".to_vec());
+        let counters = DnsCounters::default();
         counters.add_exchange(MAC, 10, 20, true, true).unwrap();
         let first = counters.counters("ncm0", [MAC]).unwrap();
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].mac, MAC);
         assert_eq!(first[0].downstream, "ncm0");
-        assert_eq!(first[0].counter_epoch, b"dns/test");
         assert_eq!(first[0].sent_packets, 1);
         assert_eq!(first[0].sent_bytes, 10);
         assert_eq!(first[0].received_packets, 1);

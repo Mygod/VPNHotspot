@@ -76,14 +76,6 @@ class TrafficRecorderTest {
     }
 
     @Test
-    fun counterEpochRequiresNonEmptyEpoch() {
-        assertNull(TrafficRecorder.counterEpoch(TrafficCounter()))
-        assertEquals(byteArrayOf(1).toByteString(), TrafficRecorder.counterEpoch(
-            TrafficCounter(counter_epoch = byteArrayOf(1).toByteString()),
-        ))
-    }
-
-    @Test
     fun counterKeyRejectsInvalidMacLength() {
         assertNull(
             TrafficRecorder.counterKey(
@@ -93,7 +85,6 @@ class TrafficRecorderTest {
                     source = TrafficCounterSource(
                         daemon_source = DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS,
                     ),
-                    counter_epoch = byteArrayOf(1).toByteString(),
                 ),
             ),
         )

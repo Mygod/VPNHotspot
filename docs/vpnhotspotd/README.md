@@ -53,7 +53,7 @@ daemon reports into app-visible exceptions or nonfatal warnings.
 - [`dns.md`](dns.md): DNS listener ownership, resolver handoff, config snapshot
   semantics, and nonblocking assumptions.
 - [`traffic.md`](traffic.md): MAC-facing traffic accounting, blocking scope,
-  counter sources, counter epochs, and persistence mapping.
+  counter sources, recorder chain boundaries, and persistence mapping.
 - [`errors.md`](errors.md): terminal errors, nonfatal reports, context/detail
   requirements, and background-task failure policy.
 - [`invariants.md`](invariants.md): cross-module ownership, interception,

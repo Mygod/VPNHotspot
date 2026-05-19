@@ -10,8 +10,7 @@ aggregation is:
 
 - client MAC address;
 - downstream interface;
-- counter source;
-- counter epoch.
+- counter source.
 
 ## Scope
 
@@ -125,20 +124,18 @@ traffic. They are not counted unless a query was actually handed to Android's
 resolver; in that case the sent query side may be counted without a received
 response side.
 
-## Counter Epochs
+## Recorder Chain Boundaries
 
-Every cumulative counter carries an opaque epoch. The epoch changes whenever
-the backing cumulative counter can reset without Kotlin first flushing and
-removing the active record.
+Traffic records are chained only while Kotlin keeps an active recorder entry for
+the same MAC, downstream interface, and counter source. `previousId` links each
+new cumulative sample to the previous row in that active chain.
 
-Kotlin chains records only within the same source epoch. If the same
-MAC/downstream/source appears with a new epoch, the recorder leaves the old
-chain terminal and starts a new one. This preserves historical totals while
-limiting loss to increments since the last successful read.
+Kotlin ends a chain by flushing the latest counters and removing the active
+recorder entry. If the same MAC/downstream/source appears later, the recorder
+starts a new unlinked chain. Query aggregation sums terminal rows, so historical
+totals remain visible without attaching reset cumulative counters to old
+history.
 
-Daemon-owned DNS and NAT66 counters live in session memory and use a
-session-instance epoch. A daemon or session restart therefore starts new
-recorder chains instead of attaching reset in-memory counters to old history.
 Removed per-MAC runtime sources move their final counters into a retired
 snapshot. A traffic counter read returns active plus retired counters and then
 drops the retired entries. Retired delivery is at-most-once; normal stop,
@@ -163,7 +160,7 @@ was rolled back.
 IPv4 client removal removes allow rules and hidden IPv4 counter leaves. If an
 IPv4 address remains present but moves to a different MAC, routing deletes the
 address's hidden counter leaves before reconciliation so the reinserted leaves
-start a new kernel counter epoch for the new owner. The daemon does not manage
+start fresh kernel counters for the new owner. The daemon does not manage
 conntrack state. DNS and NAT66 are daemon-owned, so removing a MAC cancels that
 MAC's DNS children, TCP tasks, UDP associations, ICMP Echo allocations, and
 ICMP/UDP error registrations.

@@ -3,7 +3,6 @@ use std::{collections::HashMap, net::Ipv4Addr};
 use crate::shared::{model::ClientConfig, proto::daemon};
 
 const ANYWHERE: &str = "0.0.0.0/0";
-pub const IPV4_FORWARD_EPOCH: &[u8] = b"ipv4-forward";
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 pub struct Ipv4ForwardKey {
@@ -128,7 +127,6 @@ impl Ipv4ForwardCounter {
                     key.address.octets().to_vec(),
                 )),
             }),
-            counter_epoch: IPV4_FORWARD_EPOCH.to_vec(),
             sent_packets: sent.packets,
             sent_bytes: sent.bytes,
             received_packets: received.packets,
@@ -199,7 +197,6 @@ mod tests {
         let proto = counter.into_proto(key).unwrap();
         assert_eq!(proto.mac, MAC);
         assert_eq!(proto.downstream, "ncm0");
-        assert_eq!(proto.counter_epoch, IPV4_FORWARD_EPOCH);
         assert_eq!(proto.sent_packets, 5);
         assert_eq!(proto.sent_bytes, 500);
         assert_eq!(proto.received_packets, 7);

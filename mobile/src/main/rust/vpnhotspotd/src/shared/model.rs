@@ -198,14 +198,6 @@ pub fn should_disable_uncommitted_ipv6_nat(
     has_client_scoped_ipv6_nat_demand(config) && committed_ports.ipv6_nat.is_none()
 }
 
-pub fn daemon_counter_epoch(source: &[u8], call_id: u64) -> Vec<u8> {
-    let mut epoch = Vec::with_capacity(source.len() + 1 + std::mem::size_of::<u64>());
-    epoch.extend_from_slice(source);
-    epoch.push(b'/');
-    epoch.extend_from_slice(&call_id.to_be_bytes());
-    epoch
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,16 +342,6 @@ mod tests {
                 }),
             },
         ));
-    }
-
-    #[test]
-    fn daemon_counter_epoch_includes_source_and_call_id() {
-        let mut expected = b"dns/".to_vec();
-        expected.extend_from_slice(&0x0102_0304_0506_0708_u64.to_be_bytes());
-        assert_eq!(
-            daemon_counter_epoch(b"dns", 0x0102_0304_0506_0708),
-            expected,
-        );
     }
 
     fn config(
