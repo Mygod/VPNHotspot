@@ -28,9 +28,9 @@ pub const DAEMON_REPLY_MARK_MASK: u32 = 0x0003_FFFF;
 /// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/include/Fwmark.h#24
 pub const DAEMON_INTERCEPT_FWMARK_VALUE: u32 = 0x1000_0000;
 pub const DAEMON_INTERCEPT_FWMARK_MASK: u32 = 0x1000_0000;
-/// Internal UDP TPROXY listener address. Intercepted packets still carry their original
-/// destination through IPV6_RECVORIGDSTADDR.
-pub const DAEMON_UDP_TPROXY_ADDRESS: Ipv6Addr = Ipv6Addr::LOCALHOST;
+/// Internal TCP/UDP TPROXY listener address. Intercepted packets still carry their original
+/// destination through TCP transparent socket state or IPV6_RECVORIGDSTADDR.
+pub const DAEMON_TPROXY_ADDRESS: Ipv6Addr = Ipv6Addr::LOCALHOST;
 /// Internal NFQUEUE number for NAT66 ICMPv6 Echo interception.
 pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_000;
 /// Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below

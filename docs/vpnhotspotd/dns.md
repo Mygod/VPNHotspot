@@ -14,9 +14,13 @@ that fails is reported as a structured nonfatal with downstream, MAC, and
 protocol, and that MAC/protocol DNS redirect is omitted from routing.
 
 Routing redirects downstream IPv4 DNS with MAC-matched DNAT rules to the
-ephemeral ports that exist. Packets still addressed to the downstream gateway on
-port 53 are rejected in `filter INPUT`, so blocked clients and missing
-capability cases do not fall through to an accidental local DNS service.
+ephemeral ports that exist. Each redirected port also has a `filter INPUT`
+guard: packets are allowed to reach the listener only when conntrack says the
+original destination was the downstream gateway on port 53. Direct connections
+to another client's listener port are rejected before the daemon accepts them.
+Packets still addressed to the downstream gateway on port 53 are rejected in
+`filter INPUT`, so blocked clients and missing capability cases do not fall
+through to an accidental local DNS service.
 
 NAT66 TCP and UDP also special-case DNS to the NAT66 gateway on port 53 and
 call the same DNS handlers from the per-MAC NAT66 listener context. This keeps
@@ -104,5 +108,5 @@ so normal IP traffic and manually configured downstream DNS can still work.
 
 Per-MAC listener setup and routing failures remove only that MAC/protocol DNS
 capability. If a listener was staged but routing did not commit the matching
-MAC redirect, the staged listener is cancelled before the session publishes
-committed capabilities.
+MAC redirect and direct-port guard, the staged listener is cancelled before the
+session publishes committed capabilities.

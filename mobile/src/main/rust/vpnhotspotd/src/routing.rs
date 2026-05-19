@@ -11,6 +11,7 @@ mod firewall_cleanup;
 mod iptables;
 mod ipv6_nat_firewall;
 mod ipv6_nat_intercept;
+mod ipv6_nat_listener_rules;
 mod ndc;
 mod netlink_commands;
 mod static_addresses;
@@ -129,8 +130,7 @@ impl Runtime {
             applied: Vec::new(),
         };
         runtime.setup(config).await;
-        let committed = runtime.committed_ports(config);
-        runtime.ports = committed.clone();
+        let committed = runtime.reconcile_committed_ports(config).await;
         (runtime, committed)
     }
 
@@ -152,9 +152,7 @@ impl Runtime {
         self.reset_changed_ipv4_counter_rules(previous, next).await;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;
-        let committed = self.committed_ports(next);
-        self.ports = committed.clone();
-        Ok(committed)
+        Ok(self.reconcile_committed_ports(next).await)
     }
 
     pub(crate) async fn stop(mut self) {
@@ -164,6 +162,14 @@ impl Runtime {
     async fn setup(&mut self, config: &SessionConfig) {
         let desired = self.desired_mutations(config).await;
         self.reconcile(desired).await;
+    }
+
+    async fn reconcile_committed_ports(&mut self, config: &SessionConfig) -> SessionPorts {
+        let committed = self.committed_ports(config);
+        self.ports = committed.clone();
+        let desired = self.desired_mutations(config).await;
+        self.reconcile(desired).await;
+        committed
     }
 
     async fn reset_changed_ipv4_counter_rules(

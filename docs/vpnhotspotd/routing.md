@@ -58,21 +58,38 @@ path fails.
 ### IPv4 DNS Redirect
 
 Condition: per committed client MAC and protocol when DNS startup produced that
-MAC/protocol listener port.
+MAC/protocol listener port and routing can also install the matching direct-port
+guard.
 
 External mutations:
 
 - `iptables -t nat -I PREROUTING -i <downstream> -p tcp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-tcp-port-for-mac>`
 - `iptables -t nat -I PREROUTING -i <downstream> -p udp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-udp-port-for-mac>`
+- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
+- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -j REJECT --reject-with tcp-reset`
+- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p udp -d <downstream-ipv4> --dport <dns-udp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
+- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p udp -d <downstream-ipv4> --dport <dns-udp-port-for-mac> -j REJECT --reject-with icmp-port-unreachable`
+
+Effective order for a listener port is the conntrack original-destination
+`RETURN` before the direct-port `REJECT`. The guard makes the ephemeral listener
+port reachable only as the post-DNAT target of a packet originally addressed to
+the downstream gateway on port 53. If routing cannot install or validate the
+conntrack original-destination guard, it must omit that MAC/protocol DNS
+capability instead of exposing the listener port directly.
+
+The guard lines above are the required effective order. Because iptables `-I`
+inserts at the head by default, implementation must either insert with explicit
+positions or apply paired guard mutations in the reverse order that produces the
+effective chain order.
 
 Rollback:
 
-- delete the same MAC/protocol rules.
+- delete the same MAC/protocol redirect and guard rules.
 
 Routing only redirects packets. MAC ownership and DNS upstream selection belong
 to [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs). A DNS
 listener is not committed unless both the listener and matching MAC redirect
-rule exist.
+and direct-port guard rules exist.
 
 ### IPv4 Gateway DNS Denial
 
@@ -383,31 +400,64 @@ dispatcher must not fall back to source IPv6 neighbour lookup.
 
 ### NAT66 TCP/UDP TPROXY
 
-Condition: per committed client MAC and protocol when
-`SessionConfig.ipv6_nat != null` and NAT66 startup returned that MAC/protocol
-listener port.
+Condition: `SessionConfig.ipv6_nat != null` and NAT66 startup committed at
+least one TCP or UDP runtime capability. Gateway DNS preludes and local/special
+destination returns are session-level rules. Listener TPROXY rules are per
+committed client MAC/protocol listener port. NAT66 gateway DNS and upstream
+proxying share the same per-MAC listener; the daemon distinguishes gateway DNS
+by the original destination. Local or special destinations should not enter the
+daemon-owned upstream proxy path.
 
 External mutations:
 
-- TCP:
-  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -m mac --mac-source <mac> -j TPROXY --on-port <nat66-tcp-port-for-mac>`
-- UDP:
+- gateway DNS TCP ACL/protocol prelude:
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p tcp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
+- gateway DNS UDP ACL/protocol prelude:
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_acl_gate`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -p udp -d <nat66-gateway> --dport 53 -j vpnhotspot_v6_protocols`
+- local/special destination returns before the generic upstream ACL/proxy path:
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <nat66-prefix> -j RETURN`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d fe80::/10 -j RETURN`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ff00::/8 -j RETURN`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::1/128 -j RETURN`
+  `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d ::/128 -j RETURN`
+- TCP listener:
+  `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p tcp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-tcp-port-for-mac>`
+- UDP listener:
   `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-udp-port-for-mac>`
 
-In fwmark fallback mode, both rules also append
+Effective mangle order is gateway DNS `:53` ACL gate, gateway DNS `:53`
+protocol interception, local/special destination returns, generic upstream ACL
+gate, then broad per-MAC listener TPROXY for the remaining TCP or UDP traffic.
+Gateway DNS enters the same listener as ordinary upstream traffic, but the
+daemon routes it to DNS handling from the original destination. This keeps local
+traffic outside NAT66 admission while still applying the allow/block decision to
+daemon-owned DNS and upstream proxying.
+
+The command list above is the required effective order. Because iptables `-I`
+inserts at the head by default, implementation must either insert with explicit
+positions or apply rule mutations in the reverse order that produces the
+effective chain order.
+
+In fwmark fallback mode, the TPROXY rules also append
 `--tproxy-mark 0x10000000/0x10000000`.
 
 Rollback:
 
 - delete the same rules.
 
-The UDP rule uses `--on-ip ::1` to keep listener socket lookup disjoint from
-exact-bound UDP reply sockets.
+The TCP and UDP rules use `--on-ip ::1`, and the listeners bind to `::1`.
+Listener ports are internal TPROXY endpoints rather than downstream-reachable
+service ports. Direct downstream local/special traffic to those ports does not
+match the listener and falls through the base input reject path.
 
-A per-MAC TCP or UDP listener is not committed unless both the daemon listener
-and matching MAC-scoped TPROXY rule exist. If routing fails the rule, the
-staged listener is cancelled and that MAC/protocol capability is omitted from
-the committed session.
+A per-MAC TCP or UDP listener is not committed unless the daemon listener,
+required session-level local/special exclusions, base input filter rules,
+gateway DNS preludes, and matching MAC-scoped listener TPROXY rule all exist.
+If routing fails the rules required for that MAC/protocol, the staged listener
+is cancelled and that MAC/protocol capability is omitted from the committed
+session.
 
 ### NAT66 ICMPv6 Control Returns
 
@@ -535,11 +585,14 @@ External mutations:
 - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -j vpnhotspot_v6_protocols`
 - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -j vpnhotspot_v6_acl_gate`
 
-Because these rules are inserted with `-I`, the effective
-`vpnhotspot_v6_tproxy` order is ACL gate before protocol interception, except
-for session local-link ICMPv6 control returns that are inserted above both. That
-ordering is part of the NAT66 blocking contract: blocked MACs hit the base ACL
-drop before TCP/UDP TPROXY or ICMPv6 NFQUEUE.
+Because these rules are inserted with `-I`, session rules must preserve the
+effective `vpnhotspot_v6_tproxy` order documented above: local-link ICMPv6
+control returns, gateway DNS ACL/protocol handling, local/special destination
+returns, generic ACL gate, then protocol interception. That ordering is part of
+the NAT66 blocking contract: blocked MACs hit the base ACL drop before
+daemon-owned DNS, upstream TCP/UDP TPROXY, or ICMPv6 NFQUEUE, while local or
+special destinations outside those daemon-owned paths do not use the ACL as an
+admission gate.
 
 Process/session cleanup:
 

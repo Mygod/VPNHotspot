@@ -65,6 +65,13 @@ DNS and NAT66 TCP/UDP use per-MAC listener ownership:
 - accepted DNS queries, TCP connections, UDP associations, and NAT66 gateway
   DNS special cases inherit the MAC from the listener they entered through.
 
+The listener port is not a client-controlled identity token. IPv4 DNS listener
+ports accept only packets whose conntrack original destination was the
+downstream gateway on port 53. NAT66 listener ports are internal `::1` TPROXY
+endpoints reached only through the MAC-matched TPROXY path; direct local or
+special-destination traffic to those ports does not reach the listener and
+falls through the input reject path.
+
 NAT66 ICMPv6 Echo uses one process-wide NFQUEUE path. The queue number is
 `30000`. Routing queues eligible Echo Requests only after the NAT66 ACL has
 admitted the source MAC. The ICMP dispatcher then requires `NFQA_HWADDR` to

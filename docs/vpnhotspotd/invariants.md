@@ -34,6 +34,10 @@ compatibility or cleanup impact.
 - DNS, NAT66 TCP, and NAT66 UDP must carry MAC identity by entering through
   per-MAC listener resources. NAT66 ICMPv6 must carry MAC identity from a
   six-byte `NFQA_HWADDR`; source-IP-to-MAC lookup is not a valid fallback.
+- Per-MAC listener ports are not client-provided identity tokens. Routing must
+  reject or otherwise fail closed on direct listener-port access that bypasses
+  the MAC-matched interception rule. NAT66 TCP/UDP listener ports are internal
+  `::1` TPROXY endpoints.
 - Local downstream traffic is outside the traffic-control boundary and must not
   be blocked or counted as upstream traffic by these mechanisms.
 

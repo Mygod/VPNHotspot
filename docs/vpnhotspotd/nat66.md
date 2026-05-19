@@ -18,8 +18,9 @@ When enabled, startup attempts to create:
 - an optional router-advertisement task;
 - an optional ICMPv6 Echo registration through the process-wide dispatcher.
 
-The TCP and UDP listener ports become routing inputs only when their listener
-and matching MAC-scoped routing rule are committed. ICMP Echo support is one
+The TCP and UDP listener ports become routing inputs only when their listener,
+MAC-scoped routing rules, gateway DNS preludes, local/special destination
+exclusions, and base input filter rules are committed. ICMP Echo support is one
 session-level capability. If one MAC/protocol capability fails, the daemon
 reports a structured nonfatal and continues with the remaining NAT66
 capabilities. An empty client set is a deferred state, not a NAT66 failure: the
@@ -74,8 +75,8 @@ and protocol state behind that interception.
 
 Startup and replacement stage NAT66 capabilities for routing:
 
-- TCP and UDP listener ports are keyed by MAC and protocol, and each only
-  enables that MAC/protocol TPROXY rule;
+- TCP and UDP listener ports are keyed by MAC and protocol, and each enables
+  one MAC/protocol listener TPROXY rule for gateway DNS and upstream proxying;
 - `icmp_echo` is true only when the session is registered with the ICMP
   dispatcher;
 - an empty client set publishes no NAT66 routing capabilities even if a NAT66
@@ -87,15 +88,23 @@ unless the runtime capability exists. Optional TCP, UDP, or ICMP failure must
 remove only that protocol's interception from desired routing state.
 
 A staged per-MAC TCP or UDP listener becomes committed only if routing also
-installs the matching MAC-scoped TPROXY rule. If routing fails that rule, the
-listener is cancelled and the committed session omits that MAC/protocol
-capability.
+installs the required session-level local/special exclusions, base input filter
+rules, matching MAC-scoped TPROXY rule, and gateway DNS preludes. If routing
+fails those rules, the listener is cancelled and the committed session omits
+that MAC/protocol capability.
 
-The mangle path returns local-link ICMPv6 control traffic first, gates other
-downstream traffic through `vpnhotspot_acl`, then reaches protocol-specific
-TPROXY/NFQUEUE handling. Client allow rules return from the ACL chain; the base
-ACL rule drops what remains. Blocked or unknown MACs never reach TCP/UDP TPROXY
-or ICMPv6 NFQUEUE handling.
+The mangle path returns local-link ICMPv6 control traffic first. Downstream
+gateway DNS goes through `vpnhotspot_acl`, then admitted gateway DNS reaches
+protocol-specific handling. Other local or special destinations return before
+the generic upstream ACL/proxy path. The remaining upstream path gates through
+`vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
+handling. Client allow rules return from the ACL chain; the base ACL rule drops
+what remains. Blocked or unknown MACs never reach daemon-owned DNS, TCP/UDP
+upstream TPROXY, or ICMPv6 NFQUEUE handling. TCP and UDP listeners bind to
+`::1` and routing uses `--on-ip ::1`, so NAT66 listener ports are internal
+TPROXY endpoints. Direct connections to those ports on local or special
+downstream destinations do not reach the listener and fall through the base
+input reject path.
 
 ## TCP
 
