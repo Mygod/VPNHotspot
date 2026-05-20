@@ -20,14 +20,11 @@ import android.os.ext.SdkExtensions
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
-import android.view.MenuItem
 import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
-import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -109,10 +106,6 @@ private val dateTimeFormat = DateTimeFormatterSkeletonOptions.Builder(
 ).build()
 fun Context.formatTimestamp(timestamp: Long) = DateTimeFormatter(this, dateTimeFormat,
     resources.configuration.locales[0]).format(timestamp)
-
-fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
-    if (!manager.isStateSaved) show(manager, tag)
-}
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
@@ -242,13 +235,6 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)
     unbindService(connection)
 }
-
-var MenuItem.isNotGone: Boolean
-    get() = isVisible || isEnabled
-    set(value) {
-        isVisible = value
-        isEnabled = value
-    }
 
 fun Resources.findIdentifier(name: String, defType: String, defPackage: String, alternativePackage: String? = null) =
     getIdentifier(name, defType, defPackage).let {

@@ -1,0 +1,517 @@
+package be.mygod.vpnhotspot.ui
+
+import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
+import android.os.Build
+import android.os.ext.SdkExtensions
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.core.content.FileProvider
+import androidx.core.content.edit
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.BootReceiver
+import be.mygod.vpnhotspot.BuildConfig
+import be.mygod.vpnhotspot.LocalOnlyHotspotService
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.RoutingManager
+import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
+import be.mygod.vpnhotspot.net.TetherOffloadManager
+import be.mygod.vpnhotspot.net.monitor.Upstream
+import be.mygod.vpnhotspot.net.monitor.Upstreams
+import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
+import be.mygod.vpnhotspot.root.Dump
+import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.util.allRoutes
+import be.mygod.vpnhotspot.util.launchUrl
+import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.util.Services
+import com.google.android.gms.oss.licenses.R as OssLicensesR
+import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import timber.log.Timber
+import java.io.File
+import java.io.FileOutputStream
+import java.io.IOException
+import java.io.PrintWriter
+
+@Composable
+internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var offloadEnabled by remember { mutableStateOf(TetherOffloadManager.enabled) }
+    var offloadChanging by remember { mutableStateOf(false) }
+    val primaryUpstream by Upstreams.primary.collectAsStateWithLifecycle()
+    val fallbackUpstream by Upstreams.fallback.collectAsStateWithLifecycle()
+    val primaryPreference by rememberPreferenceString(Upstreams.KEY_PRIMARY)
+    val fallbackPreference by rememberPreferenceString(Upstreams.KEY_FALLBACK)
+    var masqueradeMode by remember { mutableStateOf(masqueradePreferenceValue()) }
+    var ipv6Mode by remember { mutableStateOf(RoutingManager.ipv6Mode.name) }
+    var wifiLockMode by remember { mutableStateOf(WifiDoubleLock.mode.name) }
+    val autoStart by rememberPreferenceBoolean(BootReceiver.KEY, false)
+    val repeaterSafeMode by rememberPreferenceBoolean(RepeaterService.KEY_SAFE_MODE, true)
+    val useSystemTempHotspot by rememberPreferenceBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, false)
+
+    LaunchedEffect(Unit) {
+        WifiDoubleLock.mode = WifiDoubleLock.mode
+        RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
+        RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
+    }
+
+    SettingsList {
+        item {
+            PreferenceRow(
+                icon = R.drawable.ic_action_settings_backup_restore,
+                title = stringResource(R.string.settings_service_clean),
+                summary = stringResource(R.string.settings_service_clean_summary),
+                onClick = { scope.launch { withContext(Dispatchers.Default) { RoutingManager.clean() } } },
+            )
+        }
+        item { SectionHeader(stringResource(R.string.settings_upstream)) }
+        item {
+            TextPreferenceRow(
+                icon = R.drawable.ic_action_settings_ethernet,
+                title = R.string.settings_service_upstream,
+                value = primaryPreference.orEmpty(),
+                summary = upstreamSummary(
+                    fallback = stringResource(R.string.settings_service_upstream_auto),
+                    preference = primaryPreference,
+                    upstream = primaryUpstream,
+                ),
+                onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
+            )
+        }
+        item {
+            TextPreferenceRow(
+                icon = R.drawable.ic_action_settings_input_component,
+                title = R.string.settings_upstream_fallback,
+                value = fallbackPreference.orEmpty(),
+                summary = upstreamSummary(
+                    fallback = stringResource(R.string.settings_upstream_fallback_auto),
+                    preference = fallbackPreference,
+                    upstream = fallbackUpstream,
+                ),
+                onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
+            )
+        }
+        item { SectionHeader(stringResource(R.string.settings_downstream)) }
+        item {
+            ListPreferenceRow(
+                icon = R.drawable.ic_social_people,
+                title = R.string.settings_service_masquerade,
+                entries = stringArrayResource(R.array.settings_service_masquerade),
+                values = stringArrayResource(R.array.settings_service_masquerade_values),
+                selectedValue = masqueradeMode,
+                onValueChange = {
+                    masqueradeMode = it
+                    RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
+                },
+            )
+        }
+        item {
+            ListPreferenceRow(
+                icon = R.drawable.ic_image_looks_6,
+                title = R.string.settings_service_ipv6_mode,
+                entries = stringArrayResource(R.array.settings_service_ipv6_mode),
+                values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
+                selectedValue = ipv6Mode,
+                onValueChange = {
+                    ipv6Mode = it
+                    RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
+                },
+            )
+        }
+        item {
+            SwitchPreferenceRow(
+                icon = R.drawable.ic_device_battery_charging_full,
+                title = R.string.settings_system_tether_offload,
+                summary = stringResource(R.string.settings_system_tether_offload_summary),
+                checked = offloadEnabled,
+                enabled = !offloadChanging,
+                onCheckedChange = { enabled ->
+                    if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
+                    scope.launch {
+                        offloadChanging = true
+                        try {
+                            TetherOffloadManager.setEnabled(enabled)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            snackbarHostState.showSnackbar(e.readableMessage)
+                        }
+                        offloadEnabled = TetherOffloadManager.enabled
+                        offloadChanging = false
+                    }
+                },
+            )
+        }
+        item { SectionHeader(stringResource(R.string.settings_misc)) }
+        item {
+            ListPreferenceRow(
+                icon = R.drawable.ic_device_wifi_lock,
+                title = R.string.settings_service_wifi_lock,
+                entries = stringArrayResource(R.array.settings_service_wifi_lock),
+                values = stringArrayResource(R.array.settings_service_wifi_lock_values),
+                selectedValue = wifiLockMode,
+                onValueChange = {
+                    wifiLockMode = it
+                    WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
+                },
+            )
+        }
+        item {
+            SwitchPreferenceRow(
+                icon = R.drawable.ic_action_autorenew,
+                title = R.string.settings_service_auto_start,
+                summary = stringResource(R.string.settings_service_auto_start_summary),
+                checked = autoStart,
+                onCheckedChange = { enabled ->
+                    app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
+                    scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
+                },
+            )
+        }
+        if (Services.p2p != null && RepeaterService.safeModeConfigurable) item {
+            SwitchPreferenceRow(
+                icon = R.drawable.ic_alert_warning,
+                title = R.string.settings_service_repeater_safe_mode,
+                summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
+                checked = repeaterSafeMode,
+                onCheckedChange = { app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) } },
+            )
+        }
+        if (Build.VERSION.SDK_INT >= 30) item {
+            SwitchPreferenceRow(
+                icon = R.drawable.ic_content_file_copy,
+                title = R.string.settings_service_temp_hotspot_use_system,
+                summary = stringResource(R.string.settings_service_temp_hotspot_use_system_summary),
+                checked = useSystemTempHotspot,
+                onCheckedChange = { app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) } },
+            )
+        }
+        item { SectionHeader(stringResource(R.string.settings_help)) }
+        item {
+            PreferenceRow(
+                icon = R.drawable.ic_toggle_star,
+                title = stringResource(R.string.settings_misc_source),
+                summary = stringResource(R.string.settings_misc_source_summary),
+                onClick = { context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md") },
+            )
+        }
+        item {
+            PreferenceRow(
+                icon = R.drawable.ic_action_bug_report,
+                title = stringResource(R.string.settings_misc_logcat),
+                summary = stringResource(R.string.settings_misc_logcat_summary),
+                onClick = {
+                    scope.launch {
+                        try {
+                            shareLogcat(context)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            snackbarHostState.showSnackbar(e.readableMessage)
+                        }
+                    }
+                },
+            )
+        }
+        item {
+            PreferenceRow(
+                icon = R.drawable.ic_action_card_giftcard,
+                title = stringResource(R.string.settings_misc_donate),
+                summary = stringResource(R.string.settings_misc_donate_summary),
+                onClick = { context.launchUrl("https://mygod.be/donate/") },
+            )
+        }
+        item {
+            PreferenceRow(
+                icon = R.drawable.ic_action_code,
+                title = stringResource(OssLicensesR.string.oss_license_title),
+                summary = stringResource(OssLicensesR.string.preferences_license_summary),
+                onClick = { context.startActivity(Intent(context, OssLicensesMenuActivity::class.java)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun ListPreferenceRow(
+    @DrawableRes icon: Int,
+    @StringRes title: Int,
+    entries: Array<String>,
+    values: Array<String>,
+    selectedValue: String,
+    onValueChange: (String) -> Unit,
+) {
+    var selecting by remember { mutableStateOf(false) }
+    PreferenceRow(
+        icon = icon,
+        title = stringResource(title),
+        summary = entries.getOrElse(values.indexOf(selectedValue)) { selectedValue },
+        onClick = { selecting = true },
+    )
+    if (selecting) AlertDialog(
+        onDismissRequest = { selecting = false },
+        title = { Text(stringResource(title)) },
+        text = {
+            LazyColumn {
+                itemsIndexed(entries) { index, entry ->
+                    ListItem(
+                        headlineContent = { Text(entry) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                values.getOrNull(index)?.let(onValueChange)
+                                selecting = false
+                            },
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { selecting = false }) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun TextPreferenceRow(
+    @DrawableRes icon: Int,
+    @StringRes title: Int,
+    value: String,
+    summary: AnnotatedString,
+    onValueChange: (String) -> Unit,
+) {
+    var editing by remember { mutableStateOf(false) }
+    var draft by remember(value, editing) { mutableStateOf(value) }
+    PreferenceRow(
+        icon = icon,
+        title = stringResource(title),
+        summaryContent = { Text(summary) },
+        onClick = { editing = true },
+    )
+    if (editing) AlertDialog(
+        onDismissRequest = { editing = false },
+        title = { Text(stringResource(title)) },
+        text = {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                onValueChange(draft)
+                editing = false
+            }) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { editing = false }) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun SwitchPreferenceRow(
+    @DrawableRes icon: Int,
+    @StringRes title: Int,
+    summary: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    PreferenceRow(
+        icon = icon,
+        title = stringResource(title),
+        summary = summary,
+        enabled = enabled,
+        trailing = {
+            Switch(
+                checked = checked,
+                enabled = enabled,
+                onCheckedChange = if (enabled) onCheckedChange else null,
+            )
+        },
+        onClick = { onCheckedChange(!checked) },
+    )
+}
+
+@Composable
+private fun upstreamSummary(
+    fallback: String,
+    preference: String?,
+    upstream: Upstream?,
+): AnnotatedString {
+    val template = stringResource(R.string.settings_upstream_current_summary)
+    val selected = if (preference.isNullOrEmpty()) fallback else preference
+    val interfaces = upstreamInterfaces(upstream)
+    return buildAnnotatedString {
+        var index = 0
+        while (index < template.length) {
+            val placeholder = if (template[index] == '^' && index + 1 < template.length) {
+                template[index + 1]
+            } else null
+            if (placeholder == '1' || placeholder == '2' || placeholder == '^') {
+                when (placeholder) {
+                    '1' -> append(selected)
+                    '2' -> append(interfaces)
+                    else -> append('^')
+                }
+                index += 2
+            } else {
+                append(template[index])
+                index++
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberPreferenceString(key: String): State<String?> {
+    val pref = app.pref
+    return produceState(initialValue = pref.getString(key, null), key) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, changed ->
+            if (changed == key) value = sharedPreferences.getString(key, null)
+        }
+        pref.registerOnSharedPreferenceChangeListener(listener)
+        awaitDispose { pref.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+}
+
+@Composable
+private fun rememberPreferenceBoolean(key: String, defaultValue: Boolean): State<Boolean> {
+    val pref = app.pref
+    return produceState(initialValue = pref.getBoolean(key, defaultValue), key, defaultValue) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, changed ->
+            if (changed == key) value = sharedPreferences.getBoolean(key, defaultValue)
+        }
+        pref.registerOnSharedPreferenceChangeListener(listener)
+        awaitDispose { pref.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+}
+
+private fun upstreamInterfaces(upstream: Upstream?): AnnotatedString {
+    val interfaces = mutableMapOf<String, Boolean>()
+    for (route in upstream?.properties?.allRoutes ?: emptyList()) {
+        interfaces.compute(route.`interface` ?: continue) { _, internet ->
+            internet == true || try {
+                route.matches(UPSTREAM_INTERNET_V4_ADDRESS) || route.matches(UPSTREAM_INTERNET_V6_ADDRESS)
+            } catch (e: RuntimeException) {
+                Timber.w(e)
+                false
+            }
+        }
+    }
+    return buildAnnotatedString {
+        if (interfaces.isEmpty()) {
+            append("\u2205")
+        } else interfaces.entries.forEachIndexed { index, (iface, internet) ->
+            if (index > 0) append(", ")
+            val start = length
+            append(iface)
+            if (internet) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, length)
+        }
+    }
+}
+
+private fun masqueradePreferenceValue() = when (RoutingManager.masqueradeMode) {
+    MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
+    MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
+    MasqueradeMode.MASQUERADE_MODE_NETD -> "Netd"
+    is MasqueradeMode.Unrecognized -> throw IllegalArgumentException("Invalid masquerade mode")
+}
+
+private fun masqueradeModeFromPreferenceValue(value: String) = when (value) {
+    "None" -> MasqueradeMode.MASQUERADE_MODE_NONE
+    "Simple" -> MasqueradeMode.MASQUERADE_MODE_SIMPLE
+    "Netd" -> MasqueradeMode.MASQUERADE_MODE_NETD
+    else -> throw IllegalArgumentException("Invalid masquerade mode $value")
+}
+
+private suspend fun shareLogcat(context: Context) {
+    val logFile = withContext(Dispatchers.IO) {
+        val logDir = File(context.cacheDir, "log")
+        logDir.mkdir()
+        val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
+        logFile.outputStream().use { out ->
+            PrintWriter(out.bufferedWriter()).use { writer ->
+                writer.println("${BuildConfig.VERSION_CODE} is running on API ${Build.VERSION.SDK_INT}")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    writer.println("S extension ${SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S)}")
+                }
+                writer.println()
+            }
+        }
+        try {
+            ProcessBuilder(Dump.LOGCAT, "-d").apply {
+                redirectErrorStream(true)
+                redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
+            }.start().waitFor()
+        } catch (e: IOException) {
+            Timber.w(e)
+            logFile.appendText(e.stackTraceToString())
+        }
+        try {
+            RootManager.use {
+                it.execute(Dump(logFile.absolutePath))
+            }
+        } catch (e: Exception) {
+            if (e !is CancellationException) Timber.w(e)
+            PrintWriter(FileOutputStream(logFile, true)).use { e.printStackTrace(it) }
+        }
+        logFile
+    }
+    context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
+        .setType("text/x-log")
+        .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
+        context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)))
+}
+
+private val UPSTREAM_INTERNET_V4_ADDRESS = android.net.InetAddresses.parseNumericAddress("8.8.8.8")
+private val UPSTREAM_INTERNET_V6_ADDRESS = android.net.InetAddresses.parseNumericAddress("2001:4860:4860::8888")

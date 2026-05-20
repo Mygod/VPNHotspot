@@ -4,13 +4,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import kotlin.reflect.KClass
 
 /**
- * owner also needs to be Context/Fragment.
+ * owner also needs to be Context.
  */
 class ServiceForegroundConnector(private val owner: LifecycleOwner, private val connection: ServiceConnection,
                                  private val clazz: KClass<out Service>) : DefaultLifecycleObserver {
@@ -18,9 +17,8 @@ class ServiceForegroundConnector(private val owner: LifecycleOwner, private val 
         owner.lifecycle.addObserver(this)
     }
 
-    private val context get() = when (owner) {
+    private val context: Context get() = when (owner) {
         is Context -> owner
-        is Fragment -> owner.requireContext()
         else -> throw UnsupportedOperationException("Unsupported owner")
     }
 

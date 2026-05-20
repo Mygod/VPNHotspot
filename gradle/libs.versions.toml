@@ -1,17 +1,24 @@
 [versions]
+activity = "1.13.0"
+compose-bom = "2026.05.00"
 lifecycle = "2.11.0-beta01"
+navigation = "2.9.8"
 room = "2.8.4"
 wire = "6.4.0"
 
 [libraries]
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
 browser = "androidx.browser:browser:1.10.0"
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 core-i18n = "androidx.core:core-i18n:1.0.0"
 core-ktx = "androidx.core:core-ktx:1.18.0"
 dexmaker = "com.linkedin.dexmaker:dexmaker:2.28.6"
 espresso-core = "androidx.test.espresso:espresso-core:3.7.0"
 firebase-analytics = "com.google.firebase:firebase-analytics:23.2.0"
 firebase-crashlytics = "com.google.firebase:firebase-crashlytics:20.0.6"
-fragment-ktx = "androidx.fragment:fragment-ktx:1.8.9"
 hiddenapibypass = "org.lsposed.hiddenapibypass:hiddenapibypass:6.1"
 junit = "junit:junit:4.13.2"
 junit-ktx = "androidx.test.ext:junit-ktx:1.3.0"
@@ -21,7 +28,10 @@ ktor-io-jvm = "io.ktor:ktor-io-jvm:3.5.0"
 librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha04"
 lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 material = "com.google.android.material:material:1.14.0"
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
@@ -35,6 +45,7 @@ zxing-core = "com.google.zxing:core:3.5.4"
 [plugins]
 android-application = "com.android.application:9.2.1"
 ben-manes-versions = "com.github.ben-manes.versions:0.54.0"
+compose-compiler = "org.jetbrains.kotlin.plugin.compose:2.3.21"
 crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
 kotlin-parcelize = "org.jetbrains.kotlin.plugin.parcelize:2.3.21"
