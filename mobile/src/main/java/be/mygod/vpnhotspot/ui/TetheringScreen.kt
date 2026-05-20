@@ -276,6 +276,10 @@ internal fun TetheringScreen(
                         }
                     }
                 }
+            }
+        }
+        item {
+            PreferenceGroup {
                 row {
                     PreferenceRow(
                         icon = R.drawable.ic_content_add,
@@ -444,7 +448,6 @@ private fun TetheringTypeRow(
         summary = summary ?: "",
         checked = checked,
         enabled = true,
-        indent = true,
         onClick = {
             if (!Settings.System.canWrite(context)) try {
                 context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
@@ -474,7 +477,6 @@ private fun BluetoothTetheringRow(
         summary = summary,
         checked = active == true,
         enabled = bluetoothTethering != null,
-        indent = true,
         onClick = {
             if (!Settings.System.canWrite(context)) try {
                 context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
@@ -505,10 +507,8 @@ private fun TetheringRow(
     switchEnabled: Boolean = enabled,
     onClick: () -> Unit,
     onCheckedChange: (() -> Unit)? = null,
-    indent: Boolean = false,
 ) {
     PreferenceRow(
-        modifier = Modifier.padding(start = if (indent) 40.dp else 0.dp),
         icon = icon,
         title = title,
         summaryContent = if (summary.isEmpty()) null else {
