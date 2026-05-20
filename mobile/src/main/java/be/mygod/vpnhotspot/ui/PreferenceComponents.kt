@@ -9,6 +9,7 @@ import android.text.style.URLSpan
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,10 +19,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
@@ -31,6 +32,12 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositeKeyHashCode
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.NonSkippableComposable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.currentCompositeKeyHashCode
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -48,6 +55,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.util.launchUrl
+import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
+import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
 
 @Composable
 internal fun SettingsList(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
@@ -59,12 +68,57 @@ internal fun SettingsList(modifier: Modifier = Modifier, content: LazyListScope.
 }
 
 @Composable
-internal fun SectionHeader(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = 8.dp),
-        fontWeight = FontWeight.SemiBold,
-    )
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+internal fun PreferenceGroup(
+    title: String? = null,
+    content: @Composable PreferenceGroupScope.() -> Unit,
+) {
+    val scope = remember { PreferenceGroupScope() }
+    ComposeSettingsGroup(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+        title = title?.let { { Text(it, fontWeight = FontWeight.SemiBold) } },
+    ) {
+        scope.clear()
+        scope.content()
+        scope.Render()
+    }
+}
+
+internal class PreferenceGroupScope internal constructor() {
+    private val items = ArrayList<PreferenceGroupItem>()
+
+    @Composable
+    @NonSkippableComposable
+    fun row(content: @Composable () -> Unit) {
+        items += PreferenceGroupItem.Row(currentCompositeKeyHashCode, content)
+    }
+
+    @Composable
+    @NonSkippableComposable
+    fun contentItem(content: @Composable () -> Unit) {
+        items += PreferenceGroupItem.Content(currentCompositeKeyHashCode, content)
+    }
+
+    internal fun clear() {
+        items.clear()
+    }
+
+    @Composable
+    internal fun Render() {
+        val count = items.count { it is PreferenceGroupItem.Row }
+        var index = 0
+        for (item in items) when (item) {
+            is PreferenceGroupItem.Row -> key(item.key) {
+                CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index++, count)) {
+                    item.content()
+                }
+            }
+            is PreferenceGroupItem.Content -> key(item.key) {
+                item.content()
+            }
+        }
+    }
 }
 
 @Composable
@@ -79,14 +133,13 @@ internal fun PreferenceRow(
     trailing: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
-    val rowModifier = if (onClick == null || !enabled) modifier else modifier.clickable(onClick = onClick)
-    ListItem(
-        headlineContent = { Text(title) },
-        modifier = rowModifier
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else 0.38f),
-        supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
-        leadingContent = icon?.let {
+    PreferenceRow(
+        titleContent = { Text(title) },
+        modifier = modifier,
+        summary = summary,
+        summaryContent = summaryContent,
+        enabled = enabled,
+        iconContent = icon?.let {
             {
                 Icon(
                     painter = painterResource(it),
@@ -96,9 +149,61 @@ internal fun PreferenceRow(
                 )
             }
         },
+        trailing = trailing,
+        onClick = onClick,
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+internal fun PreferenceRow(
+    titleContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    summaryContent: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    iconContent: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
+) {
+    val position = LocalPreferenceRowPosition.current
+    SettingsTileScaffold(
+        title = titleContent,
+        modifier = modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.38f),
+        enabled = enabled,
+        onClick = onClick ?: {},
+        supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+        leadingContent = iconContent,
+        colors = if (position == null) {
+            ListItemDefaults.colors()
+        } else {
+            ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        },
+        shapes = if (position == null) {
+            ListItemDefaults.shapes()
+        } else {
+            ListItemDefaults.segmentedShapes(position.index, position.count)
+        },
         trailingContent = trailing,
     )
-    HorizontalDivider()
+}
+
+internal class PreferenceRowPosition internal constructor(val index: Int, val count: Int)
+
+private val LocalPreferenceRowPosition = compositionLocalOf<PreferenceRowPosition?> { null }
+
+private sealed interface PreferenceGroupItem {
+    class Row(
+        val key: CompositeKeyHashCode,
+        val content: @Composable () -> Unit,
+    ) : PreferenceGroupItem
+
+    class Content(
+        val key: CompositeKeyHashCode,
+        val content: @Composable () -> Unit,
+    ) : PreferenceGroupItem
 }
 
 @Composable

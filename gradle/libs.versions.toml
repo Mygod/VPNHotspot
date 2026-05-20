@@ -9,6 +9,7 @@ activity-compose = { module = "androidx.activity:activity-compose", version.ref 
 browser = "androidx.browser:browser:1.10.0"
 compose-bom = "androidx.compose:compose-bom:2026.05.01"
 compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-settings-ui-tiles-expressive = "com.github.alorma.compose-settings:ui-tiles-expressive:3.1.0"
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 core-i18n = "androidx.core:core-i18n:1.0.0"

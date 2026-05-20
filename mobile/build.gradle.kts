@@ -135,8 +135,7 @@ android {
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
-    compileSdk = 36
-    compileSdkMinor = 1
+    compileSdk = 37
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
@@ -207,6 +206,7 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.browser)
     implementation(libs.compose.material3)
+    implementation(libs.compose.settings.ui.tiles.expressive)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.core.i18n)
     implementation(libs.core.ktx)

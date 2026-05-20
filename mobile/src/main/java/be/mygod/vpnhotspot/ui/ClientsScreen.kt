@@ -10,7 +10,6 @@ import android.text.format.Formatter
 import androidx.collection.LongObjectMap
 import androidx.collection.MutableScatterMap
 import androidx.collection.ObjectList
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,9 +18,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -115,36 +112,44 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
     }
 
     SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
-        if (clients.isEmpty()) {
-            item {
-                PreferenceRow(
-                    icon = R.drawable.ic_device_devices,
-                    title = stringResource(R.string.clients_empty),
-                )
+        item {
+            PreferenceGroup {
+                if (clients.isEmpty()) {
+                    row {
+                        PreferenceRow(
+                            icon = R.drawable.ic_device_devices,
+                            title = stringResource(R.string.clients_empty),
+                        )
+                    }
+                } else for (client in clients) {
+                    androidx.compose.runtime.key(client.iface, client.mac) {
+                        row {
+                            ClientRow(
+                                client = client,
+                                rate = rates[client.iface to client.mac],
+                                snackbarHostState = snackbarHostState,
+                                tetherTypeRevision = tetherTypeRevision,
+                                onNickname = { nickname ->
+                                    GlobalScope.launch(Dispatchers.Main.immediate) {
+                                        updateNickname(client.mac, nickname, snackbarHostState)
+                                    }
+                                },
+                                onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
+                                onToggleBlocked = {
+                                    val wasWorking = TrafficRecorder.isWorking(client.mac)
+                                    val record = client.obtainRecord().apply { blocked = !blocked }
+                                    GlobalScope.launch(Dispatchers.Unconfined) {
+                                        AppDatabase.instance.clientRecordDao.update(record)
+                                    }
+                                    if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
+                                        snackbarHostState.showLongSnackbar(blockServiceInactive)
+                                    }
+                                },
+                            )
+                        }
+                    }
+                }
             }
-        } else for (client in clients) item(key = "${client.iface}/${client.mac}") {
-            ClientRow(
-                client = client,
-                rate = rates[client.iface to client.mac],
-                snackbarHostState = snackbarHostState,
-                tetherTypeRevision = tetherTypeRevision,
-                onNickname = { nickname ->
-                    GlobalScope.launch(Dispatchers.Main.immediate) {
-                        updateNickname(client.mac, nickname, snackbarHostState)
-                    }
-                },
-                onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
-                onToggleBlocked = {
-                    val wasWorking = TrafficRecorder.isWorking(client.mac)
-                    val record = client.obtainRecord().apply { blocked = !blocked }
-                    GlobalScope.launch(Dispatchers.Unconfined) {
-                        AppDatabase.instance.clientRecordDao.update(record)
-                    }
-                    if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
-                        snackbarHostState.showLongSnackbar(blockServiceInactive)
-                    }
-                },
-            )
         }
     }
 }
@@ -174,8 +179,8 @@ private fun ClientRow(
     val icon = remember(client, tetherTypeRevision) { client.icon }
 
     Box {
-        ListItem(
-            headlineContent = {
+        PreferenceRow(
+            titleContent = {
                 if (titleSelectable) RowSelectionContainer {
                     LinkedText(
                         title,
@@ -188,7 +193,7 @@ private fun ClientRow(
                     )
                 }
             },
-            supportingContent = {
+            summaryContent = {
                 Column {
                     if (description.isNotEmpty()) {
                         RowSelectionContainer {
@@ -198,16 +203,14 @@ private fun ClientRow(
                     rateText?.let { Text(it) }
                 }
             },
-            leadingContent = {
+            iconContent = {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
                     modifier = Modifier.size(24.dp),
                 )
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = true },
+            onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
@@ -247,7 +250,6 @@ private fun ClientRow(
             )
         }
     }
-    HorizontalDivider()
 
     if (editingNickname) {
         val focusRequester = remember { FocusRequester() }

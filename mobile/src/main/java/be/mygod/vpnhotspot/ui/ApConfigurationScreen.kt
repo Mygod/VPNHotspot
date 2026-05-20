@@ -579,281 +579,318 @@ internal enum class ApConfigurationTarget {
 @Composable
 internal fun ApConfigurationScreen(state: ApConfigurationState) {
     SettingsList {
-        item { SsidApRow(state) }
-        state.actionError?.let {
-            item { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
-        }
-        if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) item {
-            ListApRow(
-                title = R.string.wifi_security,
-                selected = state.securityLabel,
-                enabled = true,
-                entries = state.securityEntries(),
-                entryLabel = { it.label },
-                onSelect = { state.securityType = it.value },
-            )
-        }
-        if (state.passwordVisible) {
-            item { PasswordApRow(state) }
-        }
-        item { SwitchApRow(R.string.wifi_hotspot_auto_off, state.autoShutdown, false) { state.autoShutdown = it } }
-        if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
-            item {
-                TextApRow(
-                    title = R.string.wifi_hotspot_timeout,
-                    value = state.timeout,
-                    readOnly = false,
-                    keyboardType = KeyboardType.Number,
-                    maxLength = 19,
-                    suffix = "ms",
-                    supportingText = stringResource(
-                        R.string.wifi_hotspot_timeout_default,
-                        TetherTimeoutMonitor.defaultTimeout,
-                    ),
-                    validator = { value ->
-                        validateOptionalLong(value) { timeout ->
-                            if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
-                                SoftApConfigurationCompat.testPlatformTimeoutValidity(timeout)
-                            }
-                        }
-                    },
-                ) { state.timeout = it }
+        item {
+            PreferenceGroup {
+                row { SsidApRow(state) }
+                state.actionError?.let {
+                    contentItem { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+                }
+                if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) row {
+                    ListApRow(
+                        title = R.string.wifi_security,
+                        selected = state.securityLabel,
+                        enabled = true,
+                        entries = state.securityEntries(),
+                        entryLabel = { it.label },
+                        onSelect = { state.securityType = it.value },
+                    )
+                }
+                if (state.passwordVisible) row { PasswordApRow(state) }
+                row {
+                    SwitchApRow(R.string.wifi_hotspot_auto_off, state.autoShutdown, false) {
+                        state.autoShutdown = it
+                    }
+                }
+                if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
+                    row {
+                        TextApRow(
+                            title = R.string.wifi_hotspot_timeout,
+                            value = state.timeout,
+                            readOnly = false,
+                            keyboardType = KeyboardType.Number,
+                            maxLength = 19,
+                            suffix = "ms",
+                            supportingText = stringResource(
+                                R.string.wifi_hotspot_timeout_default,
+                                TetherTimeoutMonitor.defaultTimeout,
+                            ),
+                            validator = { value ->
+                                validateOptionalLong(value) { timeout ->
+                                    if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
+                                        SoftApConfigurationCompat.testPlatformTimeoutValidity(timeout)
+                                    }
+                                }
+                            },
+                        ) { state.timeout = it }
+                    }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
+                    row {
+                        SwitchApRow(
+                            R.string.wifi_bridged_mode_opportunistic_shutdown,
+                            state.bridgedModeOpportunisticShutdown,
+                            false,
+                        ) { state.bridgedModeOpportunisticShutdown = it }
+                    }
+                    row {
+                        TextApRow(
+                            R.string.wifi_hotspot_timeout_bridged,
+                            state.bridgedTimeout,
+                            Build.VERSION.SDK_INT < 33,
+                            keyboardType = KeyboardType.Number,
+                            maxLength = 19,
+                            suffix = "ms",
+                            supportingText = stringResource(
+                                R.string.wifi_hotspot_timeout_default,
+                                TetherTimeoutMonitor.defaultTimeoutBridged,
+                            ),
+                            validator = { value ->
+                                validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
+                            },
+                        ) { state.bridgedTimeout = it }
+                    }
+                }
             }
-        }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
-            item {
-                SwitchApRow(
-                    R.string.wifi_bridged_mode_opportunistic_shutdown,
-                    state.bridgedModeOpportunisticShutdown,
-                    false,
-                ) { state.bridgedModeOpportunisticShutdown = it }
-            }
-            item {
-                TextApRow(
-                    R.string.wifi_hotspot_timeout_bridged,
-                    state.bridgedTimeout,
-                    Build.VERSION.SDK_INT < 33,
-                    keyboardType = KeyboardType.Number,
-                    maxLength = 19,
-                    suffix = "ms",
-                    supportingText = stringResource(
-                        R.string.wifi_hotspot_timeout_default,
-                        TetherTimeoutMonitor.defaultTimeoutBridged,
-                    ),
-                    validator = { value ->
-                        validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
-                    },
-                ) { state.bridgedTimeout = it }
-            }
-        }
-        item { SectionHeader(stringResource(R.string.wifi_hotspot_ap_band_title)) }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 && SoftApConfigurationCompat.isBandOptimizationSupported) {
-            item { SwitchApRow(R.string.wifi_band_optimization, state.bandOptimization, false) {
-                state.bandOptimization = it
-            } }
         }
         item {
-            ListApRow(
-                title = R.string.wifi_hotspot_ap_band_title,
-                selected = state.primaryChannelLabel,
-                enabled = true,
-                entries = state.channelEntries(),
-                entryLabel = { it.toString() },
-                onSelect = { state.primaryChannel = it },
-            )
-        }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) item {
-            ListApRow(
-                title = R.string.wifi_hotspot_ap_band_title,
-                selected = state.secondaryChannelLabel,
-                enabled = true,
-                entries = state.channelEntries(allowDisabled = true),
-                entryLabel = { it.toString() },
-                onSelect = { state.secondaryChannel = it },
-            )
-        }
-        state.channelError?.let { item { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) } }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
-            item {
-                TextApRow(
-                    R.string.wifi_hotspot_acs_channel_2g,
-                    state.acs2g,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    validator = { validateAcsChannels(SoftApConfiguration.BAND_2GHZ, it) },
-                ) { state.acs2g = it }
-            }
-            item {
-                TextApRow(
-                    R.string.wifi_hotspot_acs_channel_5g,
-                    state.acs5g,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    validator = { validateAcsChannels(SoftApConfiguration.BAND_5GHZ, it) },
-                ) { state.acs5g = it }
-            }
-            item {
-                TextApRow(
-                    R.string.wifi_hotspot_acs_channel_6g,
-                    state.acs6g,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    validator = { validateAcsChannels(SoftApConfiguration.BAND_6GHZ, it) },
-                ) { state.acs6g = it }
-            }
-            item {
-                ListApRow(
-                    title = R.string.wifi_hotspot_max_channel_bandwidth,
-                    selected = state.maxChannelBandwidthLabel,
-                    enabled = true,
-                    entries = state.bandwidthEntries(),
-                    entryLabel = { it.name },
-                    onSelect = { state.maxChannelBandwidth = it.width },
-                )
-            }
-            state.maxChannelBandwidthError?.let {
-                item { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+            PreferenceGroup(title = stringResource(R.string.wifi_hotspot_ap_band_title)) {
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 &&
+                    SoftApConfigurationCompat.isBandOptimizationSupported) {
+                    row {
+                        SwitchApRow(R.string.wifi_band_optimization, state.bandOptimization, false) {
+                            state.bandOptimization = it
+                        }
+                    }
+                }
+                row {
+                    ListApRow(
+                        title = R.string.wifi_hotspot_ap_band_title,
+                        selected = state.primaryChannelLabel,
+                        enabled = true,
+                        entries = state.channelEntries(),
+                        entryLabel = { it.toString() },
+                        onSelect = { state.primaryChannel = it },
+                    )
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) row {
+                    ListApRow(
+                        title = R.string.wifi_hotspot_ap_band_title,
+                        selected = state.secondaryChannelLabel,
+                        enabled = true,
+                        entries = state.channelEntries(allowDisabled = true),
+                        entryLabel = { it.toString() },
+                        onSelect = { state.secondaryChannel = it },
+                    )
+                }
+                state.channelError?.let {
+                    contentItem { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
+                    row {
+                        TextApRow(
+                            R.string.wifi_hotspot_acs_channel_2g,
+                            state.acs2g,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            validator = { validateAcsChannels(SoftApConfiguration.BAND_2GHZ, it) },
+                        ) { state.acs2g = it }
+                    }
+                    row {
+                        TextApRow(
+                            R.string.wifi_hotspot_acs_channel_5g,
+                            state.acs5g,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            validator = { validateAcsChannels(SoftApConfiguration.BAND_5GHZ, it) },
+                        ) { state.acs5g = it }
+                    }
+                    row {
+                        TextApRow(
+                            R.string.wifi_hotspot_acs_channel_6g,
+                            state.acs6g,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            validator = { validateAcsChannels(SoftApConfiguration.BAND_6GHZ, it) },
+                        ) { state.acs6g = it }
+                    }
+                    row {
+                        ListApRow(
+                            title = R.string.wifi_hotspot_max_channel_bandwidth,
+                            selected = state.maxChannelBandwidthLabel,
+                            enabled = true,
+                            entries = state.bandwidthEntries(),
+                            entryLabel = { it.name },
+                            onSelect = { state.maxChannelBandwidth = it.width },
+                        )
+                    }
+                    state.maxChannelBandwidthError?.let {
+                        contentItem { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+                    }
+                }
             }
         }
         if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
-            item { SectionHeader(stringResource(R.string.wifi_hotspot_access_control_title)) }
             item {
-                TextApRow(
-                    R.string.wifi_max_clients,
-                    state.maxClients,
-                    false,
-                    keyboardType = KeyboardType.Number,
-                    maxLength = 10,
-                    validator = { value ->
-                        if (value.isEmpty()) null else try {
-                            value.toInt()
-                            null
-                        } catch (e: NumberFormatException) {
-                            e.readableMessage
+                PreferenceGroup(title = stringResource(R.string.wifi_hotspot_access_control_title)) {
+                    row {
+                        TextApRow(
+                            R.string.wifi_max_clients,
+                            state.maxClients,
+                            false,
+                            keyboardType = KeyboardType.Number,
+                            maxLength = 10,
+                            validator = { value ->
+                                if (value.isEmpty()) null else try {
+                                    value.toInt()
+                                    null
+                                } catch (e: NumberFormatException) {
+                                    e.readableMessage
+                                }
+                            },
+                        ) { state.maxClients = it }
+                    }
+                    row {
+                        TextApRow(
+                            R.string.wifi_blocked_list,
+                            state.blockedList,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            minLines = 3,
+                            validator = { validateMacList(it) },
+                        ) { state.blockedList = it }
+                    }
+                    row {
+                        SwitchApRow(R.string.wifi_client_user_control, state.clientUserControl, false) {
+                            state.clientUserControl = it
                         }
-                    },
-                ) { state.maxClients = it }
+                    }
+                    row {
+                        TextApRow(
+                            R.string.wifi_allowed_list,
+                            state.allowedList,
+                            !state.clientUserControl,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            minLines = 3,
+                            validator = { value ->
+                                validateMacList(value) ?: try {
+                                    val blocked = try {
+                                        parseMacList(state.blockedList).toSet()
+                                    } catch (_: IllegalArgumentException) {
+                                        emptySet()
+                                    }
+                                    require(parseMacList(value).none { it in blocked }) {
+                                        "A MAC address exists in both client lists"
+                                    }
+                                    null
+                                } catch (e: IllegalArgumentException) {
+                                    e.readableMessage
+                                }
+                            },
+                        ) { state.allowedList = it }
+                    }
+                }
             }
-            item {
-                TextApRow(
-                    R.string.wifi_blocked_list,
-                    state.blockedList,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    minLines = 3,
-                    validator = { validateMacList(it) },
-                ) { state.blockedList = it }
-            }
-            item { SwitchApRow(R.string.wifi_client_user_control, state.clientUserControl, false) {
-                state.clientUserControl = it
-            } }
-            item {
-                TextApRow(
-                    R.string.wifi_allowed_list,
-                    state.allowedList,
-                    !state.clientUserControl,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    minLines = 3,
-                    validator = { value ->
-                        validateMacList(value) ?: try {
-                            val blocked = try {
-                                parseMacList(state.blockedList).toSet()
-                            } catch (_: IllegalArgumentException) {
-                                emptySet()
-                            }
-                            require(parseMacList(value).none { it in blocked }) {
-                                "A MAC address exists in both client lists"
-                            }
-                            null
-                        } catch (e: IllegalArgumentException) {
-                            e.readableMessage
+        }
+        item {
+            PreferenceGroup(title = stringResource(R.string.wifi_hotspot_ap_advanced_title)) {
+                if (state.p2pMode || Build.VERSION.SDK_INT >= 31) row {
+                    ListApRow(
+                        title = R.string.wifi_mac_randomization,
+                        selected = state.macRandomizationLabel,
+                        enabled = !state.p2pMode,
+                        entries = app.resources.getStringArray(R.array.wifi_mac_randomization).mapIndexed { index, label ->
+                            index to label
+                        },
+                        entryLabel = { it.second },
+                        onSelect = { state.macRandomization = it.first },
+                    )
+                }
+                if (state.p2pMode || Build.VERSION.SDK_INT < 31 ||
+                    state.macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE) {
+                    row {
+                        TextApRow(
+                            R.string.wifi_advanced_mac_address_title,
+                            state.bssid,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            maxLength = 17,
+                            validator = { value ->
+                                validateOptionalMac(value) { mac ->
+                                    if (Build.VERSION.SDK_INT >= 30 && !state.p2pMode) {
+                                        SoftApConfigurationCompat.testPlatformValidity(mac)
+                                    }
+                                }
+                            },
+                        ) { state.bssid = it }
+                    }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
+                    row {
+                        TextApRow(
+                            R.string.wifi_advanced_mac_address_persistent_randomized,
+                            state.persistentRandomizedMac,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            maxLength = 17,
+                            validator = { validateOptionalMac(it) },
+                        ) { state.persistentRandomizedMac = it }
+                    }
+                }
+                if (!state.p2pMode) row {
+                    SwitchApRow(R.string.wifi_hidden_network, state.hiddenSsid, false) {
+                        state.hiddenSsid = it
+                    }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
+                    row {
+                        SwitchApRow(R.string.wifi_ieee_80211ax, state.ieee80211ax, false) {
+                            state.ieee80211ax = it
                         }
-                    },
-                ) { state.allowedList = it }
-            }
-        }
-        item { SectionHeader(stringResource(R.string.wifi_hotspot_ap_advanced_title)) }
-        if (state.p2pMode || Build.VERSION.SDK_INT >= 31) item {
-            ListApRow(
-                title = R.string.wifi_mac_randomization,
-                selected = state.macRandomizationLabel,
-                enabled = !state.p2pMode,
-                entries = app.resources.getStringArray(R.array.wifi_mac_randomization).mapIndexed { index, label ->
-                    index to label
-                },
-                entryLabel = { it.second },
-                onSelect = { state.macRandomization = it.first },
-            )
-        }
-        if (state.p2pMode || Build.VERSION.SDK_INT < 31 ||
-            state.macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE) {
-            item {
-                TextApRow(
-                    R.string.wifi_advanced_mac_address_title,
-                    state.bssid,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    maxLength = 17,
-                    validator = { value ->
-                        validateOptionalMac(value) { mac ->
-                            if (Build.VERSION.SDK_INT >= 30 && !state.p2pMode) {
-                                SoftApConfigurationCompat.testPlatformValidity(mac)
-                            }
+                    }
+                    if (Build.VERSION.SDK_INT >= 33) row {
+                        SwitchApRow(
+                            R.string.wifi_ieee_80211be,
+                            state.ieee80211be,
+                            false,
+                        ) { state.ieee80211be = it }
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= 33) {
+                    row {
+                        TextApRow(
+                            R.string.wifi_vendor_elements,
+                            state.vendorElements,
+                            false,
+                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                            minLines = 3,
+                            validator = { value ->
+                                try {
+                                    VendorElements.deserialize(value).also {
+                                        if (!state.p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
+                                    }
+                                    null
+                                } catch (e: Exception) {
+                                    e.readableMessage
+                                }
+                            },
+                        ) { state.vendorElements = it }
+                    }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 36) {
+                    row {
+                        SwitchApRow(R.string.wifi_client_isolation, state.clientIsolation, false) {
+                            state.clientIsolation = it
                         }
-                    },
-                ) { state.bssid = it }
-            }
-        }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
-            item {
-                TextApRow(
-                    R.string.wifi_advanced_mac_address_persistent_randomized,
-                    state.persistentRandomizedMac,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    maxLength = 17,
-                    validator = { validateOptionalMac(it) },
-                ) { state.persistentRandomizedMac = it }
-            }
-        }
-        if (!state.p2pMode) item { SwitchApRow(R.string.wifi_hidden_network, state.hiddenSsid, false) {
-            state.hiddenSsid = it
-        } }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
-            item { SwitchApRow(R.string.wifi_ieee_80211ax, state.ieee80211ax, false) {
-                state.ieee80211ax = it
-            } }
-            if (Build.VERSION.SDK_INT >= 33) item { SwitchApRow(R.string.wifi_ieee_80211be, state.ieee80211be,
-                false) { state.ieee80211be = it } }
-        }
-        if (Build.VERSION.SDK_INT >= 33) {
-            item {
-                TextApRow(
-                    R.string.wifi_vendor_elements,
-                    state.vendorElements,
-                    false,
-                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                    minLines = 3,
-                    validator = { value ->
-                        try {
-                            VendorElements.deserialize(value).also {
-                                if (!state.p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
-                            }
-                            null
-                        } catch (e: Exception) {
-                            e.readableMessage
+                    }
+                }
+                if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
+                    row {
+                        SwitchApRow(R.string.wifi_user_config, state.userConfig, true) {
+                            state.userConfig = it
                         }
-                    },
-                ) { state.vendorElements = it }
+                    }
+                }
             }
-        }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 36) {
-            item { SwitchApRow(R.string.wifi_client_isolation, state.clientIsolation, false) {
-                state.clientIsolation = it
-            } }
-        }
-        if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
-            item { SwitchApRow(R.string.wifi_user_config, state.userConfig, true) { state.userConfig = it } }
         }
     }
 }

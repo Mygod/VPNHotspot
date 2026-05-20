@@ -132,186 +132,202 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
 
     SettingsList {
         item {
-            PreferenceRow(
-                icon = R.drawable.ic_action_settings_backup_restore,
-                title = stringResource(R.string.settings_service_clean),
-                summary = stringResource(R.string.settings_service_clean_summary),
-                onClick = { GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() } },
-            )
-        }
-        item { SectionHeader(stringResource(R.string.settings_upstream)) }
-        item {
-            val fallback = stringResource(R.string.settings_service_upstream_auto)
-            TextPreferenceRow(
-                icon = R.drawable.ic_action_settings_ethernet,
-                title = R.string.settings_service_upstream,
-                value = primaryPreference.orEmpty(),
-                summary = upstreamSummary(
-                    fallback = fallback,
-                    preference = primaryPreference,
-                    upstream = primaryUpstream,
-                ),
-                placeholder = fallback,
-                suggestNetworkInterfaces = true,
-                onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
-            )
+            PreferenceGroup {
+                row {
+                    PreferenceRow(
+                        icon = R.drawable.ic_action_settings_backup_restore,
+                        title = stringResource(R.string.settings_service_clean),
+                        summary = stringResource(R.string.settings_service_clean_summary),
+                        onClick = { GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() } },
+                    )
+                }
+            }
         }
         item {
-            val fallback = stringResource(R.string.settings_upstream_fallback_auto)
-            TextPreferenceRow(
-                icon = R.drawable.ic_action_settings_input_component,
-                title = R.string.settings_upstream_fallback,
-                value = fallbackPreference.orEmpty(),
-                summary = upstreamSummary(
-                    fallback = fallback,
-                    preference = fallbackPreference,
-                    upstream = fallbackUpstream,
-                ),
-                placeholder = fallback,
-                suggestNetworkInterfaces = true,
-                onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
-            )
-        }
-        item { SectionHeader(stringResource(R.string.settings_downstream)) }
-        item {
-            ListPreferenceRow(
-                icon = R.drawable.ic_social_people,
-                title = R.string.settings_service_masquerade,
-                entries = stringArrayResource(R.array.settings_service_masquerade),
-                values = stringArrayResource(R.array.settings_service_masquerade_values),
-                selectedValue = masqueradeMode,
-                onValueChange = {
-                    masqueradeMode = it
-                    RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
-                },
-            )
-        }
-        item {
-            ListPreferenceRow(
-                icon = R.drawable.ic_image_looks_6,
-                title = R.string.settings_service_ipv6_mode,
-                entries = stringArrayResource(R.array.settings_service_ipv6_mode),
-                values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
-                selectedValue = ipv6Mode,
-                onValueChange = {
-                    ipv6Mode = it
-                    RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
-                },
-            )
+            PreferenceGroup(title = stringResource(R.string.settings_upstream)) {
+                val fallback = stringResource(R.string.settings_service_upstream_auto)
+                row {
+                    TextPreferenceRow(
+                        icon = R.drawable.ic_action_settings_ethernet,
+                        title = R.string.settings_service_upstream,
+                        value = primaryPreference.orEmpty(),
+                        summary = upstreamSummary(
+                            fallback = fallback,
+                            preference = primaryPreference,
+                            upstream = primaryUpstream,
+                        ),
+                        placeholder = fallback,
+                        suggestNetworkInterfaces = true,
+                        onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
+                    )
+                }
+                val fallbackLabel = stringResource(R.string.settings_upstream_fallback_auto)
+                row {
+                    TextPreferenceRow(
+                        icon = R.drawable.ic_action_settings_input_component,
+                        title = R.string.settings_upstream_fallback,
+                        value = fallbackPreference.orEmpty(),
+                        summary = upstreamSummary(
+                            fallback = fallbackLabel,
+                            preference = fallbackPreference,
+                            upstream = fallbackUpstream,
+                        ),
+                        placeholder = fallbackLabel,
+                        suggestNetworkInterfaces = true,
+                        onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
+                    )
+                }
+            }
         }
         item {
-            SwitchPreferenceRow(
-                icon = R.drawable.ic_device_battery_charging_full,
-                title = R.string.settings_system_tether_offload,
-                summary = stringResource(R.string.settings_system_tether_offload_summary),
-                checked = offloadEnabled,
-                enabled = !offloadChanging,
-                onCheckedChange = { enabled ->
-                    if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
-                    scope.launch {
-                        offloadChanging = true
-                        try {
-                            TetherOffloadManager.setEnabled(enabled)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            Timber.w(e)
-                            snackbarHostState.showLongSnackbar(e.readableMessage)
-                        } finally {
-                            offloadEnabled = TetherOffloadManager.enabled
-                            offloadChanging = false
-                        }
-                    }
-                },
-            )
-        }
-        item { SectionHeader(stringResource(R.string.settings_misc)) }
-        item {
-            ListPreferenceRow(
-                icon = R.drawable.ic_device_wifi_lock,
-                title = R.string.settings_service_wifi_lock,
-                entries = stringArrayResource(R.array.settings_service_wifi_lock),
-                values = stringArrayResource(R.array.settings_service_wifi_lock_values),
-                selectedValue = wifiLockMode,
-                onValueChange = {
-                    wifiLockMode = it
-                    WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
-                },
-            )
-        }
-        item {
-            SwitchPreferenceRow(
-                icon = R.drawable.ic_action_autorenew,
-                title = R.string.settings_service_auto_start,
-                summary = stringResource(R.string.settings_service_auto_start_summary),
-                checked = autoStart,
-                onCheckedChange = { enabled ->
-                    app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
-                    scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
-                },
-            )
-        }
-        if (Services.p2p != null && RepeaterService.safeModeConfigurable) item {
-            SwitchPreferenceRow(
-                icon = R.drawable.ic_alert_warning,
-                title = R.string.settings_service_repeater_safe_mode,
-                summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
-                checked = repeaterSafeMode,
-                onCheckedChange = { app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) } },
-            )
-        }
-        if (Build.VERSION.SDK_INT >= 30) item {
-            SwitchPreferenceRow(
-                icon = R.drawable.ic_content_file_copy,
-                title = R.string.settings_service_temp_hotspot_use_system,
-                summary = stringResource(R.string.settings_service_temp_hotspot_use_system_summary),
-                checked = useSystemTempHotspot,
-                onCheckedChange = { app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) } },
-            )
-        }
-        item { SectionHeader(stringResource(R.string.settings_help)) }
-        item {
-            PreferenceRow(
-                icon = R.drawable.ic_toggle_star,
-                title = stringResource(R.string.settings_misc_source),
-                summary = stringResource(R.string.settings_misc_source_summary),
-                onClick = { context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md") },
-            )
+            PreferenceGroup(title = stringResource(R.string.settings_downstream)) {
+                row {
+                    ListPreferenceRow(
+                        icon = R.drawable.ic_social_people,
+                        title = R.string.settings_service_masquerade,
+                        entries = stringArrayResource(R.array.settings_service_masquerade),
+                        values = stringArrayResource(R.array.settings_service_masquerade_values),
+                        selectedValue = masqueradeMode,
+                        onValueChange = {
+                            masqueradeMode = it
+                            RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
+                        },
+                    )
+                }
+                row {
+                    ListPreferenceRow(
+                        icon = R.drawable.ic_image_looks_6,
+                        title = R.string.settings_service_ipv6_mode,
+                        entries = stringArrayResource(R.array.settings_service_ipv6_mode),
+                        values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
+                        selectedValue = ipv6Mode,
+                        onValueChange = {
+                            ipv6Mode = it
+                            RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
+                        },
+                    )
+                }
+                row {
+                    SwitchPreferenceRow(
+                        icon = R.drawable.ic_device_battery_charging_full,
+                        title = R.string.settings_system_tether_offload,
+                        summary = stringResource(R.string.settings_system_tether_offload_summary),
+                        checked = offloadEnabled,
+                        enabled = !offloadChanging,
+                        onCheckedChange = { enabled ->
+                            if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
+                            scope.launch {
+                                offloadChanging = true
+                                try {
+                                    TetherOffloadManager.setEnabled(enabled)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Timber.w(e)
+                                    snackbarHostState.showLongSnackbar(e.readableMessage)
+                                } finally {
+                                    offloadEnabled = TetherOffloadManager.enabled
+                                    offloadChanging = false
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         }
         item {
-            PreferenceRow(
-                icon = R.drawable.ic_action_bug_report,
-                title = stringResource(R.string.settings_misc_logcat),
-                summary = stringResource(R.string.settings_misc_logcat_summary),
-                onClick = {
-                    GlobalScope.launch(Dispatchers.Main.immediate) {
-                        try {
-                            shareLogcat(context)
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            Timber.w(e)
-                            snackbarHostState.showLongSnackbar(e.readableMessage)
-                        }
-                    }
-                },
-            )
+            PreferenceGroup(title = stringResource(R.string.settings_misc)) {
+                row {
+                    ListPreferenceRow(
+                        icon = R.drawable.ic_device_wifi_lock,
+                        title = R.string.settings_service_wifi_lock,
+                        entries = stringArrayResource(R.array.settings_service_wifi_lock),
+                        values = stringArrayResource(R.array.settings_service_wifi_lock_values),
+                        selectedValue = wifiLockMode,
+                        onValueChange = {
+                            wifiLockMode = it
+                            WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
+                        },
+                    )
+                }
+                row {
+                    SwitchPreferenceRow(
+                        icon = R.drawable.ic_action_autorenew,
+                        title = R.string.settings_service_auto_start,
+                        summary = stringResource(R.string.settings_service_auto_start_summary),
+                        checked = autoStart,
+                        onCheckedChange = { enabled ->
+                            app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
+                            scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
+                        },
+                    )
+                }
+                if (Services.p2p != null && RepeaterService.safeModeConfigurable) row {
+                    SwitchPreferenceRow(
+                        icon = R.drawable.ic_alert_warning,
+                        title = R.string.settings_service_repeater_safe_mode,
+                        summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
+                        checked = repeaterSafeMode,
+                        onCheckedChange = { app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) } },
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= 30) row {
+                    SwitchPreferenceRow(
+                        icon = R.drawable.ic_content_file_copy,
+                        title = R.string.settings_service_temp_hotspot_use_system,
+                        summary = stringResource(R.string.settings_service_temp_hotspot_use_system_summary),
+                        checked = useSystemTempHotspot,
+                        onCheckedChange = { app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) } },
+                    )
+                }
+            }
         }
         item {
-            PreferenceRow(
-                icon = R.drawable.ic_action_card_giftcard,
-                title = stringResource(R.string.settings_misc_donate),
-                summary = stringResource(R.string.settings_misc_donate_summary),
-                onClick = { context.launchUrl("https://mygod.be/donate/") },
-            )
-        }
-        item {
-            PreferenceRow(
-                icon = R.drawable.ic_action_code,
-                title = stringResource(OssLicensesR.string.oss_license_title),
-                summary = stringResource(OssLicensesR.string.preferences_license_summary),
-                onClick = { context.startActivity(Intent(context, OssLicensesMenuActivity::class.java)) },
-            )
+            PreferenceGroup(title = stringResource(R.string.settings_help)) {
+                row {
+                    PreferenceRow(
+                        icon = R.drawable.ic_toggle_star,
+                        title = stringResource(R.string.settings_misc_source),
+                        summary = stringResource(R.string.settings_misc_source_summary),
+                        onClick = { context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md") },
+                    )
+                }
+                row {
+                    PreferenceRow(
+                        icon = R.drawable.ic_action_bug_report,
+                        title = stringResource(R.string.settings_misc_logcat),
+                        summary = stringResource(R.string.settings_misc_logcat_summary),
+                        onClick = {
+                            GlobalScope.launch(Dispatchers.Main.immediate) {
+                                try {
+                                    shareLogcat(context)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    Timber.w(e)
+                                    snackbarHostState.showLongSnackbar(e.readableMessage)
+                                }
+                            }
+                        },
+                    )
+                }
+                row {
+                    PreferenceRow(
+                        icon = R.drawable.ic_action_card_giftcard,
+                        title = stringResource(R.string.settings_misc_donate),
+                        summary = stringResource(R.string.settings_misc_donate_summary),
+                        onClick = { context.launchUrl("https://mygod.be/donate/") },
+                    )
+                }
+                row {
+                    PreferenceRow(
+                        icon = R.drawable.ic_action_code,
+                        title = stringResource(OssLicensesR.string.oss_license_title),
+                        summary = stringResource(OssLicensesR.string.preferences_license_summary),
+                        onClick = { context.startActivity(Intent(context, OssLicensesMenuActivity::class.java)) },
+                    )
+                }
+            }
         }
     }
 }
