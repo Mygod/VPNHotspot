@@ -111,6 +111,7 @@ internal class ApConfigurationState(
     }
 
     private constructor(saved: SavedApConfigurationState) : this(saved.base, saved.readOnly, saved.p2pMode) {
+        originalUnderlying = saved.originalUnderlying
         hexSsid = saved.hexSsid
         ssid = saved.ssid
         securityType = saved.securityType
@@ -140,10 +141,11 @@ internal class ApConfigurationState(
         acs2g = saved.acs2g
         acs5g = saved.acs5g
         acs6g = saved.acs6g
-        maxChannelBandwidth = saved.maxChannelBandwidth
+        maxChannelBandwidth = normalizeMaxChannelBandwidth(saved.maxChannelBandwidth)
     }
 
     private var base = initial
+    private var originalUnderlying = initial.underlying
     private val ssidHexToggleable = if (p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
     private val securityOptions = when {
@@ -160,6 +162,15 @@ internal class ApConfigurationState(
         }
     } else emptyList()
 
+    private fun normalizeMaxChannelBandwidth(
+        width: Int,
+        fallback: Int = bandwidthOptions.firstOrNull()?.width ?: width,
+    ): Int {
+        if (Build.VERSION.SDK_INT < 33 || bandwidthOptions.any { it.width == width }) return width
+        Timber.w(Exception("Cannot locate bandwidth $width"))
+        return fallback
+    }
+
     var revision by mutableIntStateOf(0)
         private set
     var ssid by mutableStateOf(displaySsid(initial.ssid))
@@ -175,7 +186,10 @@ internal class ApConfigurationState(
     var secondaryChannel by mutableStateOf(if (initial.channels.size() > 1) {
         locate(initial.channels, 1, channelOptions, p2pMode)
     } else ChannelOption.Disabled)
-    var bandOptimization by mutableStateOf(initial.isBandOptimizationEnabled ?: true)
+    var bandOptimization by mutableStateOf(if (!p2pMode && Build.VERSION.SDK_INT >= 30 &&
+            SoftApConfigurationCompat.isBandOptimizationSupported) {
+        initial.isBandOptimizationEnabled ?: true
+    } else false)
     var maxClients by mutableStateOf(initial.maxNumberOfClients.let { if (it == 0) "" else it.toString() })
     var blockedList by mutableStateOf(initial.blockedClientList.joinToString("\n"))
     var clientUserControl by mutableStateOf(initial.isClientControlByUserEnabled)
@@ -186,20 +200,19 @@ internal class ApConfigurationState(
     var hiddenSsid by mutableStateOf(initial.isHiddenSsid)
     var ieee80211ax by mutableStateOf(initial.isIeee80211axEnabled)
     var ieee80211be by mutableStateOf(initial.isIeee80211beEnabled)
-    var vendorElements by mutableStateOf(if (Build.VERSION.SDK_INT >= 33) {
-        VendorElements.serialize(initial.vendorElements)
-    } else "")
+    var vendorElements by mutableStateOf(VendorElements.serialize(initial.vendorElements))
     var clientIsolation by mutableStateOf(if (Build.VERSION.SDK_INT >= 36) initial.isClientIsolationEnabled else false)
     var userConfig by mutableStateOf(initial.isUserConfiguration)
     var acs2g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty())
     var acs5g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_5GHZ]).orEmpty())
     var acs6g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_6GHZ]).orEmpty())
-    var maxChannelBandwidth by mutableIntStateOf(initial.maxChannelBandwidth)
+    var maxChannelBandwidth by mutableIntStateOf(normalizeMaxChannelBandwidth(initial.maxChannelBandwidth))
 
-    val canSave get() = !readOnly && generateConfigOrNull()?.let { isConfigValid(it, checkChannels = true) } == true
-    val canCopy get() = generateConfigOrNull(requirePassword = false)?.let {
-        isConfigValid(it, checkChannels = false)
-    } == true
+    val copyError get() = generateConfigError(requirePassword = false, checkChannels = false)
+    val saveError get() = if (readOnly) null else generateConfigError(requirePassword = true, checkChannels = true)
+    val actionError get() = copyError ?: saveError
+    val canSave get() = !readOnly && saveError == null
+    val canCopy get() = copyError == null
     val canShare get() = generateConfigOrNull(requirePassword = false, full = false) != null
     val possiblyInvalid get() = canSave && Build.VERSION.SDK_INT >= 34 && !p2pMode && try {
         generateConfigOrNull()?.let { !Services.wifi.validateSoftApConfiguration(it.toPlatform()) } == true
@@ -241,6 +254,63 @@ internal class ApConfigurationState(
         null
     }
 
+    private fun generateConfigError(requirePassword: Boolean, checkChannels: Boolean): String? {
+        ssidError(ssid, hexSsid)?.let { return it }
+        if (requirePassword) passwordError(password)?.let { return it }
+        validateOptionalLong(timeout) {
+            if (!p2pMode && Build.VERSION.SDK_INT >= 30) {
+                SoftApConfigurationCompat.testPlatformTimeoutValidity(it)
+            }
+        }?.let { return it }
+        if (checkChannels && !p2pMode && Build.VERSION.SDK_INT >= 30) try {
+            SoftApConfigurationCompat.testPlatformValidity(generateChannels())
+        } catch (e: Exception) {
+            return e.readableMessage
+        }
+        val hideBssid = !p2pMode && Build.VERSION.SDK_INT >= 31 &&
+                macRandomization != SoftApConfigurationCompat.RANDOMIZATION_NONE
+        if (!hideBssid) validateOptionalMac(bssid) {
+            if (Build.VERSION.SDK_INT >= 30 && !p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
+        }?.let { return it }
+        if (maxClients.isNotEmpty()) try {
+            maxClients.toInt()
+        } catch (e: NumberFormatException) {
+            return e.readableMessage
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            val blocked = try {
+                parseMacList(blockedList).toSet()
+            } catch (e: IllegalArgumentException) {
+                return e.readableMessage
+            }
+            try {
+                for (mac in parseMacList(allowedList)) {
+                    require(mac !in blocked) { "A MAC address exists in both client lists" }
+                }
+            } catch (e: IllegalArgumentException) {
+                return e.readableMessage
+            }
+        }
+        validateOptionalLong(
+            bridgedTimeout,
+            SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity,
+        )?.let { return it }
+        if (Build.VERSION.SDK_INT >= 33) try {
+            val elements = VendorElements.deserialize(vendorElements)
+            if (!p2pMode) SoftApConfigurationCompat.testPlatformValidity(elements)
+        } catch (e: Exception) {
+            return e.readableMessage
+        }
+        validateOptionalMac(persistentRandomizedMac)?.let { return it }
+        if (!p2pMode && Build.VERSION.SDK_INT >= 33) {
+            validateAcsChannels(SoftApConfiguration.BAND_2GHZ, acs2g)?.let { return it }
+            validateAcsChannels(SoftApConfiguration.BAND_5GHZ, acs5g)?.let { return it }
+            validateAcsChannels(SoftApConfiguration.BAND_6GHZ, acs6g)?.let { return it }
+            maxChannelBandwidthError?.let { return it }
+        }
+        return null
+    }
+
     fun generateConfig(requirePassword: Boolean = true, full: Boolean = true): SoftApConfigurationCompat {
         val passwordValid = when (selectedSecurityType) {
             SoftApConfiguration.SECURITY_TYPE_OPEN,
@@ -263,68 +333,33 @@ internal class ApConfigurationState(
             isAutoShutdownEnabled = autoShutdown
             shutdownTimeoutMillis = timeout.ifEmpty { "0" }.toLong()
             channels = generateChannels()
-            if (!p2pMode && Build.VERSION.SDK_INT >= 30 && SoftApConfigurationCompat.isBandOptimizationSupported) {
-                isBandOptimizationEnabled = bandOptimization
-            }
-            if (!p2pMode && Build.VERSION.SDK_INT >= 30) {
-                maxNumberOfClients = maxClients.ifEmpty { "0" }.toInt()
-                isClientControlByUserEnabled = clientUserControl
-                blockedClientList = parseMacList(blockedList)
-                allowedClientList = parseMacList(allowedList).also { allowed ->
-                    val blocked = blockedClientList.toSet()
-                    require(allowed.none { it in blocked }) { "A MAC address exists in both client lists" }
-                }
-            }
+            maxNumberOfClients = maxClients.ifEmpty { "0" }.toInt()
+            isClientControlByUserEnabled = clientUserControl
+            allowedClientList = parseMacList(allowedList)
+            blockedClientList = parseMacList(blockedList)
             macRandomizationSetting = macRandomization
             bssid = if ((p2pMode || Build.VERSION.SDK_INT < 31 &&
                     macRandomizationSetting == SoftApConfigurationCompat.RANDOMIZATION_NONE) &&
                     this@ApConfigurationState.bssid.isNotEmpty()) {
                 MacAddress.fromString(this@ApConfigurationState.bssid)
             } else null
-            if (!p2pMode && Build.VERSION.SDK_INT >= 31) {
-                isBridgedModeOpportunisticShutdownEnabled = bridgedModeOpportunisticShutdown
-                isIeee80211axEnabled = ieee80211ax
-                isUserConfiguration = userConfig
-            }
-            if (Build.VERSION.SDK_INT >= 33) {
-                vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
-            }
-            if (!p2pMode && Build.VERSION.SDK_INT >= 33) {
-                bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
-                isIeee80211beEnabled = ieee80211be
-                persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
-                allowedAcsChannels = mapOf(
-                    SoftApConfiguration.BAND_2GHZ to RangeInput.fromString(acs2g),
-                    SoftApConfiguration.BAND_5GHZ to RangeInput.fromString(acs5g),
-                    SoftApConfiguration.BAND_6GHZ to RangeInput.fromString(acs6g),
-                )
-                maxChannelBandwidth = this@ApConfigurationState.maxChannelBandwidth
-                if (Build.VERSION.SDK_INT >= 36) isClientIsolationEnabled = clientIsolation
-            }
+            isBridgedModeOpportunisticShutdownEnabled = bridgedModeOpportunisticShutdown
+            isIeee80211axEnabled = ieee80211ax
+            isIeee80211beEnabled = ieee80211be
+            isUserConfiguration = userConfig
+            bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
+            vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
+            persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
+            allowedAcsChannels = mapOf(
+                SoftApConfiguration.BAND_2GHZ to RangeInput.fromString(acs2g),
+                SoftApConfiguration.BAND_5GHZ to RangeInput.fromString(acs5g),
+                SoftApConfiguration.BAND_6GHZ to RangeInput.fromString(acs6g),
+            )
+            isBandOptimizationEnabled = bandOptimization
+            if (p2pMode || Build.VERSION.SDK_INT < 33) return@apply
+            maxChannelBandwidth = this@ApConfigurationState.maxChannelBandwidth
+            if (Build.VERSION.SDK_INT >= 36) isClientIsolationEnabled = clientIsolation
         }
-    }
-
-    private fun isConfigValid(config: SoftApConfigurationCompat, checkChannels: Boolean) = try {
-        if (!p2pMode && Build.VERSION.SDK_INT >= 30) {
-            SoftApConfigurationCompat.testPlatformTimeoutValidity(config.shutdownTimeoutMillis)
-            if (checkChannels) SoftApConfigurationCompat.testPlatformValidity(config.channels)
-            config.bssid?.let { SoftApConfigurationCompat.testPlatformValidity(it) }
-        }
-        if (!p2pMode && Build.VERSION.SDK_INT >= 33) {
-            SoftApConfigurationCompat.testPlatformBridgedTimeoutValidity(
-                config.bridgedModeOpportunisticShutdownTimeoutMillis)
-            SoftApConfigurationCompat.testPlatformValidity(config.vendorElements)
-            for (band in SoftApConfigurationCompat.BAND_TYPES) {
-                SoftApConfigurationCompat.testPlatformValidity(
-                    band,
-                    config.allowedAcsChannels[band]?.toIntArray() ?: IntArray(0),
-                )
-            }
-            SoftApConfigurationCompat.testPlatformValidity(config.maxChannelBandwidth)
-        }
-        true
-    } catch (e: Exception) {
-        false
     }
 
     fun copyToClipboard() {
@@ -341,8 +376,9 @@ internal class ApConfigurationState(
             Base64.decode(text.toString(), BASE64_FLAGS).toParcelable<SoftApConfigurationCompat>(
                 SoftApConfigurationCompat::class.java.classLoader)?.let { config ->
                 val newUnderlying = config.underlying
-                if (newUnderlying != null) base.underlying?.let { check(it.javaClass == newUnderlying.javaClass) }
-                else config.underlying = base.underlying
+                if (newUnderlying != null) {
+                    originalUnderlying?.let { check(it.javaClass == newUnderlying.javaClass) }
+                } else config.underlying = base.underlying
                 load(config)
             }
         }
@@ -403,7 +439,10 @@ internal class ApConfigurationState(
         primaryChannel = locate(config.channels, 0, channelOptions, p2pMode, true)
         secondaryChannel = if (config.channels.size() > 1) locate(config.channels, 1, channelOptions, p2pMode, true)
         else ChannelOption.Disabled
-        bandOptimization = config.isBandOptimizationEnabled ?: true
+        bandOptimization = if (!p2pMode && Build.VERSION.SDK_INT >= 30 &&
+                SoftApConfigurationCompat.isBandOptimizationSupported) {
+            config.isBandOptimizationEnabled ?: true
+        } else false
         maxClients = config.maxNumberOfClients.let { if (it == 0) "" else it.toString() }
         blockedList = config.blockedClientList.joinToString("\n")
         clientUserControl = config.isClientControlByUserEnabled
@@ -414,13 +453,13 @@ internal class ApConfigurationState(
         hiddenSsid = config.isHiddenSsid
         ieee80211ax = config.isIeee80211axEnabled
         ieee80211be = config.isIeee80211beEnabled
-        vendorElements = if (Build.VERSION.SDK_INT >= 33) VendorElements.serialize(config.vendorElements) else ""
+        vendorElements = VendorElements.serialize(config.vendorElements)
         clientIsolation = if (Build.VERSION.SDK_INT >= 36) config.isClientIsolationEnabled else false
         userConfig = config.isUserConfiguration
         acs2g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty()
         acs5g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_5GHZ]).orEmpty()
         acs6g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_6GHZ]).orEmpty()
-        maxChannelBandwidth = config.maxChannelBandwidth
+        maxChannelBandwidth = normalizeMaxChannelBandwidth(config.maxChannelBandwidth, maxChannelBandwidth)
         revision++
     }
 
@@ -449,6 +488,7 @@ internal class ApConfigurationState(
 
     private fun save() = SavedApConfigurationState(
         base = base,
+        originalUnderlying = originalUnderlying,
         readOnly = readOnly,
         p2pMode = p2pMode,
         hexSsid = hexSsid,
@@ -487,6 +527,7 @@ internal class ApConfigurationState(
 @Parcelize
 private data class SavedApConfigurationState(
     val base: SoftApConfigurationCompat,
+    val originalUnderlying: Parcelable?,
     val readOnly: Boolean,
     val p2pMode: Boolean,
     val hexSsid: Boolean,
@@ -540,6 +581,9 @@ internal enum class ApConfigurationTarget {
 internal fun ApConfigurationScreen(state: ApConfigurationState) {
     SettingsList {
         item { SsidApRow(state) }
+        state.actionError?.let {
+            item { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+        }
         if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) item {
             ListApRow(
                 title = R.string.wifi_security,
