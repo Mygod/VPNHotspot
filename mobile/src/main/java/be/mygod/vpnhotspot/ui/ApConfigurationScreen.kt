@@ -32,7 +32,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -1539,7 +1538,7 @@ private fun SwitchApRow(
         title = stringResource(title),
         enabled = !readOnly,
         trailing = {
-            Switch(
+            TickSwitch(
                 checked = checked,
                 enabled = !readOnly,
                 onCheckedChange = if (readOnly) null else onCheckedChange,

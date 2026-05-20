@@ -1,17 +1,13 @@
 [versions]
-activity = "1.13.0"
 lifecycle = "2.11.0-beta02"
 room = "2.8.4"
 wire = "6.4.0"
 
 [libraries]
-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity" }
+activity-compose = "androidx.activity:activity-compose:1.13.0"
 browser = "androidx.browser:browser:1.10.0"
 compose-bom = "androidx.compose:compose-bom:2026.05.01"
-compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-settings-ui-tiles-expressive = "com.github.alorma.compose-settings:ui-tiles-expressive:3.1.0"
-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 core-i18n = "androidx.core:core-i18n:1.0.0"
 core-ktx = "androidx.core:core-ktx:1.18.0"
 dexmaker = "com.linkedin.dexmaker:dexmaker:2.28.6"
@@ -31,6 +27,7 @@ lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-com
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 material = "com.google.android.material:material:1.14.0"
 navigation-compose = "androidx.navigation:navigation-compose:2.9.8"
+oss-licenses-plugin = "com.google.android.gms:oss-licenses-plugin:0.12.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 preference = "androidx.preference:preference:1.2.1"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
