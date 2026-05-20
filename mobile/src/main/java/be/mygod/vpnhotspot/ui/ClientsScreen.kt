@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.ui
 import android.content.Context
 import android.net.MacAddress
 import android.os.Build
+import android.os.Parcelable
 import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.format.Formatter
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,11 +36,18 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -59,20 +68,25 @@ import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.text.NumberFormat
 
+@OptIn(DelicateCoroutinesApi::class)
 @Composable
 internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val clients by model.clients.observeAsState(emptyList())
     val rates = remember { mutableStateMapOf<Pair<String?, MacAddress>, TrafficRate>() }
-    val scope = rememberCoroutineScope()
     var tetherTypeRevision by remember { mutableIntStateOf(0) }
+    val blockServiceInactive = stringResource(R.string.clients_popup_block_service_inactive)
+    val clientsContentDescription = stringResource(R.string.title_clients)
 
     DisposableEffect(lifecycleOwner, model) {
         lifecycleOwner.lifecycle.addObserver(model.clientsFragmentObserver)
@@ -100,7 +114,7 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
         }
     }
 
-    SettingsList {
+    SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
         if (clients.isEmpty()) {
             item {
                 PreferenceRow(
@@ -115,7 +129,7 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
                 snackbarHostState = snackbarHostState,
                 tetherTypeRevision = tetherTypeRevision,
                 onNickname = { nickname ->
-                    scope.launch {
+                    GlobalScope.launch(Dispatchers.Main.immediate) {
                         updateNickname(client.mac, nickname, snackbarHostState)
                     }
                 },
@@ -123,11 +137,11 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
                 onToggleBlocked = {
                     val wasWorking = TrafficRecorder.isWorking(client.mac)
                     val record = client.obtainRecord().apply { blocked = !blocked }
-                    scope.launch(Dispatchers.Unconfined) {
+                    GlobalScope.launch(Dispatchers.Unconfined) {
                         AppDatabase.instance.clientRecordDao.update(record)
                     }
-                    if (!wasWorking && record.blocked) scope.launch {
-                        snackbarHostState.showSnackbar(context.getString(R.string.clients_popup_block_service_inactive))
+                    if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
+                        snackbarHostState.showLongSnackbar(blockServiceInactive)
                     }
                 },
             )
@@ -151,9 +165,11 @@ private fun ClientRow(
     val description by client.description.observeAsState(SpannableStringBuilder())
     val rateText = formatTrafficRate(context, rate)
     var expanded by remember { mutableStateOf(false) }
-    var editingNickname by remember { mutableStateOf(false) }
-    var nicknameDraft by remember(client.nickname, editingNickname) { mutableStateOf(client.nickname.toString()) }
-    var statsDialog by remember { mutableStateOf<ClientStatsDialog?>(null) }
+    var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
+    var nicknameDraft by rememberSaveable(client.mac.toString(), client.nickname.toString(), editingNickname) {
+        mutableStateOf(client.nickname.toString())
+    }
+    var statsDialog by rememberSaveable(client.mac.toString()) { mutableStateOf<ClientStatsDialog?>(null) }
     val scope = rememberCoroutineScope()
     val icon = remember(client, tetherTypeRevision) { client.icon }
 
@@ -161,21 +177,23 @@ private fun ClientRow(
         ListItem(
             headlineContent = {
                 if (titleSelectable) RowSelectionContainer {
-                    Text(
-                        title.toString(),
+                    LinkedText(
+                        title,
                         textDecoration = if (client.blocked) TextDecoration.LineThrough else null,
                     )
                 } else {
-                    Text(
-                        title.toString(),
+                    LinkedText(
+                        title,
                         textDecoration = if (client.blocked) TextDecoration.LineThrough else null,
                     )
                 }
             },
             supportingContent = {
                 Column {
-                    RowSelectionContainer {
-                        Text(description.toString())
+                    if (description.isNotEmpty()) {
+                        RowSelectionContainer {
+                            LinkedText(description)
+                        }
                     }
                     rateText?.let { Text(it) }
                 }
@@ -214,14 +232,15 @@ private fun ClientRow(
                     expanded = false
                     scope.launch {
                         try {
-                            statsDialog = withContext(Dispatchers.Unconfined) {
-                                ClientStatsDialog(title, AppDatabase.instance.trafficRecordDao.queryStats(client.mac))
+                            val stats = withContext(Dispatchers.Unconfined) {
+                                AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
                             }
+                            statsDialog = ClientStatsDialog(title, stats)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             Timber.w(e)
-                            snackbarHostState.showSnackbar(e.localizedMessage ?: e.javaClass.name)
+                            snackbarHostState.showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
                         }
                     }
                 },
@@ -230,51 +249,72 @@ private fun ClientRow(
     }
     HorizontalDivider()
 
-    if (editingNickname) AlertDialog(
-        onDismissRequest = { editingNickname = false },
-        title = { Text(stringResource(R.string.clients_nickname_title, client.mac)) },
-        text = {
-            OutlinedTextField(
-                value = nicknameDraft,
-                onValueChange = { nicknameDraft = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                MacLookup.abort(client.mac)
-                onNickname(nicknameDraft)
-                editingNickname = false
-            }) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                onSetNicknameToVendor()
-                editingNickname = false
-            }) {
-                Text(stringResource(R.string.clients_nickname_set_to_vendor))
-            }
-            TextButton(onClick = { editingNickname = false }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
-    )
+    if (editingNickname) {
+        val focusRequester = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+        AlertDialog(
+            onDismissRequest = { editingNickname = false },
+            title = { Text(stringResource(R.string.clients_nickname_title, client.mac)) },
+            text = {
+                OutlinedTextField(
+                    value = nicknameDraft,
+                    onValueChange = { nicknameDraft = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    placeholder = { Text(stringResource(R.string.clients_nickname_hint)) },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    MacLookup.abort(client.mac)
+                    onNickname(nicknameDraft)
+                    editingNickname = false
+                }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    onSetNicknameToVendor()
+                    editingNickname = false
+                }) {
+                    Text(stringResource(R.string.clients_nickname_set_to_vendor))
+                }
+                TextButton(onClick = { editingNickname = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
     statsDialog?.let { dialog ->
         AlertDialog(
-            onDismissRequest = { statsDialog = null },
-            title = { Text(TextUtils.expandTemplate(stringResource(R.string.clients_stats_title), dialog.title).toString()) },
-            text = { Text(formatClientStats(context, dialog.stats)) },
+            onDismissRequest = {
+                statsDialog = null
+            },
+            title = {
+                LinkedText(TextUtils.expandTemplate(stringResource(R.string.clients_stats_title), dialog.title))
+            },
+            text = { LinkedText(formatClientStats(context, dialog.stats)) },
             confirmButton = {
-                TextButton(onClick = { statsDialog = null }) {
+                TextButton(onClick = {
+                    statsDialog = null
+                }) {
                     Text(stringResource(android.R.string.ok))
                 }
             },
         )
     }
 }
+
+@Parcelize
+private data class ClientStatsDialog(val title: CharSequence, val stats: ClientStats) : Parcelable
 
 private suspend fun updateNickname(
     mac: MacAddress,
@@ -289,7 +329,7 @@ private suspend fun updateNickname(
         throw e
     } catch (e: Exception) {
         Timber.w(e)
-        snackbarHostState.showSnackbar(e.localizedMessage ?: e.javaClass.name)
+        snackbarHostState.showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
     }
 }
 
@@ -342,10 +382,10 @@ private fun formatTrafficRate(context: Context, rate: TrafficRate?): String? {
             "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
 }
 
-private fun formatClientStats(context: Context, stats: ClientStats): String {
+private fun formatClientStats(context: Context, stats: ClientStats): CharSequence {
     val resources = context.resources
     val format = NumberFormat.getIntegerInstance(resources.configuration.locales[0])
-    val builder = StringBuilder()
+    val builder = SpannableStringBuilder()
     if (stats.timestamp > 0) builder.append(
         TextUtils.expandTemplate(context.getText(R.string.clients_stats_since), context.formatTimestamp(stats.timestamp)),
     )
@@ -385,8 +425,7 @@ private fun formatClientStats(context: Context, stats: ClientStats): String {
             }
         }
     }
-    return builder.ifEmpty { context.getText(R.string.clients_stats_empty) }.toString()
+    return builder.ifEmpty { context.getText(R.string.clients_stats_empty) }
 }
 
 private data class TrafficRate(val send: Long = -1, val receive: Long = -1)
-private data class ClientStatsDialog(val title: CharSequence, val stats: ClientStats)

@@ -8,12 +8,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.net.MacAddress
 import android.net.TetheringManager
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Parcelable
 import android.provider.Settings
+import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.format.DateUtils
 import android.widget.Toast
@@ -31,6 +35,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -38,16 +43,21 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -56,9 +66,11 @@ import androidx.core.net.toUri
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
@@ -79,9 +91,13 @@ import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.formatAddresses
+import be.mygod.vpnhotspot.util.joinToSpanned
 import be.mygod.vpnhotspot.util.makeMacSpan
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -90,14 +106,17 @@ import java.net.SocketException
 import java.text.NumberFormat
 import java.util.Locale
 
+@OptIn(DelicateCoroutinesApi::class)
 @Composable
-internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
+internal fun TetheringScreen(
+    snackbarHostState: SnackbarHostState,
+    repeaterBinder: RepeaterService.Binder?,
+    localOnlyBinder: LocalOnlyHotspotService.Binder?,
+    tetheringBinder: TetheringService.Binder?,
+    tetherStates: TetherStates,
+) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val repeaterBinder by rememberServiceBinder<RepeaterService.Binder>(RepeaterService::class.java)
-    val localOnlyBinder by rememberServiceBinder<LocalOnlyHotspotService.Binder>(LocalOnlyHotspotService::class.java)
-    val tetheringBinder by rememberServiceBinder<TetheringService.Binder>(TetheringService::class.java)
-    val tetherStates by rememberTetherStates()
+    val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val managedIfaces by (tetheringBinder?.managedIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
     val inactiveIfaces by (tetheringBinder?.inactiveIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
     val monitoredIfaces by (tetheringBinder?.monitoredIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
@@ -107,11 +126,12 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
     val staticIpActive by StaticIpSetter.active.collectAsStateWithLifecycle()
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
-    var staticIpDialog by remember { mutableStateOf(false) }
-    var staticIpDraft by remember(staticIpDialog) { mutableStateOf(StaticIpSetter.ips) }
-    var wpsDialog by remember { mutableStateOf(false) }
-    var wpsPin by remember(wpsDialog) { mutableStateOf("") }
+    var staticIpDraft by rememberSaveable { mutableStateOf<String?>(null) }
+    var wpsDialog by rememberSaveable { mutableStateOf(false) }
+    var wpsPin by rememberSaveable(wpsDialog) { mutableStateOf("") }
     val tetherTypeVersion by rememberTetherTypeVersion()
+    var manageBarVersion by remember { mutableIntStateOf(0) }
+    val manageOffloadEnabled = remember(manageBarVersion) { ManageBar.offloadEnabled }
     val ifaceLookup = remember(tetherStates, managedIfaces, inactiveIfaces, monitoredIfaces, localOnlyIface, repeaterGroup) {
         networkInterfaceLookup()
     }
@@ -130,28 +150,41 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
         bluetoothAdapter?.let { BluetoothTethering(context, it) { bluetoothVersion++ } }
     }
     val requestBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) bluetoothTethering?.ensureInit(context)
+        if (granted) {
+            bluetoothTethering?.ensureInit(context)
+            bluetoothVersion++
+        }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, bluetoothTethering) {
+        var resumed = false
+        fun refreshBluetooth() {
+            if (resumed) return
+            resumed = true
+            manageBarVersion++
+            if (bluetoothTethering == null || Build.VERSION.SDK_INT < 31) return
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED) {
+                bluetoothTethering.ensureInit(context)
+                bluetoothVersion++
+            } else requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
         val observer = object : DefaultLifecycleObserver {
-            override fun onResume(owner: LifecycleOwner) {
-                if (bluetoothTethering == null || Build.VERSION.SDK_INT < 31) return
-                if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
-                    PackageManager.PERMISSION_GRANTED) {
-                    bluetoothTethering.ensureInit(context)
-                } else requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            override fun onResume(owner: LifecycleOwner) = refreshBluetooth()
+            override fun onPause(owner: LifecycleOwner) {
+                resumed = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) refreshBluetooth()
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             bluetoothTethering?.close()
         }
     }
     val startRepeater = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) app.startServiceWithLocation<RepeaterService>(context) else scope.launch {
-            snackbarHostState.showSnackbar(context.getString(R.string.repeater_missing_location_permissions))
+        if (granted) app.startServiceWithLocation<RepeaterService>(context) else GlobalScope.launch(Dispatchers.Main.immediate) {
+            snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
         }
     }
     val startLocalOnly = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -166,9 +199,10 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
                 TetheringRow(
                     icon = R.drawable.ic_action_settings_input_antenna,
                     title = repeaterTitle(repeaterGroup?.frequency),
-                    summary = repeaterSummary(repeaterGroup?.`interface`, ifaceLookup),
+                    summary = repeaterSummary(repeaterGroup, ifaceLookup),
                     checked = repeaterStatus == RepeaterService.Status.STARTING || active,
-                    enabled = switchEnabled,
+                    enabled = true,
+                    switchEnabled = switchEnabled,
                     onClick = {
                         when (repeaterStatus) {
                             RepeaterService.Status.IDLE -> startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
@@ -180,11 +214,13 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
                     },
                 )
             }
-            if (repeaterBinder?.active == true && WifiP2pManagerHelper.startWps != null) item {
+            if ((repeaterStatus == RepeaterService.Status.STARTING || repeaterStatus == RepeaterService.Status.ACTIVE) &&
+                WifiP2pManagerHelper.startWps != null) item {
                 PreferenceRow(
+                    modifier = Modifier.padding(start = 40.dp),
                     icon = R.drawable.ic_action_wifi_protected_setup,
                     title = stringResource(R.string.repeater_wps),
-                    onClick = { wpsDialog = true },
+                    onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
                 )
             }
         }
@@ -192,7 +228,7 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
             TetheringRow(
                 icon = R.drawable.ic_action_perm_scan_wifi,
                 title = stringResource(R.string.tethering_temp_hotspot),
-                summary = ifaceLookup[localOnlyIface]?.formatAddresses()?.toString().orEmpty(),
+                summary = ifaceLookup[localOnlyIface]?.formatAddresses() ?: "",
                 checked = localOnlyIface != null,
                 enabled = true,
                 onClick = {
@@ -205,10 +241,13 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
             TetheringRow(
                 icon = R.drawable.ic_content_push_pin,
                 title = stringResource(R.string.tethering_static_ip),
-                summary = staticIpAddresses.toString(),
+                summary = staticIpAddresses,
                 checked = staticIpActive,
-                enabled = !staticIpApplying,
-                onClick = { staticIpDialog = true },
+                enabled = true,
+                switchEnabled = !staticIpApplying,
+                onClick = {
+                    staticIpDraft = StaticIpSetter.ips
+                },
                 onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
             )
         }
@@ -220,7 +259,7 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
             TetheringRow(
                 icon = TetherType.ofInterface(iface).icon,
                 title = title,
-                summary = ifaceLookup[iface]?.formatAddresses(inactive.contains(iface))?.toString().orEmpty(),
+                summary = ifaceLookup[iface]?.formatAddresses(inactive.contains(iface)) ?: "",
                 checked = active,
                 enabled = true,
                 onClick = {
@@ -234,8 +273,9 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
         item {
             PreferenceRow(
                 icon = R.drawable.ic_content_add,
+                iconTint = MaterialTheme.colorScheme.secondary,
                 title = stringResource(R.string.tethering_manage),
-                summary = if (ManageBar.offloadEnabled) {
+                summary = if (manageOffloadEnabled) {
                     stringResource(R.string.tethering_manage_offload_enabled)
                 } else null,
                 onClick = { ManageBar.start(context::startActivity) },
@@ -272,11 +312,12 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
                 ).joinToString("\n"),
                 bluetoothTethering = bluetoothTethering,
                 snackbarHostState = snackbarHostState,
+                onRefresh = { bluetoothVersion++ },
             )
         }
         if (Build.VERSION.SDK_INT >= 30) item {
             TetheringTypeRow(
-                icon = R.drawable.ic_action_settings_ethernet,
+                icon = TetherType.ETHERNET.icon,
                 title = R.string.tethering_manage_ethernet,
                 checked = tetheredTypes.contains(TetherType.ETHERNET),
                 summary = tetherError(tetherStates, TetherType.ETHERNET),
@@ -286,64 +327,88 @@ internal fun TetheringScreen(snackbarHostState: SnackbarHostState) {
         }
     }
 
-    if (staticIpDialog) AlertDialog(
-        onDismissRequest = { staticIpDialog = false },
-        title = { Text(stringResource(R.string.tethering_static_ip)) },
-        text = {
-            OutlinedTextField(
-                value = staticIpDraft,
-                onValueChange = { staticIpDraft = it },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                minLines = 2,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                StaticIpSetter.ips = staticIpDraft.trim()
-                staticIpDialog = false
-            }) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = { staticIpDialog = false }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
-    )
-    if (wpsDialog) AlertDialog(
-        onDismissRequest = { wpsDialog = false },
-        title = { Text(stringResource(R.string.repeater_wps_dialog_title)) },
-        text = {
-            OutlinedTextField(
-                value = wpsPin,
-                onValueChange = { wpsPin = it },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                repeaterBinder?.startWps(wpsPin)
-                wpsDialog = false
-            }) {
-                Text(stringResource(android.R.string.ok))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = {
-                repeaterBinder?.startWps(null)
-                wpsDialog = false
-            }) {
-                Text(stringResource(R.string.repeater_wps_dialog_pbc))
-            }
-            TextButton(onClick = { wpsDialog = false }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
-    )
+    staticIpDraft?.let { draft ->
+        val focusRequester = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+        AlertDialog(
+            onDismissRequest = {
+                staticIpDraft = null
+            },
+            title = { Text(stringResource(R.string.tethering_static_ip)) },
+            text = {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { staticIpDraft = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    minLines = 2,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    StaticIpSetter.ips = draft.trim()
+                    staticIpDraft = null
+                }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    staticIpDraft = null
+                }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+    if (wpsDialog) {
+        val focusRequester = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+        AlertDialog(
+            onDismissRequest = { wpsDialog = false },
+            title = { Text(stringResource(R.string.repeater_wps_dialog_title)) },
+            text = {
+                OutlinedTextField(
+                    value = wpsPin,
+                    onValueChange = { wpsPin = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repeaterBinder?.startWps(wpsPin)
+                    wpsDialog = false
+                }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    repeaterBinder?.startWps(null)
+                    wpsDialog = false
+                }) {
+                    Text(stringResource(R.string.repeater_wps_dialog_pbc))
+                }
+                TextButton(onClick = { wpsDialog = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
 }
 
 private val localOnlyHotspotPermission = if (Build.VERSION.SDK_INT >= 33) {
@@ -355,16 +420,15 @@ private fun TetheringTypeRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     checked: Boolean,
-    summary: String?,
+    summary: CharSequence?,
     tetheringType: Int,
     snackbarHostState: SnackbarHostState,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     TetheringRow(
         icon = icon,
         title = stringResource(title),
-        summary = summary.orEmpty(),
+        summary = summary ?: "",
         checked = checked,
         enabled = true,
         indent = true,
@@ -375,7 +439,7 @@ private fun TetheringTypeRow(
             } catch (e: RuntimeException) {
                 app.logEvent("manage_write_settings") { param("message", e.toString()) }
             }
-            val callback = tetheringCallback(context, snackbarHostState, scope)
+            val callback = tetheringCallback(context, snackbarHostState, TetherType.fromTetheringType(tetheringType))
             if (checked) TetheringManagerCompat.stopTethering(tetheringType, callback)
             else TetheringManagerCompat.startTethering(tetheringType, true, callback)
         },
@@ -388,9 +452,9 @@ private fun BluetoothTetheringRow(
     summary: String,
     bluetoothTethering: BluetoothTethering?,
     snackbarHostState: SnackbarHostState,
+    onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     TetheringRow(
         icon = R.drawable.ic_device_bluetooth,
         title = stringResource(R.string.tethering_manage_bluetooth),
@@ -405,9 +469,12 @@ private fun BluetoothTetheringRow(
             } catch (e: RuntimeException) {
                 app.logEvent("manage_write_settings") { param("message", e.toString()) }
             }
-            val callback = tetheringCallback(context, snackbarHostState, scope)
+            val callback = tetheringCallback(context, snackbarHostState, TetherType.BLUETOOTH, onRefresh)
             when (active) {
-                true -> bluetoothTethering?.stop(callback)
+                true -> {
+                    bluetoothTethering?.stop(callback)
+                    onRefresh()
+                }
                 false -> bluetoothTethering?.start(callback, context)
                 null -> ManageBar.start(context::startActivity)
             }
@@ -419,9 +486,10 @@ private fun BluetoothTetheringRow(
 private fun TetheringRow(
     @DrawableRes icon: Int,
     title: String,
-    summary: String = "",
+    summary: CharSequence = "",
     checked: Boolean,
     enabled: Boolean,
+    switchEnabled: Boolean = enabled,
     onClick: () -> Unit,
     onCheckedChange: (() -> Unit)? = null,
     indent: Boolean = false,
@@ -431,7 +499,7 @@ private fun TetheringRow(
         supportingContent = if (summary.isEmpty()) null else {
             {
                 RowSelectionContainer {
-                    Text(summary)
+                    LinkedText(summary)
                 }
             }
         },
@@ -445,7 +513,7 @@ private fun TetheringRow(
         trailingContent = {
             Switch(
                 checked = checked,
-                enabled = enabled,
+                enabled = switchEnabled,
                 onCheckedChange = if (onCheckedChange == null) null else { _: Boolean -> onCheckedChange() },
             )
         },
@@ -457,34 +525,46 @@ private fun TetheringRow(
     HorizontalDivider()
 }
 
+@OptIn(DelicateCoroutinesApi::class)
 private fun tetheringCallback(
     context: Context,
     snackbarHostState: SnackbarHostState,
-    scope: kotlinx.coroutines.CoroutineScope,
+    tetherType: TetherType,
+    onChanged: () -> Unit = {},
 ) = object : TetheringManagerCompat.StartTetheringCallback, TetheringManagerCompat.StopTetheringCallback {
+    override fun onTetheringStarted() = onChanged()
+
+    override fun onStopTetheringSucceeded() = onChanged()
+
     override fun onTetheringFailed(error: Int?) {
         error?.let {
             if (Build.VERSION.SDK_INT >= 30 && it == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-                scope.launch {
+                GlobalScope.launch(Dispatchers.Main.immediate) {
                     Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
                     ManageBar.start(context::startActivity)
                 }
-            } else scope.launch { snackbarHostState.showSnackbar(TetheringManagerCompat.tetherErrorLookup(it)) }
+            } else GlobalScope.launch(Dispatchers.Main.immediate) {
+                snackbarHostState.showLongSnackbar("$tetherType: ${TetheringManagerCompat.tetherErrorLookup(it)}")
+            }
         }
+        onChanged()
     }
 
     override fun onStopTetheringFailed(error: Int) {
-        if (Build.VERSION.SDK_INT >= 30 && error == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-            scope.launch {
+        if (error == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
+            GlobalScope.launch(Dispatchers.Main.immediate) {
                 Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
                 ManageBar.start(context::startActivity)
             }
-        } else scope.launch { snackbarHostState.showSnackbar(TetheringManagerCompat.tetherErrorLookup(error)) }
+        } else GlobalScope.launch(Dispatchers.Main.immediate) {
+            snackbarHostState.showLongSnackbar("$tetherType: ${TetheringManagerCompat.tetherErrorLookup(error)}")
+        }
+        onChanged()
     }
 
     override fun onException(e: Exception) {
         super<TetheringManagerCompat.StartTetheringCallback>.onException(e)
-        scope.launch {
+        GlobalScope.launch(Dispatchers.Main.immediate) {
             Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
             ManageBar.start(context::startActivity)
         }
@@ -493,14 +573,36 @@ private fun tetheringCallback(
 
 @Composable
 internal fun rememberTetherStates(): State<TetherStates> {
-    return produceState(TetherStates()) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    return produceState(TetherStates(), lifecycleOwner) {
         val callback = object : TetherStates.Callback {
             override fun onTetherStatesChanged(states: TetherStates) {
                 value = states
             }
         }
-        TetherStates.registerCallback(callback)
-        awaitDispose { TetherStates.unregisterCallback(callback) }
+        var registered = false
+        fun register() {
+            if (!registered) {
+                TetherStates.registerCallback(callback)
+                registered = true
+            }
+        }
+        fun unregister() {
+            if (registered) {
+                TetherStates.unregisterCallback(callback)
+                registered = false
+            }
+        }
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = register()
+            override fun onStop(owner: LifecycleOwner) = unregister()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
+        awaitDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            unregister()
+        }
     }
 }
 
@@ -520,22 +622,24 @@ internal fun <T : IBinder> rememberServiceBinder(clazz: Class<out Service>): Sta
                 value = null
             }
         }
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) {
-                bound = context.bindService(Intent(context, clazz), connection, Context.BIND_AUTO_CREATE)
-            }
-
-            override fun onStop(owner: LifecycleOwner) {
-                if (bound) {
-                    context.stopAndUnbind(connection)
-                    bound = false
-                }
+        fun bind() {
+            if (!bound) bound = context.bindService(Intent(context, clazz), connection, Context.BIND_AUTO_CREATE)
+        }
+        fun unbind() {
+            if (bound) {
+                context.stopAndUnbind(connection)
+                bound = false
             }
         }
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = bind()
+            override fun onStop(owner: LifecycleOwner) = unbind()
+        }
         lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) bind()
         awaitDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            if (bound) context.stopAndUnbind(connection)
+            unbind()
         }
     }
 }
@@ -545,16 +649,20 @@ internal fun <T> rememberNullState(): State<T?> = remember { mutableStateOf(null
 
 @Composable
 private fun rememberTetherTypeVersion(): State<Int> {
-    return if (Build.VERSION.SDK_INT < 30) remember { mutableIntStateOf(0) } else produceState(0) {
-        TetherType.changes.collect { value++ }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    return if (Build.VERSION.SDK_INT < 30) remember { mutableIntStateOf(0) } else produceState(0, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            TetherType.changes.collect { value++ }
+        }
     }
 }
 
 @Composable
-private fun rememberWifiSummary(baseError: String?): State<String?> {
+private fun rememberWifiSummary(baseError: CharSequence?): State<CharSequence?> {
     val context = LocalContext.current
-    val locale = context.resources.configuration.locales[0]
-    return produceState(baseError, context, locale, baseError) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val locale = LocalConfiguration.current.locales[0]
+    return produceState(baseError, context, lifecycleOwner, locale, baseError) {
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
         var wifiInfo = emptyList<Parcelable>()
@@ -584,8 +692,29 @@ private fun rememberWifiSummary(baseError: String?): State<String?> {
                 update()
             }
         }
-        WifiApCommands.registerSoftApCallback(callback)
-        awaitDispose { WifiApCommands.unregisterSoftApCallback(callback) }
+        var registered = false
+        fun register() {
+            if (!registered) {
+                WifiApCommands.registerSoftApCallback(callback)
+                registered = true
+            }
+        }
+        fun unregister() {
+            if (registered) {
+                WifiApCommands.unregisterSoftApCallback(callback)
+                registered = false
+            }
+        }
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = register()
+            override fun onStop(owner: LifecycleOwner) = unregister()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
+        awaitDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            unregister()
+        }
     }
 }
 
@@ -596,22 +725,26 @@ private fun wifiSummary(
     numClients: Int?,
     info: List<Parcelable>,
     capability: Parcelable?,
-    baseError: String?,
-): String? {
+    baseError: CharSequence?,
+): CharSequence? {
     val integerFormat = NumberFormat.getIntegerInstance(locale)
-    return listOfNotNull(
+    val summary = listOfNotNull<CharSequence>(
         failureReason?.let { WifiApManager.failureReasonLookup(it) },
         baseError,
-        if (info.isEmpty()) null else info.joinToString("\n") { parcel ->
+        if (info.isEmpty()) null else info.joinToSpanned("\n") { parcel ->
             val softApInfo = SoftApInfo(parcel)
             val frequency = softApInfo.frequency
             val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
             val bandwidth = SoftApInfo.channelWidthLookup(softApInfo.bandwidth, true)
-            buildString {
+            SpannableStringBuilder().apply {
                 append(if (Build.VERSION.SDK_INT >= 31) {
-                    val bssid = softApInfo.bssid?.let { makeMacSpan(it.toString()).toString() }
+                    val bssid = softApInfo.bssid?.let { makeMacSpan(it.toString()) }
                     val bssidAp = softApInfo.apInstanceIdentifier?.let {
-                        if (bssid == null) it else "$bssid%$it"
+                        when (bssid) {
+                            null -> it
+                            is String -> "$bssid%$it"
+                            else -> SpannableStringBuilder(bssid).append("%$it")
+                        }
                     } ?: bssid ?: "?"
                     val timeout = softApInfo.autoShutdownTimeoutMillis
                     TextUtils.expandTemplate(context.getText(if (timeout == 0L) {
@@ -630,7 +763,7 @@ private fun wifiSummary(
                     integerFormat.format(channel.toLong()),
                     bandwidth,
                 ))
-                softApInfo.mldAddress?.let { append(", MLD MAC ").append(makeMacSpan(it.toString()).toString()) }
+                softApInfo.mldAddress?.let { append(", MLD MAC ").append(makeMacSpan(it.toString())) }
             }
         },
         capability?.let { parcel ->
@@ -646,7 +779,7 @@ private fun wifiSummary(
                 if (capability.getSupportedChannelList(band).isEmpty()) continue
                 features = features and flag.inv()
             }
-            buildString {
+            SpannableStringBuilder().apply {
                 append(TextUtils.expandTemplate(
                     context.resources.getQuantityText(R.plurals.tethering_manage_wifi_capabilities, numClients ?: 0),
                     numClients?.let { integerFormat.format(it.toLong()) } ?: "?",
@@ -667,7 +800,7 @@ private fun wifiSummary(
                             yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
                             features = features and bit.inv()
                         }
-                    }.joinToString().ifEmpty { context.getText(R.string.tethering_manage_wifi_no_features) },
+                    }.joinToSpanned().ifEmpty { context.getText(R.string.tethering_manage_wifi_no_features) },
                 ))
                 if (Build.VERSION.SDK_INT >= 31) {
                     val channels = buildList {
@@ -691,9 +824,10 @@ private fun wifiSummary(
             TextUtils.expandTemplate(
                 context.resources.getQuantityText(R.plurals.tethering_manage_wifi_clients, it),
                 integerFormat.format(it.toLong()),
-            ).toString()
+            )
         },
-    ).joinToString("\n").ifEmpty { null }
+    ).joinToSpanned("\n")
+    return if (summary.isEmpty()) null else summary
 }
 
 private fun ScatterSet<String>?.toSet(): Set<String> = buildSet {
@@ -709,7 +843,7 @@ private fun networkInterfaceLookup(): Map<String, NetworkInterface> {
     }
 }
 
-private fun tetherError(states: TetherStates, tetherType: TetherType): String? {
+private fun tetherError(states: TetherStates, tetherType: TetherType): CharSequence? {
     val interested = states.errored.keys.filter { TetherType.ofInterface(it).isA(tetherType) }
     return if (interested.isEmpty()) null else interested.joinToString("\n") { iface ->
         "$iface: " + try {
@@ -730,6 +864,38 @@ private fun repeaterTitle(frequency: Int?): String {
     } else stringResource(R.string.title_repeater)
 }
 
-private fun repeaterSummary(iface: String?, ifaceLookup: Map<String, NetworkInterface>): String {
-    return ifaceLookup[iface]?.formatAddresses()?.toString().orEmpty()
+@Composable
+private fun repeaterSummary(group: WifiP2pGroup?, ifaceLookup: Map<String, NetworkInterface>): CharSequence {
+    val result = SpannableStringBuilder()
+    val features = stringResource(R.string.repeater_features)
+    fun WifiP2pManager.test(label: String, sdk: Int, action: (WifiP2pManager) -> Boolean) {
+        try {
+            if (!action(this)) return
+            if (result.isEmpty()) result.append(features) else result.append(", ")
+            result.append(label)
+        } catch (e: NoSuchMethodError) {
+            if (Build.VERSION.SDK_INT >= sdk) Timber.w(e)
+        }
+    }
+    if (Build.VERSION.SDK_INT >= 30) Services.p2p?.apply {
+        test(stringResource(R.string.repeater_feature_set_vendor_elements), 33) { isSetVendorElementsSupported }
+        test(stringResource(R.string.repeater_feature_group_client_removal), 33) { isGroupClientRemovalSupported }
+        test(stringResource(R.string.repeater_feature_pcc_mode), 36) { isPccModeSupported }
+        test(stringResource(R.string.repeater_feature_wifi_direct_r2), 36) { isWiFiDirectR2Supported }
+    }
+    val addresses = group?.let { p2pGroup ->
+        ifaceLookup[p2pGroup.`interface`]?.formatAddresses(macOverride = if (Build.VERSION.SDK_INT >= 30) try {
+            (wifiP2pGroupInterfaceAddress[p2pGroup] as ByteArray?)?.let(MacAddress::fromBytes)
+        } catch (e: NoSuchFieldException) {
+            if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
+            null
+        } else null)
+    } ?: ""
+    if (addresses.isNotEmpty()) {
+        if (result.isNotEmpty()) result.appendLine()
+        result.append(addresses)
+    }
+    return result
 }
+
+private val wifiP2pGroupInterfaceAddress by lazy { WifiP2pGroup::class.java.getDeclaredField("interfaceAddress") }

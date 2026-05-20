@@ -3,15 +3,22 @@ package be.mygod.vpnhotspot.ui
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.ext.SdkExtensions
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
@@ -26,9 +33,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -37,6 +48,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BootReceiver
@@ -53,14 +68,18 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
+import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.Services
 import com.google.android.gms.oss.licenses.R as OssLicensesR
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -70,8 +89,10 @@ import java.io.IOException
 import java.io.PrintWriter
 
 @Composable
+@OptIn(DelicateCoroutinesApi::class)
 internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     var offloadEnabled by remember { mutableStateOf(TetherOffloadManager.enabled) }
     var offloadChanging by remember { mutableStateOf(false) }
@@ -88,8 +109,25 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
 
     LaunchedEffect(Unit) {
         WifiDoubleLock.mode = WifiDoubleLock.mode
+        wifiLockMode = WifiDoubleLock.mode.name
         RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
+        masqueradeMode = masqueradePreferenceValue()
         RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
+        ipv6Mode = RoutingManager.ipv6Mode.name
+    }
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, offloadChanging) {
+        fun refresh() {
+            masqueradeMode = masqueradePreferenceValue()
+            ipv6Mode = RoutingManager.ipv6Mode.name
+            wifiLockMode = WifiDoubleLock.mode.name
+            if (!offloadChanging) offloadEnabled = TetherOffloadManager.enabled
+        }
+        val observer = object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) = refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) refresh()
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     SettingsList {
@@ -98,33 +136,39 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 icon = R.drawable.ic_action_settings_backup_restore,
                 title = stringResource(R.string.settings_service_clean),
                 summary = stringResource(R.string.settings_service_clean_summary),
-                onClick = { scope.launch { withContext(Dispatchers.Default) { RoutingManager.clean() } } },
+                onClick = { GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() } },
             )
         }
         item { SectionHeader(stringResource(R.string.settings_upstream)) }
         item {
+            val fallback = stringResource(R.string.settings_service_upstream_auto)
             TextPreferenceRow(
                 icon = R.drawable.ic_action_settings_ethernet,
                 title = R.string.settings_service_upstream,
                 value = primaryPreference.orEmpty(),
                 summary = upstreamSummary(
-                    fallback = stringResource(R.string.settings_service_upstream_auto),
+                    fallback = fallback,
                     preference = primaryPreference,
                     upstream = primaryUpstream,
                 ),
+                placeholder = fallback,
+                suggestNetworkInterfaces = true,
                 onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
             )
         }
         item {
+            val fallback = stringResource(R.string.settings_upstream_fallback_auto)
             TextPreferenceRow(
                 icon = R.drawable.ic_action_settings_input_component,
                 title = R.string.settings_upstream_fallback,
                 value = fallbackPreference.orEmpty(),
                 summary = upstreamSummary(
-                    fallback = stringResource(R.string.settings_upstream_fallback_auto),
+                    fallback = fallback,
                     preference = fallbackPreference,
                     upstream = fallbackUpstream,
                 ),
+                placeholder = fallback,
+                suggestNetworkInterfaces = true,
                 onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
             )
         }
@@ -172,10 +216,11 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             throw e
                         } catch (e: Exception) {
                             Timber.w(e)
-                            snackbarHostState.showSnackbar(e.readableMessage)
+                            snackbarHostState.showLongSnackbar(e.readableMessage)
+                        } finally {
+                            offloadEnabled = TetherOffloadManager.enabled
+                            offloadChanging = false
                         }
-                        offloadEnabled = TetherOffloadManager.enabled
-                        offloadChanging = false
                     }
                 },
             )
@@ -239,14 +284,14 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 title = stringResource(R.string.settings_misc_logcat),
                 summary = stringResource(R.string.settings_misc_logcat_summary),
                 onClick = {
-                    scope.launch {
+                    GlobalScope.launch(Dispatchers.Main.immediate) {
                         try {
                             shareLogcat(context)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
                             Timber.w(e)
-                            snackbarHostState.showSnackbar(e.readableMessage)
+                            snackbarHostState.showLongSnackbar(e.readableMessage)
                         }
                     }
                 },
@@ -280,7 +325,7 @@ private fun ListPreferenceRow(
     selectedValue: String,
     onValueChange: (String) -> Unit,
 ) {
-    var selecting by remember { mutableStateOf(false) }
+    var selecting by rememberSaveable { mutableStateOf(false) }
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
@@ -319,41 +364,133 @@ private fun TextPreferenceRow(
     @StringRes title: Int,
     value: String,
     summary: AnnotatedString,
+    placeholder: String? = null,
+    suggestNetworkInterfaces: Boolean = false,
     onValueChange: (String) -> Unit,
 ) {
-    var editing by remember { mutableStateOf(false) }
-    var draft by remember(value, editing) { mutableStateOf(value) }
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var draft by rememberSaveable(value, editing) { mutableStateOf(value) }
+    var suggestionsExpanded by remember(editing) { mutableStateOf(false) }
+    val suggestions by rememberInterfaceNameSuggestions(editing && suggestNetworkInterfaces)
+    val filteredSuggestions = remember(suggestions, draft) {
+        suggestions.filter { draft.isBlank() || it.contains(draft, ignoreCase = true) }
+    }
+    LaunchedEffect(editing, suggestions) {
+        if (editing && suggestions.isNotEmpty()) suggestionsExpanded = true
+    }
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
         summaryContent = { Text(summary) },
         onClick = { editing = true },
     )
-    if (editing) AlertDialog(
-        onDismissRequest = { editing = false },
-        title = { Text(stringResource(title)) },
-        text = {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                onValueChange(draft)
-                editing = false
-            }) {
-                Text(stringResource(android.R.string.ok))
+    if (editing) {
+        val focusRequester = remember { FocusRequester() }
+        val keyboard = LocalSoftwareKeyboardController.current
+        LaunchedEffect(Unit) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+        AlertDialog(
+            onDismissRequest = { editing = false },
+            title = { Text(stringResource(title)) },
+            text = {
+                Box {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = {
+                            draft = it
+                            suggestionsExpanded = true
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        placeholder = placeholder?.let { { Text(it) } },
+                        singleLine = true,
+                    )
+                    DropdownMenu(
+                        expanded = suggestionsExpanded && filteredSuggestions.isNotEmpty(),
+                        onDismissRequest = { suggestionsExpanded = false },
+                    ) {
+                        for (suggestion in filteredSuggestions) DropdownMenuItem(
+                            text = { Text(suggestion) },
+                            onClick = {
+                                draft = suggestion
+                                suggestionsExpanded = false
+                            },
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onValueChange(draft)
+                    editing = false
+                }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { editing = false }) {
+                    Text(stringResource(android.R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String>> {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    return produceState(initialValue = emptyList(), active, lifecycleOwner) {
+        if (!active) return@produceState
+        val interfaceNames = mutableMapOf<Network, List<String>>()
+        fun update() {
+            value = interfaceNames.values.flatten().distinct().sorted()
+        }
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                interfaceNames[network] = properties.allInterfaceNames
+                update()
             }
-        },
-        dismissButton = {
-            TextButton(onClick = { editing = false }) {
-                Text(stringResource(android.R.string.cancel))
+
+            override fun onLost(network: Network) {
+                interfaceNames.remove(network)
+                update()
             }
-        },
-    )
+        }
+        var registered = false
+        fun register() {
+            if (!registered) {
+                Services.registerNetworkCallback(globalNetworkRequestBuilder().apply {
+                    removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                    removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                    removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+                }.build(), callback)
+                registered = true
+            }
+        }
+        fun unregister() {
+            if (registered) {
+                Services.connectivity.unregisterNetworkCallback(callback)
+                registered = false
+            }
+        }
+        val observer = object : DefaultLifecycleObserver {
+            override fun onStart(owner: LifecycleOwner) = register()
+            override fun onStop(owner: LifecycleOwner) {
+                unregister()
+                interfaceNames.clear()
+                update()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
+        awaitDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            unregister()
+        }
+    }
 }
 
 @Composable
