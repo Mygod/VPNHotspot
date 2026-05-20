@@ -1279,6 +1279,26 @@ private fun SsidApRow(state: ApConfigurationState) {
                             Text("$draftByteCount/32")
                         }
                     },
+                    trailingIcon = if (state.canToggleSsidHex) {
+                        {
+                            IconButton(onClick = {
+                                try {
+                                    draft = state.convertSsidDisplay(draft, draftHex)
+                                    draftHex = !draftHex
+                                    error = null
+                                } catch (e: RuntimeException) {
+                                    error = e.readableMessage
+                                }
+                            }) {
+                                Icon(
+                                    painter = painterResource(if (draftHex) {
+                                        R.drawable.ic_av_closed_caption
+                                    } else R.drawable.ic_av_closed_caption_off),
+                                    contentDescription = stringResource(R.string.wifi_ssid_toggle_hex),
+                                )
+                            }
+                        }
+                    } else null,
                 )
             }
         },
@@ -1294,19 +1314,6 @@ private fun SsidApRow(state: ApConfigurationState) {
             }
         },
         dismissButton = {
-            if (state.canToggleSsidHex) {
-                TextButton(onClick = {
-                    try {
-                        draft = state.convertSsidDisplay(draft, draftHex)
-                        draftHex = !draftHex
-                        error = null
-                    } catch (e: RuntimeException) {
-                        error = e.readableMessage
-                    }
-                }) {
-                    Text(stringResource(R.string.wifi_ssid_toggle_hex))
-                }
-            }
             TextButton(onClick = { editing = false }) {
                 Text(stringResource(android.R.string.cancel))
             }
