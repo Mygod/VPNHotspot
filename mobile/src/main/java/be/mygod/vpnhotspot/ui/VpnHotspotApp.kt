@@ -13,7 +13,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -156,8 +155,14 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             TopAppBar(
                 title = { Text(stringResource(title)) },
                 navigationIcon = {
-                    if (appDestination != null) IconButton(onClick = { navController.popBackStack() }) {
-                        NavIcon(R.drawable.ic_navigation_arrow_back, androidx.appcompat.R.string.abc_action_bar_up_description)
+                    if (appDestination != null) {
+                        val tooltip = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
+                        TooltipIconButton(
+                            tooltip = tooltip,
+                            onClick = { navController.popBackStack() },
+                        ) {
+                            NavIcon(R.drawable.ic_navigation_arrow_back, tooltip)
+                        }
                     }
                 },
                 actions = {
@@ -290,9 +295,14 @@ private fun ApConfigurationRoute(state: ApConfigurationState?, navController: Na
 
 @Composable
 private fun NavIcon(@DrawableRes icon: Int, @StringRes description: Int) {
+    NavIcon(icon, stringResource(description))
+}
+
+@Composable
+private fun NavIcon(@DrawableRes icon: Int, description: String) {
     Icon(
         painter = painterResource(icon),
-        contentDescription = stringResource(description),
+        contentDescription = description,
     )
 }
 
@@ -307,8 +317,12 @@ private fun TetheringActions(
     var monitorExpanded by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
     if (monitorableIfaces.isNotEmpty()) {
-        IconButton(onClick = { monitorExpanded = true }) {
-            NavIcon(R.drawable.ic_image_remove_red_eye, R.string.tethering_monitor)
+        val tooltip = stringResource(R.string.tethering_monitor)
+        TooltipIconButton(
+            tooltip = tooltip,
+            onClick = { monitorExpanded = true },
+        ) {
+            NavIcon(R.drawable.ic_image_remove_red_eye, tooltip)
         }
         DropdownMenu(expanded = monitorExpanded, onDismissRequest = { monitorExpanded = false }) {
             for (iface in monitorableIfaces) DropdownMenuItem(
@@ -320,8 +334,12 @@ private fun TetheringActions(
             )
         }
     }
-    IconButton(onClick = { expanded = true }) {
-        NavIcon(R.drawable.ic_device_wifi_lock, R.string.configuration_view)
+    val tooltip = stringResource(R.string.configuration_view)
+    TooltipIconButton(
+        tooltip = tooltip,
+        onClick = { expanded = true },
+    ) {
+        NavIcon(R.drawable.ic_device_wifi_lock, tooltip)
     }
     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
         if (Services.p2p != null) DropdownMenuItem(

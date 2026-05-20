@@ -38,9 +38,7 @@ class MainActivity : AppCompatActivity() {
         WifiDoubleLock.ActivityListener(this)
         lifecycleScope.launch { BootReceiver.startIfEnabled() }
         setContent {
-            VpnHotspotTheme {
-                VpnHotspotApp(model, validClientCount)
-            }
+            VpnHotspotTheme { VpnHotspotApp(model, validClientCount) }
         }
     }
 }

@@ -27,7 +27,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
@@ -876,7 +875,8 @@ internal fun ApConfigurationTopBarActions(
             tint = MaterialTheme.colorScheme.error,
             modifier = Modifier.size(24.dp),
         )
-        IconButton(
+        TooltipIconButton(
+            tooltip = stringResource(android.R.string.copy),
             enabled = state.canCopy,
             onClick = {
                 try {
@@ -891,10 +891,13 @@ internal fun ApConfigurationTopBarActions(
                 contentDescription = stringResource(android.R.string.copy),
             )
         }
-        IconButton(onClick = { overflowExpanded = true }) {
+        TooltipIconButton(
+            tooltip = stringResource(androidx.appcompat.R.string.abc_action_menu_overflow_description),
+            onClick = { overflowExpanded = true },
+        ) {
             Icon(
                 painter = painterResource(R.drawable.ic_more_vert),
-                contentDescription = stringResource(R.string.configuration_view),
+                contentDescription = stringResource(androidx.appcompat.R.string.abc_action_menu_overflow_description),
             )
         }
         DropdownMenu(expanded = overflowExpanded, onDismissRequest = { overflowExpanded = false }) {
@@ -934,7 +937,8 @@ internal fun ApConfigurationTopBarActions(
                 },
             )
         }
-        if (!state.readOnly) IconButton(
+        if (!state.readOnly) TooltipIconButton(
+            tooltip = stringResource(R.string.wifi_save),
             enabled = state.canSave,
             onClick = {
                 val config = state.generateConfig()
@@ -1281,20 +1285,24 @@ private fun SsidApRow(state: ApConfigurationState) {
                     },
                     trailingIcon = if (state.canToggleSsidHex) {
                         {
-                            IconButton(onClick = {
-                                try {
-                                    draft = state.convertSsidDisplay(draft, draftHex)
-                                    draftHex = !draftHex
-                                    error = null
-                                } catch (e: RuntimeException) {
-                                    error = e.readableMessage
-                                }
-                            }) {
+                            val tooltip = stringResource(R.string.wifi_ssid_toggle_hex)
+                            TooltipIconButton(
+                                tooltip = tooltip,
+                                onClick = {
+                                    try {
+                                        draft = state.convertSsidDisplay(draft, draftHex)
+                                        draftHex = !draftHex
+                                        error = null
+                                    } catch (e: RuntimeException) {
+                                        error = e.readableMessage
+                                    }
+                                },
+                            ) {
                                 Icon(
                                     painter = painterResource(if (draftHex) {
                                         R.drawable.ic_av_closed_caption
                                     } else R.drawable.ic_av_closed_caption_off),
-                                    contentDescription = stringResource(R.string.wifi_ssid_toggle_hex),
+                                    contentDescription = tooltip,
                                 )
                             }
                         }
@@ -1430,7 +1438,10 @@ private fun PasswordApRow(state: ApConfigurationState) {
                     }
                 } else null,
                 trailingIcon = {
-                    IconButton(onClick = { visible = !visible }) {
+                    TooltipIconButton(
+                        tooltip = stringResource(R.string.wifi_password),
+                        onClick = { visible = !visible },
+                    ) {
                         Icon(
                             painter = painterResource(R.drawable.ic_image_remove_red_eye),
                             contentDescription = stringResource(R.string.wifi_password),

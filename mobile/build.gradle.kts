@@ -204,7 +204,6 @@ ksp {
 dependencies {
     ksp(libs.room.compiler)
     implementation(platform(libs.compose.bom))
-    androidTestImplementation(platform(libs.compose.bom))
     implementation(libs.activity.compose)
     implementation(libs.browser)
     implementation(libs.compose.material3)
@@ -233,6 +232,7 @@ dependencies {
     implementation(libs.zxing.core)
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.junit.ktx)
     androidTestImplementation(libs.room.testing)
