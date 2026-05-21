@@ -299,7 +299,7 @@
     <string name="wifi_user_config">User supplied configuration</string>
     <string name="wifi_user_config_help">Marks whether this configuration was supplied by the user.</string>
     <string name="wifi_vendor_elements">Vendor elements</string>
-    <string name="wifi_vendor_elements_help">Vendor-specific information elements transmitted in Soft AP beacons and probe responses. Android accepts only vendor-specific IE ID &lt;tt&gt;0xDD&lt;/tt&gt; and rejects duplicate elements.</string>
+    <string name="wifi_vendor_elements_help">Vendor-specific information elements transmitted in Soft AP beacons and probe responses. Enter one hex-encoded vendor IE body per line, for example &lt;tt&gt;AABBCC01&lt;/tt&gt;. Do not include the &lt;tt&gt;0xDD&lt;/tt&gt; element ID or length byte.</string>
     <string name="wifi_client_isolation">Client isolation</string>
     <string name="wifi_client_isolation_help">Disallow a connected Soft AP client from communicating with other connected clients.</string>
     <string name="wifi_save">Save</string>
