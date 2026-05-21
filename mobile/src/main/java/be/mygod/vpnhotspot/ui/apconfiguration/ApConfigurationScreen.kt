@@ -220,10 +220,10 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                         ListApRow(
                             icon = R.drawable.ic_action_settings_input_antenna,
                             title = R.string.wifi_hotspot_max_channel_bandwidth,
-                            selected = state.maxChannelBandwidthLabel,
+                            selected = state.maxChannelBandwidthLabel(context),
                             enabled = true,
                             entries = state.bandwidthEntries(),
-                            entryLabel = { it.name },
+                            entryLabel = { it.label(context) },
                             description = annotatedStringResource(R.string.wifi_hotspot_max_channel_bandwidth_help),
                             onSelect = { state.maxChannelBandwidth = it.width },
                         )

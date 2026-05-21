@@ -147,6 +147,25 @@ internal class BandWidth(val width: Int, val name: String = "") : Comparable<Ban
     override fun compareTo(other: BandWidth) = width - other.width
 }
 
+internal fun BandWidth.label(context: Context) = channelBandwidthLabel(context, width, name)
+
+internal fun channelBandwidthLabel(context: Context, width: Int, fallback: String = width.toString()) = when (width) {
+    SoftApConfigurationCompat.CHANNEL_WIDTH_AUTO -> context.getString(R.string.wifi_channel_width_auto)
+    SoftApConfigurationCompat.CHANNEL_WIDTH_INVALID -> context.getString(R.string.wifi_channel_width_invalid)
+    1 -> context.getString(R.string.wifi_channel_width_20mhz_no_ht)
+    2 -> context.getString(R.string.wifi_channel_width_mhz, 20)
+    3 -> context.getString(R.string.wifi_channel_width_mhz, 40)
+    4 -> context.getString(R.string.wifi_channel_width_mhz, 80)
+    5 -> context.getString(R.string.wifi_channel_width_160mhz_80_plus_80)
+    6 -> context.getString(R.string.wifi_channel_width_mhz, 160)
+    7 -> context.getString(R.string.wifi_channel_width_mhz, 2160)
+    8 -> context.getString(R.string.wifi_channel_width_mhz, 4320)
+    9 -> context.getString(R.string.wifi_channel_width_mhz, 6480)
+    10 -> context.getString(R.string.wifi_channel_width_mhz, 8640)
+    11 -> context.getString(R.string.wifi_channel_width_mhz, 320)
+    else -> fallback
+}
+
 internal const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
 internal val MACHINE_TEXT_KEYBOARD_OPTIONS = KeyboardOptions(
     autoCorrectEnabled = false,

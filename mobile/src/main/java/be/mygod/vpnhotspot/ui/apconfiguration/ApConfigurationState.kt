@@ -90,7 +90,10 @@ internal class ApConfigurationState(
     private val channelOptions = currentChannelOptions(p2pMode)
     private val bandwidthOptions = if (Build.VERSION.SDK_INT >= 33) {
         SoftApInfo.channelWidthLookup.lookup.let { lookup ->
-            List(lookup.size()) { BandWidth(lookup.keyAt(it), lookup.valueAt(it).substring(14)) }.sorted()
+            List(lookup.size()) {
+                val width = lookup.keyAt(it)
+                BandWidth(width, lookup.valueAt(it).substring(14))
+            }.sorted()
         }
     } else emptyList()
 
@@ -148,8 +151,6 @@ internal class ApConfigurationState(
     val canShare get() = generateConfigOrNull(requirePassword = false, full = false) != null
     val possiblyInvalid get() = possiblyInvalid(app)
     val securityLabel get() = securityOptions.firstOrNull { it.value == securityType }?.label ?: securityType.toString()
-    val maxChannelBandwidthLabel get() = bandwidthOptions.firstOrNull { it.width == maxChannelBandwidth }?.name
-        ?: maxChannelBandwidth.toString()
     val ssidHex get() = hexSsid
     val canToggleSsidHex get() = ssidHexToggleable
     val passwordEnabled get() = selectedSecurityType !in SECURITY_TYPES_WITHOUT_PASSWORD
@@ -409,6 +410,9 @@ internal class ApConfigurationState(
     fun channelEntries(allowDisabled: Boolean = false) = if (allowDisabled) listOf(ChannelOption.Disabled) +
             channelOptions else channelOptions
     fun bandwidthEntries() = bandwidthOptions
+    fun maxChannelBandwidthLabel(context: Context) = bandwidthOptions.firstOrNull {
+        it.width == maxChannelBandwidth
+    }?.label(context) ?: channelBandwidthLabel(context, maxChannelBandwidth)
 
     private fun generateChannels() = SparseIntArray(2).also { channels ->
         if (!p2pMode && Build.VERSION.SDK_INT >= 31 && secondaryChannel.band >= 0) {
