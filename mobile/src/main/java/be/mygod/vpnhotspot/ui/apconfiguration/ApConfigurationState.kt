@@ -413,12 +413,13 @@ internal class ApConfigurationState(
     fun bssidEnabled(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
             macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE
     fun macAddressSummary(context: Context) = when {
-        bssidEnabled -> bssid.ifEmpty { context.getString(R.string.wifi_mac_address_nothing) }
-        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT -> context.getString(
-            R.string.wifi_mac_address_persistent_randomization,
-            persistentRandomizedMac.ifEmpty { context.getString(R.string.wifi_mac_address_nothing) },
-        )
-        else -> context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT ->
+            context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT -> {
+            if (persistentRandomizedMac.isEmpty()) ""
+            else context.getString(R.string.wifi_mac_address_persistent_randomization, persistentRandomizedMac)
+        }
+        else -> bssid
     }
 
     private fun generateChannels() = SparseIntArray(2).also { channels ->

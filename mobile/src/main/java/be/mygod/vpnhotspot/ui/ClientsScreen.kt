@@ -182,14 +182,16 @@ private fun ClientRow(
     onToggleBlocked: () -> Unit,
 ) {
     val context = LocalContext.current
-    val record by client.record.observeAsState(ClientRecord(client.mac))
+    val loadedRecord by client.record.observeAsState<ClientRecord?, ClientRecord>(null)
+    val record = loadedRecord ?: ClientRecord(client.mac)
     val linkStyles = rememberNetworkAddressLinkStyles()
     val neighbourStateIncomplete = stringResource(R.string.connected_state_incomplete)
     val neighbourStateValid = stringResource(R.string.connected_state_valid)
     val neighbourStateFailed = stringResource(R.string.connected_state_failed)
     val nickname = record.nickname
-    LaunchedEffect(client.mac, nickname, record.macLookupPending) {
-        if (nickname.isEmpty() && record.macLookupPending) MacLookup.perform(client.mac)
+    LaunchedEffect(client.mac, loadedRecord) {
+        val currentRecord = loadedRecord ?: return@LaunchedEffect
+        if (currentRecord.nickname.isEmpty() && currentRecord.macLookupPending) MacLookup.perform(client.mac)
     }
     val title = buildAnnotatedString {
         if (nickname.isNotEmpty()) append(nickname) else appendClientAddress(client, client.iface, linkStyles)
@@ -425,9 +427,9 @@ private suspend fun updateNickname(
 }
 
 @Composable
-private fun <T> LiveData<T>.observeAsState(initial: T): State<T> {
+private fun <R, T : R> LiveData<T>.observeAsState(initial: R): State<R> {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val state = remember(this) { mutableStateOf(value ?: initial) }
+    val state = remember(this) { mutableStateOf<R>(value ?: initial) }
     DisposableEffect(this, lifecycleOwner) {
         val observer = androidx.lifecycle.Observer<T> { state.value = it ?: initial }
         observe(lifecycleOwner, observer)

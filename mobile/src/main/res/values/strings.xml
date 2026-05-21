@@ -269,7 +269,6 @@
     <string name="wifi_hotspot_access_control_title">Access Control</string>
     <string name="wifi_hotspot_ap_advanced_title">Advanced AP Options</string>
     <string name="wifi_advanced_mac_address_title">MAC address</string>
-    <string name="wifi_mac_address_nothing">Nothing</string>
     <string name="wifi_mac_address_persistent_randomization">Persistent randomization: %s</string>
     <string name="wifi_mac_address_non_persistent_randomization">Non-persistent randomization</string>
     <string name="wifi_mac_address_help">Configure BSSID and MAC randomization for the AP. Android rejects all-zero, multicast, and broadcast BSSIDs. An explicit BSSID is used only when MAC randomization is disabled.</string>
