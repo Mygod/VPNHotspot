@@ -1,11 +1,13 @@
 package be.mygod.vpnhotspot.ui
 
 import android.content.Context
+import android.content.res.Configuration
 import android.net.MacAddress
 import android.os.Build
 import android.os.Parcelable
 import android.os.SystemClock
 import android.text.format.Formatter
+import androidx.annotation.DrawableRes
 import androidx.collection.LongObjectMap
 import androidx.collection.MutableScatterMap
 import androidx.collection.ObjectList
@@ -21,6 +23,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -54,12 +58,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientViewModel
@@ -72,6 +76,7 @@ import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
@@ -88,6 +93,7 @@ import java.text.NumberFormat
 @Composable
 internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
+    val inspectionMode = LocalInspectionMode.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val clients by model.clients.observeAsState(emptyList())
     val rates = remember { mutableStateMapOf<Pair<String?, MacAddress>, TrafficRate>() }
@@ -95,9 +101,11 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
     val blockServiceInactive = stringResource(R.string.clients_popup_block_service_inactive)
     val clientsContentDescription = stringResource(R.string.title_clients)
 
-    DisposableEffect(lifecycleOwner, model) {
-        lifecycleOwner.lifecycle.addObserver(model.clientsFragmentObserver)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(model.clientsFragmentObserver) }
+    if (!inspectionMode) {
+        DisposableEffect(lifecycleOwner, model) {
+            lifecycleOwner.lifecycle.addObserver(model.clientsFragmentObserver)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(model.clientsFragmentObserver) }
+        }
     }
     LaunchedEffect(clients) {
         clients.forEach { client ->
@@ -105,18 +113,20 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
             if (rates[key] == null) rates[key] = TrafficRate()
         }
     }
-    LaunchedEffect(lifecycleOwner, clients) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            if (Build.VERSION.SDK_INT >= 30) launch {
-                TetherType.changes.collect { tetherTypeRevision++ }
-            }
-            launch {
-                TrafficRecorder.foregroundUpdates.collect { (newRecords, oldRecords) ->
-                    updateTrafficRates(clients, rates, newRecords, oldRecords)
+    if (!inspectionMode) {
+        LaunchedEffect(lifecycleOwner, clients) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                if (Build.VERSION.SDK_INT >= 30) launch {
+                    TetherType.changes.collect { tetherTypeRevision++ }
                 }
-            }
-            withContext(Dispatchers.Default) {
-                TrafficRecorder.rescheduleUpdate()
+                launch {
+                    TrafficRecorder.foregroundUpdates.collect { (newRecords, oldRecords) ->
+                        updateTrafficRates(clients, rates, newRecords, oldRecords)
+                    }
+                }
+                withContext(Dispatchers.Default) {
+                    TrafficRecorder.rescheduleUpdate()
+                }
             }
         }
     }
@@ -221,32 +231,12 @@ private fun ClientRow(
     val icon = remember(client, tetherTypeRevision) { client.icon }
 
     Box {
-        PreferenceRow(
-            titleContent = {
-                RowSelectionContainer {
-                    Text(
-                        text = title,
-                        textDecoration = if (record.blocked) TextDecoration.LineThrough else null,
-                    )
-                }
-            },
-            summaryContent = {
-                Column {
-                    if (description.text.isNotEmpty()) {
-                        RowSelectionContainer {
-                            Text(description)
-                        }
-                    }
-                    rateText?.let { Text(it) }
-                }
-            },
-            iconContent = {
-                Icon(
-                    painter = painterResource(icon),
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                )
-            },
+        ClientRowLayout(
+            icon = icon,
+            title = title,
+            description = description,
+            rateText = rateText,
+            blocked = record.blocked,
             onClick = { expanded = true },
         )
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -363,6 +353,45 @@ private fun ClientRow(
             },
         )
     }
+}
+
+@Composable
+private fun ClientRowLayout(
+    @DrawableRes icon: Int,
+    title: AnnotatedString,
+    description: AnnotatedString,
+    rateText: String?,
+    blocked: Boolean,
+    onClick: () -> Unit,
+) {
+    PreferenceRow(
+        titleContent = {
+            RowSelectionContainer {
+                Text(
+                    text = title,
+                    textDecoration = if (blocked) TextDecoration.LineThrough else null,
+                )
+            }
+        },
+        summaryContent = {
+            Column {
+                if (description.text.isNotEmpty()) {
+                    RowSelectionContainer {
+                        Text(description)
+                    }
+                }
+                rateText?.let { Text(it) }
+            }
+        },
+        iconContent = {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 @Parcelize
@@ -509,6 +538,95 @@ private fun formatClientStats(context: Context, stats: ClientStats): AnnotatedSt
             }
         }
         if (length == 0) append(context.getString(R.string.clients_stats_empty))
+    }
+}
+
+@Preview(name = "Clients", showBackground = true, widthDp = 420, heightDp = 720)
+@Composable
+private fun ClientsPreview() = ClientsPreviewContent()
+
+@Preview(
+    name = "Clients - dark",
+    showBackground = true,
+    widthDp = 420,
+    heightDp = 720,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun ClientsDarkPreview() = ClientsPreviewContent()
+
+@Composable
+private fun ClientsPreviewContent() {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface {
+            ClientsScreen(
+                model = remember { ClientViewModel() },
+                snackbarHostState = remember { SnackbarHostState() },
+            )
+        }
+    }
+}
+
+@Preview(name = "Clients - connected", showBackground = true, widthDp = 420, heightDp = 720)
+@Composable
+private fun ClientsConnectedPreview() = ClientsConnectedPreviewContent()
+
+@Preview(
+    name = "Clients - connected dark",
+    showBackground = true,
+    widthDp = 420,
+    heightDp = 720,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun ClientsConnectedDarkPreview() = ClientsConnectedPreviewContent()
+
+@Composable
+private fun ClientsConnectedPreviewContent() {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface {
+            val clientsContentDescription = stringResource(R.string.title_clients)
+            SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
+                item {
+                    PreferenceGroup {
+                        row {
+                            ClientRowLayout(
+                                icon = R.drawable.ic_device_network_wifi,
+                                title = AnnotatedString("Pixel 9"),
+                                description = AnnotatedString(
+                                    "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
+                                ),
+                                rateText = "${'\u25B2'} 128 KB/s\t\t${'\u25BC'} 2.1 MB/s",
+                                blocked = false,
+                                onClick = {},
+                            )
+                        }
+                        row {
+                            ClientRowLayout(
+                                icon = R.drawable.ic_device_usb,
+                                title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
+                                description = AnnotatedString("172.20.10.4 (reachable)"),
+                                rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
+                                blocked = true,
+                                onClick = {},
+                            )
+                        }
+                        row {
+                            ClientRowLayout(
+                                icon = R.drawable.ic_content_inbox,
+                                title = AnnotatedString("Work laptop"),
+                                description = AnnotatedString(
+                                    "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
+                                ),
+                                rateText = null,
+                                blocked = false,
+                                onClick = {},
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

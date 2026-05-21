@@ -2,6 +2,8 @@ package be.mygod.vpnhotspot.ui
 
 import android.content.ClipData
 import android.content.ClipDescription
+import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.icu.text.MeasureFormat
@@ -37,6 +39,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,9 +58,12 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
@@ -66,6 +72,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.set
 import be.mygod.vpnhotspot.App.Companion.app
@@ -81,6 +88,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.getRootCause
@@ -227,10 +235,6 @@ internal class ApConfigurationState(
         false
     }
     val securityLabel get() = securityOptions.firstOrNull { it.value == securityType }?.label ?: securityType.toString()
-    val primaryChannelLabel get() = primaryChannel.toString()
-    val secondaryChannelLabel get() = secondaryChannel.toString()
-    val macRandomizationLabel get() = app.resources.getStringArray(R.array.wifi_mac_randomization)
-        .getOrElse(macRandomization) { macRandomization.toString() }
     val maxChannelBandwidthLabel get() = bandwidthOptions.firstOrNull { it.width == maxChannelBandwidth }?.name
         ?: maxChannelBandwidth.toString()
     val ssidHex get() = hexSsid
@@ -585,6 +589,12 @@ internal enum class ApConfigurationTarget {
 
 @Composable
 internal fun ApConfigurationScreen(state: ApConfigurationState) {
+    val context = LocalContext.current
+    val inspectionMode = LocalInspectionMode.current
+    val defaultTimeout = if (inspectionMode) 600_000L else TetherTimeoutMonitor.defaultTimeout.toLong()
+    val defaultBridgedTimeout = if (inspectionMode || Build.VERSION.SDK_INT < 31) {
+        600_000L
+    } else TetherTimeoutMonitor.defaultTimeoutBridged.toLong()
     val navigationBarPadding = WindowInsets.navigationBars.asPaddingValues()
     SettingsList(
         contentPadding = PaddingValues(
@@ -628,17 +638,18 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                             title = R.string.wifi_hotspot_timeout,
                             value = state.timeout,
                             summary = timeoutSummary(
+                                context,
                                 state.timeout,
-                                TetherTimeoutMonitor.defaultTimeout.toLong(),
+                                defaultTimeout,
                             ),
                             readOnly = false,
                             description = annotatedStringResource(
                                 R.string.wifi_hotspot_timeout_help,
-                                formatTimeoutMillis(TetherTimeoutMonitor.defaultTimeout.toLong()),
+                                formatTimeoutMillis(context, defaultTimeout),
                             ),
                             keyboardType = KeyboardType.Number,
                             maxLength = 19,
-                            placeholder = TetherTimeoutMonitor.defaultTimeout.toString(),
+                            placeholder = defaultTimeout.toString(),
                             suffix = "ms",
                             validator = { value ->
                                 validateOptionalLong(value) { timeout ->
@@ -666,17 +677,18 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                             title = R.string.wifi_hotspot_timeout_bridged,
                             value = state.bridgedTimeout,
                             summary = timeoutSummary(
+                                context,
                                 state.bridgedTimeout,
-                                TetherTimeoutMonitor.defaultTimeoutBridged.toLong(),
+                                defaultBridgedTimeout,
                             ),
                             readOnly = Build.VERSION.SDK_INT < 33,
                             description = annotatedStringResource(
                                 R.string.wifi_hotspot_timeout_bridged_help,
-                                formatTimeoutMillis(TetherTimeoutMonitor.defaultTimeoutBridged.toLong()),
+                                formatTimeoutMillis(context, defaultBridgedTimeout),
                             ),
                             keyboardType = KeyboardType.Number,
                             maxLength = 19,
-                            placeholder = TetherTimeoutMonitor.defaultTimeoutBridged.toString(),
+                            placeholder = defaultBridgedTimeout.toString(),
                             suffix = "ms",
                             validator = { value ->
                                 validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
@@ -706,10 +718,10 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     ListApRow(
                         icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_ap_channel_band_title,
-                        selected = state.primaryChannelLabel,
+                        selected = state.primaryChannel.label(context),
                         enabled = true,
                         entries = state.channelEntries(),
-                        entryLabel = { it.toString() },
+                        entryLabel = { it.label(context) },
                         description = annotatedStringResource(R.string.wifi_hotspot_ap_channel_band_help),
                         onSelect = { state.primaryChannel = it },
                     )
@@ -718,10 +730,10 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     ListApRow(
                         icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_concurrent_ap_channel_band_title,
-                        selected = state.secondaryChannelLabel,
+                        selected = state.secondaryChannel.label(context),
                         enabled = true,
                         entries = state.channelEntries(allowDisabled = true),
-                        entryLabel = { it.toString() },
+                        entryLabel = { it.label(context) },
                         description = annotatedStringResource(R.string.wifi_hotspot_concurrent_ap_channel_band_help),
                         onSelect = { state.secondaryChannel = it },
                     )
@@ -858,12 +870,15 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
         item {
             PreferenceGroup(title = stringResource(R.string.wifi_hotspot_ap_advanced_title)) {
                 if (state.p2pMode || Build.VERSION.SDK_INT >= 31) row {
+                    val macRandomizationLabels = stringArrayResource(R.array.wifi_mac_randomization)
                     ListApRow(
                         icon = R.drawable.ic_action_autorenew,
                         title = R.string.wifi_mac_randomization,
-                        selected = state.macRandomizationLabel,
+                        selected = macRandomizationLabels.getOrElse(state.macRandomization) {
+                            state.macRandomization.toString()
+                        },
                         enabled = !state.p2pMode,
-                        entries = app.resources.getStringArray(R.array.wifi_mac_randomization).mapIndexed { index, label ->
+                        entries = macRandomizationLabels.mapIndexed { index, label ->
                             index to label
                         },
                         entryLabel = { it.second },
@@ -1000,6 +1015,41 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Preview(name = "Wi-Fi Configuration", showBackground = true, widthDp = 420, heightDp = 720)
+@Composable
+private fun ApConfigurationPreview() = ApConfigurationPreviewContent()
+
+@Preview(
+    name = "Wi-Fi Configuration - dark",
+    showBackground = true,
+    widthDp = 420,
+    heightDp = 720,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun ApConfigurationDarkPreview() = ApConfigurationPreviewContent()
+
+@Composable
+private fun ApConfigurationPreviewContent() {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface {
+            ApConfigurationScreen(
+                remember {
+                    ApConfigurationState(
+                        SoftApConfigurationCompat(
+                            ssid = WifiSsidCompat.fromUtf8Text("VPN Hotspot"),
+                            passphrase = "12345678",
+                            securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
+                        ),
+                        readOnly = false,
+                        p2pMode = false,
+                    )
+                },
+            )
         }
     }
 }
@@ -1767,16 +1817,16 @@ private fun validateAcsChannels(band: Int, value: String): String? = try {
     e.readableMessage
 }
 
-private fun timeoutSummary(value: String, defaultMillis: Long): String {
+private fun timeoutSummary(context: Context, value: String, defaultMillis: Long): String {
     val millis = value.toLongOrNull()
     return if (millis == null || millis <= 0) {
-        app.getString(R.string.wifi_hotspot_timeout_default, formatTimeoutMillis(defaultMillis))
-    } else formatTimeoutMillis(millis)
+        context.getString(R.string.wifi_hotspot_timeout_default, formatTimeoutMillis(context, defaultMillis))
+    } else formatTimeoutMillis(context, millis)
 }
 
-private fun formatTimeoutMillis(millis: Long): String {
+private fun formatTimeoutMillis(context: Context, millis: Long): String {
     val formatter = MeasureFormat.getInstance(
-        app.resources.configuration.locales[0],
+        context.resources.configuration.locales[0],
         MeasureFormat.FormatWidth.WIDE,
     )
     var remaining = millis.coerceAtLeast(0)
@@ -1795,6 +1845,19 @@ private fun formatTimeoutMillis(millis: Long): String {
     }
     if (measures.isEmpty()) measures += Measure(0, MeasureUnit.MILLISECOND)
     return formatter.formatMeasures(*measures.toTypedArray())
+}
+
+private fun ChannelOption.label(context: Context): String {
+    if (this == ChannelOption.Disabled) return context.getString(R.string.wifi_ap_choose_disabled)
+    return if (channel == 0) {
+        val format = DecimalFormat("#.#", DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]))
+        context.getString(R.string.wifi_ap_choose_G, arrayOf(
+            SoftApConfiguration.BAND_2GHZ to 2.4,
+            SoftApConfiguration.BAND_5GHZ to 5,
+            SoftApConfiguration.BAND_6GHZ to 6,
+            SoftApConfiguration.BAND_60GHZ to 60,
+        ).filter { (mask, _) -> band and mask == mask }.joinToString("/") { (_, name) -> format.format(name) })
+    } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
 }
 
 private fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = when {

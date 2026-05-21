@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.ui
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -24,6 +25,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -40,6 +42,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
@@ -47,6 +50,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
@@ -70,6 +74,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
@@ -89,48 +94,73 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.PrintWriter
+import java.net.InetAddress
 
 @Composable
 @OptIn(DelicateCoroutinesApi::class)
 internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
+    val inspectionMode = LocalInspectionMode.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    var offloadEnabled by remember { mutableStateOf(TetherOffloadManager.enabled) }
+    var offloadEnabled by remember { mutableStateOf(!inspectionMode && TetherOffloadManager.enabled) }
     var offloadChanging by remember { mutableStateOf(false) }
-    val primaryUpstream by Upstreams.primary.collectAsStateWithLifecycle()
-    val fallbackUpstream by Upstreams.fallback.collectAsStateWithLifecycle()
-    val primaryPreference by rememberPreferenceString(Upstreams.KEY_PRIMARY)
-    val fallbackPreference by rememberPreferenceString(Upstreams.KEY_FALLBACK)
-    var masqueradeMode by remember { mutableStateOf(masqueradePreferenceValue()) }
-    var ipv6Mode by remember { mutableStateOf(RoutingManager.ipv6Mode.name) }
-    var wifiLockMode by remember { mutableStateOf(WifiDoubleLock.mode.name) }
-    val autoStart by rememberPreferenceBoolean(BootReceiver.KEY, false)
-    val repeaterSafeMode by rememberPreferenceBoolean(RepeaterService.KEY_SAFE_MODE, true)
-    val useSystemTempHotspot by rememberPreferenceBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, false)
+    val primaryUpstream by if (inspectionMode) {
+        remember { mutableStateOf<Upstream?>(null) }
+    } else Upstreams.primary.collectAsStateWithLifecycle()
+    val fallbackUpstream by if (inspectionMode) {
+        remember { mutableStateOf<Upstream?>(null) }
+    } else Upstreams.fallback.collectAsStateWithLifecycle()
+    val primaryPreference by if (inspectionMode) {
+        remember { mutableStateOf<String?>(null) }
+    } else rememberPreferenceString(Upstreams.KEY_PRIMARY)
+    val fallbackPreference by if (inspectionMode) {
+        remember { mutableStateOf<String?>(null) }
+    } else rememberPreferenceString(Upstreams.KEY_FALLBACK)
+    var masqueradeMode by remember {
+        mutableStateOf(if (inspectionMode) "Simple" else masqueradePreferenceValue())
+    }
+    var ipv6Mode by remember {
+        mutableStateOf(if (inspectionMode) Ipv6Mode.Block.name else RoutingManager.ipv6Mode.name)
+    }
+    var wifiLockMode by remember {
+        mutableStateOf(if (inspectionMode) WifiDoubleLock.Mode.None.name else WifiDoubleLock.mode.name)
+    }
+    val autoStart by if (inspectionMode) {
+        remember { mutableStateOf(false) }
+    } else rememberPreferenceBoolean(BootReceiver.KEY, false)
+    val repeaterSafeMode by if (inspectionMode) {
+        remember { mutableStateOf(true) }
+    } else rememberPreferenceBoolean(RepeaterService.KEY_SAFE_MODE, true)
+    val useSystemTempHotspot by if (inspectionMode) {
+        remember { mutableStateOf(false) }
+    } else rememberPreferenceBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, false)
 
-    LaunchedEffect(Unit) {
-        WifiDoubleLock.mode = WifiDoubleLock.mode
-        wifiLockMode = WifiDoubleLock.mode.name
-        RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
-        masqueradeMode = masqueradePreferenceValue()
-        RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
-        ipv6Mode = RoutingManager.ipv6Mode.name
-    }
-    androidx.compose.runtime.DisposableEffect(lifecycleOwner, offloadChanging) {
-        fun refresh() {
-            masqueradeMode = masqueradePreferenceValue()
-            ipv6Mode = RoutingManager.ipv6Mode.name
+    if (!inspectionMode) {
+        LaunchedEffect(Unit) {
+            WifiDoubleLock.mode = WifiDoubleLock.mode
             wifiLockMode = WifiDoubleLock.mode.name
-            if (!offloadChanging) offloadEnabled = TetherOffloadManager.enabled
+            RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
+            masqueradeMode = masqueradePreferenceValue()
+            RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
+            ipv6Mode = RoutingManager.ipv6Mode.name
         }
-        val observer = object : DefaultLifecycleObserver {
-            override fun onResume(owner: LifecycleOwner) = refresh()
+        androidx.compose.runtime.DisposableEffect(lifecycleOwner, offloadChanging) {
+            fun refresh() {
+                masqueradeMode = masqueradePreferenceValue()
+                ipv6Mode = RoutingManager.ipv6Mode.name
+                wifiLockMode = WifiDoubleLock.mode.name
+                if (!offloadChanging) offloadEnabled = TetherOffloadManager.enabled
+            }
+            val observer = object : DefaultLifecycleObserver {
+                override fun onResume(owner: LifecycleOwner) = refresh()
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) refresh()
+            onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) refresh()
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+    val showRepeaterSafeMode = inspectionMode || (Services.p2p != null && RepeaterService.safeModeConfigurable)
 
     SettingsList {
         item {
@@ -140,7 +170,9 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_action_settings_backup_restore,
                         title = stringResource(R.string.settings_service_clean),
                         summary = stringResource(R.string.settings_service_clean_summary),
-                        onClick = { GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() } },
+                        onClick = {
+                            if (!inspectionMode) GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() }
+                        },
                     )
                 }
             }
@@ -161,7 +193,9 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         description = annotatedStringResource(R.string.settings_service_upstream_help),
                         placeholder = fallback,
                         suggestNetworkInterfaces = true,
-                        onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
+                        onValueChange = {
+                            if (!inspectionMode) app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) }
+                        },
                     )
                 }
                 val fallbackLabel = stringResource(R.string.settings_upstream_fallback_auto)
@@ -178,7 +212,11 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         description = annotatedStringResource(R.string.settings_upstream_fallback_help),
                         placeholder = fallbackLabel,
                         suggestNetworkInterfaces = true,
-                        onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
+                        onValueChange = {
+                            if (!inspectionMode) {
+                                app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) }
+                            }
+                        },
                     )
                 }
             }
@@ -195,7 +233,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         selectedValue = masqueradeMode,
                         onValueChange = {
                             masqueradeMode = it
-                            RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
+                            if (!inspectionMode) RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
                         },
                     )
                 }
@@ -209,7 +247,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         selectedValue = ipv6Mode,
                         onValueChange = {
                             ipv6Mode = it
-                            RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
+                            if (!inspectionMode) RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
                         },
                     )
                 }
@@ -221,6 +259,10 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         checked = offloadEnabled,
                         enabled = !offloadChanging,
                         onCheckedChange = { enabled ->
+                            if (inspectionMode) {
+                                offloadEnabled = enabled
+                                return@SwitchPreferenceRow
+                            }
                             if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
                             scope.launch {
                                 offloadChanging = true
@@ -253,7 +295,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         selectedValue = wifiLockMode,
                         onValueChange = {
                             wifiLockMode = it
-                            WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
+                            if (!inspectionMode) WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
                         },
                     )
                 }
@@ -264,18 +306,22 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         summary = stringResource(R.string.settings_service_auto_start_summary),
                         checked = autoStart,
                         onCheckedChange = { enabled ->
-                            app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
-                            scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
+                            if (!inspectionMode) {
+                                app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
+                                scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
+                            }
                         },
                     )
                 }
-                if (Services.p2p != null && RepeaterService.safeModeConfigurable) row {
+                if (showRepeaterSafeMode) row {
                     SwitchPreferenceRow(
                         icon = R.drawable.ic_alert_warning,
                         title = R.string.settings_service_repeater_safe_mode,
                         summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
                         checked = repeaterSafeMode,
-                        onCheckedChange = { app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) } },
+                        onCheckedChange = {
+                            if (!inspectionMode) app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) }
+                        },
                     )
                 }
                 if (Build.VERSION.SDK_INT >= 30) row {
@@ -286,7 +332,11 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             R.string.settings_service_temp_hotspot_use_system_summary
                         } else R.string.settings_service_temp_hotspot_use_system_summary_api30),
                         checked = useSystemTempHotspot,
-                        onCheckedChange = { app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) } },
+                        onCheckedChange = {
+                            if (!inspectionMode) {
+                                app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) }
+                            }
+                        },
                     )
                 }
             }
@@ -298,7 +348,11 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_toggle_star,
                         title = stringResource(R.string.settings_misc_source),
                         summary = stringResource(R.string.settings_misc_source_summary),
-                        onClick = { context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md") },
+                        onClick = {
+                            if (!inspectionMode) {
+                                context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
+                            }
+                        },
                     )
                 }
                 row {
@@ -307,7 +361,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         title = stringResource(R.string.settings_misc_logcat),
                         summary = stringResource(R.string.settings_misc_logcat_summary),
                         onClick = {
-                            GlobalScope.launch(Dispatchers.Main.immediate) {
+                            if (!inspectionMode) GlobalScope.launch(Dispatchers.Main.immediate) {
                                 try {
                                     shareLogcat(context)
                                 } catch (e: CancellationException) {
@@ -325,7 +379,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_action_card_giftcard,
                         title = stringResource(R.string.settings_misc_donate),
                         summary = stringResource(R.string.settings_misc_donate_summary),
-                        onClick = { context.launchUrl("https://mygod.be/donate/") },
+                        onClick = { if (!inspectionMode) context.launchUrl("https://mygod.be/donate/") },
                     )
                 }
                 row {
@@ -333,7 +387,11 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_action_code,
                         title = stringResource(OssLicensesR.string.oss_license_title),
                         summary = stringResource(OssLicensesR.string.preferences_license_summary),
-                        onClick = { context.startActivity(Intent(context, OssLicensesMenuActivity::class.java)) },
+                        onClick = {
+                            if (!inspectionMode) {
+                                context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
+                            }
+                        },
                     )
                 }
             }
@@ -386,7 +444,9 @@ private fun TextPreferenceRow(
     var editing by rememberSaveable { mutableStateOf(false) }
     var draft by rememberTextFieldValueAtEnd(value, editing)
     var suggestionsExpanded by remember(editing) { mutableStateOf(false) }
-    val suggestions by rememberInterfaceNameSuggestions(editing && suggestNetworkInterfaces)
+    val suggestions by rememberInterfaceNameSuggestions(
+        !LocalInspectionMode.current && editing && suggestNetworkInterfaces,
+    )
     val filteredSuggestions = remember(suggestions, draft.text) {
         suggestions.filter { draft.text.isBlank() || it.contains(draft.text, ignoreCase = true) }
     }
@@ -603,6 +663,29 @@ private fun rememberPreferenceBoolean(key: String, defaultValue: Boolean): State
     }
 }
 
+@Preview(name = "Settings", showBackground = true, widthDp = 420, heightDp = 720)
+@Composable
+private fun SettingsPreview() = SettingsPreviewContent()
+
+@Preview(
+    name = "Settings - dark",
+    showBackground = true,
+    widthDp = 420,
+    heightDp = 720,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun SettingsDarkPreview() = SettingsPreviewContent()
+
+@Composable
+private fun SettingsPreviewContent() {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface {
+            SettingsScreen(snackbarHostState = remember { SnackbarHostState() })
+        }
+    }
+}
+
 private fun masqueradePreferenceValue() = when (RoutingManager.masqueradeMode) {
     MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
     MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
@@ -654,8 +737,11 @@ private suspend fun shareLogcat(context: Context) {
         .setType("text/x-log")
         .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
-        context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)))
+        "context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)"))
 }
 
-private val UPSTREAM_INTERNET_V4_ADDRESS = android.net.InetAddresses.parseNumericAddress("8.8.8.8")
-private val UPSTREAM_INTERNET_V6_ADDRESS = android.net.InetAddresses.parseNumericAddress("2001:4860:4860::8888")
+private val UPSTREAM_INTERNET_V4_ADDRESS = InetAddress.getByAddress(byteArrayOf(8, 8, 8, 8))
+private val UPSTREAM_INTERNET_V6_ADDRESS = InetAddress.getByAddress(byteArrayOf(
+    0x20, 0x01, 0x48, 0x60, 0x48, 0x60, 0, 0,
+    0, 0, 0, 0, 0, 0, 0x88.toByte(), 0x88.toByte(),
+))

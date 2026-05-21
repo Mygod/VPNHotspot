@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.net.MacAddress
 import android.net.TetheringManager
 import android.net.wifi.SoftApConfiguration
@@ -42,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -62,6 +64,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -71,6 +74,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.core.content.ContextCompat
@@ -99,6 +103,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -127,6 +132,7 @@ internal fun TetheringScreen(
     onConfigureAp: () -> Unit,
 ) {
     val context = LocalContext.current
+    val inspectionMode = LocalInspectionMode.current
     val linkStyles = rememberNetworkAddressLinkStyles()
     val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val managedIfaces by (tetheringBinder?.managedIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
@@ -142,9 +148,9 @@ internal fun TetheringScreen(
     var staticIpDraftText by rememberTextFieldValueAtEnd(staticIpDraft.orEmpty(), staticIpDraft != null)
     var wpsDialog by rememberSaveable { mutableStateOf(false) }
     var wpsPin by rememberTextFieldValueAtEnd("", wpsDialog)
-    val tetherTypeVersion by rememberTetherTypeVersion()
+    val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
-    val manageOffloadEnabled = remember(manageBarVersion) { ManageBar.offloadEnabled }
+    val manageOffloadEnabled = if (inspectionMode) false else remember(manageBarVersion) { ManageBar.offloadEnabled }
     val ifaceLookup = remember(tetherStates, managedIfaces, inactiveIfaces, monitoredIfaces, localOnlyIface, repeaterGroup) {
         networkInterfaceLookup()
     }
@@ -154,18 +160,23 @@ internal fun TetheringScreen(
     val tetheredTypes = remember(tetherStates, tetherTypeVersion) {
         tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
     }
-    val wifiSummary by rememberWifiSummary(tetherError(tetherStates, TetherType.WIFI), linkStyles)
+    val wifiBaseError = tetherError(tetherStates, TetherType.WIFI)
+    val wifiSummary by if (inspectionMode) {
+        remember(wifiBaseError) { mutableStateOf(wifiBaseError) }
+    } else rememberWifiSummary(wifiBaseError, linkStyles)
     var bluetoothVersion by remember { mutableIntStateOf(0) }
-    val bluetoothAdapter = remember {
+    val bluetoothAdapter = if (inspectionMode) null else remember {
         context.getSystemService<BluetoothManager>()?.adapter
     }
     val bluetoothTethering = remember(bluetoothAdapter) {
         bluetoothAdapter?.let { BluetoothTethering(context, it) { bluetoothVersion++ } }
     }
-    val requestBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            bluetoothTethering?.ensureInit(context)
-            bluetoothVersion++
+    val requestBluetooth = if (inspectionMode) null else {
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                bluetoothTethering?.ensureInit(context)
+                bluetoothVersion++
+            }
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -180,7 +191,7 @@ internal fun TetheringScreen(
                 PackageManager.PERMISSION_GRANTED) {
                 bluetoothTethering.ensureInit(context)
                 bluetoothVersion++
-            } else requestBluetooth.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            } else requestBluetooth?.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
         val observer = object : DefaultLifecycleObserver {
             override fun onResume(owner: LifecycleOwner) = refreshBluetooth()
@@ -195,24 +206,46 @@ internal fun TetheringScreen(
             bluetoothTethering?.close()
         }
     }
-    val startRepeater = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) app.startServiceWithLocation<RepeaterService>(context) else GlobalScope.launch(Dispatchers.Main.immediate) {
-            snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
-        }
+    val startRepeater: (String) -> Unit = if (inspectionMode) {
+        { _: String -> }
+    } else run {
+        val startRepeaterLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+            onResult = { granted ->
+                if (granted) {
+                    app.startServiceWithLocation<RepeaterService>(context)
+                } else GlobalScope.launch(Dispatchers.Main.immediate) {
+                    snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
+                }
+            },
+        )
+        val startRepeaterAction: (String) -> Unit = { permission -> startRepeaterLauncher.launch(permission) }
+        startRepeaterAction
     }
-    val startLocalOnly = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        app.startServiceWithLocation<LocalOnlyHotspotService>(context)
+    val startLocalOnly: (String) -> Unit = if (inspectionMode) {
+        { _: String -> }
+    } else run {
+        val startLocalOnlyLauncher = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission(),
+            onResult = { app.startServiceWithLocation<LocalOnlyHotspotService>(context) },
+        )
+        val startLocalOnlyAction: (String) -> Unit = { permission -> startLocalOnlyLauncher.launch(permission) }
+        startLocalOnlyAction
     }
+    val p2p = if (inspectionMode) null else Services.p2p
+    val showRepeater = inspectionMode || p2p != null
+    val showBluetooth = inspectionMode || (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
+            bluetoothTethering != null)
 
     SettingsList {
         item {
             PreferenceGroup {
-                if (Services.p2p != null) {
+                if (showRepeater) {
                     val active = repeaterStatus == RepeaterService.Status.ACTIVE
                     val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
                     val toggleRepeater: () -> Unit = {
                         when (repeaterStatus) {
-                            RepeaterService.Status.IDLE -> startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
+                            RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
                                 Manifest.permission.NEARBY_WIFI_DEVICES
                             } else Manifest.permission.ACCESS_FINE_LOCATION)
                             RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
@@ -223,7 +256,7 @@ internal fun TetheringScreen(
                         TetheringRow(
                             icon = R.drawable.ic_action_settings_input_antenna,
                             title = repeaterTitle(repeaterGroup?.frequency),
-                            summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles),
+                            summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles, p2p),
                             checked = repeaterStatus == RepeaterService.Status.STARTING || active,
                             enabled = true,
                             switchEnabled = switchEnabled,
@@ -246,7 +279,7 @@ internal fun TetheringScreen(
                 }
                 row {
                     val toggleLocalOnly: () -> Unit = {
-                        if (localOnlyIface == null) startLocalOnly.launch(localOnlyHotspotPermission) else localOnlyBinder?.stop()
+                        if (localOnlyIface == null) startLocalOnly(localOnlyHotspotPermission) else localOnlyBinder?.stop()
                     }
                     TetheringRow(
                         icon = R.drawable.ic_action_perm_scan_wifi,
@@ -339,15 +372,14 @@ internal fun TetheringScreen(
                         snackbarHostState = snackbarHostState,
                     )
                 }
-                if (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
-                    bluetoothTethering != null) {
+                if (showBluetooth) {
                     bluetoothVersion
-                    val active = bluetoothTethering.active
+                    val active = bluetoothTethering?.active
                     row {
                         BluetoothTetheringRow(
                             active = active,
                             summary = buildAnnotatedString {
-                                if (active == null) bluetoothTethering.activeFailureCause?.readableMessage?.let {
+                                if (active == null) bluetoothTethering?.activeFailureCause?.readableMessage?.let {
                                     append(it)
                                 }
                                 tetherError(tetherStates, TetherType.BLUETOOTH)?.let {
@@ -599,6 +631,38 @@ private fun TetheringRow(
         },
         onClick = onClick,
     )
+}
+
+@Preview(name = "Tethering", showBackground = true, widthDp = 420, heightDp = 720)
+@Composable
+private fun TetheringPreview() = TetheringPreviewContent()
+
+@Preview(
+    name = "Tethering - dark",
+    showBackground = true,
+    widthDp = 420,
+    heightDp = 720,
+    uiMode = Configuration.UI_MODE_NIGHT_YES,
+)
+@Composable
+private fun TetheringDarkPreview() = TetheringPreviewContent()
+
+@Composable
+private fun TetheringPreviewContent() {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface {
+            TetheringScreen(
+                snackbarHostState = remember { SnackbarHostState() },
+                repeaterBinder = null,
+                localOnlyBinder = null,
+                tetheringBinder = null,
+                tetherStates = TetherStates(),
+                onConfigureRepeater = {},
+                onConfigureTemporaryHotspot = null,
+                onConfigureAp = {},
+            )
+        }
+    }
 }
 
 @OptIn(DelicateCoroutinesApi::class)
@@ -989,6 +1053,7 @@ private fun repeaterSummary(
     group: WifiP2pGroup?,
     ifaceLookup: Map<String, NetworkInterface>,
     linkStyles: TextLinkStyles,
+    p2p: WifiP2pManager?,
 ): AnnotatedString {
     val labels = mutableListOf<String>()
     val features = stringResource(R.string.repeater_features)
@@ -1000,7 +1065,7 @@ private fun repeaterSummary(
             if (Build.VERSION.SDK_INT >= sdk) Timber.w(e)
         }
     }
-    if (Build.VERSION.SDK_INT >= 30) Services.p2p?.apply {
+    if (Build.VERSION.SDK_INT >= 30) p2p?.apply {
         test(stringResource(R.string.repeater_feature_set_vendor_elements), 33) { isSetVendorElementsSupported }
         test(stringResource(R.string.repeater_feature_group_client_removal), 33) { isGroupClientRemovalSupported }
         test(stringResource(R.string.repeater_feature_pcc_mode), 36) { isPccModeSupported }
