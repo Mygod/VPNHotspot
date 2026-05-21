@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSelectionRow
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 
 @Composable
 internal fun ChannelApRow(
@@ -76,7 +78,7 @@ private fun ChannelApDialog(
     val channelEntries = entries.filter { it !== ChannelOption.Disabled }
     val bands = BAND_ORDER.filter { band -> channelEntries.any { it.band and band == band } }
     var selectedBandMask by rememberSaveable(selected.band, selected.channel, entries.size) {
-        mutableIntStateOf(if (selected.band > 0) selected.band else channelEntries.firstOrNull()?.band ?: 0)
+        mutableIntStateOf(if (selected.band > 0) selected.band else 0)
     }
     val selectableChannels = buildList {
         channelEntries.firstOrNull { it.band == selectedBandMask && it.channel == 0 }?.let { add(it) }
@@ -124,6 +126,10 @@ private fun ChannelApDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
+                            val format = DecimalFormat(
+                                "#.#",
+                                DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]),
+                            )
                             for (band in bands) {
                                 val selectedBand = selectedBandMask and band == band
                                 FilterChip(
@@ -131,9 +137,14 @@ private fun ChannelApDialog(
                                     onClick = {
                                         val next = if (selectedBand) selectedBandMask and band.inv()
                                         else selectedBandMask or band
-                                        if (next != 0) selectedBandMask = next
+                                        selectedBandMask = next
                                     },
-                                    label = { Text(ChannelOption(band).label(context)) },
+                                    label = {
+                                        Text(stringResource(
+                                            R.string.wifi_ap_choose_G_short,
+                                            format.format(BAND_GHZ.getValue(band)),
+                                        ))
+                                    },
                                     leadingIcon = if (selectedBand) {
                                         {
                                             Icon(
@@ -146,14 +157,6 @@ private fun ChannelApDialog(
                                 )
                             }
                         }
-                    }
-                }
-                if (selectableChannels.isEmpty()) {
-                    item("empty") {
-                        Text(
-                            text = stringResource(R.string.wifi_hotspot_ap_channel_band_empty),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
                     }
                 }
                 itemsIndexed(selectableChannels, key = { _, it -> "${it.band}/${it.channel}" }) { index, option ->
@@ -185,4 +188,10 @@ private val BAND_ORDER = listOf(
     SoftApConfiguration.BAND_5GHZ,
     SoftApConfiguration.BAND_6GHZ,
     SoftApConfiguration.BAND_60GHZ,
+)
+private val BAND_GHZ = mapOf(
+    SoftApConfiguration.BAND_2GHZ to 2.4,
+    SoftApConfiguration.BAND_5GHZ to 5,
+    SoftApConfiguration.BAND_6GHZ to 6,
+    SoftApConfiguration.BAND_60GHZ to 60,
 )

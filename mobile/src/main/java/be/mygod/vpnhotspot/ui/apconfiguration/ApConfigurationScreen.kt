@@ -376,7 +376,6 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                             title = R.string.wifi_user_config,
                             checked = state.userConfig,
                             readOnly = true,
-                            summary = annotatedStringResource(R.string.wifi_user_config_help),
                         ) {
                             state.userConfig = it
                         }

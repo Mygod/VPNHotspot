@@ -142,15 +142,7 @@ private fun MacAddressApDialog(
                                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                                         singleLine = true,
                                         isError = persistentRandomizedMacError != null,
-                                        supportingText = {
-                                            Column {
-                                                persistentRandomizedMacError?.let { ErrorApText(it) }
-                                                if (persistentRandomizedMacError == null) {
-                                                    Text(annotatedStringResource(
-                                                        R.string.wifi_advanced_mac_address_persistent_randomized_help))
-                                                }
-                                            }
-                                        },
+                                        supportingText = persistentRandomizedMacError?.let { { ErrorApText(it) } },
                                     )
                                 }
                             }
