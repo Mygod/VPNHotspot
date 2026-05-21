@@ -30,7 +30,7 @@ import be.mygod.vpnhotspot.ui.PreferenceSwitch
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
-internal fun TimeoutSwitchApRow(
+internal fun TextSwitchApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     @StringRes valueTitle: Int,
@@ -44,8 +44,10 @@ internal fun TimeoutSwitchApRow(
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     maxLength: Int? = null,
+    minLines: Int = if (value.contains('\n')) 3 else 1,
     placeholder: String? = null,
     suffix: String? = null,
+    supportingText: String? = null,
     validator: (String) -> String? = { null },
     onCheckedChange: (Boolean) -> Unit,
     onValueChange: (String) -> Unit,
@@ -56,10 +58,12 @@ internal fun TimeoutSwitchApRow(
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
-        summaryContent = {
-            Column {
-                summary?.let { Text(it) }
-                if (valueSummary.isNotEmpty()) Text(valueSummary)
+        summaryContent = if (summary == null && valueSummary.isEmpty()) null else {
+            {
+                Column {
+                    summary?.let { Text(it) }
+                    if (valueSummary.isNotEmpty()) Text(valueSummary)
+                }
             }
         },
         enabled = true,
@@ -111,13 +115,16 @@ internal fun TimeoutSwitchApRow(
                         label = { Text(stringResource(valueTitle)) },
                         keyboardOptions = keyboardOptions,
                         placeholder = placeholder?.let { { Text(it) } },
-                        singleLine = true,
+                        singleLine = minLines == 1,
+                        minLines = minLines,
                         isError = fieldEnabled && error != null,
                         suffix = suffix?.let { { Text(it) } },
-                        supportingText = if ((fieldEnabled && error != null) || maxLength != null) {
+                        supportingText = if ((fieldEnabled && error != null) || supportingText != null ||
+                            maxLength != null) {
                             {
                                 Column {
                                     if (fieldEnabled) error?.let { ErrorApText(it) }
+                                    if (error == null) supportingText?.let { Text(it) }
                                     maxLength?.let { Text("${draft.text.length}/$it") }
                                 }
                             }

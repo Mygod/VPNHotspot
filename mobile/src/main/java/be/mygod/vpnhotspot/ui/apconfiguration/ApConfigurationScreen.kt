@@ -60,7 +60,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 row { PasswordApRow(state) }
                 if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
                     row {
-                        TimeoutSwitchApRow(
+                        TextSwitchApRow(
                             icon = R.drawable.ic_action_timer,
                             title = R.string.wifi_hotspot_auto_off,
                             valueTitle = R.string.wifi_hotspot_timeout,
@@ -109,7 +109,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                     row {
-                        TimeoutSwitchApRow(
+                        TextSwitchApRow(
                             icon = R.drawable.ic_action_timer,
                             title = R.string.wifi_bridged_mode_opportunistic_shutdown,
                             valueTitle = R.string.wifi_hotspot_timeout_bridged,
@@ -269,23 +269,16 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                         ) { state.blockedList = it }
                     }
                     row {
-                        SwitchApRow(
+                        TextSwitchApRow(
                             icon = R.drawable.ic_social_people,
                             title = R.string.wifi_client_user_control,
+                            valueTitle = R.string.wifi_allowed_list,
                             checked = state.clientUserControl,
-                            readOnly = false,
-                            summary = annotatedStringResource(R.string.wifi_client_user_control_help),
-                        ) {
-                            state.clientUserControl = it
-                        }
-                    }
-                    row {
-                        TextApRow(
-                            icon = R.drawable.ic_action_check_circle,
-                            title = R.string.wifi_allowed_list,
                             value = state.allowedList,
-                            readOnly = !state.clientUserControl,
-                            description = annotatedStringResource(R.string.wifi_allowed_list_help),
+                            valueSummary = state.allowedList,
+                            switchReadOnly = false,
+                            valueReadOnly = false,
+                            description = annotatedStringResource(R.string.wifi_client_user_control_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             minLines = 3,
                             validator = { value ->
@@ -303,6 +296,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                                     e.readableMessage
                                 }
                             },
+                            onCheckedChange = { state.clientUserControl = it },
                         ) { state.allowedList = it }
                     }
                 }

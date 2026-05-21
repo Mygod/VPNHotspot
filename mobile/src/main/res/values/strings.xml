@@ -277,10 +277,9 @@
     <string name="wifi_max_clients_help">Maximum number of clients that can associate with the AP. Empty lets Android use the device or carrier limit; clients above the limit are rejected.</string>
     <string name="wifi_blocked_list">Blocked list of clients</string>
     <string name="wifi_blocked_list_help">MAC addresses that cannot associate with the Soft AP. Requires client force-disconnect support; otherwise the hotspot can fail to start with an unsupported-configuration error.</string>
-    <string name="wifi_client_user_control">Control which client can use hotspot</string>
-    <string name="wifi_client_user_control_help">When off, any client not in the blocked list can connect until capacity is reached. When on, Android uses the allowed and blocked lists to accept, reject, or require approval for clients.</string>
+    <string name="wifi_client_user_control">User control of client association</string>
+    <string name="wifi_client_user_control_help">When off, any client not in the blocked list can connect with the correct credentials until hotspot capacity is reached, and the allowed list has no effect. When on, Android uses the allowed and blocked lists to accept, reject, or require approval for clients. Clients in the allowed list are auto-accepted; clients on neither list are rejected and reported so they can be added later. Requires client force-disconnect support; otherwise starting the hotspot can fail.</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
-    <string name="wifi_allowed_list_help">MAC addresses that are auto-accepted when client control is enabled. Other clients not on either list are rejected and reported through the Soft AP callback.</string>
     <string name="wifi_mac_randomization">Use randomized MAC</string>
     <string name="wifi_mac_randomization_help">Controls BSSID randomization. Randomization applies only when no explicit BSSID is set and requires MAC address customization support.</string>
     <string name="wifi_mac_randomization_none">None</string>
@@ -298,7 +297,7 @@
     <string name="wifi_ieee_80211be">Enable Wi\u2011Fi 7</string>
     <string name="wifi_ieee_80211be_help">Enable 802.11be for Soft AP when the device supports it.</string>
     <string name="wifi_user_config">User supplied configuration</string>
-    <string name="wifi_user_config_help">Marks whether this Soft AP configuration was supplied by the user.</string>
+    <string name="wifi_user_config_help">Marks whether this configuration was supplied by the user.</string>
     <string name="wifi_vendor_elements">Vendor elements</string>
     <string name="wifi_vendor_elements_help">Vendor-specific information elements transmitted in Soft AP beacons and probe responses. Android accepts only vendor-specific IE ID &lt;tt&gt;0xDD&lt;/tt&gt; and rejects duplicate elements.</string>
     <string name="wifi_client_isolation">Client isolation</string>
