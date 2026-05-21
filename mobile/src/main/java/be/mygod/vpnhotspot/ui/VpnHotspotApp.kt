@@ -56,7 +56,6 @@ import be.mygod.vpnhotspot.client.ClientViewModel
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
-import be.mygod.vpnhotspot.util.Services
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 
@@ -181,55 +180,6 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
                             appContext.startForegroundService(Intent(appContext, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                         },
-                        onConfigureRepeater = {
-                            if (!apConfigurationLoading) {
-                                apConfigurationLoading = true
-                                scope.launch {
-                                    try {
-                                        loadRepeaterApConfiguration(repeaterBinder, snackbarHostState)?.let { session ->
-                                            apSessionHolder.repeaterMaster = session.repeaterMaster
-                                            savedApSession = session.toSaved()
-                                            navController.navigate(AppDestination.RepeaterConfiguration.route)
-                                        }
-                                    } finally {
-                                        apConfigurationLoading = false
-                                    }
-                                }
-                            }
-                        },
-                        onConfigureTemporaryHotspot = temporaryHotspotConfiguration?.let { configuration ->
-                            {
-                                val session = ApConfigurationSession(
-                                    initial = configuration,
-                                    readOnly = true,
-                                    target = ApConfigurationTarget.Temporary,
-                                    onApply = { false },
-                                )
-                                apSessionHolder.repeaterMaster = null
-                                savedApSession = session.toSaved()
-                                navController.navigate(AppDestination.TemporaryHotspotConfiguration.route)
-                            }
-                        },
-                        onConfigureAp = {
-                            if (!apConfigurationLoading) {
-                                apConfigurationLoading = true
-                                scope.launch {
-                                    try {
-                                        loadSystemApConfiguration(snackbarHostState)?.let { configuration ->
-                                            val session = ApConfigurationSession(
-                                                configuration,
-                                                target = ApConfigurationTarget.System,
-                                            ) { config -> applySystemApConfiguration(config, snackbarHostState) }
-                                            apSessionHolder.repeaterMaster = null
-                                            savedApSession = session.toSaved()
-                                            navController.navigate(AppDestination.ApConfiguration.route)
-                                        }
-                                    } finally {
-                                        apConfigurationLoading = false
-                                    }
-                                }
-                            }
-                        },
                     )
                     if (appDestination != null && apState != null && apSession != null) {
                         ApConfigurationTopBarActions(
@@ -290,7 +240,62 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             popExitTransition = { fadeOut(navFadeSpec) },
         ) {
             composable(RootDestination.Tethering.route) {
-                TetheringScreen(snackbarHostState, repeaterBinder, localOnlyBinder, tetheringBinder, tetherStates)
+                TetheringScreen(
+                    snackbarHostState,
+                    repeaterBinder,
+                    localOnlyBinder,
+                    tetheringBinder,
+                    tetherStates,
+                    onConfigureRepeater = {
+                        if (!apConfigurationLoading) {
+                            apConfigurationLoading = true
+                            scope.launch {
+                                try {
+                                    loadRepeaterApConfiguration(repeaterBinder, snackbarHostState)?.let { session ->
+                                        apSessionHolder.repeaterMaster = session.repeaterMaster
+                                        savedApSession = session.toSaved()
+                                        navController.navigate(AppDestination.RepeaterConfiguration.route)
+                                    }
+                                } finally {
+                                    apConfigurationLoading = false
+                                }
+                            }
+                        }
+                    },
+                    onConfigureTemporaryHotspot = temporaryHotspotConfiguration?.let { configuration ->
+                        {
+                            val session = ApConfigurationSession(
+                                initial = configuration,
+                                readOnly = true,
+                                target = ApConfigurationTarget.Temporary,
+                                onApply = { false },
+                            )
+                            apSessionHolder.repeaterMaster = null
+                            savedApSession = session.toSaved()
+                            navController.navigate(AppDestination.TemporaryHotspotConfiguration.route)
+                        }
+                    },
+                    onConfigureAp = {
+                        if (!apConfigurationLoading) {
+                            apConfigurationLoading = true
+                            scope.launch {
+                                try {
+                                    loadSystemApConfiguration(snackbarHostState)?.let { configuration ->
+                                        val session = ApConfigurationSession(
+                                            configuration,
+                                            target = ApConfigurationTarget.System,
+                                        ) { config -> applySystemApConfiguration(config, snackbarHostState) }
+                                        apSessionHolder.repeaterMaster = null
+                                        savedApSession = session.toSaved()
+                                        navController.navigate(AppDestination.ApConfiguration.route)
+                                    }
+                                } finally {
+                                    apConfigurationLoading = false
+                                }
+                            }
+                        }
+                    },
+                )
             }
             composable(RootDestination.Clients.route) { ClientsScreen(clientViewModel, snackbarHostState) }
             composable(RootDestination.Settings.route) { SettingsScreen(snackbarHostState) }
@@ -325,12 +330,8 @@ private fun NavIcon(@DrawableRes icon: Int, description: String) {
 private fun TetheringActions(
     monitorableIfaces: List<String>,
     onMonitorInterface: (String) -> Unit,
-    onConfigureRepeater: () -> Unit,
-    onConfigureTemporaryHotspot: (() -> Unit)?,
-    onConfigureAp: () -> Unit,
 ) {
     var monitorExpanded by remember { mutableStateOf(false) }
-    var expanded by remember { mutableStateOf(false) }
     if (monitorableIfaces.isNotEmpty()) {
         val tooltip = stringResource(R.string.tethering_monitor)
         TooltipIconButton(
@@ -348,35 +349,5 @@ private fun TetheringActions(
                 },
             )
         }
-    }
-    val tooltip = stringResource(R.string.configuration_view)
-    TooltipIconButton(
-        tooltip = tooltip,
-        onClick = { expanded = true },
-    ) {
-        NavIcon(R.drawable.ic_device_wifi_lock, tooltip)
-    }
-    DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-        if (Services.p2p != null) DropdownMenuItem(
-            text = { Text(stringResource(R.string.title_repeater)) },
-            onClick = {
-                expanded = false
-                onConfigureRepeater()
-            },
-        )
-        if (onConfigureTemporaryHotspot != null) DropdownMenuItem(
-            text = { Text(stringResource(R.string.tethering_temp_hotspot)) },
-            onClick = {
-                expanded = false
-                onConfigureTemporaryHotspot()
-            },
-        )
-        DropdownMenuItem(
-            text = { Text(stringResource(R.string.tethering_manage_wifi)) },
-            onClick = {
-                expanded = false
-                onConfigureAp()
-            },
-        )
     }
 }

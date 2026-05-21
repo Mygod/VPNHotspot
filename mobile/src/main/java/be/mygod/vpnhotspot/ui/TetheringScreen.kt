@@ -24,10 +24,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.collection.ScatterSet
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +44,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +56,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -54,6 +65,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
@@ -109,6 +122,9 @@ internal fun TetheringScreen(
     localOnlyBinder: LocalOnlyHotspotService.Binder?,
     tetheringBinder: TetheringService.Binder?,
     tetherStates: TetherStates,
+    onConfigureRepeater: () -> Unit,
+    onConfigureTemporaryHotspot: (() -> Unit)?,
+    onConfigureAp: () -> Unit,
 ) {
     val context = LocalContext.current
     val linkStyles = rememberNetworkAddressLinkStyles()
@@ -194,6 +210,15 @@ internal fun TetheringScreen(
                 if (Services.p2p != null) {
                     val active = repeaterStatus == RepeaterService.Status.ACTIVE
                     val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
+                    val toggleRepeater: () -> Unit = {
+                        when (repeaterStatus) {
+                            RepeaterService.Status.IDLE -> startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
+                                Manifest.permission.NEARBY_WIFI_DEVICES
+                            } else Manifest.permission.ACCESS_FINE_LOCATION)
+                            RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
+                            else -> { }
+                        }
+                    }
                     row {
                         TetheringRow(
                             icon = R.drawable.ic_action_settings_input_antenna,
@@ -202,15 +227,8 @@ internal fun TetheringScreen(
                             checked = repeaterStatus == RepeaterService.Status.STARTING || active,
                             enabled = true,
                             switchEnabled = switchEnabled,
-                            onClick = {
-                                when (repeaterStatus) {
-                                    RepeaterService.Status.IDLE -> startRepeater.launch(if (Build.VERSION.SDK_INT >= 33) {
-                                        Manifest.permission.NEARBY_WIFI_DEVICES
-                                    } else Manifest.permission.ACCESS_FINE_LOCATION)
-                                    RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
-                                    else -> { }
-                                }
-                            },
+                            onClick = onConfigureRepeater,
+                            onCheckedChange = toggleRepeater,
                         )
                     }
                     if ((repeaterStatus == RepeaterService.Status.STARTING ||
@@ -227,16 +245,17 @@ internal fun TetheringScreen(
                     }
                 }
                 row {
+                    val toggleLocalOnly: () -> Unit = {
+                        if (localOnlyIface == null) startLocalOnly.launch(localOnlyHotspotPermission) else localOnlyBinder?.stop()
+                    }
                     TetheringRow(
                         icon = R.drawable.ic_action_perm_scan_wifi,
                         title = stringResource(R.string.tethering_temp_hotspot),
                         summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
                         checked = localOnlyIface != null,
                         enabled = true,
-                        onClick = {
-                            if (localOnlyIface == null) startLocalOnly.launch(localOnlyHotspotPermission)
-                            else localOnlyBinder?.stop()
-                        },
+                        onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
+                        onCheckedChange = onConfigureTemporaryHotspot?.let { { toggleLocalOnly() } },
                     )
                 }
                 row {
@@ -307,6 +326,7 @@ internal fun TetheringScreen(
                         summary = wifiSummary,
                         tetheringType = TetheringManager.TETHERING_WIFI,
                         snackbarHostState = snackbarHostState,
+                        onConfigure = onConfigureAp,
                     )
                 }
                 row {
@@ -453,25 +473,28 @@ private fun TetheringTypeRow(
     summary: AnnotatedString?,
     tetheringType: Int,
     snackbarHostState: SnackbarHostState,
+    onConfigure: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val toggle = toggle@{
+        if (!Settings.System.canWrite(context)) try {
+            context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
+            return@toggle
+        } catch (e: RuntimeException) {
+            app.logEvent("manage_write_settings") { param("message", e.toString()) }
+        }
+        val callback = tetheringCallback(context, snackbarHostState, TetherType.fromTetheringType(tetheringType))
+        if (checked) TetheringManagerCompat.stopTethering(tetheringType, callback)
+        else TetheringManagerCompat.startTethering(tetheringType, true, callback)
+    }
     TetheringRow(
         icon = icon,
         title = stringResource(title),
         summary = summary ?: AnnotatedString(""),
         checked = checked,
         enabled = true,
-        onClick = {
-            if (!Settings.System.canWrite(context)) try {
-                context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
-                return@TetheringRow
-            } catch (e: RuntimeException) {
-                app.logEvent("manage_write_settings") { param("message", e.toString()) }
-            }
-            val callback = tetheringCallback(context, snackbarHostState, TetherType.fromTetheringType(tetheringType))
-            if (checked) TetheringManagerCompat.stopTethering(tetheringType, callback)
-            else TetheringManagerCompat.startTethering(tetheringType, true, callback)
-        },
+        onClick = onConfigure ?: toggle,
+        onCheckedChange = onConfigure?.let { { toggle() } },
     )
 }
 
@@ -533,11 +556,46 @@ private fun TetheringRow(
         },
         enabled = enabled,
         trailing = {
-            PreferenceSwitch(
-                checked = checked,
-                enabled = switchEnabled,
-                onCheckedChange = if (onCheckedChange == null) null else { _: Boolean -> onCheckedChange() },
-            )
+            if (onCheckedChange == null) {
+                PreferenceSwitch(
+                    checked = checked,
+                    enabled = switchEnabled,
+                    onCheckedChange = null,
+                )
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.padding(start = 16.dp, end = 8.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    VerticalDivider(
+                        modifier = Modifier.height(40.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        modifier = Modifier
+                            .widthIn(min = 48.dp)
+                            .height(48.dp)
+                            .toggleable(
+                                value = checked,
+                                enabled = switchEnabled,
+                                role = Role.Switch,
+                                onValueChange = { onCheckedChange() },
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        PreferenceSwitch(
+                            checked = checked,
+                            modifier = Modifier.clearAndSetSemantics { },
+                            enabled = switchEnabled,
+                            onCheckedChange = null,
+                        )
+                    }
+                }
+            }
         },
         onClick = onClick,
     )
