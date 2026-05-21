@@ -65,10 +65,14 @@ import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSetting
 import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
 
 @Composable
-internal fun SettingsList(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
+internal fun SettingsList(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
+    content: LazyListScope.() -> Unit,
+) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(vertical = 8.dp),
+        contentPadding = contentPadding,
         content = content,
     )
 }

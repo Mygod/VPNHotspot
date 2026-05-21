@@ -8,6 +8,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -276,6 +277,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(),
     ) { contentPadding ->
         val navFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
         NavHost(

@@ -61,9 +61,6 @@ Default settings are picked to suit general use cases and maximize compatibility
   Leave blank for auto detect.
   Put `none` (or `a^` or other similarly invalid entries) to forbid falling back.
   Put other interface name if you feel like it.
-* (Android 12+) Platform-managed IPsec tunnel VPNs such as Pixel VPN and some `VpnManager`/`Ikev2VpnProfile`
-  profiles may need a compatibility workaround. VPN Hotspot updates the live IPv4 tunnel forwarding policy in
-  place while sharing and relies on Android to recreate the stock policy when that tunnel is rebuilt.
 
 ### Downstream
 

@@ -16,7 +16,11 @@ import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
@@ -573,7 +577,13 @@ internal enum class ApConfigurationTarget {
 
 @Composable
 internal fun ApConfigurationScreen(state: ApConfigurationState) {
-    SettingsList {
+    val navigationBarPadding = WindowInsets.navigationBars.asPaddingValues()
+    SettingsList(
+        contentPadding = PaddingValues(
+            top = 8.dp,
+            bottom = 8.dp + navigationBarPadding.calculateBottomPadding(),
+        ),
+    ) {
         item {
             PreferenceGroup {
                 row { SsidApRow(state) }
