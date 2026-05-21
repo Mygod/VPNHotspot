@@ -734,7 +734,7 @@ private suspend fun shareLogcat(context: Context) {
         .setType("text/x-log")
         .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
-        context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)))
+        context.getString(R.string.share_with)))
 }
 
 private val UPSTREAM_INTERNET_V4_ADDRESS = InetAddress.getByAddress(byteArrayOf(8, 8, 8, 8))

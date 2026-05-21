@@ -1084,13 +1084,14 @@ internal fun ApConfigurationTopBarActions(
                 contentDescription = stringResource(android.R.string.copy),
             )
         }
+        val overflowDescription = stringResource(R.string.action_menu_overflow_description)
         TooltipIconButton(
-            tooltip = stringResource(androidx.appcompat.R.string.abc_action_menu_overflow_description),
+            tooltip = overflowDescription,
             onClick = { overflowExpanded = true },
         ) {
             Icon(
                 painter = painterResource(R.drawable.ic_more_vert),
-                contentDescription = stringResource(androidx.appcompat.R.string.abc_action_menu_overflow_description),
+                contentDescription = overflowDescription,
             )
         }
         DropdownMenu(expanded = overflowExpanded, onDismissRequest = { overflowExpanded = false }) {

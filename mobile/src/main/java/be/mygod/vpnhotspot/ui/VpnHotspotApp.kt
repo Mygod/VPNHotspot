@@ -163,7 +163,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
                 title = { Text(stringResource(title)) },
                 navigationIcon = {
                     if (appDestination != null) {
-                        val tooltip = stringResource(androidx.appcompat.R.string.abc_action_bar_up_description)
+                        val tooltip = stringResource(R.string.action_bar_up_description)
                         TooltipIconButton(
                             tooltip = tooltip,
                             onClick = { navController.popBackStack() },
