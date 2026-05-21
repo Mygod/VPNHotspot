@@ -247,9 +247,9 @@
     <string name="wifi_hotspot_timeout_default">Default (%s)</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_hotspot_ap_channel_band_title">AP channel/band</string>
-    <string name="wifi_hotspot_ap_channel_band_help">Choose the band and channel. Channel &lt;tt&gt;0&lt;/tt&gt; lets Android auto-select a valid channel for the selected band. Valid channels depend on country and device capabilities.</string>
+    <string name="wifi_hotspot_ap_channel_band_help">Unsupported band/channel can fail when the hotspot starts.</string>
     <string name="wifi_hotspot_concurrent_ap_channel_band_title">Concurrent AP channel/band</string>
-    <string name="wifi_hotspot_concurrent_ap_channel_band_help">Adds a second AP instance when bridged AP concurrency is supported. Channel &lt;tt&gt;0&lt;/tt&gt; lets Android auto-select. Unsupported band/channel combinations can fail when the hotspot starts.</string>
+    <string name="wifi_hotspot_concurrent_ap_channel_band_help">Adds a second AP instance when bridged AP concurrency is supported. Unsupported band/channel combinations can fail when the hotspot starts.</string>
     <string name="wifi_band_optimization">Enable band optimization</string>
     <string name="wifi_band_optimization_help">Lets Android optimize band settings, such as appending the 2.4 GHz band for coexistence or country-code restrictions.</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
