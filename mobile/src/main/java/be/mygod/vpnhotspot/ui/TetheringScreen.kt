@@ -519,7 +519,7 @@ private fun TetheringRow(
         },
         enabled = enabled,
         trailing = {
-            TickSwitch(
+            PreferenceSwitch(
                 checked = checked,
                 enabled = switchEnabled,
                 onCheckedChange = if (onCheckedChange == null) null else { _: Boolean -> onCheckedChange() },

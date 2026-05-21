@@ -523,7 +523,7 @@ private fun SwitchPreferenceRow(
         summary = summary,
         enabled = enabled,
         trailing = {
-            TickSwitch(
+            PreferenceSwitch(
                 checked = checked,
                 enabled = enabled,
                 onCheckedChange = if (enabled) onCheckedChange else null,

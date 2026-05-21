@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -199,7 +200,7 @@ internal class PreferenceRowPosition internal constructor(val index: Int, val co
 private val LocalPreferenceRowPosition = compositionLocalOf<PreferenceRowPosition?> { null }
 
 @Composable
-internal fun TickSwitch(
+internal fun PreferenceSwitch(
     checked: Boolean,
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
@@ -210,13 +211,11 @@ internal fun TickSwitch(
         onCheckedChange = onCheckedChange,
         modifier = modifier,
         thumbContent = {
-            if (checked) {
-                Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    modifier = Modifier.size(SwitchDefaults.IconSize),
-                )
-            }
+            Icon(
+                imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                contentDescription = null,
+                modifier = Modifier.size(SwitchDefaults.IconSize),
+            )
         },
         enabled = enabled,
     )

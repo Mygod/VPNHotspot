@@ -1538,7 +1538,7 @@ private fun SwitchApRow(
         title = stringResource(title),
         enabled = !readOnly,
         trailing = {
-            TickSwitch(
+            PreferenceSwitch(
                 checked = checked,
                 enabled = !readOnly,
                 onCheckedChange = if (readOnly) null else onCheckedChange,
