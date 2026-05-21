@@ -3,12 +3,15 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -23,15 +26,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
-import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
 internal fun PasswordApRow(state: ApConfigurationState) {
@@ -39,9 +38,12 @@ internal fun PasswordApRow(state: ApConfigurationState) {
     val enabled = state.passwordEnabled
     val maxLength = state.passwordMaxLength
     var editing by rememberSaveable(state.password) { mutableStateOf(false) }
-    var draft by rememberTextFieldValueAtEnd(state.password, editing)
+    val draft = rememberSaveable(state.password, editing, saver = TextFieldState.Saver) {
+        TextFieldState(state.password)
+    }
     var visible by rememberSaveable(editing) { mutableStateOf(false) }
-    val error = state.passwordError(draft.text, context)
+    val password = draft.text.toString()
+    val error = state.passwordError(password, context)
     PreferenceRow(
         icon = R.drawable.ic_device_wifi_lock,
         title = stringResource(R.string.wifi_password),
@@ -59,40 +61,42 @@ internal fun PasswordApRow(state: ApConfigurationState) {
                     text = annotatedStringResource(R.string.wifi_password_help),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = if (maxLength) it.takeText(63) else it },
+                OutlinedSecureTextField(
+                    state = draft,
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
                         .contentType(WIFI_PASSWORD_CONTENT_TYPE),
-                    keyboardOptions = KeyboardOptions(
-                        autoCorrectEnabled = false,
-                        keyboardType = KeyboardType.Password,
-                    ),
-                    singleLine = true,
+                    inputTransformation = if (maxLength) InputTransformation.maxLength(63) else null,
                     isError = error != null,
                     supportingText = if (error != null || maxLength) {
                         {
                             Column {
                                 error?.let { ErrorApText(it) }
-                                if (maxLength) Text("${draft.text.length}/63")
+                                if (maxLength) Text("${password.length}/63")
                             }
                         }
                     } else null,
                     trailingIcon = {
+                        val tooltip = stringResource(
+                            if (visible) R.string.wifi_password_hide else R.string.wifi_password_show,
+                        )
                         TooltipIconButton(
-                            tooltip = stringResource(R.string.wifi_password),
+                            tooltip = tooltip,
                             onClick = { visible = !visible },
                         ) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_image_remove_red_eye),
-                                contentDescription = stringResource(R.string.wifi_password),
+                                painter = painterResource(if (visible) {
+                                    R.drawable.ic_action_visibility_off
+                                } else R.drawable.ic_image_remove_red_eye),
+                                contentDescription = tooltip,
                             )
                         }
                     },
                     textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+                    textObfuscationMode = if (visible) {
+                        TextObfuscationMode.Visible
+                    } else TextObfuscationMode.Hidden,
                 )
             }
         },
@@ -100,7 +104,7 @@ internal fun PasswordApRow(state: ApConfigurationState) {
             TextButton(
                 enabled = error == null,
                 onClick = {
-                    state.password = draft.text
+                    state.password = password
                     editing = false
                 },
             ) {

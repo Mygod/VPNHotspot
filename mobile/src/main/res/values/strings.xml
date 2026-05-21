@@ -237,6 +237,8 @@
     <string name="wifi_ssid_help">Hotspot SSID in UTF-8.</string>
     <string name="wifi_security">Security</string>
     <string name="wifi_password">Password</string>
+    <string name="wifi_password_show">Show password</string>
+    <string name="wifi_password_hide">Hide password</string>
     <string name="wifi_password_error_required">Password is required.</string>
     <string name="wifi_password_error_length">Password must be 8–63 characters.</string>
     <string name="wifi_password_help">Pre-shared key for WPA2/WPA3 personal security. WPA2-PSK and WPA3-SAE transition passphrases must be 8–63 characters.</string>

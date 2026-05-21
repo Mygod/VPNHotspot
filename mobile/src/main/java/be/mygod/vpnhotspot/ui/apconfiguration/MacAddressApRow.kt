@@ -39,7 +39,8 @@ internal fun MacAddressApRow(state: ApConfigurationState) {
         icon = R.drawable.ic_content_push_pin,
         title = stringResource(R.string.wifi_advanced_mac_address_title),
         summary = state.macAddressSummary(context),
-        onClick = { editing = true },
+        enabled = state.macAddressEditable,
+        onClick = if (state.macAddressEditable) ({ editing = true }) else null,
     )
     if (editing) MacAddressApDialog(
         state = state,
@@ -57,7 +58,7 @@ private fun MacAddressApDialog(
     var draftPersistentRandomizedMac by rememberTextFieldValueAtEnd(state.persistentRandomizedMac)
     val randomizationSelectable = !state.p2pMode && Build.VERSION.SDK_INT >= 31
     val randomizationVisible = state.p2pMode || Build.VERSION.SDK_INT >= 31
-    val bssidEnabled = state.bssidEnabled(draftRandomization)
+    val bssidEnabled = state.bssidEditable(draftRandomization)
     val persistentRandomizedMacVisible = !state.p2pMode && Build.VERSION.SDK_INT >= 33
     val persistentRandomizedMacEnabled = persistentRandomizedMacVisible
     val bssidError = if (bssidEnabled) {
