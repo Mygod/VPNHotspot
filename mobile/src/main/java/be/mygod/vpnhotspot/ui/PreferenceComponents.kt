@@ -301,22 +301,40 @@ internal fun PreferenceSelectionDialog(
                     }
                 }
                 items(entryCount, key = { it }) { index ->
-                    CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, entryCount)) {
-                        PreferenceRow(
-                            titleContent = { Text(entryLabel(index)) },
-                            summaryContent = entrySummary(index)?.let { { Text(it) } },
-                            iconContent = { RadioButton(selected = index == selectedIndex, onClick = null) },
-                            onClick = {
-                                onSelect(index)
-                                onDismissRequest()
-                            },
-                        )
+                    PreferenceSelectionRow(
+                        index = index,
+                        count = entryCount,
+                        selected = index == selectedIndex,
+                        title = entryLabel(index),
+                        summary = entrySummary(index),
+                    ) {
+                        onSelect(index)
+                        onDismissRequest()
                     }
                 }
             }
         },
         confirmButton = {},
     )
+}
+
+@Composable
+internal fun PreferenceSelectionRow(
+    index: Int,
+    count: Int,
+    selected: Boolean,
+    title: String,
+    summary: AnnotatedString? = null,
+    onClick: () -> Unit,
+) {
+    CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, count)) {
+        PreferenceRow(
+            titleContent = { Text(title) },
+            summaryContent = summary?.let { { Text(it) } },
+            iconContent = { RadioButton(selected = selected, onClick = null) },
+            onClick = onClick,
+        )
+    }
 }
 
 @Composable

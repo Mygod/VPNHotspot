@@ -155,25 +155,21 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     }
                 }
                 row {
-                    ListApRow(
+                    ChannelApRow(
                         icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_ap_channel_band_title,
-                        selected = state.primaryChannel.label(context),
-                        enabled = true,
+                        selected = state.primaryChannel,
                         entries = state.channelEntries(),
-                        entryLabel = { it.label(context) },
                         description = annotatedStringResource(R.string.wifi_hotspot_ap_channel_band_help),
                         onSelect = { state.primaryChannel = it },
                     )
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) row {
-                    ListApRow(
+                    ChannelApRow(
                         icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_concurrent_ap_channel_band_title,
-                        selected = state.secondaryChannel.label(context),
-                        enabled = true,
+                        selected = state.secondaryChannel,
                         entries = state.channelEntries(allowDisabled = true),
-                        entryLabel = { it.label(context) },
                         description = annotatedStringResource(R.string.wifi_hotspot_concurrent_ap_channel_band_help),
                         onSelect = { state.secondaryChannel = it },
                     )

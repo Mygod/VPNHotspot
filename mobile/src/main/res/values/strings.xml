@@ -248,6 +248,7 @@
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_hotspot_ap_channel_band_title">AP channel/band</string>
     <string name="wifi_hotspot_ap_channel_band_help">Unsupported band/channel can fail when the hotspot starts.</string>
+    <string name="wifi_hotspot_ap_channel_band_empty">No channel option is available for this band selection.</string>
     <string name="wifi_hotspot_concurrent_ap_channel_band_title">Concurrent AP channel/band</string>
     <string name="wifi_hotspot_concurrent_ap_channel_band_help">Adds a second AP instance when bridged AP concurrency is supported. Unsupported band/channel combinations can fail when the hotspot starts.</string>
     <string name="wifi_band_optimization">Enable band optimization</string>
