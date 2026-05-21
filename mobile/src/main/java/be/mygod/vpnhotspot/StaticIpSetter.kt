@@ -2,10 +2,8 @@ package be.mygod.vpnhotspot
 
 import android.content.Context
 import android.net.InetAddresses
-import android.text.SpannableStringBuilder
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.util.makeIpSpan
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
@@ -36,15 +34,11 @@ class StaticIpSetter : BootReceiver.Startable {
         }
 
         private val currentActive get() = iface?.interfaceAddresses?.any { !it.address.isLoopbackAddress } == true
-        private val currentAddresses get() = SpannableStringBuilder().apply {
+        private val currentAddresses get() = buildList {
             for (address in iface?.interfaceAddresses.orEmpty()) if (!address.address.isLoopbackAddress) {
-                append(makeIpSpan(address.address))
-                address.networkPrefixLength.also {
-                    if (it.toInt() != address.address.address.size * 8) append("/$it")
-                }
-                appendLine()
+                add(address.address to address.networkPrefixLength)
             }
-        }.trimEnd()
+        }
 
         var ips: String
             get() {

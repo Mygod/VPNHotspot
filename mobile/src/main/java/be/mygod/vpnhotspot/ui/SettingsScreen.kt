@@ -9,6 +9,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.ext.SdkExtensions
+import android.text.Html
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,9 +41,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.fromHtml
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -531,34 +530,28 @@ private fun SwitchPreferenceRow(
 }
 
 @Composable
-private fun upstreamSummary(
-    fallback: String,
-    preference: String?,
-    upstream: Upstream?,
-): AnnotatedString {
-    val template = stringResource(R.string.settings_upstream_current_summary)
-    val selected = if (preference.isNullOrEmpty()) fallback else preference
-    val interfaces = upstreamInterfaces(upstream)
-    return buildAnnotatedString {
-        var index = 0
-        while (index < template.length) {
-            val placeholder = if (template[index] == '^' && index + 1 < template.length) {
-                template[index + 1]
-            } else null
-            if (placeholder == '1' || placeholder == '2' || placeholder == '^') {
-                when (placeholder) {
-                    '1' -> append(selected)
-                    '2' -> append(interfaces)
-                    else -> append('^')
+private fun upstreamSummary(fallback: String, preference: String?, upstream: Upstream?) = AnnotatedString.fromHtml(
+    stringResource(R.string.settings_upstream_current_summary,
+        Html.escapeHtml(if (preference.isNullOrEmpty()) fallback else preference),
+        mutableMapOf<String, Boolean>().let { interfaces ->
+            for (route in upstream?.properties?.allRoutes ?: emptyList()) {
+                interfaces.compute(route.`interface` ?: continue) { _, internet ->
+                    internet == true || try {
+                        route.matches(UPSTREAM_INTERNET_V4_ADDRESS) || route.matches(UPSTREAM_INTERNET_V6_ADDRESS)
+                    } catch (e: RuntimeException) {
+                        Timber.w(e)
+                        false
+                    }
                 }
-                index += 2
-            } else {
-                append(template[index])
-                index++
             }
-        }
-    }
-}
+            if (interfaces.isEmpty()) "\u2205" else buildString {
+                interfaces.entries.forEachIndexed { index, (iface, internet) ->
+                    if (index > 0) append(", ")
+                    val escaped = Html.escapeHtml(iface)
+                    if (internet) append("<b>").append(escaped).append("</b>") else append(escaped)
+                }
+            }
+        }))
 
 @Composable
 private fun rememberPreferenceString(key: String): State<String?> {
@@ -581,30 +574,6 @@ private fun rememberPreferenceBoolean(key: String, defaultValue: Boolean): State
         }
         pref.registerOnSharedPreferenceChangeListener(listener)
         awaitDispose { pref.unregisterOnSharedPreferenceChangeListener(listener) }
-    }
-}
-
-private fun upstreamInterfaces(upstream: Upstream?): AnnotatedString {
-    val interfaces = mutableMapOf<String, Boolean>()
-    for (route in upstream?.properties?.allRoutes ?: emptyList()) {
-        interfaces.compute(route.`interface` ?: continue) { _, internet ->
-            internet == true || try {
-                route.matches(UPSTREAM_INTERNET_V4_ADDRESS) || route.matches(UPSTREAM_INTERNET_V6_ADDRESS)
-            } catch (e: RuntimeException) {
-                Timber.w(e)
-                false
-            }
-        }
-    }
-    return buildAnnotatedString {
-        if (interfaces.isEmpty()) {
-            append("\u2205")
-        } else interfaces.entries.forEachIndexed { index, (iface, internet) ->
-            if (index > 0) append(", ")
-            val start = length
-            append(iface)
-            if (internet) addStyle(SpanStyle(fontWeight = FontWeight.Bold), start, length)
-        }
     }
 }
 

@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.room
 
 import android.net.MacAddress
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.map
 import androidx.room.*
@@ -10,7 +11,7 @@ import kotlinx.coroutines.flow.Flow
 @Entity
 data class ClientRecord(@PrimaryKey
                         val mac: MacAddress,
-                        var nickname: CharSequence = "",
+                        var nickname: AnnotatedString = AnnotatedString(""),
                         var blocked: Boolean = false,
                         var macLookupPending: Boolean = true) {
     @androidx.room.Dao

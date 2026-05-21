@@ -1,11 +1,5 @@
 package be.mygod.vpnhotspot.ui
 
-import android.graphics.Typeface
-import android.text.Spanned
-import android.text.style.StrikethroughSpan
-import android.text.style.StyleSpan
-import android.text.style.UnderlineSpan
-import android.text.style.URLSpan
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -48,19 +42,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.LinkInteractionListener
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import be.mygod.vpnhotspot.util.launchUrl
 import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
 import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
 
@@ -304,66 +288,4 @@ internal fun RowSelectionContainer(content: @Composable () -> Unit) {
         ),
         content = content,
     )
-}
-
-@Composable
-internal fun LinkedText(
-    text: CharSequence,
-    modifier: Modifier = Modifier,
-    textDecoration: TextDecoration? = null,
-) {
-    val context = LocalContext.current
-    val linkStyle = SpanStyle(
-        color = MaterialTheme.colorScheme.primary,
-        textDecoration = TextDecoration.Underline,
-    )
-    val linkStyles = remember(linkStyle) { TextLinkStyles(style = linkStyle) }
-    val linkInteractionListener = remember(context) {
-        LinkInteractionListener { link ->
-            if (link is LinkAnnotation.Url) context.launchUrl(link.url)
-        }
-    }
-    Text(
-        text = remember(text, linkStyles, linkInteractionListener) {
-            text.toAnnotatedString(linkStyles, linkInteractionListener)
-        },
-        modifier = modifier,
-        textDecoration = textDecoration,
-    )
-}
-
-private fun CharSequence.toAnnotatedString(
-    linkStyles: TextLinkStyles,
-    linkInteractionListener: LinkInteractionListener,
-): AnnotatedString = buildAnnotatedString {
-    append(this@toAnnotatedString.toString())
-    val spanned = this@toAnnotatedString as? Spanned ?: return@buildAnnotatedString
-    spanned.forEachSpan<StyleSpan> { span, start, end ->
-        addStyle(SpanStyle(
-            fontWeight = if (span.style == Typeface.BOLD || span.style == Typeface.BOLD_ITALIC) {
-                FontWeight.Bold
-            } else null,
-            fontStyle = if (span.style == Typeface.ITALIC || span.style == Typeface.BOLD_ITALIC) {
-                FontStyle.Italic
-            } else null,
-        ), start, end)
-    }
-    spanned.forEachSpan<UnderlineSpan> { _, start, end ->
-        addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, end)
-    }
-    spanned.forEachSpan<StrikethroughSpan> { _, start, end ->
-        addStyle(SpanStyle(textDecoration = TextDecoration.LineThrough), start, end)
-    }
-    spanned.forEachSpan<URLSpan> { span, start, end ->
-        addLink(LinkAnnotation.Url(span.url, linkStyles, linkInteractionListener), start, end)
-    }
-}
-
-private inline fun <reified T> Spanned.forEachSpan(action: (T, Int, Int) -> Unit) {
-    for (span in getSpans(0, length, T::class.java)) {
-        val start = getSpanStart(span)
-        val end = getSpanEnd(span)
-        if (start < 0 || end <= start) continue
-        action(span, start, end)
-    }
 }

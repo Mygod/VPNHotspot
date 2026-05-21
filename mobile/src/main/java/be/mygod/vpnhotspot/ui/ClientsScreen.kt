@@ -4,8 +4,7 @@ import android.content.Context
 import android.net.MacAddress
 import android.os.Build
 import android.os.Parcelable
-import android.text.SpannableStringBuilder
-import android.text.TextUtils
+import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.collection.LongObjectMap
 import androidx.collection.MutableScatterMap
@@ -45,7 +44,15 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -60,9 +67,11 @@ import be.mygod.vpnhotspot.client.MacLookup
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.ClientRecord
 import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.TrafficStatsSource
+import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
@@ -159,20 +168,54 @@ private fun ClientRow(
     rate: TrafficRate?,
     snackbarHostState: SnackbarHostState,
     tetherTypeRevision: Int,
-    onNickname: (CharSequence) -> Unit,
+    onNickname: (AnnotatedString) -> Unit,
     onSetNicknameToVendor: () -> Unit,
     onToggleBlocked: () -> Unit,
 ) {
     val context = LocalContext.current
-    val title by client.title.observeAsState(SpannableStringBuilder(client.macString))
-    val titleSelectable by client.titleSelectable.observeAsState(true)
-    val description by client.description.observeAsState(SpannableStringBuilder())
+    val record by client.record.observeAsState(ClientRecord(client.mac))
+    val linkStyles = rememberNetworkAddressLinkStyles()
+    val nickname = record.nickname
+    LaunchedEffect(client.mac, nickname, record.macLookupPending) {
+        if (nickname.isEmpty() && record.macLookupPending) MacLookup.perform(client.mac)
+    }
+    val title = buildAnnotatedString {
+        if (nickname.isNotEmpty()) append(nickname) else appendClientAddress(client, client.iface, linkStyles)
+    }
+    val description = buildAnnotatedString {
+        fun line(content: AnnotatedString.Builder.() -> Unit) {
+            if (length > 0) append('\n')
+            content()
+        }
+        if (nickname.isNotEmpty()) line {
+            appendClientAddress(client, client.iface, linkStyles)
+        }
+        client.ifaces.forEach {
+            if (it == client.iface) return@forEach
+            line { appendClientAddress(client, it, linkStyles) }
+        }
+        client.ip.entries.forEach { (ip, info) ->
+            line {
+                appendIpAddress(ip, linkStyles)
+                info.address?.let { append("/${it.prefixLength}") }
+                append(when (info.state) {
+                    NeighbourState.NEIGHBOUR_STATE_UNSET -> ""
+                    NeighbourState.NEIGHBOUR_STATE_INCOMPLETE -> context.getString(R.string.connected_state_incomplete)
+                    NeighbourState.NEIGHBOUR_STATE_VALID -> context.getString(R.string.connected_state_valid)
+                    NeighbourState.NEIGHBOUR_STATE_FAILED -> context.getString(R.string.connected_state_failed)
+                    is NeighbourState.Unrecognized -> error("Invalid neighbour state ${info.state.value}")
+                })
+                if (info.address != null) {
+                    info.hostname?.let { append(" \u2192\u201c$it\u201d") }
+                    val delta = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+                    append(" \u23f3${context.formatTimestamp(info.deprecationTime + delta)}")
+                }
+            }
+        }
+    }
     val rateText = formatTrafficRate(context, rate)
     var expanded by remember { mutableStateOf(false) }
     var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
-    var nicknameDraft by rememberSaveable(client.mac.toString(), client.nickname.toString(), editingNickname) {
-        mutableStateOf(client.nickname.toString())
-    }
     var statsDialog by rememberSaveable(client.mac.toString()) { mutableStateOf<ClientStatsDialog?>(null) }
     val scope = rememberCoroutineScope()
     val icon = remember(client, tetherTypeRevision) { client.icon }
@@ -180,23 +223,18 @@ private fun ClientRow(
     Box {
         PreferenceRow(
             titleContent = {
-                if (titleSelectable) RowSelectionContainer {
-                    LinkedText(
-                        title,
-                        textDecoration = if (client.blocked) TextDecoration.LineThrough else null,
-                    )
-                } else {
-                    LinkedText(
-                        title,
-                        textDecoration = if (client.blocked) TextDecoration.LineThrough else null,
+                RowSelectionContainer {
+                    Text(
+                        text = title,
+                        textDecoration = if (record.blocked) TextDecoration.LineThrough else null,
                     )
                 }
             },
             summaryContent = {
                 Column {
-                    if (description.isNotEmpty()) {
+                    if (description.text.isNotEmpty()) {
                         RowSelectionContainer {
-                            LinkedText(description)
+                            Text(description)
                         }
                     }
                     rateText?.let { Text(it) }
@@ -221,7 +259,7 @@ private fun ClientRow(
             )
             DropdownMenuItem(
                 text = {
-                    Text(stringResource(if (client.blocked) R.string.clients_popup_unblock else R.string.clients_popup_block))
+                    Text(stringResource(if (record.blocked) R.string.clients_popup_unblock else R.string.clients_popup_block))
                 },
                 onClick = {
                     expanded = false
@@ -237,7 +275,7 @@ private fun ClientRow(
                             val stats = withContext(Dispatchers.Unconfined) {
                                 AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
                             }
-                            statsDialog = ClientStatsDialog(title, stats)
+                            statsDialog = ClientStatsDialog(title.text, stats)
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -253,6 +291,16 @@ private fun ClientRow(
     if (editingNickname) {
         val focusRequester = remember { FocusRequester() }
         val keyboard = LocalSoftwareKeyboardController.current
+        val initialNickname = remember(client.mac.toString(), editingNickname) {
+            record.nickname
+        }
+        var nicknameDraft by rememberSaveable(
+            client.mac.toString(),
+            editingNickname,
+            stateSaver = TextFieldValue.Saver,
+        ) {
+            mutableStateOf(TextFieldValue(initialNickname, TextRange(initialNickname.length)))
+        }
         LaunchedEffect(Unit) {
             focusRequester.requestFocus()
             keyboard?.show()
@@ -268,14 +316,17 @@ private fun ClientRow(
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
                     placeholder = { Text(stringResource(R.string.clients_nickname_hint)) },
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
+                    ),
                     singleLine = true,
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     MacLookup.abort(client.mac)
-                    onNickname(nicknameDraft)
+                    onNickname(nicknameDraft.annotatedString)
                     editingNickname = false
                 }) {
                     Text(stringResource(android.R.string.ok))
@@ -300,9 +351,9 @@ private fun ClientRow(
                 statsDialog = null
             },
             title = {
-                LinkedText(TextUtils.expandTemplate(stringResource(R.string.clients_stats_title), dialog.title))
+                Text(stringResource(R.string.clients_stats_title, dialog.title))
             },
-            text = { LinkedText(formatClientStats(context, dialog.stats)) },
+            text = { Text(formatClientStats(context, dialog.stats)) },
             confirmButton = {
                 TextButton(onClick = {
                     statsDialog = null
@@ -315,11 +366,19 @@ private fun ClientRow(
 }
 
 @Parcelize
-private data class ClientStatsDialog(val title: CharSequence, val stats: ClientStats) : Parcelable
+private data class ClientStatsDialog(val title: String, val stats: ClientStats) : Parcelable
+
+private fun AnnotatedString.Builder.appendClientAddress(client: Client, iface: String?, linkStyles: TextLinkStyles) {
+    appendMacAddress(client.macString, linkStyles)
+    iface?.let {
+        append('%')
+        append(it)
+    }
+}
 
 private suspend fun updateNickname(
     mac: MacAddress,
-    nickname: CharSequence,
+    nickname: AnnotatedString,
     snackbarHostState: SnackbarHostState,
 ) {
     try {
@@ -383,50 +442,74 @@ private fun formatTrafficRate(context: Context, rate: TrafficRate?): String? {
             "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
 }
 
-private fun formatClientStats(context: Context, stats: ClientStats): CharSequence {
+private fun formatClientStats(context: Context, stats: ClientStats): AnnotatedString {
     val resources = context.resources
     val format = NumberFormat.getIntegerInstance(resources.configuration.locales[0])
-    val builder = SpannableStringBuilder()
-    if (stats.timestamp > 0) builder.append(
-        TextUtils.expandTemplate(context.getText(R.string.clients_stats_since), context.formatTimestamp(stats.timestamp)),
-    )
-    for (entry in stats.entries) if (!entry.isEmpty) {
-        if (builder.isNotEmpty()) builder.append("\n\n")
-        builder.append(context.getText(when (entry.source) {
-            TrafficStatsSource.IPV4 -> R.string.clients_stats_ipv4
-            TrafficStatsSource.DNS -> R.string.clients_stats_dns
-            TrafficStatsSource.NAT66_TCP -> R.string.clients_stats_nat66_tcp
-            TrafficStatsSource.NAT66_UDP -> R.string.clients_stats_nat66_udp
-            TrafficStatsSource.NAT66_ICMPV6 -> R.string.clients_stats_nat66_icmpv6
-        }))
-        when (entry.source) {
-            TrafficStatsSource.NAT66_TCP -> {
-                builder.append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_connections,
-                    entry.sentPackets.toPluralInt()), format.format(entry.sentPackets)))
-                builder.append(TextUtils.expandTemplate(context.getText(R.string.clients_stats_sent_bytes),
-                    Formatter.formatFileSize(context, entry.sentBytes)))
-                builder.append(TextUtils.expandTemplate(context.getText(R.string.clients_stats_received_bytes),
-                    Formatter.formatFileSize(context, entry.receivedBytes)))
-            }
-            TrafficStatsSource.DNS -> {
-                builder.append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_queries,
-                    entry.sentPackets.toPluralInt()), format.format(entry.sentPackets),
-                    Formatter.formatFileSize(context, entry.sentBytes)))
-                builder.append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_dns_responses,
-                    entry.receivedPackets.toPluralInt()), format.format(entry.receivedPackets),
-                    Formatter.formatFileSize(context, entry.receivedBytes)))
-            }
-            else -> {
-                builder.append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_2,
-                    entry.sentPackets.toPluralInt()), format.format(entry.sentPackets),
-                    Formatter.formatFileSize(context, entry.sentBytes)))
-                builder.append(TextUtils.expandTemplate(resources.getQuantityText(R.plurals.clients_stats_message_3,
-                    entry.receivedPackets.toPluralInt()), format.format(entry.receivedPackets),
-                    Formatter.formatFileSize(context, entry.receivedBytes)))
+    val sectionTitleStyle = SpanStyle(fontWeight = FontWeight.Bold)
+    return buildAnnotatedString {
+        if (stats.timestamp > 0) append(context.getString(
+            R.string.clients_stats_since,
+            context.formatTimestamp(stats.timestamp),
+        ))
+        for (entry in stats.entries) if (!entry.isEmpty) {
+            if (length > 0) append("\n\n")
+            val sectionStart = length
+            append(context.getString(when (entry.source) {
+                TrafficStatsSource.IPV4 -> R.string.clients_stats_ipv4
+                TrafficStatsSource.DNS -> R.string.clients_stats_dns
+                TrafficStatsSource.NAT66_TCP -> R.string.clients_stats_nat66_tcp
+                TrafficStatsSource.NAT66_UDP -> R.string.clients_stats_nat66_udp
+                TrafficStatsSource.NAT66_ICMPV6 -> R.string.clients_stats_nat66_icmpv6
+            }))
+            addStyle(sectionTitleStyle, sectionStart, length)
+            when (entry.source) {
+                TrafficStatsSource.NAT66_TCP -> {
+                    append(resources.getQuantityString(
+                        R.plurals.clients_stats_connections,
+                        entry.sentPackets.toPluralInt(),
+                        format.format(entry.sentPackets),
+                    ))
+                    append(context.getString(
+                        R.string.clients_stats_sent_bytes,
+                        Formatter.formatFileSize(context, entry.sentBytes),
+                    ))
+                    append(context.getString(
+                        R.string.clients_stats_received_bytes,
+                        Formatter.formatFileSize(context, entry.receivedBytes),
+                    ))
+                }
+                TrafficStatsSource.DNS -> {
+                    append(resources.getQuantityString(
+                        R.plurals.clients_stats_dns_queries,
+                        entry.sentPackets.toPluralInt(),
+                        format.format(entry.sentPackets),
+                        Formatter.formatFileSize(context, entry.sentBytes),
+                    ))
+                    append(resources.getQuantityString(
+                        R.plurals.clients_stats_dns_responses,
+                        entry.receivedPackets.toPluralInt(),
+                        format.format(entry.receivedPackets),
+                        Formatter.formatFileSize(context, entry.receivedBytes),
+                    ))
+                }
+                else -> {
+                    append(resources.getQuantityString(
+                        R.plurals.clients_stats_message_2,
+                        entry.sentPackets.toPluralInt(),
+                        format.format(entry.sentPackets),
+                        Formatter.formatFileSize(context, entry.sentBytes),
+                    ))
+                    append(resources.getQuantityString(
+                        R.plurals.clients_stats_message_3,
+                        entry.receivedPackets.toPluralInt(),
+                        format.format(entry.receivedPackets),
+                        Formatter.formatFileSize(context, entry.receivedBytes),
+                    ))
+                }
             }
         }
+        if (length == 0) append(context.getString(R.string.clients_stats_empty))
     }
-    return builder.ifEmpty { context.getText(R.string.clients_stats_empty) }
 }
 
 private data class TrafficRate(val send: Long = -1, val receive: Long = -1)

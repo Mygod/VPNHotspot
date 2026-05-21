@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.MacAddress
 import android.text.Html
 import androidx.annotation.MainThread
+import androidx.compose.ui.text.AnnotatedString
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.room.AppDatabase
@@ -84,7 +85,7 @@ object MacLookup {
                 } else null
                 Timber.d("$mac -> $result")
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
-                    if (result != null) nickname = result
+                    if (result != null) nickname = AnnotatedString(result)
                     macLookupPending = false
                 }
             } catch (_: CancellationException) {

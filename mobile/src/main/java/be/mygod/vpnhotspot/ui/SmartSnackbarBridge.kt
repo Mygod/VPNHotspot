@@ -15,8 +15,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.launch
 
-internal suspend fun SnackbarHostState.showLongSnackbar(message: CharSequence) {
-    showSnackbar(message = message.toString(), duration = SnackbarDuration.Long)
+internal suspend fun SnackbarHostState.showLongSnackbar(message: String) {
+    showSnackbar(message = message, duration = SnackbarDuration.Long)
 }
 
 @Composable

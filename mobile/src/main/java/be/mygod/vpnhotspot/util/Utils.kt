@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
 import android.net.LinkProperties
-import android.net.MacAddress
 import android.net.NetworkRequest
 import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
@@ -17,16 +16,12 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.SpannableStringBuilder
 import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.InternalCoroutinesApi
@@ -41,8 +36,6 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.NetworkInterface
-import java.net.SocketException
 import java.net.URL
 import java.util.concurrent.Executor
 
@@ -113,15 +106,6 @@ fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastR
 
 fun intentFilter(vararg actions: String) = IntentFilter().also { actions.forEach(it::addAction) }
 
-fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
-fun <T> Sequence<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
-
 private fun ByteArray.u32(index: Int) =
     (this[index].toInt() shl 24 or
             ((this[index + 1].toInt() and 0xFF) shl 16) or
@@ -180,41 +164,6 @@ val InetAddress.isBogon get() = address.let { bytes ->
         else -> false
     }
 }
-
-fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
-    if (!app.hasTouch || ip.isBogon) it else SpannableString(it).apply {
-        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$it"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
-}
-fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://macaddress.io/macaddress/$mac"), 0, length,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-} else mac
-
-fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
-                                      macOverride: MacAddress? = null) = SpannableStringBuilder().apply {
-    var address = macOverride
-    if (address == null && this@formatAddresses != null) try {
-        val hardwareAddress = hardwareAddress
-        address = try {
-            hardwareAddress?.let(MacAddress::fromBytes)
-        } catch (e: IllegalArgumentException) {
-            try {
-                hardwareAddress?.let { MacAddress.fromString(String(it)) }.also { Timber.d(e) }
-            } catch (e2: IllegalArgumentException) {
-                e.addSuppressed(e2)
-                Timber.w(e)
-                null
-            }
-        }
-    } catch (_: SocketException) { }
-    if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
-    if (!macOnly && this@formatAddresses != null) for (address in interfaceAddresses) {
-        append(makeIpSpan(address.address))
-        address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
-        appendLine()
-    }
-}.trimEnd()
 
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")
