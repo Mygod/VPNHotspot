@@ -12,13 +12,15 @@ import android.os.ext.SdkExtensions
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
@@ -374,6 +376,7 @@ private fun ListPreferenceRow(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun TextPreferenceRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
@@ -410,7 +413,11 @@ private fun TextPreferenceRow(
             onDismissRequest = { editing = false },
             title = { Text(stringResource(title)) },
             text = {
-                Box {
+                val menuExpanded = suggestionsExpanded && filteredSuggestions.isNotEmpty()
+                ExposedDropdownMenuBox(
+                    expanded = menuExpanded,
+                    onExpandedChange = { suggestionsExpanded = it },
+                ) {
                     OutlinedTextField(
                         value = draft,
                         onValueChange = {
@@ -418,13 +425,23 @@ private fun TextPreferenceRow(
                             suggestionsExpanded = true
                         },
                         modifier = Modifier
+                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
                             .fillMaxWidth()
                             .focusRequester(focusRequester),
                         placeholder = placeholder?.let { { Text(it) } },
+                        trailingIcon = if (suggestNetworkInterfaces) {
+                            {
+                                ExposedDropdownMenuDefaults.TrailingIcon(
+                                    expanded = menuExpanded,
+                                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
+                                )
+                            }
+                        } else null,
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                         singleLine = true,
                     )
-                    DropdownMenu(
-                        expanded = suggestionsExpanded && filteredSuggestions.isNotEmpty(),
+                    ExposedDropdownMenu(
+                        expanded = menuExpanded,
                         onDismissRequest = { suggestionsExpanded = false },
                     ) {
                         for (suggestion in filteredSuggestions) DropdownMenuItem(
