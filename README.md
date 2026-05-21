@@ -47,7 +47,14 @@ Whenever you install an app update, if there was a new protected permission addi
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
 
-### [What changes exactly can this app do to my system? (and how to revert them)](https://github.com/Mygod/VPNHotspot/issues/8#issuecomment-448529512)
+### What changes exactly can this app do to my system? (and how to revert them)
+
+1. If you change repeater credentials in unsafe mode, this feature will modify `/data/misc/wifi/p2p_supplicant.conf` or `/data/vendor/wifi/wpa/p2p_supplicant.conf`.
+   If things stopped working after you use this feature, simply delete this file and everything should start working again.
+2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will also persist.
+   Undo those changes if you face any issues.
+
+Everything else is fully reversible and automatically so upon reboot.
 
 ### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
 
