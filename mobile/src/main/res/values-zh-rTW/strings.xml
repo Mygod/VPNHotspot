@@ -182,7 +182,7 @@
     <string name="wifi_password" msgid="5948219759936151048">密碼</string>
     <string name="wifi_hotspot_auto_off">在沒有任何裝置連線時關閉 Wi\u2011Fi 無線基地台</string>
     <string name="wifi_hotspot_timeout">閒置逾時</string>
-    <string name="wifi_hotspot_timeout_default">預設逾時：%d 毫秒</string>
+    <string name="wifi_hotspot_timeout_default">預設逾時：%s</string>
     <string name="wifi_hotspot_timeout_bridged">橋接 AP 模式下個別 AP 的閒置逾時</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">AP 頻段</string>
     <string name="wifi_ap_choose_disabled">停用</string>

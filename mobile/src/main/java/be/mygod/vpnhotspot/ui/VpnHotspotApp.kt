@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,7 +114,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val route = backStackEntry?.destination?.route
     val rootDestination = RootDestination.entries.firstOrNull { it.route == route }
     val appDestination = AppDestination.entries.firstOrNull { it.route == route }
-    val visibleEntries by navController.visibleEntries.collectAsState()
+    val visibleEntries by navController.visibleEntries.collectAsStateWithLifecycle()
     val tetheringDestinationVisible = rootDestination == RootDestination.Tethering || visibleEntries.any { entry ->
         entry.destination.hierarchy.any { it.route == RootDestination.Tethering.route }
     }

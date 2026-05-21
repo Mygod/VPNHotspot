@@ -187,7 +187,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="wifi_password">Contraseña</string>
     <string name="wifi_hotspot_auto_off">Apagar punto de acceso automáticamente cuando no haya dispositivos conectados</string>
     <string name="wifi_hotspot_timeout">Tiempo de espera de inactividad</string>
-    <string name="wifi_hotspot_timeout_default">Tiempo de espera por defecto: %dms</string>
+    <string name="wifi_hotspot_timeout_default">Tiempo de espera por defecto: %s</string>
     <string name="wifi_hotspot_ap_band_title">Banda de AP</string>
     <string name="wifi_ap_choose_disabled">Desactivada</string>
     <string name="wifi_ap_choose_G">Banda de %s GHz</string>

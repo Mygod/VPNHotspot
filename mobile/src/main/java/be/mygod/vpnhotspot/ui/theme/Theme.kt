@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -18,4 +19,11 @@ fun VpnHotspotTheme(dynamicColor: Boolean = true, content: @Composable () -> Uni
         if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
     } else if (darkTheme) darkColorScheme() else lightColorScheme()
     MaterialTheme(colorScheme = colorScheme, content = content)
+}
+
+@Composable
+internal fun VpnHotspotPreviewSurface(content: @Composable () -> Unit) {
+    VpnHotspotTheme(dynamicColor = false) {
+        Surface(content = content)
+    }
 }

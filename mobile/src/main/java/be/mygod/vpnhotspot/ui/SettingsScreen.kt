@@ -25,7 +25,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,7 +73,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiDoubleLock
 import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
-import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
@@ -679,10 +678,8 @@ private fun SettingsDarkPreview() = SettingsPreviewContent()
 
 @Composable
 private fun SettingsPreviewContent() {
-    VpnHotspotTheme(dynamicColor = false) {
-        Surface {
-            SettingsScreen(snackbarHostState = remember { SnackbarHostState() })
-        }
+    VpnHotspotPreviewSurface {
+        SettingsScreen(snackbarHostState = remember { SnackbarHostState() })
     }
 }
 
@@ -737,7 +734,7 @@ private suspend fun shareLogcat(context: Context) {
         .setType("text/x-log")
         .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)),
-        "context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)"))
+        context.getString(androidx.appcompat.R.string.abc_shareactionprovider_share_with)))
 }
 
 private val UPSTREAM_INTERNET_V4_ADDRESS = InetAddress.getByAddress(byteArrayOf(8, 8, 8, 8))

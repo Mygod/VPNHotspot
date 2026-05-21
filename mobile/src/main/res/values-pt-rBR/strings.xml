@@ -168,7 +168,7 @@
     <string name="wifi_password">Senha</string>
     <string name="wifi_hotspot_auto_off">Desative o roteamento se não houver nenhum dispositivo conectado</string>
     <string name="wifi_hotspot_timeout">Tempo inativo</string>
-    <string name="wifi_hotspot_timeout_default">Tempo inativo padrão: %dms</string>
+    <string name="wifi_hotspot_timeout_default">Tempo inativo padrão: %s</string>
     <string name="wifi_hotspot_ap_band_title">Banda do AP</string>
     <string name="wifi_ap_choose_disabled">Desativado</string>
     <string name="wifi_ap_choose_G">%s GHz</string>

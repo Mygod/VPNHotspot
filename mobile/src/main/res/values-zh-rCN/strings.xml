@@ -172,7 +172,7 @@
     <string name="wifi_password" msgid="5948219759936151048">"密码"</string>
     <string name="wifi_hotspot_auto_off">未连接任何设备时自动关闭 WLAN 热点</string>
     <string name="wifi_hotspot_timeout">关闭延迟</string>
-    <string name="wifi_hotspot_timeout_default">默认延迟：%d 毫秒</string>
+    <string name="wifi_hotspot_timeout_default">默认延迟：%s</string>
     <string name="wifi_hotspot_ap_band_title" msgid="1165801173359290681">"AP 频段"</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G" msgid="8724267386885036210">"%s GHz 频段"</string>

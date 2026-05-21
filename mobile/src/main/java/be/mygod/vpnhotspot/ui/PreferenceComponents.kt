@@ -44,7 +44,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -178,9 +177,7 @@ internal fun PreferenceRow(
     val position = LocalPreferenceRowPosition.current
     SettingsTileScaffold(
         title = titleContent,
-        modifier = modifier
-            .fillMaxWidth()
-            .alpha(if (enabled) 1f else 0.38f),
+        modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         onClick = onClick ?: {},
         supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },

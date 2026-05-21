@@ -39,7 +39,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -88,7 +87,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.getRootCause
@@ -1035,22 +1034,20 @@ private fun ApConfigurationDarkPreview() = ApConfigurationPreviewContent()
 
 @Composable
 private fun ApConfigurationPreviewContent() {
-    VpnHotspotTheme(dynamicColor = false) {
-        Surface {
-            ApConfigurationScreen(
-                remember {
-                    ApConfigurationState(
-                        SoftApConfigurationCompat(
-                            ssid = WifiSsidCompat.fromUtf8Text("VPN Hotspot"),
-                            passphrase = "12345678",
-                            securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
-                        ),
-                        readOnly = false,
-                        p2pMode = false,
-                    )
-                },
-            )
-        }
+    VpnHotspotPreviewSurface {
+        ApConfigurationScreen(
+            remember {
+                ApConfigurationState(
+                    SoftApConfigurationCompat(
+                        ssid = WifiSsidCompat.fromUtf8Text("VPN Hotspot"),
+                        passphrase = "12345678",
+                        securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
+                    ),
+                    readOnly = false,
+                    p2pMode = false,
+                )
+            },
+        )
     }
 }
 

@@ -43,7 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
@@ -103,7 +102,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -649,19 +648,17 @@ private fun TetheringDarkPreview() = TetheringPreviewContent()
 
 @Composable
 private fun TetheringPreviewContent() {
-    VpnHotspotTheme(dynamicColor = false) {
-        Surface {
-            TetheringScreen(
-                snackbarHostState = remember { SnackbarHostState() },
-                repeaterBinder = null,
-                localOnlyBinder = null,
-                tetheringBinder = null,
-                tetherStates = TetherStates(),
-                onConfigureRepeater = {},
-                onConfigureTemporaryHotspot = null,
-                onConfigureAp = {},
-            )
-        }
+    VpnHotspotPreviewSurface {
+        TetheringScreen(
+            snackbarHostState = remember { SnackbarHostState() },
+            repeaterBinder = null,
+            localOnlyBinder = null,
+            tetheringBinder = null,
+            tetherStates = TetherStates(),
+            onConfigureRepeater = {},
+            onConfigureTemporaryHotspot = null,
+            onConfigureAp = {},
+        )
     }
 }
 

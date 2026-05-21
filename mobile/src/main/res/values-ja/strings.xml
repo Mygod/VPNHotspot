@@ -167,7 +167,7 @@
     <string name="wifi_password">パスワード</string>
     <string name="wifi_hotspot_auto_off">デバイスが接続されていない場合はホットスポットを自動的に OFF にする</string>
     <string name="wifi_hotspot_timeout">非アクティブのタイムアウト</string>
-    <string name="wifi_hotspot_timeout_default">デフォルトのタイムアウト: %d ms</string>
+    <string name="wifi_hotspot_timeout_default">デフォルトのタイムアウト: %s</string>
     <string name="wifi_hotspot_ap_band_title">AP 帯域</string>
     <string name="wifi_ap_choose_disabled">無効</string>
     <string name="wifi_ap_choose_G">%s GHz 帯域</string>

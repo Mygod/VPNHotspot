@@ -23,7 +23,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -76,7 +75,7 @@ import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
-import be.mygod.vpnhotspot.ui.theme.VpnHotspotTheme
+import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
@@ -185,6 +184,9 @@ private fun ClientRow(
     val context = LocalContext.current
     val record by client.record.observeAsState(ClientRecord(client.mac))
     val linkStyles = rememberNetworkAddressLinkStyles()
+    val neighbourStateIncomplete = stringResource(R.string.connected_state_incomplete)
+    val neighbourStateValid = stringResource(R.string.connected_state_valid)
+    val neighbourStateFailed = stringResource(R.string.connected_state_failed)
     val nickname = record.nickname
     LaunchedEffect(client.mac, nickname, record.macLookupPending) {
         if (nickname.isEmpty() && record.macLookupPending) MacLookup.perform(client.mac)
@@ -210,9 +212,9 @@ private fun ClientRow(
                 info.address?.let { append("/${it.prefixLength}") }
                 append(when (info.state) {
                     NeighbourState.NEIGHBOUR_STATE_UNSET -> ""
-                    NeighbourState.NEIGHBOUR_STATE_INCOMPLETE -> context.getString(R.string.connected_state_incomplete)
-                    NeighbourState.NEIGHBOUR_STATE_VALID -> context.getString(R.string.connected_state_valid)
-                    NeighbourState.NEIGHBOUR_STATE_FAILED -> context.getString(R.string.connected_state_failed)
+                    NeighbourState.NEIGHBOUR_STATE_INCOMPLETE -> neighbourStateIncomplete
+                    NeighbourState.NEIGHBOUR_STATE_VALID -> neighbourStateValid
+                    NeighbourState.NEIGHBOUR_STATE_FAILED -> neighbourStateFailed
                     is NeighbourState.Unrecognized -> error("Invalid neighbour state ${info.state.value}")
                 })
                 if (info.address != null) {
@@ -557,13 +559,11 @@ private fun ClientsDarkPreview() = ClientsPreviewContent()
 
 @Composable
 private fun ClientsPreviewContent() {
-    VpnHotspotTheme(dynamicColor = false) {
-        Surface {
-            ClientsScreen(
-                model = remember { ClientViewModel() },
-                snackbarHostState = remember { SnackbarHostState() },
-            )
-        }
+    VpnHotspotPreviewSurface {
+        ClientsScreen(
+            model = remember { ClientViewModel() },
+            snackbarHostState = remember { SnackbarHostState() },
+        )
     }
 }
 
@@ -583,46 +583,44 @@ private fun ClientsConnectedDarkPreview() = ClientsConnectedPreviewContent()
 
 @Composable
 private fun ClientsConnectedPreviewContent() {
-    VpnHotspotTheme(dynamicColor = false) {
-        Surface {
-            val clientsContentDescription = stringResource(R.string.title_clients)
-            SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
-                item {
-                    PreferenceGroup {
-                        row {
-                            ClientRowLayout(
-                                icon = R.drawable.ic_device_network_wifi,
-                                title = AnnotatedString("Pixel 9"),
-                                description = AnnotatedString(
-                                    "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
-                                ),
-                                rateText = "${'\u25B2'} 128 KB/s\t\t${'\u25BC'} 2.1 MB/s",
-                                blocked = false,
-                                onClick = {},
-                            )
-                        }
-                        row {
-                            ClientRowLayout(
-                                icon = R.drawable.ic_device_usb,
-                                title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
-                                description = AnnotatedString("172.20.10.4 (reachable)"),
-                                rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
-                                blocked = true,
-                                onClick = {},
-                            )
-                        }
-                        row {
-                            ClientRowLayout(
-                                icon = R.drawable.ic_content_inbox,
-                                title = AnnotatedString("Work laptop"),
-                                description = AnnotatedString(
-                                    "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
-                                ),
-                                rateText = null,
-                                blocked = false,
-                                onClick = {},
-                            )
-                        }
+    VpnHotspotPreviewSurface {
+        val clientsContentDescription = stringResource(R.string.title_clients)
+        SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
+            item {
+                PreferenceGroup {
+                    row {
+                        ClientRowLayout(
+                            icon = R.drawable.ic_device_network_wifi,
+                            title = AnnotatedString("Pixel 9"),
+                            description = AnnotatedString(
+                                "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
+                            ),
+                            rateText = "${'\u25B2'} 128 KB/s\t\t${'\u25BC'} 2.1 MB/s",
+                            blocked = false,
+                            onClick = {},
+                        )
+                    }
+                    row {
+                        ClientRowLayout(
+                            icon = R.drawable.ic_device_usb,
+                            title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
+                            description = AnnotatedString("172.20.10.4 (reachable)"),
+                            rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
+                            blocked = true,
+                            onClick = {},
+                        )
+                    }
+                    row {
+                        ClientRowLayout(
+                            icon = R.drawable.ic_content_inbox,
+                            title = AnnotatedString("Work laptop"),
+                            description = AnnotatedString(
+                                "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
+                            ),
+                            rateText = null,
+                            blocked = false,
+                            onClick = {},
+                        )
                     }
                 }
             }
