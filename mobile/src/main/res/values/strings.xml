@@ -222,6 +222,8 @@
     <string name="wifi_hotspot_timeout">Inactive timeout</string>
     <string name="wifi_hotspot_timeout_default">Default timeout: %dms</string>
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
+    <string name="wifi_hotspot_ap_channel_band_title">AP channel/band</string>
+    <string name="wifi_hotspot_concurrent_ap_channel_band_title">Concurrent AP channel/band</string>
     <string name="wifi_band_optimization">Enable band optimization</string>
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G">%s GHz Band</string>

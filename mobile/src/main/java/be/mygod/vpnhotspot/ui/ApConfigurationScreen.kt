@@ -669,7 +669,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 }
                 row {
                     ListApRow(
-                        title = R.string.wifi_hotspot_ap_band_title,
+                        title = R.string.wifi_hotspot_ap_channel_band_title,
                         selected = state.primaryChannelLabel,
                         enabled = true,
                         entries = state.channelEntries(),
@@ -679,7 +679,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) row {
                     ListApRow(
-                        title = R.string.wifi_hotspot_ap_band_title,
+                        title = R.string.wifi_hotspot_concurrent_ap_channel_band_title,
                         selected = state.secondaryChannelLabel,
                         enabled = true,
                         entries = state.channelEntries(allowDisabled = true),

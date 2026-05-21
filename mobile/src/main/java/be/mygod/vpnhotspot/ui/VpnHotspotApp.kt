@@ -279,7 +279,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = WindowInsets(),
     ) { contentPadding ->
-        val navFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+        val navFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
         NavHost(
             navController = navController,
             startDestination = RootDestination.Tethering.route,
