@@ -44,7 +44,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.fromHtml
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
@@ -347,7 +349,7 @@ private fun ListPreferenceRow(
     entrySummaries: Array<String> = emptyArray(),
     values: Array<String>,
     selectedValue: String,
-    description: String? = null,
+    description: AnnotatedString? = null,
     onValueChange: (String) -> Unit,
 ) {
     var selecting by rememberSaveable { mutableStateOf(false) }
@@ -382,11 +384,11 @@ private fun TextPreferenceRow(
     onValueChange: (String) -> Unit,
 ) {
     var editing by rememberSaveable { mutableStateOf(false) }
-    var draft by rememberSaveable(value, editing) { mutableStateOf(value) }
+    var draft by rememberTextFieldValueAtEnd(value, editing)
     var suggestionsExpanded by remember(editing) { mutableStateOf(false) }
     val suggestions by rememberInterfaceNameSuggestions(editing && suggestNetworkInterfaces)
-    val filteredSuggestions = remember(suggestions, draft) {
-        suggestions.filter { draft.isBlank() || it.contains(draft, ignoreCase = true) }
+    val filteredSuggestions = remember(suggestions, draft.text) {
+        suggestions.filter { draft.text.isBlank() || it.contains(draft.text, ignoreCase = true) }
     }
     LaunchedEffect(editing, suggestions) {
         if (editing && suggestions.isNotEmpty()) suggestionsExpanded = true
@@ -449,7 +451,7 @@ private fun TextPreferenceRow(
                             for (suggestion in filteredSuggestions) DropdownMenuItem(
                                 text = { Text(suggestion) },
                                 onClick = {
-                                    draft = suggestion
+                                    draft = TextFieldValue(suggestion, TextRange(suggestion.length))
                                     suggestionsExpanded = false
                                 },
                             )
@@ -459,7 +461,7 @@ private fun TextPreferenceRow(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onValueChange(draft)
+                    onValueChange(draft.text)
                     editing = false
                 }) {
                     Text(stringResource(android.R.string.ok))
@@ -576,9 +578,6 @@ private fun upstreamSummary(fallback: String, preference: String?, upstream: Ups
                 }
             }
         }))
-
-@Composable
-private fun annotatedStringResource(@StringRes id: Int) = AnnotatedString.fromHtml(stringResource(id))
 
 @Composable
 private fun rememberPreferenceString(key: String): State<String?> {

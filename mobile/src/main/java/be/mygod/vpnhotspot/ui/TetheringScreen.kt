@@ -123,8 +123,9 @@ internal fun TetheringScreen(
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
     var staticIpDraft by rememberSaveable { mutableStateOf<String?>(null) }
+    var staticIpDraftText by rememberTextFieldValueAtEnd(staticIpDraft.orEmpty(), staticIpDraft != null)
     var wpsDialog by rememberSaveable { mutableStateOf(false) }
-    var wpsPin by rememberSaveable(wpsDialog) { mutableStateOf("") }
+    var wpsPin by rememberTextFieldValueAtEnd("", wpsDialog)
     val tetherTypeVersion by rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
     val manageOffloadEnabled = remember(manageBarVersion) { ManageBar.offloadEnabled }
@@ -356,7 +357,7 @@ internal fun TetheringScreen(
         }
     }
 
-    staticIpDraft?.let { draft ->
+    if (staticIpDraft != null) {
         val focusRequester = remember { FocusRequester() }
         val keyboard = LocalSoftwareKeyboardController.current
         LaunchedEffect(Unit) {
@@ -370,8 +371,8 @@ internal fun TetheringScreen(
             title = { Text(stringResource(R.string.tethering_static_ip)) },
             text = {
                 OutlinedTextField(
-                    value = draft,
-                    onValueChange = { staticIpDraft = it },
+                    value = staticIpDraftText,
+                    onValueChange = { staticIpDraftText = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
@@ -381,7 +382,7 @@ internal fun TetheringScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    StaticIpSetter.ips = draft.trim()
+                    StaticIpSetter.ips = staticIpDraftText.text.trim()
                     staticIpDraft = null
                 }) {
                     Text(stringResource(android.R.string.ok))
@@ -419,7 +420,7 @@ internal fun TetheringScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    repeaterBinder?.startWps(wpsPin)
+                    repeaterBinder?.startWps(wpsPin.text)
                     wpsDialog = false
                 }) {
                     Text(stringResource(android.R.string.ok))

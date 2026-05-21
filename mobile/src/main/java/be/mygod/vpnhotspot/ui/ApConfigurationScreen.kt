@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipDescription
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.icu.text.MeasureFormat
+import android.icu.util.Measure
+import android.icu.util.MeasureUnit
 import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
@@ -13,8 +16,10 @@ import android.os.PersistableBundle
 import android.util.Base64
 import android.util.SparseIntArray
 import android.widget.Toast
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
@@ -54,9 +59,12 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.set
@@ -228,7 +236,7 @@ internal class ApConfigurationState(
     val ssidHex get() = hexSsid
     val ssidWarning get() = ssidSafeModeWarning(ssid, hexSsid)
     val canToggleSsidHex get() = ssidHexToggleable
-    val passwordVisible get() = selectedSecurityType !in SECURITY_TYPES_WITHOUT_PASSWORD
+    val passwordEnabled get() = selectedSecurityType !in SECURITY_TYPES_WITHOUT_PASSWORD
     val passwordMaxLength get() = selectedSecurityType != SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
     val channelError get() = if (!p2pMode && Build.VERSION.SDK_INT >= 30) try {
         SoftApConfigurationCompat.testPlatformValidity(generateChannels())
@@ -592,6 +600,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 }
                 if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) row {
                     ListApRow(
+                        icon = R.drawable.ic_action_wifi_protected_setup,
                         title = R.string.wifi_security,
                         selected = state.securityLabel,
                         enabled = true,
@@ -600,25 +609,37 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                         onSelect = { state.securityType = it.value },
                     )
                 }
-                if (state.passwordVisible) row { PasswordApRow(state) }
+                row { PasswordApRow(state) }
                 row {
-                    SwitchApRow(R.string.wifi_hotspot_auto_off, state.autoShutdown, false) {
+                    SwitchApRow(
+                        icon = R.drawable.ic_action_timer,
+                        title = R.string.wifi_hotspot_auto_off,
+                        checked = state.autoShutdown,
+                        readOnly = false,
+                        summary = annotatedStringResource(R.string.wifi_hotspot_auto_off_help),
+                    ) {
                         state.autoShutdown = it
                     }
                 }
                 if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
                     row {
                         TextApRow(
+                            icon = R.drawable.ic_action_timer,
                             title = R.string.wifi_hotspot_timeout,
                             value = state.timeout,
+                            summary = timeoutSummary(
+                                state.timeout,
+                                TetherTimeoutMonitor.defaultTimeout.toLong(),
+                            ),
                             readOnly = false,
+                            description = annotatedStringResource(
+                                R.string.wifi_hotspot_timeout_help,
+                                formatTimeoutMillis(TetherTimeoutMonitor.defaultTimeout.toLong()),
+                            ),
                             keyboardType = KeyboardType.Number,
                             maxLength = 19,
+                            placeholder = TetherTimeoutMonitor.defaultTimeout.toString(),
                             suffix = "ms",
-                            supportingText = stringResource(
-                                R.string.wifi_hotspot_timeout_default,
-                                TetherTimeoutMonitor.defaultTimeout,
-                            ),
                             validator = { value ->
                                 validateOptionalLong(value) { timeout ->
                                     if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
@@ -632,23 +653,31 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                     row {
                         SwitchApRow(
-                            R.string.wifi_bridged_mode_opportunistic_shutdown,
-                            state.bridgedModeOpportunisticShutdown,
-                            false,
+                            icon = R.drawable.ic_action_timer,
+                            title = R.string.wifi_bridged_mode_opportunistic_shutdown,
+                            checked = state.bridgedModeOpportunisticShutdown,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_bridged_mode_opportunistic_shutdown_help),
                         ) { state.bridgedModeOpportunisticShutdown = it }
                     }
                     row {
                         TextApRow(
-                            R.string.wifi_hotspot_timeout_bridged,
-                            state.bridgedTimeout,
-                            Build.VERSION.SDK_INT < 33,
+                            icon = R.drawable.ic_action_timer,
+                            title = R.string.wifi_hotspot_timeout_bridged,
+                            value = state.bridgedTimeout,
+                            summary = timeoutSummary(
+                                state.bridgedTimeout,
+                                TetherTimeoutMonitor.defaultTimeoutBridged.toLong(),
+                            ),
+                            readOnly = Build.VERSION.SDK_INT < 33,
+                            description = annotatedStringResource(
+                                R.string.wifi_hotspot_timeout_bridged_help,
+                                formatTimeoutMillis(TetherTimeoutMonitor.defaultTimeoutBridged.toLong()),
+                            ),
                             keyboardType = KeyboardType.Number,
                             maxLength = 19,
+                            placeholder = TetherTimeoutMonitor.defaultTimeoutBridged.toString(),
                             suffix = "ms",
-                            supportingText = stringResource(
-                                R.string.wifi_hotspot_timeout_default,
-                                TetherTimeoutMonitor.defaultTimeoutBridged,
-                            ),
                             validator = { value ->
                                 validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
                             },
@@ -662,28 +691,38 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 &&
                     SoftApConfigurationCompat.isBandOptimizationSupported) {
                     row {
-                        SwitchApRow(R.string.wifi_band_optimization, state.bandOptimization, false) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_action_tune,
+                            title = R.string.wifi_band_optimization,
+                            checked = state.bandOptimization,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_band_optimization_help),
+                        ) {
                             state.bandOptimization = it
                         }
                     }
                 }
                 row {
                     ListApRow(
+                        icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_ap_channel_band_title,
                         selected = state.primaryChannelLabel,
                         enabled = true,
                         entries = state.channelEntries(),
                         entryLabel = { it.toString() },
+                        description = annotatedStringResource(R.string.wifi_hotspot_ap_channel_band_help),
                         onSelect = { state.primaryChannel = it },
                     )
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) row {
                     ListApRow(
+                        icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_concurrent_ap_channel_band_title,
                         selected = state.secondaryChannelLabel,
                         enabled = true,
                         entries = state.channelEntries(allowDisabled = true),
                         entryLabel = { it.toString() },
+                        description = annotatedStringResource(R.string.wifi_hotspot_concurrent_ap_channel_band_help),
                         onSelect = { state.secondaryChannel = it },
                     )
                 }
@@ -693,38 +732,46 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
                     row {
                         TextApRow(
-                            R.string.wifi_hotspot_acs_channel_2g,
-                            state.acs2g,
-                            false,
+                            icon = R.drawable.ic_action_tune,
+                            title = R.string.wifi_hotspot_acs_channel_2g,
+                            value = state.acs2g,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             validator = { validateAcsChannels(SoftApConfiguration.BAND_2GHZ, it) },
                         ) { state.acs2g = it }
                     }
                     row {
                         TextApRow(
-                            R.string.wifi_hotspot_acs_channel_5g,
-                            state.acs5g,
-                            false,
+                            icon = R.drawable.ic_action_tune,
+                            title = R.string.wifi_hotspot_acs_channel_5g,
+                            value = state.acs5g,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             validator = { validateAcsChannels(SoftApConfiguration.BAND_5GHZ, it) },
                         ) { state.acs5g = it }
                     }
                     row {
                         TextApRow(
-                            R.string.wifi_hotspot_acs_channel_6g,
-                            state.acs6g,
-                            false,
+                            icon = R.drawable.ic_action_tune,
+                            title = R.string.wifi_hotspot_acs_channel_6g,
+                            value = state.acs6g,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             validator = { validateAcsChannels(SoftApConfiguration.BAND_6GHZ, it) },
                         ) { state.acs6g = it }
                     }
                     row {
                         ListApRow(
+                            icon = R.drawable.ic_action_settings_input_antenna,
                             title = R.string.wifi_hotspot_max_channel_bandwidth,
                             selected = state.maxChannelBandwidthLabel,
                             enabled = true,
                             entries = state.bandwidthEntries(),
                             entryLabel = { it.name },
+                            description = annotatedStringResource(R.string.wifi_hotspot_max_channel_bandwidth_help),
                             onSelect = { state.maxChannelBandwidth = it.width },
                         )
                     }
@@ -739,9 +786,11 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 PreferenceGroup(title = stringResource(R.string.wifi_hotspot_access_control_title)) {
                     row {
                         TextApRow(
-                            R.string.wifi_max_clients,
-                            state.maxClients,
-                            false,
+                            icon = R.drawable.ic_social_people,
+                            title = R.string.wifi_max_clients,
+                            value = state.maxClients,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_max_clients_help),
                             keyboardType = KeyboardType.Number,
                             maxLength = 10,
                             validator = { value ->
@@ -756,24 +805,34 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     }
                     row {
                         TextApRow(
-                            R.string.wifi_blocked_list,
-                            state.blockedList,
-                            false,
+                            icon = R.drawable.ic_action_block,
+                            title = R.string.wifi_blocked_list,
+                            value = state.blockedList,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_blocked_list_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             minLines = 3,
                             validator = { validateMacList(it) },
                         ) { state.blockedList = it }
                     }
                     row {
-                        SwitchApRow(R.string.wifi_client_user_control, state.clientUserControl, false) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_social_people,
+                            title = R.string.wifi_client_user_control,
+                            checked = state.clientUserControl,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_client_user_control_help),
+                        ) {
                             state.clientUserControl = it
                         }
                     }
                     row {
                         TextApRow(
-                            R.string.wifi_allowed_list,
-                            state.allowedList,
-                            !state.clientUserControl,
+                            icon = R.drawable.ic_action_check_circle,
+                            title = R.string.wifi_allowed_list,
+                            value = state.allowedList,
+                            readOnly = !state.clientUserControl,
+                            description = annotatedStringResource(R.string.wifi_allowed_list_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             minLines = 3,
                             validator = { value ->
@@ -800,6 +859,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
             PreferenceGroup(title = stringResource(R.string.wifi_hotspot_ap_advanced_title)) {
                 if (state.p2pMode || Build.VERSION.SDK_INT >= 31) row {
                     ListApRow(
+                        icon = R.drawable.ic_action_autorenew,
                         title = R.string.wifi_mac_randomization,
                         selected = state.macRandomizationLabel,
                         enabled = !state.p2pMode,
@@ -807,6 +867,16 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                             index to label
                         },
                         entryLabel = { it.second },
+                        entrySummary = {
+                            annotatedStringResource(when (it.first) {
+                                SoftApConfigurationCompat.RANDOMIZATION_NONE ->
+                                    R.string.wifi_mac_randomization_none_help
+                                SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT ->
+                                    R.string.wifi_mac_randomization_persistent_help
+                                else -> R.string.wifi_mac_randomization_non_persistent_help
+                            })
+                        },
+                        description = annotatedStringResource(R.string.wifi_mac_randomization_help),
                         onSelect = { state.macRandomization = it.first },
                     )
                 }
@@ -814,9 +884,11 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     state.macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE) {
                     row {
                         TextApRow(
-                            R.string.wifi_advanced_mac_address_title,
-                            state.bssid,
-                            false,
+                            icon = R.drawable.ic_content_push_pin,
+                            title = R.string.wifi_advanced_mac_address_title,
+                            value = state.bssid,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_advanced_mac_address_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             maxLength = 17,
                             validator = { value ->
@@ -832,9 +904,13 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
                     row {
                         TextApRow(
-                            R.string.wifi_advanced_mac_address_persistent_randomized,
-                            state.persistentRandomizedMac,
-                            false,
+                            icon = R.drawable.ic_action_autorenew,
+                            title = R.string.wifi_advanced_mac_address_persistent_randomized,
+                            value = state.persistentRandomizedMac,
+                            readOnly = false,
+                            description = annotatedStringResource(
+                                R.string.wifi_advanced_mac_address_persistent_randomized_help,
+                            ),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             maxLength = 17,
                             validator = { validateOptionalMac(it) },
@@ -842,30 +918,46 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                     }
                 }
                 if (!state.p2pMode) row {
-                    SwitchApRow(R.string.wifi_hidden_network, state.hiddenSsid, false) {
+                    SwitchApRow(
+                        icon = R.drawable.ic_action_visibility_off,
+                        title = R.string.wifi_hidden_network,
+                        checked = state.hiddenSsid,
+                        readOnly = false,
+                        summary = annotatedStringResource(R.string.wifi_hidden_network_help),
+                    ) {
                         state.hiddenSsid = it
                     }
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                     row {
-                        SwitchApRow(R.string.wifi_ieee_80211ax, state.ieee80211ax, false) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_image_looks_6,
+                            title = R.string.wifi_ieee_80211ax,
+                            checked = state.ieee80211ax,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_ieee_80211ax_help),
+                        ) {
                             state.ieee80211ax = it
                         }
                     }
                     if (Build.VERSION.SDK_INT >= 33) row {
                         SwitchApRow(
-                            R.string.wifi_ieee_80211be,
-                            state.ieee80211be,
-                            false,
+                            icon = R.drawable.ic_device_network_wifi,
+                            title = R.string.wifi_ieee_80211be,
+                            checked = state.ieee80211be,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_ieee_80211be_help),
                         ) { state.ieee80211be = it }
                     }
                 }
                 if (Build.VERSION.SDK_INT >= 33) {
                     row {
                         TextApRow(
-                            R.string.wifi_vendor_elements,
-                            state.vendorElements,
-                            false,
+                            icon = R.drawable.ic_action_code,
+                            title = R.string.wifi_vendor_elements,
+                            value = state.vendorElements,
+                            readOnly = false,
+                            description = annotatedStringResource(R.string.wifi_vendor_elements_help),
                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                             minLines = 3,
                             validator = { value ->
@@ -883,14 +975,26 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 36) {
                     row {
-                        SwitchApRow(R.string.wifi_client_isolation, state.clientIsolation, false) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_action_block,
+                            title = R.string.wifi_client_isolation,
+                            checked = state.clientIsolation,
+                            readOnly = false,
+                            summary = annotatedStringResource(R.string.wifi_client_isolation_help),
+                        ) {
                             state.clientIsolation = it
                         }
                     }
                 }
                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                     row {
-                        SwitchApRow(R.string.wifi_user_config, state.userConfig, true) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_action_settings,
+                            title = R.string.wifi_user_config,
+                            checked = state.userConfig,
+                            readOnly = true,
+                            summary = annotatedStringResource(R.string.wifi_user_config_help),
+                        ) {
                             state.userConfig = it
                         }
                     }
@@ -1283,12 +1387,13 @@ private fun applyRepeaterCommonConfiguration(config: SoftApConfigurationCompat) 
 @Composable
 private fun SsidApRow(state: ApConfigurationState) {
     var editing by rememberSaveable(state.ssid) { mutableStateOf(false) }
-    var draft by rememberSaveable(state.ssid, editing) { mutableStateOf(state.ssid) }
+    var draft by rememberTextFieldValueAtEnd(state.ssid, editing)
     var draftHex by rememberSaveable(state.ssid, editing) { mutableStateOf(state.ssidHex) }
     var error by androidx.compose.runtime.remember(editing) { mutableStateOf<String?>(null) }
-    val draftError = error ?: state.ssidError(draft, draftHex)
-    val draftByteCount = state.ssidByteCount(draft, draftHex)
+    val draftError = error ?: state.ssidError(draft.text, draftHex)
+    val draftByteCount = state.ssidByteCount(draft.text, draftHex)
     PreferenceRow(
+        icon = R.drawable.ic_device_network_wifi,
         title = stringResource(R.string.wifi_ssid),
         summaryContent = {
             Column {
@@ -1304,7 +1409,11 @@ private fun SsidApRow(state: ApConfigurationState) {
         title = { Text(stringResource(R.string.wifi_ssid)) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
-            Column {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = annotatedStringResource(R.string.wifi_ssid_help),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 OutlinedTextField(
                     value = draft,
                     onValueChange = {
@@ -1319,7 +1428,7 @@ private fun SsidApRow(state: ApConfigurationState) {
                     isError = draftError != null,
                     supportingText = {
                         Column {
-                            draftError?.let { ErrorApText(it) } ?: state.ssidSafeModeWarning(draft, draftHex)?.let {
+                            draftError?.let { ErrorApText(it) } ?: state.ssidSafeModeWarning(draft.text, draftHex)?.let {
                                 ErrorApText(it)
                             }
                             Text("$draftByteCount/32")
@@ -1332,7 +1441,8 @@ private fun SsidApRow(state: ApConfigurationState) {
                                 tooltip = tooltip,
                                 onClick = {
                                     try {
-                                        draft = state.convertSsidDisplay(draft, draftHex)
+                                        val converted = state.convertSsidDisplay(draft.text, draftHex)
+                                        draft = TextFieldValue(converted, TextRange(converted.length))
                                         draftHex = !draftHex
                                         error = null
                                     } catch (e: RuntimeException) {
@@ -1356,7 +1466,7 @@ private fun SsidApRow(state: ApConfigurationState) {
             TextButton(
                 enabled = draftError == null,
                 onClick = {
-                    state.setSsid(draft, draftHex)
+                    state.setSsid(draft.text, draftHex)
                     editing = false
                 },
             ) {
@@ -1373,24 +1483,29 @@ private fun SsidApRow(state: ApConfigurationState) {
 
 @Composable
 private fun TextApRow(
+    @DrawableRes icon: Int,
     @StringRes title: Int,
     value: String,
     readOnly: Boolean,
+    summary: String = value,
+    description: AnnotatedString? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     maxLength: Int? = null,
     minLines: Int = if (value.contains('\n')) 3 else 1,
+    placeholder: String? = null,
     suffix: String? = null,
     supportingText: String? = null,
     validator: (String) -> String? = { null },
     onValueChange: (String) -> Unit,
 ) {
     var editing by rememberSaveable(value) { mutableStateOf(false) }
-    var draft by rememberSaveable(value, editing) { mutableStateOf(value) }
-    val error = validator(draft)
+    var draft by rememberTextFieldValueAtEnd(value, editing)
+    val error = validator(draft.text)
     PreferenceRow(
+        icon = icon,
         title = stringResource(title),
-        summary = value,
+        summary = summary,
         enabled = !readOnly,
         onClick = { editing = true },
     )
@@ -1399,33 +1514,42 @@ private fun TextApRow(
         title = { Text(stringResource(title)) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = maxLength?.let(it::take) ?: it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester),
-                keyboardOptions = keyboardOptions,
-                singleLine = minLines == 1,
-                minLines = minLines,
-                isError = error != null,
-                suffix = suffix?.let { { Text(it) } },
-                supportingText = if (error != null || supportingText != null || maxLength != null) {
-                    {
-                        Column {
-                            error?.let { ErrorApText(it) }
-                            if (error == null) supportingText?.let { Text(it) }
-                            maxLength?.let { Text("${draft.length}/$it") }
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                description?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = maxLength?.let(it::takeText) ?: it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester),
+                    keyboardOptions = keyboardOptions,
+                    placeholder = placeholder?.let { { Text(it) } },
+                    singleLine = minLines == 1,
+                    minLines = minLines,
+                    isError = error != null,
+                    suffix = suffix?.let { { Text(it) } },
+                    supportingText = if (error != null || supportingText != null || maxLength != null) {
+                        {
+                            Column {
+                                error?.let { ErrorApText(it) }
+                                if (error == null) supportingText?.let { Text(it) }
+                                maxLength?.let { Text("${draft.text.length}/$it") }
+                            }
                         }
-                    }
-                } else null,
-            )
+                    } else null,
+                )
+            }
         },
         confirmButton = {
             TextButton(
                 enabled = error == null,
                 onClick = {
-                    onValueChange(draft)
+                    onValueChange(draft.text)
                     editing = false
                 },
             ) {
@@ -1442,63 +1566,71 @@ private fun TextApRow(
 
 @Composable
 private fun PasswordApRow(state: ApConfigurationState) {
+    val enabled = state.passwordEnabled
     val maxLength = state.passwordMaxLength
     var editing by rememberSaveable(state.password) { mutableStateOf(false) }
-    var draft by rememberSaveable(state.password, editing) { mutableStateOf(state.password) }
+    var draft by rememberTextFieldValueAtEnd(state.password, editing)
     var visible by rememberSaveable(editing) { mutableStateOf(false) }
-    val error = state.passwordError(draft)
+    val error = state.passwordError(draft.text)
     PreferenceRow(
+        icon = R.drawable.ic_device_wifi_lock,
         title = stringResource(R.string.wifi_password),
-        summary = if (state.password.isEmpty()) "" else "\u2022".repeat(8),
-        enabled = true,
-        onClick = { editing = true },
+        summary = if (!enabled || state.password.isEmpty()) "" else "\u2022".repeat(8),
+        enabled = enabled,
+        onClick = if (enabled) ({ editing = true }) else null,
     )
     if (editing) AlertDialog(
         onDismissRequest = { editing = false },
         title = { Text(stringResource(R.string.wifi_password)) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = if (maxLength) it.take(63) else it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .contentType(WIFI_PASSWORD_CONTENT_TYPE),
-                keyboardOptions = KeyboardOptions(
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Password,
-                ),
-                singleLine = true,
-                isError = error != null,
-                supportingText = if (error != null || maxLength) {
-                    {
-                        Column {
-                            error?.let { ErrorApText(it) }
-                            if (maxLength) Text("${draft.length}/63")
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = annotatedStringResource(R.string.wifi_password_help),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = if (maxLength) it.takeText(63) else it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .contentType(WIFI_PASSWORD_CONTENT_TYPE),
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Password,
+                    ),
+                    singleLine = true,
+                    isError = error != null,
+                    supportingText = if (error != null || maxLength) {
+                        {
+                            Column {
+                                error?.let { ErrorApText(it) }
+                                if (maxLength) Text("${draft.text.length}/63")
+                            }
                         }
-                    }
-                } else null,
-                trailingIcon = {
-                    TooltipIconButton(
-                        tooltip = stringResource(R.string.wifi_password),
-                        onClick = { visible = !visible },
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_image_remove_red_eye),
-                            contentDescription = stringResource(R.string.wifi_password),
-                        )
-                    }
-                },
-                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-                visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-            )
+                    } else null,
+                    trailingIcon = {
+                        TooltipIconButton(
+                            tooltip = stringResource(R.string.wifi_password),
+                            onClick = { visible = !visible },
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_image_remove_red_eye),
+                                contentDescription = stringResource(R.string.wifi_password),
+                            )
+                        }
+                    },
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                    visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+                )
+            }
         },
         confirmButton = {
             TextButton(
                 enabled = error == null,
                 onClick = {
-                    state.password = draft
+                    state.password = draft.text
                     editing = false
                 },
             ) {
@@ -1524,6 +1656,15 @@ private fun rememberDialogFocusRequester(): FocusRequester {
     return focusRequester
 }
 
+private fun TextFieldValue.takeText(maxLength: Int): TextFieldValue {
+    if (text.length <= maxLength) return this
+    val text = text.take(maxLength)
+    return TextFieldValue(
+        text,
+        TextRange(selection.start.coerceIn(0, text.length), selection.end.coerceIn(0, text.length)),
+    )
+}
+
 @Composable
 private fun ErrorApText(text: String, modifier: Modifier = Modifier) {
     Text(
@@ -1535,13 +1676,17 @@ private fun ErrorApText(text: String, modifier: Modifier = Modifier) {
 
 @Composable
 private fun SwitchApRow(
+    @DrawableRes icon: Int,
     @StringRes title: Int,
     checked: Boolean,
     readOnly: Boolean,
+    summary: AnnotatedString? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     PreferenceRow(
+        icon = icon,
         title = stringResource(title),
+        summaryContent = summary?.let { { Text(it) } },
         enabled = !readOnly,
         trailing = {
             PreferenceSwitch(
@@ -1556,15 +1701,19 @@ private fun SwitchApRow(
 
 @Composable
 private fun <T> ListApRow(
+    @DrawableRes icon: Int,
     @StringRes title: Int,
     selected: String,
     enabled: Boolean,
     entries: List<T>,
     entryLabel: (T) -> String,
+    entrySummary: @Composable (T) -> AnnotatedString? = { null },
+    description: AnnotatedString? = null,
     onSelect: (T) -> Unit,
 ) {
     var selecting by rememberSaveable { mutableStateOf(false) }
     PreferenceRow(
+        icon = icon,
         title = stringResource(title),
         summary = selected,
         enabled = enabled,
@@ -1575,6 +1724,8 @@ private fun <T> ListApRow(
         entryCount = entries.size,
         selectedIndex = entries.indexOfFirst { entryLabel(it) == selected },
         entryLabel = { entryLabel(entries[it]) },
+        entrySummary = { entrySummary(entries[it]) },
+        description = description,
         onDismissRequest = { selecting = false },
         onSelect = { onSelect(entries[it]) },
     )
@@ -1614,6 +1765,36 @@ private fun validateAcsChannels(band: Int, value: String): String? = try {
     null
 } catch (e: Exception) {
     e.readableMessage
+}
+
+private fun timeoutSummary(value: String, defaultMillis: Long): String {
+    val millis = value.toLongOrNull()
+    return if (millis == null || millis <= 0) {
+        app.getString(R.string.wifi_hotspot_timeout_default, formatTimeoutMillis(defaultMillis))
+    } else formatTimeoutMillis(millis)
+}
+
+private fun formatTimeoutMillis(millis: Long): String {
+    val formatter = MeasureFormat.getInstance(
+        app.resources.configuration.locales[0],
+        MeasureFormat.FormatWidth.WIDE,
+    )
+    var remaining = millis.coerceAtLeast(0)
+    val measures = ArrayList<Measure>(5)
+    for ((unitMillis, unit) in arrayOf(
+        86_400_000L to MeasureUnit.DAY,
+        3_600_000L to MeasureUnit.HOUR,
+        60_000L to MeasureUnit.MINUTE,
+        1_000L to MeasureUnit.SECOND,
+        1L to MeasureUnit.MILLISECOND,
+    )) {
+        val count = remaining / unitMillis
+        if (count <= 0) continue
+        measures += Measure(count, unit)
+        remaining %= unitMillis
+    }
+    if (measures.isEmpty()) measures += Measure(0, MeasureUnit.MILLISECOND)
+    return formatter.formatMeasures(*measures.toTypedArray())
 }
 
 private fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = when {

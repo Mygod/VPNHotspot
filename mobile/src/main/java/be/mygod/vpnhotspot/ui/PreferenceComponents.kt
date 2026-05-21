@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.ui
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -37,17 +38,30 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.NonSkippableComposable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.currentCompositeKeyHashCode
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
 import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
+
+@Composable
+internal fun rememberTextFieldValueAtEnd(text: String, vararg inputs: Any?): MutableState<TextFieldValue> =
+    rememberSaveable(text, *inputs, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(text, TextRange(text.length)))
+    }
 
 @Composable
 internal fun SettingsList(
@@ -218,8 +232,8 @@ internal fun PreferenceSelectionDialog(
     entryCount: Int,
     selectedIndex: Int,
     entryLabel: (Int) -> String,
-    entrySummary: (Int) -> AnnotatedString? = { null },
-    description: String? = null,
+    entrySummary: @Composable (Int) -> AnnotatedString? = { null },
+    description: AnnotatedString? = null,
     onDismissRequest: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -255,6 +269,11 @@ internal fun PreferenceSelectionDialog(
         confirmButton = {},
     )
 }
+
+@Composable
+internal fun annotatedStringResource(@StringRes id: Int, vararg formatArgs: Any) = AnnotatedString.fromHtml(
+    if (formatArgs.isEmpty()) stringResource(id) else stringResource(id, *formatArgs),
+)
 
 private sealed interface PreferenceGroupItem {
     class Row(
