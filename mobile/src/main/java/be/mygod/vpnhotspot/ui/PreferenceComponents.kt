@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -29,6 +30,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -217,6 +219,39 @@ internal fun PreferenceSwitch(
             )
         },
         enabled = enabled,
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+internal fun PreferenceSelectionDialog(
+    title: String,
+    entryCount: Int,
+    selectedIndex: Int,
+    entryLabel: (Int) -> String,
+    onDismissRequest: () -> Unit,
+    onSelect: (Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text(title) },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                items(entryCount, key = { it }) { index ->
+                    CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, entryCount)) {
+                        PreferenceRow(
+                            titleContent = { Text(entryLabel(index)) },
+                            iconContent = { RadioButton(selected = index == selectedIndex, onClick = null) },
+                            onClick = {
+                                onSelect(index)
+                                onDismissRequest()
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
     )
 }
 

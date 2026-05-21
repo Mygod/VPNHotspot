@@ -11,17 +11,13 @@ import android.os.Build
 import android.os.ext.SdkExtensions
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -349,29 +345,13 @@ private fun ListPreferenceRow(
         summary = entries.getOrElse(values.indexOf(selectedValue)) { selectedValue },
         onClick = { selecting = true },
     )
-    if (selecting) AlertDialog(
+    if (selecting) PreferenceSelectionDialog(
+        title = stringResource(title),
+        entryCount = entries.size,
+        selectedIndex = values.indexOf(selectedValue),
+        entryLabel = entries::get,
         onDismissRequest = { selecting = false },
-        title = { Text(stringResource(title)) },
-        text = {
-            LazyColumn {
-                itemsIndexed(entries) { index, entry ->
-                    ListItem(
-                        headlineContent = { Text(entry) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                values.getOrNull(index)?.let(onValueChange)
-                                selecting = false
-                            },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { selecting = false }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
+        onSelect = { values.getOrNull(it)?.let(onValueChange) },
     )
 }
 

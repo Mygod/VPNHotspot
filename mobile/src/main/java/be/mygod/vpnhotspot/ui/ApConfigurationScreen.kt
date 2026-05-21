@@ -15,19 +15,15 @@ import android.util.SparseIntArray
 import android.widget.Toast
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -1564,29 +1560,13 @@ private fun <T> ListApRow(
         enabled = enabled,
         onClick = { selecting = true },
     )
-    if (selecting) AlertDialog(
+    if (selecting) PreferenceSelectionDialog(
+        title = stringResource(title),
+        entryCount = entries.size,
+        selectedIndex = entries.indexOfFirst { entryLabel(it) == selected },
+        entryLabel = { entryLabel(entries[it]) },
         onDismissRequest = { selecting = false },
-        title = { Text(stringResource(title)) },
-        text = {
-            LazyColumn {
-                itemsIndexed(entries) { _, entry ->
-                    ListItem(
-                        headlineContent = { Text(entryLabel(entry)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onSelect(entry)
-                                selecting = false
-                            },
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { selecting = false }) {
-                Text(stringResource(android.R.string.cancel))
-            }
-        },
+        onSelect = { onSelect(entries[it]) },
     )
 }
 
