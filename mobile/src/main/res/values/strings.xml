@@ -156,21 +156,36 @@
     <string name="settings_service_ipv6_mode_block">Block</string>
     <string name="settings_service_ipv6_mode_system">System</string>
     <string name="settings_service_ipv6_mode_nat">NAT (Userspace)</string>
+    <string name="settings_service_upstream_help">Main upstream interface regex used to reroute downstream traffic. VPN Hotspot itself must be allowed to use that VPN to work. Use &lt;tt&gt;none&lt;/tt&gt;, &lt;tt&gt;a^&lt;/tt&gt;, or another invalid regex to suppress tethering through VPN.</string>
+    <string name="settings_upstream_fallback_help">Fallback upstream is used when a VPN leaves some routes on the default network. Use &lt;tt&gt;none&lt;/tt&gt;, &lt;tt&gt;a^&lt;/tt&gt;, or another invalid regex to forbid fallback.</string>
+    <string name="settings_service_masquerade_none_summary">Do not rewrite downstream source addresses or ports. This can work better with dummy VPNs such as ad blockers or socksifiers, but should not be used with real VPNs.</string>
+    <string name="settings_service_masquerade_simple_summary">Rewrite downstream source addresses and ports in app-owned routing rules.</string>
+    <string name="settings_service_masquerade_netd_summary">Ask Android &lt;tt&gt;netd&lt;/tt&gt; to handle masquerade. Android may add platform extras such as &lt;tt&gt;FTP&lt;/tt&gt; handling and tethering counters, but this is a poor fit when hiding tethering activity from the carrier.</string>
+    <string name="settings_service_ipv6_mode_system_summary">Leave IPv6 handling to the platform routing setup.</string>
+    <string name="settings_service_ipv6_mode_block_summary">Prevent IPv6 leaks on downstream interfaces.</string>
+    <string name="settings_service_ipv6_mode_nat_summary">Assign a deterministic app-owned ULA &lt;tt&gt;/64&lt;/tt&gt; and proxy downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; through the root daemon. This is userspace work, not full packet NAT, and it does not forward arbitrary IPv6 next-header protocols.</string>
     <string name="settings_service_auto_start">Auto start services</string>
     <string name="settings_service_auto_start_summary">Restore services if they were running before device reboot or app
         update</string>
     <string name="settings_service_repeater_safe_mode">Repeater safe mode</string>
     <string name="settings_service_repeater_safe_mode_summary">Makes no changes to your system configuration but might
-        not work with short network names.</string>
+        not work with short network names. Unsafe mode might not work on your device and can soft brick it in a
+        recoverable way.</string>
     <string name="settings_service_repeater_safe_mode_warning">Short network names might require turning off safe
         mode.</string>
     <string name="settings_service_temp_hotspot_use_system">Use system configuration for temporary hotspot</string>
     <string name="settings_service_temp_hotspot_use_system_summary">Will conflict with other apps using local only
         hotspot. Also uses more resources in the background unless installed as a system app</string>
+    <string name="settings_service_temp_hotspot_use_system_summary_api30">Will conflict with other apps using local only
+        hotspot. Also uses more resources in the background unless installed as a system app. Most likely functional on
+        Android 12 or newer.</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
     <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
+    <string name="settings_service_wifi_lock_none_summary">Use the system default Wi\u2011Fi power behavior to save battery.</string>
+    <string name="settings_service_wifi_lock_high_perf_v29_summary">Reduce packet latency for cases such as voice calls after the screen turns off. Requires hardware support. On Android 14 and newer, this deprecated mode is replaced with low latency mode.</string>
+    <string name="settings_service_wifi_lock_low_latency_summary">Optimize for latency-sensitive uses such as gaming or virtual reality. May reduce battery life, throughput, Wi\u2011Fi scanning frequency, roaming quality, and location accuracy. Requires hardware support and this app running in the foreground with screen on.</string>
     <string name="settings_service_upstream">Upstream network interface</string>
     <string name="settings_service_upstream_auto">Auto detect system VPN</string>
     <string name="settings_upstream_fallback">Fallback upstream interface</string>
@@ -180,7 +195,7 @@
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions.</string>
     <string name="settings_system_tether_offload">Tethering hardware acceleration</string>
-    <string name="settings_system_tether_offload_summary">Shortcut to system developer options</string>
+    <string name="settings_system_tether_offload_summary">Shortcut to system Developer options. Turning this off is often needed for VPN tethering over system tethering, but it can reduce battery life while tethering is active.</string>
     <string name="settings_misc">Misc</string>
     <string name="settings_help">Help</string>
     <string name="settings_misc_logcat">Export debug information</string>

@@ -22,10 +22,6 @@ This app is useful for:
 P.S. You can also do the similar on [Windows](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-windows/),
 [Mac](https://www.expressvpn.com/support/vpn-setup/share-vpn-connection-mac/),
 and [iOS](http://www.tetherme.net/).
-I don't know about you but I can't get my stupid Windows 10 to work with
-[hosted network](https://msdn.microsoft.com/en-us/library/windows/desktop/dd815243(v=vs.85).aspx)
-now that they introduced this
-[Mobile hotspot](https://support.microsoft.com/en-us/help/4027762/windows-use-your-pc-as-a-mobile-hotspot).
 
 ## Features That Requires System App Installation
 
@@ -43,78 +39,10 @@ Installing as system app also has the side benefit of launching root daemon less
 * `android.permission.READ_WIFI_CREDENTIAL`
 * `android.permission.TETHER_PRIVILEGED`
 * `android.permission.WRITE_SECURE_SETTINGS`
+* Other system-app exclusive features that are not gated by permissions.
 
 Whenever you install an app update, if there was a new protected permission addition (last updated in v2.17.1), you should update the app installed in system as well to make the system grant the privileged permission.
 
-## Settings and How to Use Them
-
-Default settings are picked to suit general use cases and maximize compatibility but it might not be optimal for battery
- life.
-
-### Upstream
-
-* Upstream network interface: Main upstream regex used to reroute traffic.
-  Leave blank for auto detect system VPN (allow/do not bypass this app to use VPN for it to work).
-  Put `none` (or `a^` or other similarly invalid entries) to suppress tethering VPN.
-* Fallback upstream:
-  Fallback upstream is used when some VPN leave certain routes fallback to default network interface.
-  Leave blank for auto detect.
-  Put `none` (or `a^` or other similarly invalid entries) to forbid falling back.
-  Put other interface name if you feel like it.
-
-### Downstream
-
-* IPv4 Masquerade Mode:
-  - None:
-    Nothing will be done to remap address/port from downstream.
-    I find turning this option off sometimes works better for dummy VPNs like ad-blockers and socksifiers than Simple mode, e.g. Shadowsocks.
-    But you should never use this for real VPNs like OpenVPN, etc.
-  - Simple: Source address/port from downstream packets will be remapped and that's about it.
-  - Android Netd Service:
-    Let your system handle masquerade.
-    Android system will do a few extra things to make things like FTP and tethering traffic counter work.
-    You should probably not use this if you are trying to hide your tethering activity from your carrier.
-* IPv6 mode:
-  - System:
-    Leave IPv6 handling to the platform/system routing setup.
-  - Block:
-    Prevent IPv6 leaks on downstream interfaces.
-  - NAT:
-    Assigns a deterministic app-owned ULA `/64` to the downstream and proxies downstream IPv6 TCP/UDP plus best-effort ICMPv6 through a shared root daemon. This is not full packet NAT and does not forward arbitrary IPv6 next-header protocols.
-    This mode operates in userspace thus performance might be degraded.
-* Tethering hardware acceleration:
-    This is a shortcut to the same setting in system Developer options.
-    Turning this option off is probably a must for making VPN tethering over system tethering work,
-     but it might also decrease your battery life while tethering is enabled.
-
-### Misc
-
-* Keep Wi-Fi alive: Acquire Wi-Fi locks when repeater, temporary hotspot or system VPN hotspot is activated.
-   - Choose "System default" (default) to save battery life;
-   - Choose "Disable power save" to decrease packet latency.
-     An example use case is when a voice connection needs to be kept active even after the device screen goes off.
-     Using this mode may improve the call quality.
-     Requires support from the hardware.
-     Deprecated in Android 14 and is automatically replaced with "Low latency mode".
-     Deprecation is due to the impact of it on power dissipation.
-     The "Low latency mode" provides much of the same desired functionality with less impact on power dissipation.
-   - Choose "Low latency mode" to optimize for reduced packet latency, and this might result in:
-     1. Reduced battery life.
-     2. Reduced throughput.
-     3. Reduced frequency of Wi-Fi scanning.
-        This may cause the device not roaming or switching to the AP with highest signal quality, and location accuracy may be reduced.
-     Example use cases are real time gaming or virtual reality applications where low latency is a key factor for user experience.
-     Requires support from the hardware.
-     Note: Requires this app running in foreground with screen on.
-* Start repeater on boot: Self explanatory.
-* Repeater safe mode: (Android 10, March 2020 security patch or newer)
-  You might be required to turn this mode off if you want to use short SSID (at most 8 bytes long).
-  Unsafe mode might not work for your device, and there is a small chance you will soft brick your device (recoverable).
-  See [#153](https://github.com/Mygod/VPNHotspot/issues/153) for more information.
-* Use system configuration for temporary hotspot: (Android 11 or newer)
-  Attempt to start a temporary hotspot using system Wi-Fi hotspot configuration.
-  This feature is most likely only functional on Android 12 or newer.
-  Enabling this switch will also prevent other apps from using the [local-only hotspot](https://developer.android.com/guide/topics/connectivity/localonlyhotspot) functionality.
 ## Q & A
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.

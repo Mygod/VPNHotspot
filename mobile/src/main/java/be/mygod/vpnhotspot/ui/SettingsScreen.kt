@@ -12,6 +12,8 @@ import android.os.ext.SdkExtensions
 import android.text.Html
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
@@ -19,6 +21,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -42,6 +45,7 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.fromHtml
+import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.core.content.edit
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -152,6 +156,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             preference = primaryPreference,
                             upstream = primaryUpstream,
                         ),
+                        description = annotatedStringResource(R.string.settings_service_upstream_help),
                         placeholder = fallback,
                         suggestNetworkInterfaces = true,
                         onValueChange = { app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) } },
@@ -168,6 +173,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             preference = fallbackPreference,
                             upstream = fallbackUpstream,
                         ),
+                        description = annotatedStringResource(R.string.settings_upstream_fallback_help),
                         placeholder = fallbackLabel,
                         suggestNetworkInterfaces = true,
                         onValueChange = { app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) } },
@@ -182,6 +188,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_social_people,
                         title = R.string.settings_service_masquerade,
                         entries = stringArrayResource(R.array.settings_service_masquerade),
+                        entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
                         values = stringArrayResource(R.array.settings_service_masquerade_values),
                         selectedValue = masqueradeMode,
                         onValueChange = {
@@ -195,6 +202,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_image_looks_6,
                         title = R.string.settings_service_ipv6_mode,
                         entries = stringArrayResource(R.array.settings_service_ipv6_mode),
+                        entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
                         values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
                         selectedValue = ipv6Mode,
                         onValueChange = {
@@ -238,6 +246,7 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                         icon = R.drawable.ic_device_wifi_lock,
                         title = R.string.settings_service_wifi_lock,
                         entries = stringArrayResource(R.array.settings_service_wifi_lock),
+                        entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
                         values = stringArrayResource(R.array.settings_service_wifi_lock_values),
                         selectedValue = wifiLockMode,
                         onValueChange = {
@@ -271,7 +280,9 @@ internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     SwitchPreferenceRow(
                         icon = R.drawable.ic_content_file_copy,
                         title = R.string.settings_service_temp_hotspot_use_system,
-                        summary = stringResource(R.string.settings_service_temp_hotspot_use_system_summary),
+                        summary = stringResource(if (Build.VERSION.SDK_INT >= 31) {
+                            R.string.settings_service_temp_hotspot_use_system_summary
+                        } else R.string.settings_service_temp_hotspot_use_system_summary_api30),
                         checked = useSystemTempHotspot,
                         onCheckedChange = { app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) } },
                     )
@@ -333,8 +344,10 @@ private fun ListPreferenceRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     entries: Array<String>,
+    entrySummaries: Array<String> = emptyArray(),
     values: Array<String>,
     selectedValue: String,
+    description: String? = null,
     onValueChange: (String) -> Unit,
 ) {
     var selecting by rememberSaveable { mutableStateOf(false) }
@@ -349,6 +362,8 @@ private fun ListPreferenceRow(
         entryCount = entries.size,
         selectedIndex = values.indexOf(selectedValue),
         entryLabel = entries::get,
+        entrySummary = { entrySummaries.getOrNull(it)?.let(AnnotatedString::fromHtml) },
+        description = description,
         onDismissRequest = { selecting = false },
         onSelect = { values.getOrNull(it)?.let(onValueChange) },
     )
@@ -361,6 +376,7 @@ private fun TextPreferenceRow(
     @StringRes title: Int,
     value: String,
     summary: AnnotatedString,
+    description: AnnotatedString? = null,
     placeholder: String? = null,
     suggestNetworkInterfaces: Boolean = false,
     onValueChange: (String) -> Unit,
@@ -393,43 +409,51 @@ private fun TextPreferenceRow(
             title = { Text(stringResource(title)) },
             text = {
                 val menuExpanded = suggestionsExpanded && filteredSuggestions.isNotEmpty()
-                ExposedDropdownMenuBox(
-                    expanded = menuExpanded,
-                    onExpandedChange = { suggestionsExpanded = it },
-                ) {
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = {
-                            draft = it
-                            suggestionsExpanded = true
-                        },
-                        modifier = Modifier
-                            .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester),
-                        placeholder = placeholder?.let { { Text(it) } },
-                        trailingIcon = if (suggestNetworkInterfaces) {
-                            {
-                                ExposedDropdownMenuDefaults.TrailingIcon(
-                                    expanded = menuExpanded,
-                                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
-                                )
-                            }
-                        } else null,
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
-                        singleLine = true,
-                    )
-                    ExposedDropdownMenu(
-                        expanded = menuExpanded,
-                        onDismissRequest = { suggestionsExpanded = false },
-                    ) {
-                        for (suggestion in filteredSuggestions) DropdownMenuItem(
-                            text = { Text(suggestion) },
-                            onClick = {
-                                draft = suggestion
-                                suggestionsExpanded = false
-                            },
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    description?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
+                    }
+                    ExposedDropdownMenuBox(
+                        expanded = menuExpanded,
+                        onExpandedChange = { suggestionsExpanded = it },
+                    ) {
+                        OutlinedTextField(
+                            value = draft,
+                            onValueChange = {
+                                draft = it
+                                suggestionsExpanded = true
+                            },
+                            modifier = Modifier
+                                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
+                            placeholder = placeholder?.let { { Text(it) } },
+                            trailingIcon = if (suggestNetworkInterfaces) {
+                                {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(
+                                        expanded = menuExpanded,
+                                        modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
+                                    )
+                                }
+                            } else null,
+                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            singleLine = true,
+                        )
+                        ExposedDropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { suggestionsExpanded = false },
+                        ) {
+                            for (suggestion in filteredSuggestions) DropdownMenuItem(
+                                text = { Text(suggestion) },
+                                onClick = {
+                                    draft = suggestion
+                                    suggestionsExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
             },
@@ -552,6 +576,9 @@ private fun upstreamSummary(fallback: String, preference: String?, upstream: Ups
                 }
             }
         }))
+
+@Composable
+private fun annotatedStringResource(@StringRes id: Int) = AnnotatedString.fromHtml(stringResource(id))
 
 @Composable
 private fun rememberPreferenceString(key: String): State<String?> {

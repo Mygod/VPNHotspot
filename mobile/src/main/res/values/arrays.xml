@@ -11,6 +11,11 @@
         <item>@string/settings_service_masquerade_simple</item>
         <item>@string/settings_service_masquerade_netd</item>
     </string-array>
+    <string-array name="settings_service_masquerade_summaries" tools:ignore="InconsistentArrays">
+        <item>@string/settings_service_masquerade_none_summary</item>
+        <item>@string/settings_service_masquerade_simple_summary</item>
+        <item>@string/settings_service_masquerade_netd_summary</item>
+    </string-array>
     <string-array name="settings_service_masquerade_values" tools:ignore="InconsistentArrays">
         <item>None</item>
         <item>Simple</item>
@@ -20,6 +25,11 @@
         <item>@string/settings_service_ipv6_mode_system</item>
         <item>@string/settings_service_ipv6_mode_block</item>
         <item>@string/settings_service_ipv6_mode_nat</item>
+    </string-array>
+    <string-array name="settings_service_ipv6_mode_summaries">
+        <item>@string/settings_service_ipv6_mode_system_summary</item>
+        <item>@string/settings_service_ipv6_mode_block_summary</item>
+        <item>@string/settings_service_ipv6_mode_nat_summary</item>
     </string-array>
     <string-array name="settings_service_ipv6_mode_values">
         <item>System</item>
@@ -31,6 +41,11 @@
         <item>@string/settings_service_wifi_lock_none</item>
         <item>@string/settings_service_wifi_lock_high_perf_v29</item>
         <item>@string/settings_service_wifi_lock_low_latency</item>
+    </string-array>
+    <string-array name="settings_service_wifi_lock_summaries">
+        <item>@string/settings_service_wifi_lock_none_summary</item>
+        <item>@string/settings_service_wifi_lock_high_perf_v29_summary</item>
+        <item>@string/settings_service_wifi_lock_low_latency_summary</item>
     </string-array>
     <string-array name="settings_service_wifi_lock_values">
         <item>None</item>

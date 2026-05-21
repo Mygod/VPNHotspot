@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
@@ -217,6 +218,8 @@ internal fun PreferenceSelectionDialog(
     entryCount: Int,
     selectedIndex: Int,
     entryLabel: (Int) -> String,
+    entrySummary: (Int) -> AnnotatedString? = { null },
+    description: String? = null,
     onDismissRequest: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
@@ -225,10 +228,20 @@ internal fun PreferenceSelectionDialog(
         title = { Text(title) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
+                description?.let {
+                    item("description") {
+                        Text(
+                            text = it,
+                            modifier = Modifier.padding(bottom = 8.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
                 items(entryCount, key = { it }) { index ->
                     CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, entryCount)) {
                         PreferenceRow(
                             titleContent = { Text(entryLabel(index)) },
+                            summaryContent = entrySummary(index)?.let { { Text(it) } },
                             iconContent = { RadioButton(selected = index == selectedIndex, onClick = null) },
                             onClick = {
                                 onSelect(index)
