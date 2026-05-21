@@ -122,31 +122,29 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
                         )
                     }
                 } else for (client in clients) {
-                    androidx.compose.runtime.key(client.iface, client.mac) {
-                        row {
-                            ClientRow(
-                                client = client,
-                                rate = rates[client.iface to client.mac],
-                                snackbarHostState = snackbarHostState,
-                                tetherTypeRevision = tetherTypeRevision,
-                                onNickname = { nickname ->
-                                    GlobalScope.launch(Dispatchers.Main.immediate) {
-                                        updateNickname(client.mac, nickname, snackbarHostState)
-                                    }
-                                },
-                                onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
-                                onToggleBlocked = {
-                                    val wasWorking = TrafficRecorder.isWorking(client.mac)
-                                    val record = client.obtainRecord().apply { blocked = !blocked }
-                                    GlobalScope.launch(Dispatchers.Unconfined) {
-                                        AppDatabase.instance.clientRecordDao.update(record)
-                                    }
-                                    if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
-                                        snackbarHostState.showLongSnackbar(blockServiceInactive)
-                                    }
-                                },
-                            )
-                        }
+                    row(key = client.iface to client.mac) {
+                        ClientRow(
+                            client = client,
+                            rate = rates[client.iface to client.mac],
+                            snackbarHostState = snackbarHostState,
+                            tetherTypeRevision = tetherTypeRevision,
+                            onNickname = { nickname ->
+                                GlobalScope.launch(Dispatchers.Main.immediate) {
+                                    updateNickname(client.mac, nickname, snackbarHostState)
+                                }
+                            },
+                            onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
+                            onToggleBlocked = {
+                                val wasWorking = TrafficRecorder.isWorking(client.mac)
+                                val record = client.obtainRecord().apply { blocked = !blocked }
+                                GlobalScope.launch(Dispatchers.Unconfined) {
+                                    AppDatabase.instance.clientRecordDao.update(record)
+                                }
+                                if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
+                                    snackbarHostState.showLongSnackbar(blockServiceInactive)
+                                }
+                            },
+                        )
                     }
                 }
             }

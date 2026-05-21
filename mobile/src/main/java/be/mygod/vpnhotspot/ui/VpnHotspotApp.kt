@@ -6,12 +6,15 @@ import android.os.Parcelable
 import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -23,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -96,7 +100,7 @@ internal class ApConfigurationSessionHolder : ViewModel() {
     var repeaterMaster: P2pSupplicantConfiguration? = null
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val appContext = LocalContext.current
@@ -111,18 +115,22 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val route = backStackEntry?.destination?.route
     val rootDestination = RootDestination.entries.firstOrNull { it.route == route }
     val appDestination = AppDestination.entries.firstOrNull { it.route == route }
-    val bindRepeaterService = rootDestination == RootDestination.Tethering ||
+    val visibleEntries by navController.visibleEntries.collectAsState()
+    val tetheringDestinationVisible = rootDestination == RootDestination.Tethering || visibleEntries.any { entry ->
+        entry.destination.hierarchy.any { it.route == RootDestination.Tethering.route }
+    }
+    val bindRepeaterService = tetheringDestinationVisible ||
             savedApSession?.target == ApConfigurationTarget.Repeater
     val repeaterBinder by if (bindRepeaterService) {
         rememberServiceBinder<RepeaterService.Binder>(RepeaterService::class.java)
     } else rememberNullState()
-    val localOnlyBinder by if (rootDestination == RootDestination.Tethering) {
+    val localOnlyBinder by if (tetheringDestinationVisible) {
         rememberServiceBinder<LocalOnlyHotspotService.Binder>(LocalOnlyHotspotService::class.java)
     } else rememberNullState()
-    val tetheringBinder by if (rootDestination == RootDestination.Tethering) {
+    val tetheringBinder by if (tetheringDestinationVisible) {
         rememberServiceBinder<TetheringService.Binder>(TetheringService::class.java)
     } else rememberNullState()
-    val tetherStates by if (rootDestination == RootDestination.Tethering) {
+    val tetherStates by if (tetheringDestinationVisible) {
         rememberTetherStates()
     } else remember { mutableStateOf(TetherStates()) }
     val monitoredIfaces by (tetheringBinder?.monitoredIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
@@ -269,10 +277,15 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { contentPadding ->
+        val navFadeSpec = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
         NavHost(
             navController = navController,
             startDestination = RootDestination.Tethering.route,
             modifier = Modifier.padding(contentPadding),
+            enterTransition = { fadeIn(navFadeSpec) },
+            exitTransition = { fadeOut(navFadeSpec) },
+            popEnterTransition = { fadeIn(navFadeSpec) },
+            popExitTransition = { fadeOut(navFadeSpec) },
         ) {
             composable(RootDestination.Tethering.route) {
                 TetheringScreen(snackbarHostState, repeaterBinder, localOnlyBinder, tetheringBinder, tetherStates)

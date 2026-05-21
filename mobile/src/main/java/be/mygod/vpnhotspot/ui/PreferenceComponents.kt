@@ -37,7 +37,6 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositeKeyHashCode
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.NonSkippableComposable
 import androidx.compose.runtime.compositionLocalOf
@@ -95,14 +94,14 @@ internal class PreferenceGroupScope internal constructor() {
 
     @Composable
     @NonSkippableComposable
-    fun row(content: @Composable () -> Unit) {
-        items += PreferenceGroupItem.Row(currentCompositeKeyHashCode, content)
+    fun row(key: Any? = currentCompositeKeyHashCode, content: @Composable () -> Unit) {
+        items += PreferenceGroupItem.Row(key, content)
     }
 
     @Composable
     @NonSkippableComposable
-    fun contentItem(content: @Composable () -> Unit) {
-        items += PreferenceGroupItem.Content(currentCompositeKeyHashCode, content)
+    fun contentItem(key: Any? = currentCompositeKeyHashCode, content: @Composable () -> Unit) {
+        items += PreferenceGroupItem.Content(key, content)
     }
 
     internal fun clear() {
@@ -223,12 +222,12 @@ internal fun PreferenceSwitch(
 
 private sealed interface PreferenceGroupItem {
     class Row(
-        val key: CompositeKeyHashCode,
+        val key: Any?,
         val content: @Composable () -> Unit,
     ) : PreferenceGroupItem
 
     class Content(
-        val key: CompositeKeyHashCode,
+        val key: Any?,
         val content: @Composable () -> Unit,
     ) : PreferenceGroupItem
 }

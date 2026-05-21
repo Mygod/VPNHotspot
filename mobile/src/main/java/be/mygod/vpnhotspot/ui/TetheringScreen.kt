@@ -253,26 +253,24 @@ internal fun TetheringScreen(
                     )
                 }
                 for (iface in (tetherStates.tethered + monitored).toSortedSet()) {
-                    androidx.compose.runtime.key(iface) {
-                        row {
-                            val active = managed.contains(iface)
-                            val title = if (monitored.contains(iface)) {
-                                stringResource(R.string.tethering_state_monitored, iface)
-                            } else iface
-                            TetheringRow(
-                                icon = TetherType.ofInterface(iface).icon,
-                                title = title,
-                                summary = ifaceLookup[iface]?.formatAddresses(inactive.contains(iface)) ?: "",
-                                checked = active,
-                                enabled = true,
-                                onClick = {
-                                    if (active) context.startService(Intent(context, TetheringService::class.java)
-                                        .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
-                                    else context.startForegroundService(Intent(context, TetheringService::class.java)
-                                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
-                                },
-                            )
-                        }
+                    row(key = iface) {
+                        val active = managed.contains(iface)
+                        val title = if (monitored.contains(iface)) {
+                            stringResource(R.string.tethering_state_monitored, iface)
+                        } else iface
+                        TetheringRow(
+                            icon = TetherType.ofInterface(iface).icon,
+                            title = title,
+                            summary = ifaceLookup[iface]?.formatAddresses(inactive.contains(iface)) ?: "",
+                            checked = active,
+                            enabled = true,
+                            onClick = {
+                                if (active) context.startService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
+                                else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
+                            },
+                        )
                     }
                 }
             }
