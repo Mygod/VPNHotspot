@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -304,69 +303,7 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
         }
         item {
             PreferenceGroup(title = stringResource(R.string.wifi_hotspot_ap_advanced_title)) {
-                if (state.p2pMode || Build.VERSION.SDK_INT >= 31) row {
-                    val macRandomizationLabels = stringArrayResource(R.array.wifi_mac_randomization)
-                    ListApRow(
-                        icon = R.drawable.ic_action_autorenew,
-                        title = R.string.wifi_mac_randomization,
-                        selected = macRandomizationLabels.getOrElse(state.macRandomization) {
-                            state.macRandomization.toString()
-                        },
-                        enabled = !state.p2pMode,
-                        entries = macRandomizationLabels.mapIndexed { index, label ->
-                            index to label
-                        },
-                        entryLabel = { it.second },
-                        entrySummary = {
-                            annotatedStringResource(when (it.first) {
-                                SoftApConfigurationCompat.RANDOMIZATION_NONE ->
-                                    R.string.wifi_mac_randomization_none_help
-                                SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT ->
-                                    R.string.wifi_mac_randomization_persistent_help
-                                else -> R.string.wifi_mac_randomization_non_persistent_help
-                            })
-                        },
-                        description = annotatedStringResource(R.string.wifi_mac_randomization_help),
-                        onSelect = { state.macRandomization = it.first },
-                    )
-                }
-                if (state.p2pMode || Build.VERSION.SDK_INT < 31 ||
-                    state.macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE) {
-                    row {
-                        TextApRow(
-                            icon = R.drawable.ic_content_push_pin,
-                            title = R.string.wifi_advanced_mac_address_title,
-                            value = state.bssid,
-                            readOnly = false,
-                            description = annotatedStringResource(R.string.wifi_advanced_mac_address_help),
-                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                            maxLength = 17,
-                            validator = { value ->
-                                validateOptionalMac(value) { mac ->
-                                    if (Build.VERSION.SDK_INT >= 30 && !state.p2pMode) {
-                                        SoftApConfigurationCompat.testPlatformValidity(mac)
-                                    }
-                                }
-                            },
-                        ) { state.bssid = it }
-                    }
-                }
-                if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
-                    row {
-                        TextApRow(
-                            icon = R.drawable.ic_action_autorenew,
-                            title = R.string.wifi_advanced_mac_address_persistent_randomized,
-                            value = state.persistentRandomizedMac,
-                            readOnly = false,
-                            description = annotatedStringResource(
-                                R.string.wifi_advanced_mac_address_persistent_randomized_help,
-                            ),
-                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                            maxLength = 17,
-                            validator = { validateOptionalMac(it) },
-                        ) { state.persistentRandomizedMac = it }
-                    }
-                }
+                row { MacAddressApRow(state) }
                 if (!state.p2pMode) row {
                     SwitchApRow(
                         icon = R.drawable.ic_action_visibility_off,

@@ -155,6 +155,7 @@ internal class ApConfigurationState(
     val canToggleSsidHex get() = ssidHexToggleable
     val passwordEnabled get() = selectedSecurityType !in SECURITY_TYPES_WITHOUT_PASSWORD
     val passwordMaxLength get() = selectedSecurityType != SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
+    val bssidEnabled get() = bssidEnabled(macRandomization)
     val channelError get() = if (!p2pMode && Build.VERSION.SDK_INT >= 30) try {
         SoftApConfigurationCompat.testPlatformValidity(generateChannels())
         null
@@ -206,9 +207,7 @@ internal class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
-        val hideBssid = !p2pMode && Build.VERSION.SDK_INT >= 31 &&
-                macRandomization != SoftApConfigurationCompat.RANDOMIZATION_NONE
-        if (!hideBssid) validateOptionalMac(bssid) {
+        if (bssidEnabled) validateOptionalMac(bssid) {
             if (Build.VERSION.SDK_INT >= 30 && !p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
         }?.let { return it }
         if (maxClients.isNotEmpty()) try {
@@ -269,9 +268,7 @@ internal class ApConfigurationState(
             allowedClientList = parseMacList(allowedList)
             blockedClientList = parseMacList(blockedList)
             macRandomizationSetting = macRandomization
-            bssid = if ((p2pMode || Build.VERSION.SDK_INT < 31 &&
-                    macRandomizationSetting == SoftApConfigurationCompat.RANDOMIZATION_NONE) &&
-                    this@ApConfigurationState.bssid.isNotEmpty()) {
+            bssid = if (bssidEnabled && this@ApConfigurationState.bssid.isNotEmpty()) {
                 MacAddress.fromString(this@ApConfigurationState.bssid)
             } else null
             isBridgedModeOpportunisticShutdownEnabled = bridgedModeOpportunisticShutdown
@@ -413,6 +410,16 @@ internal class ApConfigurationState(
     fun maxChannelBandwidthLabel(context: Context) = bandwidthOptions.firstOrNull {
         it.width == maxChannelBandwidth
     }?.label(context) ?: channelBandwidthLabel(context, maxChannelBandwidth)
+    fun bssidEnabled(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
+            macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE
+    fun macAddressSummary(context: Context) = when {
+        bssidEnabled -> bssid.ifEmpty { context.getString(R.string.wifi_mac_address_nothing) }
+        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT -> context.getString(
+            R.string.wifi_mac_address_persistent_randomization,
+            persistentRandomizedMac.ifEmpty { context.getString(R.string.wifi_mac_address_nothing) },
+        )
+        else -> context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+    }
 
     private fun generateChannels() = SparseIntArray(2).also { channels ->
         if (!p2pMode && Build.VERSION.SDK_INT >= 31 && secondaryChannel.band >= 0) {
