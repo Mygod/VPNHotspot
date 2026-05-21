@@ -13,6 +13,7 @@ import androidx.collection.ObjectList
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -112,16 +113,16 @@ internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHo
     }
 
     SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
-        item {
+        if (clients.isEmpty()) item {
+            Text(
+                text = stringResource(R.string.clients_empty),
+                modifier = Modifier
+                    .fillParentMaxSize()
+                    .padding(horizontal = 16.dp),
+            )
+        } else item {
             PreferenceGroup {
-                if (clients.isEmpty()) {
-                    row {
-                        PreferenceRow(
-                            icon = R.drawable.ic_device_devices,
-                            title = stringResource(R.string.clients_empty),
-                        )
-                    }
-                } else for (client in clients) {
+                for (client in clients) {
                     row(key = client.iface to client.mac) {
                         ClientRow(
                             client = client,

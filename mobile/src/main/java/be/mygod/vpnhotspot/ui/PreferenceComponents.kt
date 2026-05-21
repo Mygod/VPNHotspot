@@ -185,10 +185,10 @@ internal fun PreferenceRow(
         } else {
             ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
         },
-        shapes = if (position == null) {
-            ListItemDefaults.shapes()
-        } else {
-            ListItemDefaults.segmentedShapes(position.index, position.count)
+        shapes = when {
+            position == null -> ListItemDefaults.shapes()
+            position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
+            else -> ListItemDefaults.segmentedShapes(position.index, position.count)
         },
         trailingContent = trailing,
     )
