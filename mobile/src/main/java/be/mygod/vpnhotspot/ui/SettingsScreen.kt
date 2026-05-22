@@ -415,7 +415,7 @@ private fun ListPreferenceRow(
         summary = entries.getOrElse(values.indexOf(selectedValue)) { selectedValue },
         onClick = { selecting = true },
     )
-    if (selecting) PreferenceSelectionDialog(
+    if (selecting) PreferenceSelectionSheet(
         title = stringResource(title),
         entryCount = entries.size,
         selectedIndex = values.indexOf(selectedValue),

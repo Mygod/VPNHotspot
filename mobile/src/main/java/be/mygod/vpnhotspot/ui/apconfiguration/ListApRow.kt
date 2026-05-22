@@ -10,7 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import be.mygod.vpnhotspot.ui.PreferenceRow
-import be.mygod.vpnhotspot.ui.PreferenceSelectionDialog
+import be.mygod.vpnhotspot.ui.PreferenceSelectionSheet
 
 @Composable
 internal fun <T> ListApRow(
@@ -32,7 +32,7 @@ internal fun <T> ListApRow(
         enabled = enabled,
         onClick = { selecting = true },
     )
-    if (selecting) PreferenceSelectionDialog(
+    if (selecting) PreferenceSelectionSheet(
         title = stringResource(title),
         entryCount = entries.size,
         selectedIndex = entries.indexOfFirst { entryLabel(it) == selected },

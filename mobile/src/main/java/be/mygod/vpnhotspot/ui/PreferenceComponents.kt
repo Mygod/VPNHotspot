@@ -23,7 +23,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -31,6 +30,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
@@ -277,8 +277,8 @@ internal fun PreferenceSplitSwitch(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-internal fun PreferenceSelectionDialog(
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+internal fun PreferenceSelectionSheet(
     title: String,
     entryCount: Int,
     selectedIndex: Int,
@@ -288,36 +288,42 @@ internal fun PreferenceSelectionDialog(
     onDismissRequest: () -> Unit,
     onSelect: (Int) -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text(title) },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)) {
-                description?.let {
-                    item("description") {
-                        Text(
-                            text = it,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                }
-                items(entryCount, key = { it }) { index ->
-                    PreferenceSelectionRow(
-                        index = index,
-                        count = entryCount,
-                        selected = index == selectedIndex,
-                        title = entryLabel(index),
-                        summary = entrySummary(index),
-                    ) {
-                        onSelect(index)
-                        onDismissRequest()
-                    }
+    ModalBottomSheet(onDismissRequest = onDismissRequest) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
+        ) {
+            description?.let {
+                item("description") {
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
-        },
-        confirmButton = {},
-    )
+            items(entryCount, key = { it }) { index ->
+                PreferenceSelectionRow(
+                    index = index,
+                    count = entryCount,
+                    selected = index == selectedIndex,
+                    title = entryLabel(index),
+                    summary = entrySummary(index),
+                ) {
+                    onSelect(index)
+                    onDismissRequest()
+                }
+            }
+        }
+    }
 }
 
 @Composable

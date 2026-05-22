@@ -8,16 +8,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -53,7 +55,7 @@ internal fun ChannelApRow(
         summary = selected.label(context),
         onClick = { selecting = true },
     )
-    if (selecting) ChannelApDialog(
+    if (selecting) ChannelApSheet(
         title = stringResource(title),
         selected = selected,
         entries = entries,
@@ -64,8 +66,8 @@ internal fun ChannelApRow(
 }
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun ChannelApDialog(
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+private fun ChannelApSheet(
     title: String,
     selected: ChannelOption,
     entries: List<ChannelOption>,
@@ -86,97 +88,100 @@ private fun ChannelApDialog(
             it.band == selectedBandMask && it.channel != 0
         })
     }
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text(title) },
-        text = {
-            LazyColumn(
-                contentPadding = PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                description?.let {
-                    item("description") {
-                        Text(
-                            text = it,
-                            modifier = Modifier.padding(bottom = 8.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+    ModalBottomSheet(onDismissRequest = onDismissRequest) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = false),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            description?.let {
+                item("description") {
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
-                disabledOption?.let {
-                    item("disabled") {
-                        PreferenceSelectionRow(
-                            index = 0,
-                            count = 1,
-                            selected = selected === ChannelOption.Disabled,
-                            title = it.label(context),
-                        ) {
-                            onSelect(it)
-                            onDismissRequest()
-                        }
-                    }
-                }
-                item("bands") {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = stringResource(R.string.wifi_hotspot_ap_band_title),
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            val format = DecimalFormat(
-                                "#.#",
-                                DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]),
-                            )
-                            for (band in bands) {
-                                val selectedBand = selectedBandMask and band == band
-                                FilterChip(
-                                    selected = selectedBand,
-                                    onClick = {
-                                        val next = if (selectedBand) selectedBandMask and band.inv()
-                                        else selectedBandMask or band
-                                        selectedBandMask = next
-                                    },
-                                    label = {
-                                        Text(stringResource(
-                                            R.string.wifi_ap_choose_G_short,
-                                            format.format(BAND_GHZ.getValue(band)),
-                                        ))
-                                    },
-                                    leadingIcon = if (selectedBand) {
-                                        {
-                                            Icon(
-                                                imageVector = Icons.Filled.Check,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp),
-                                            )
-                                        }
-                                    } else null,
-                                )
-                            }
-                        }
-                    }
-                }
-                itemsIndexed(selectableChannels, key = { _, it -> "${it.band}/${it.channel}" }) { index, option ->
+            }
+            disabledOption?.let {
+                item("disabled") {
                     PreferenceSelectionRow(
-                        index = index,
-                        count = selectableChannels.size,
-                        selected = selected.sameChannel(option),
-                        title = if (option.channel == 0) {
-                            stringResource(R.string.wifi_channel_width_auto)
-                        } else option.label(context),
-                        summary = if (option.channel == 0) AnnotatedString(option.label(context)) else null,
+                        index = 0,
+                        count = 1,
+                        selected = selected === ChannelOption.Disabled,
+                        title = it.label(context),
                     ) {
-                        onSelect(option)
+                        onSelect(it)
                         onDismissRequest()
                     }
                 }
             }
-        },
-        confirmButton = {},
-    )
+            item("bands") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(R.string.wifi_hotspot_ap_band_title),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        val format = DecimalFormat(
+                            "#.#",
+                            DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]),
+                        )
+                        for (band in bands) {
+                            val selectedBand = selectedBandMask and band == band
+                            FilterChip(
+                                selected = selectedBand,
+                                onClick = {
+                                    val next = if (selectedBand) selectedBandMask and band.inv()
+                                    else selectedBandMask or band
+                                    selectedBandMask = next
+                                },
+                                label = {
+                                    Text(stringResource(
+                                        R.string.wifi_ap_choose_G_short,
+                                        format.format(BAND_GHZ.getValue(band)),
+                                    ))
+                                },
+                                leadingIcon = if (selectedBand) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Filled.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    }
+                                } else null,
+                            )
+                        }
+                    }
+                }
+            }
+            itemsIndexed(selectableChannels, key = { _, it -> "${it.band}/${it.channel}" }) { index, option ->
+                PreferenceSelectionRow(
+                    index = index,
+                    count = selectableChannels.size,
+                    selected = selected.sameChannel(option),
+                    title = if (option.channel == 0) {
+                        stringResource(R.string.wifi_channel_width_auto)
+                    } else option.label(context),
+                    summary = if (option.channel == 0) AnnotatedString(option.label(context)) else null,
+                ) {
+                    onSelect(option)
+                    onDismissRequest()
+                }
+            }
+        }
+    }
 }
 
 private fun ChannelOption.sameChannel(other: ChannelOption) = this === ChannelOption.Disabled && other === ChannelOption.Disabled ||
