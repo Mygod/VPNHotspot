@@ -243,6 +243,7 @@ fun PreferenceRow(
         leadingContent = iconContent,
         trailingContent = trailing,
         supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+        verticalAlignment = Alignment.CenterVertically,
         colors = if (position == null) {
             ListItemDefaults.colors()
         } else {
