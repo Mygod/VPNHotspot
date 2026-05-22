@@ -103,6 +103,7 @@
     <string name="tethering_manage_wifi_copy_mac">Copy MAC</string>
 
     <string name="tethering_static_ip">Static IP</string>
+    <string name="tethering_static_ip_help">Enter one IPv4 or IPv6 address per line. Add /prefix when needed, for example 10.0.0.1/24 or fd00::1/64. Without /prefix, the address is added as a single host.</string>
 
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>

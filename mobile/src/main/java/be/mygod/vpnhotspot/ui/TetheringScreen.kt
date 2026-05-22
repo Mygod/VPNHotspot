@@ -25,6 +25,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.collection.ScatterSet
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -408,15 +410,21 @@ internal fun TetheringScreen(
             },
             title = { Text(stringResource(R.string.tethering_static_ip)) },
             text = {
-                OutlinedTextField(
-                    value = staticIpDraftText,
-                    onValueChange = { staticIpDraftText = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                    minLines = 2,
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        text = stringResource(R.string.tethering_static_ip_help),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    OutlinedTextField(
+                        value = staticIpDraftText,
+                        onValueChange = { staticIpDraftText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                        minLines = 2,
+                    )
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
