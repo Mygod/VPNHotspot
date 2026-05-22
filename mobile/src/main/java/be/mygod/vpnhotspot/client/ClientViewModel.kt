@@ -257,7 +257,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 if (newRecord.sentPackets != oldRecord.sentPackets || newRecord.sentBytes != oldRecord.sentBytes ||
                     newRecord.receivedPackets != oldRecord.receivedPackets ||
                     newRecord.receivedBytes != oldRecord.receivedBytes) {
-                    Timber.w("Traffic counters changed without elapsed time: old=$oldRecord new=$newRecord")
+                    Timber.w(Exception("Traffic counters changed without elapsed time: old=$oldRecord new=$newRecord"))
                 }
                 return@forEach
             }
