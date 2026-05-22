@@ -41,6 +41,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -103,14 +104,20 @@ import java.net.SocketException
 import java.text.NumberFormat
 import java.util.Locale
 
+internal data class TetheringServiceState(
+    val managedIfaces: Set<String> = emptySet(),
+    val inactiveIfaces: Set<String> = emptySet(),
+    val monitoredIfaces: Set<String> = emptySet(),
+)
+
 @OptIn(DelicateCoroutinesApi::class)
 @Composable
 internal fun TetheringScreen(
     snackbarHostState: SnackbarHostState,
     repeaterBinder: RepeaterService.Binder?,
     localOnlyBinder: LocalOnlyHotspotService.Binder?,
-    tetheringBinder: TetheringService.Binder?,
     tetherStates: TetherStates,
+    tetheringServiceState: TetheringServiceState,
     onConfigureRepeater: () -> Unit,
     onConfigureTemporaryHotspot: (() -> Unit)?,
     onConfigureAp: () -> Unit,
@@ -119,9 +126,6 @@ internal fun TetheringScreen(
     val inspectionMode = LocalInspectionMode.current
     val linkStyles = rememberNetworkAddressLinkStyles()
     val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
-    val managedIfaces by (tetheringBinder?.managedIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
-    val inactiveIfaces by (tetheringBinder?.inactiveIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
-    val monitoredIfaces by (tetheringBinder?.monitoredIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
     val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
     val repeaterStatus by (repeaterBinder?.status)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
     val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
@@ -135,14 +139,17 @@ internal fun TetheringScreen(
     val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
     val manageOffloadEnabled = if (inspectionMode) false else remember(manageBarVersion) { ManageBar.offloadEnabled }
-    val ifaceLookup = remember(tetherStates, managedIfaces, inactiveIfaces, monitoredIfaces, localOnlyIface, repeaterGroup) {
+    val ifaceLookup = remember(tetherStates, tetheringServiceState, localOnlyIface, repeaterGroup) {
         networkInterfaceLookup()
     }
-    val monitored = monitoredIfaces.toSet()
-    val managed = managedIfaces.toSet()
-    val inactive = inactiveIfaces.toSet()
+    val monitored = tetheringServiceState.monitoredIfaces
+    val managed = tetheringServiceState.managedIfaces
+    val inactive = tetheringServiceState.inactiveIfaces
     val tetheredTypes = remember(tetherStates, tetherTypeVersion) {
         tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
+    }
+    val interfaceIfaces = remember(tetherStates, monitored) {
+        (tetherStates.tethered + monitored).toSortedSet().toList()
     }
     val wifiBaseError = tetherError(tetherStates, TetherType.WIFI)
     val wifiSummary by if (inspectionMode) {
@@ -223,101 +230,105 @@ internal fun TetheringScreen(
 
     SettingsList {
         item {
-            PreferenceGroup {
-                if (showRepeater) {
-                    val active = repeaterStatus == RepeaterService.Status.ACTIVE
-                    val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
-                    val toggleRepeater: () -> Unit = {
-                        when (repeaterStatus) {
-                            RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
-                                Manifest.permission.NEARBY_WIFI_DEVICES
-                            } else Manifest.permission.ACCESS_FINE_LOCATION)
-                            RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
-                            else -> { }
+            key(interfaceIfaces, monitored, managed, inactive) {
+                PreferenceGroup {
+                    if (showRepeater) {
+                        val active = repeaterStatus == RepeaterService.Status.ACTIVE
+                        val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
+                        val toggleRepeater: () -> Unit = {
+                            when (repeaterStatus) {
+                                RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
+                                    Manifest.permission.NEARBY_WIFI_DEVICES
+                                } else Manifest.permission.ACCESS_FINE_LOCATION)
+                                RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
+                                else -> { }
+                            }
+                        }
+                        row {
+                            TetheringRow(
+                                icon = R.drawable.ic_action_settings_input_antenna,
+                                title = repeaterTitle(repeaterGroup?.frequency),
+                                summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles),
+                                checked = repeaterStatus == RepeaterService.Status.STARTING || active,
+                                enabled = true,
+                                switchEnabled = switchEnabled,
+                                onClick = onConfigureRepeater,
+                                onCheckedChange = toggleRepeater,
+                            )
+                        }
+                        if ((repeaterStatus == RepeaterService.Status.STARTING ||
+                                repeaterStatus == RepeaterService.Status.ACTIVE) &&
+                            WifiP2pManagerHelper.startWps != null) {
+                            row {
+                                PreferenceRow(
+                                    modifier = Modifier.padding(start = 40.dp),
+                                    icon = R.drawable.ic_action_wifi_protected_setup,
+                                    title = stringResource(R.string.repeater_wps),
+                                    onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
+                                )
+                            }
                         }
                     }
                     row {
+                        val toggleLocalOnly: () -> Unit = {
+                            if (localOnlyIface == null) {
+                                startLocalOnly(localOnlyHotspotPermission)
+                            } else localOnlyBinder?.stop()
+                        }
                         TetheringRow(
-                            icon = R.drawable.ic_action_settings_input_antenna,
-                            title = repeaterTitle(repeaterGroup?.frequency),
-                            summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles),
-                            checked = repeaterStatus == RepeaterService.Status.STARTING || active,
+                            icon = R.drawable.ic_action_perm_scan_wifi,
+                            title = stringResource(R.string.tethering_temp_hotspot),
+                            summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
+                            checked = localOnlyIface != null,
                             enabled = true,
-                            switchEnabled = switchEnabled,
-                            onClick = onConfigureRepeater,
-                            onCheckedChange = toggleRepeater,
+                            onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
+                            onCheckedChange = onConfigureTemporaryHotspot?.let { { toggleLocalOnly() } },
                         )
                     }
-                    if ((repeaterStatus == RepeaterService.Status.STARTING ||
-                            repeaterStatus == RepeaterService.Status.ACTIVE) &&
-                        WifiP2pManagerHelper.startWps != null) {
-                        row {
-                            PreferenceRow(
-                                modifier = Modifier.padding(start = 40.dp),
-                                icon = R.drawable.ic_action_wifi_protected_setup,
-                                title = stringResource(R.string.repeater_wps),
-                                onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
+                    row {
+                        TetheringRow(
+                            icon = R.drawable.ic_content_push_pin,
+                            title = stringResource(R.string.tethering_static_ip),
+                            summary = buildAnnotatedString {
+                                for ((address, prefixLength) in staticIpAddresses) {
+                                    if (length > 0) append('\n')
+                                    appendIpAddress(address, linkStyles)
+                                    if (prefixLength.toInt() != address.address.size * 8) append("/$prefixLength")
+                                }
+                            },
+                            checked = staticIpActive,
+                            enabled = true,
+                            switchEnabled = !staticIpApplying,
+                            onClick = {
+                                staticIpDraft = StaticIpSetter.ips
+                            },
+                            onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
+                        )
+                    }
+                    for (iface in interfaceIfaces) {
+                        row(key = iface) {
+                            val active = managed.contains(iface)
+                            val title = if (monitored.contains(iface)) {
+                                stringResource(R.string.tethering_state_monitored, iface)
+                            } else iface
+                            TetheringRow(
+                                icon = TetherType.ofInterface(iface).icon,
+                                title = title,
+                                summary = networkInterfaceAddressesText(
+                                    ifaceLookup[iface],
+                                    linkStyles,
+                                    macOnly = inactive.contains(iface),
+                                ),
+                                checked = active,
+                                enabled = true,
+                                onClick = {
+                                    if (active) context.startService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
+                                    else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
+                                },
                             )
                         }
-                    }
-                }
-                row {
-                    val toggleLocalOnly: () -> Unit = {
-                        if (localOnlyIface == null) startLocalOnly(localOnlyHotspotPermission) else localOnlyBinder?.stop()
-                    }
-                    TetheringRow(
-                        icon = R.drawable.ic_action_perm_scan_wifi,
-                        title = stringResource(R.string.tethering_temp_hotspot),
-                        summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
-                        checked = localOnlyIface != null,
-                        enabled = true,
-                        onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
-                        onCheckedChange = onConfigureTemporaryHotspot?.let { { toggleLocalOnly() } },
-                    )
-                }
-                row {
-                    TetheringRow(
-                        icon = R.drawable.ic_content_push_pin,
-                        title = stringResource(R.string.tethering_static_ip),
-                        summary = buildAnnotatedString {
-                            for ((address, prefixLength) in staticIpAddresses) {
-                                if (length > 0) append('\n')
-                                appendIpAddress(address, linkStyles)
-                                if (prefixLength.toInt() != address.address.size * 8) append("/$prefixLength")
-                            }
-                        },
-                        checked = staticIpActive,
-                        enabled = true,
-                        switchEnabled = !staticIpApplying,
-                        onClick = {
-                            staticIpDraft = StaticIpSetter.ips
-                        },
-                        onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
-                    )
-                }
-                for (iface in (tetherStates.tethered + monitored).toSortedSet()) {
-                    row(key = iface) {
-                        val active = managed.contains(iface)
-                        val title = if (monitored.contains(iface)) {
-                            stringResource(R.string.tethering_state_monitored, iface)
-                        } else iface
-                        TetheringRow(
-                            icon = TetherType.ofInterface(iface).icon,
-                            title = title,
-                            summary = networkInterfaceAddressesText(
-                                ifaceLookup[iface],
-                                linkStyles,
-                                macOnly = inactive.contains(iface),
-                            ),
-                            checked = active,
-                            enabled = true,
-                            onClick = {
-                                if (active) context.startService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
-                                else context.startForegroundService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
-                            },
-                        )
                     }
                 }
             }
@@ -617,8 +628,8 @@ private fun TetheringPreviewContent() {
             snackbarHostState = remember { SnackbarHostState() },
             repeaterBinder = null,
             localOnlyBinder = null,
-            tetheringBinder = null,
             tetherStates = TetherStates(),
+            tetheringServiceState = TetheringServiceState(),
             onConfigureRepeater = {},
             onConfigureTemporaryHotspot = null,
             onConfigureAp = {},
@@ -668,41 +679,6 @@ private fun tetheringCallback(
         GlobalScope.launch(Dispatchers.Main.immediate) {
             Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
             ManageBar.start(context::startActivity)
-        }
-    }
-}
-
-@Composable
-internal fun rememberTetherStates(): State<TetherStates> {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    return produceState(TetherStates(), lifecycleOwner) {
-        val callback = object : TetherStates.Callback {
-            override fun onTetherStatesChanged(states: TetherStates) {
-                value = states
-            }
-        }
-        var registered = false
-        fun register() {
-            if (!registered) {
-                TetherStates.registerCallback(callback)
-                registered = true
-            }
-        }
-        fun unregister() {
-            if (registered) {
-                TetherStates.unregisterCallback(callback)
-                registered = false
-            }
-        }
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) = register()
-            override fun onStop(owner: LifecycleOwner) = unregister()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
-        awaitDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            unregister()
         }
     }
 }
@@ -894,7 +870,7 @@ private fun wifiSummary(
     return if (summary.text.isEmpty()) null else summary
 }
 
-private fun ScatterSet<String>?.toSet(): Set<String> = buildSet {
+internal fun ScatterSet<String>?.toSet(): Set<String> = buildSet {
     this@toSet?.forEach { add(it) }
 }
 

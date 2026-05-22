@@ -93,7 +93,7 @@ internal fun PreferenceGroup(
     title: String? = null,
     content: @Composable PreferenceGroupScope.() -> Unit,
 ) {
-    val scope = remember { PreferenceGroupScope() }
+    val scope = PreferenceGroupScope()
     ComposeSettingsGroup(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),

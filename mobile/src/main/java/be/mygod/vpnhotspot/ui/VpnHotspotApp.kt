@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -52,7 +53,6 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.client.ClientViewModel
-import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationScreen
@@ -64,6 +64,7 @@ import be.mygod.vpnhotspot.ui.apconfiguration.applyRepeaterApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.applySystemApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadRepeaterApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadSystemApConfiguration
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 
@@ -138,15 +139,40 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val tetheringBinder by if (tetheringDestinationVisible) {
         rememberServiceBinder<TetheringService.Binder>(TetheringService::class.java)
     } else rememberNullState()
-    val tetherStates by if (tetheringDestinationVisible) {
-        rememberTetherStates()
-    } else remember { mutableStateOf(TetherStates()) }
-    val monitoredIfaces by (tetheringBinder?.monitoredIfaces)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
+    val tetherStates by clientViewModel.tetherStates.collectAsStateWithLifecycle()
+    val tetheringServiceState by produceState(TetheringServiceState(), tetheringBinder) {
+        val binder = tetheringBinder
+        if (binder == null) {
+            value = TetheringServiceState()
+            return@produceState
+        }
+        value = TetheringServiceState(
+            managedIfaces = binder.managedIfaces.value.toSet(),
+            inactiveIfaces = binder.inactiveIfaces.value.toSet(),
+            monitoredIfaces = binder.monitoredIfaces.value.toSet(),
+        )
+        coroutineScope {
+            launch {
+                binder.managedIfaces.collect {
+                    value = value.copy(managedIfaces = it.toSet())
+                }
+            }
+            launch {
+                binder.inactiveIfaces.collect {
+                    value = value.copy(inactiveIfaces = it.toSet())
+                }
+            }
+            launch {
+                binder.monitoredIfaces.collect {
+                    value = value.copy(monitoredIfaces = it.toSet())
+                }
+            }
+        }
+    }
     val temporaryHotspotConfiguration by (localOnlyBinder?.configuration)?.collectAsStateWithLifecycle(null)
         ?: rememberNullState()
-    val monitorableIfaces = remember(tetherStates, monitoredIfaces) {
-        val monitored = buildSet { monitoredIfaces?.forEach { add(it) } }
-        (tetherStates.tethered - monitored).sorted()
+    val monitorableIfaces = remember(tetherStates, tetheringServiceState.monitoredIfaces) {
+        (tetherStates.tethered - tetheringServiceState.monitoredIfaces).sorted()
     }
     val apSession = remember(savedApSession, repeaterBinder, snackbarHostState) {
         savedApSession?.toSession(repeaterBinder, apSessionHolder.repeaterMaster, snackbarHostState)
@@ -252,8 +278,8 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
                     snackbarHostState,
                     repeaterBinder,
                     localOnlyBinder,
-                    tetheringBinder,
                     tetherStates,
+                    tetheringServiceState,
                     onConfigureRepeater = {
                         if (!apConfigurationLoading) {
                             apConfigurationLoading = true

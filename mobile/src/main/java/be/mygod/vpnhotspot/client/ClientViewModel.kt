@@ -36,6 +36,7 @@ import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
@@ -56,8 +57,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
 
+    private val tetherStatesState = MutableStateFlow(TetherStates())
+    val tetherStates = tetherStatesState.asStateFlow()
     private var tetheredInterfaces = emptySet<String>()
     override fun onTetherStatesChanged(states: TetherStates) {
+        tetherStatesState.value = states
         tetheredInterfaces = states.tethered + states.localOnly
         populateClients()
     }
