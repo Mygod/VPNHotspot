@@ -1,0 +1,9 @@
+<resources>
+
+    <style name="AppTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar">@bool/is_day</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+</resources>
