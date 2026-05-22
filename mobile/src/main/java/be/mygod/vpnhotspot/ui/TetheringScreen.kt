@@ -226,12 +226,14 @@ internal fun TetheringScreen(
     }
     val p2p = if (inspectionMode) null else Services.p2p
     val showRepeater = inspectionMode || p2p != null
+    val showRepeaterWps = (repeaterStatus == RepeaterService.Status.STARTING ||
+            repeaterStatus == RepeaterService.Status.ACTIVE) && WifiP2pManagerHelper.startWps != null
     val showBluetooth = inspectionMode || (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
             bluetoothTethering != null)
 
     SettingsList {
         item {
-            key(interfaceIfaces, monitored, managed, inactive) {
+            key(interfaceIfaces, monitored, managed, inactive, showRepeaterWps) {
                 PreferenceGroup {
                     if (showRepeater) {
                         val active = repeaterStatus == RepeaterService.Status.ACTIVE
@@ -248,8 +250,8 @@ internal fun TetheringScreen(
                         row {
                             TetheringRow(
                                 icon = R.drawable.ic_action_settings_input_antenna,
-                                title = repeaterTitle(repeaterGroup?.frequency),
-                                summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles),
+                                title = stringResource(R.string.title_repeater),
+                                summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
                                 checked = repeaterStatus == RepeaterService.Status.STARTING || active,
                                 enabled = true,
                                 switchEnabled = switchEnabled,
@@ -257,12 +259,10 @@ internal fun TetheringScreen(
                                 onCheckedChange = toggleRepeater,
                             )
                         }
-                        if ((repeaterStatus == RepeaterService.Status.STARTING ||
-                                repeaterStatus == RepeaterService.Status.ACTIVE) &&
-                            WifiP2pManagerHelper.startWps != null) {
-                            row {
+                        if (showRepeaterWps) {
+                            row("repeater_wps") {
                                 PreferenceRow(
-                                    modifier = Modifier.padding(start = 40.dp),
+                                    modifier = Modifier.padding(start = 48.dp),
                                     icon = R.drawable.ic_action_wifi_protected_setup,
                                     title = stringResource(R.string.repeater_wps),
                                     onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
@@ -945,15 +945,8 @@ private fun tetherError(context: Context, states: TetherStates, tetherType: Teth
     })
 }
 
-@Composable
-private fun repeaterTitle(frequency: Int?): String {
-    return if (frequency != null && frequency != 0) {
-        stringResource(R.string.repeater_channel, frequency, SoftApConfigurationCompat.frequencyToChannel(frequency))
-    } else stringResource(R.string.title_repeater)
-}
-
-@Composable
 private fun repeaterSummary(
+    context: Context,
     group: WifiP2pGroup?,
     ifaceLookup: Map<String, NetworkInterface>,
     linkStyles: TextLinkStyles,
@@ -970,7 +963,17 @@ private fun repeaterSummary(
             } else null,
         )
     } ?: AnnotatedString("")
-    return addresses
+    val frequency = group?.frequency
+    return if (frequency == null || frequency == 0) addresses else buildAnnotatedString {
+        append(context.getString(
+            R.string.repeater_frequency,
+            NumberFormat.getIntegerInstance(context.resources.configuration.locales[0]).format(frequency.toLong()),
+        ))
+        if (addresses.text.isNotEmpty()) {
+            append('\n')
+            append(addresses)
+        }
+    }
 }
 
 private val wifiP2pGroupInterfaceAddress by lazy { WifiP2pGroup::class.java.getDeclaredField("interfaceAddress") }

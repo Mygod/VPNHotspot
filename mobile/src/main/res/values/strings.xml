@@ -25,7 +25,7 @@
     <string name="action_menu_overflow_description">More options</string>
     <string name="share_with">Share with</string>
 
-    <string name="repeater_channel">Repeater (%1$d MHz, channel %2$d)</string>
+    <string name="repeater_frequency">%s MHz</string>
     <string name="repeater_features">"Supported features: "</string>
     <string name="repeater_feature_set_vendor_elements">Set vendor elements</string>
     <string name="repeater_feature_group_client_removal">Remove client</string>

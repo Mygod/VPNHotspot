@@ -22,7 +22,6 @@
     <string name="title_clients">Clientes</string>
     <string name="title_settings">Ajustes</string>
 
-    <string name="repeater_channel">Repetidor (%1$d MHz, canal %2$d)</string>
     <string name="repeater_wps">WPS (inseguro)</string>
     <string name="repeater_wps_dialog_title">Introducir PIN</string>
     <string name="repeater_wps_dialog_pbc">Botón de encendido</string>

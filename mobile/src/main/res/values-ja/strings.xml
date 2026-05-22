@@ -20,7 +20,6 @@
     <string name="title_tethering">テザリング</string>
     <string name="title_clients">クライアント</string>
     <string name="title_settings">設定</string>
-    <string name="repeater_channel">レピーター (%1$d MHz - チャンネル %2$d)</string>
     <string name="repeater_wps">WPS (安全ではありません)</string>
     <string name="repeater_wps_dialog_title">PIN を入力してください</string>
     <string name="repeater_wps_dialog_pbc">WPS ボタンを押す</string>

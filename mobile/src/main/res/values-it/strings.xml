@@ -13,7 +13,6 @@
     <string name="title_clients">Client</string>
     <string name="title_settings">Impostazioni</string>
 
-    <string name="repeater_channel">Ripetitore (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (non sicuro)</string>
     <string name="repeater_wps_dialog_title">Inserisci PIN</string>
     <string name="repeater_wps_dialog_pbc">Premi il bottone</string>
