@@ -31,6 +31,8 @@ import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
+import be.mygod.vpnhotspot.ui.softApClientBlockReasonLabel
+import be.mygod.vpnhotspot.ui.softApClientDisconnectReasonLabel
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
@@ -240,7 +242,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         val macAddress = client.macAddress
         var name = macAddress.toString()
         client.apInstanceIdentifier?.let { name += "%$it" }
-        val reason = WifiApManager.clientBlockLookup(blockedReason, true)
+        val reason = softApClientBlockReasonLabel(app, blockedReason)
         Timber.i("$name blocked from connecting: $reason ($blockedReason)")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
             action(R.string.tethering_manage_wifi_copy_mac) {
@@ -255,7 +257,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         val macAddress = client.macAddress
         var name = macAddress.toString()
         client.apInstanceIdentifier?.let { name += "%$it" }
-        val reason = WifiApManager.deauthenticationReasonLookup(client.disconnectReason, true)
+        val reason = softApClientDisconnectReasonLabel(app, client.disconnectReason)
         Timber.i("$client disconnected: $reason")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_disconnected, name, reason)).apply {
             action(R.string.tethering_manage_wifi_copy_mac) {

@@ -42,6 +42,8 @@ import be.mygod.vpnhotspot.ui.PreferenceGroup
 import be.mygod.vpnhotspot.ui.SettingsList
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.showLongSnackbar
+import be.mygod.vpnhotspot.ui.softApBandLabel
+import be.mygod.vpnhotspot.ui.softApFeatureLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -543,7 +545,7 @@ private fun softApSupportedFeatures(context: Context, capability: SoftApCapabili
         }
         while (features != 0L) {
             val bit = features.takeLowestOneBit()
-            yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
+            yield(softApFeatureLabel(context, bit))
             features = features and bit.inv()
         }
     }.joinToString().ifEmpty { context.getString(R.string.tethering_manage_wifi_no_features) }
@@ -555,7 +557,7 @@ private fun softApSupportedChannels(context: Context, capability: SoftApCapabili
         for (band in SoftApConfigurationCompat.BAND_TYPES) {
             val list = capability.getSupportedChannelList(band)
             if (list.isNotEmpty()) {
-                add("${SoftApConfigurationCompat.bandLookup(band, true)} (${RangeInput.toString(list)})")
+                add("${softApBandLabel(context, band)} (${RangeInput.toString(list)})")
             }
         }
     }

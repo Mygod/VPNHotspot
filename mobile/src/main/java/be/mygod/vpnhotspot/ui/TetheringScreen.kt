@@ -16,7 +16,6 @@ import android.os.Build
 import android.os.IBinder
 import android.os.Parcelable
 import android.provider.Settings
-import android.text.format.DateUtils
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -90,6 +89,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -152,7 +152,7 @@ internal fun TetheringScreen(
     val interfaceIfaces = remember(tetherStates, monitored) {
         (tetherStates.tethered + monitored).toSortedSet().toList()
     }
-    val wifiBaseError = tetherError(tetherStates, TetherType.WIFI)
+    val wifiBaseError = tetherError(context, tetherStates, TetherType.WIFI)
     val wifiSummary by if (inspectionMode) {
         remember(wifiBaseError) { mutableStateOf(wifiBaseError) }
     } else rememberWifiSummary(wifiBaseError, linkStyles)
@@ -363,7 +363,7 @@ internal fun TetheringScreen(
                         icon = R.drawable.ic_device_usb,
                         title = R.string.tethering_manage_usb,
                         checked = tetheredTypes.contains(TetherType.USB) || tetheredTypes.contains(TetherType.NCM),
-                        summary = tetherError(tetherStates, TetherType.USB),
+                        summary = tetherError(context, tetherStates, TetherType.USB),
                         tetheringType = TetheringManagerCompat.TETHERING_USB,
                         snackbarHostState = snackbarHostState,
                     )
@@ -378,7 +378,7 @@ internal fun TetheringScreen(
                                 if (active == null) bluetoothTethering?.activeFailureCause?.readableMessage?.let {
                                     append(it)
                                 }
-                                tetherError(tetherStates, TetherType.BLUETOOTH)?.let {
+                                tetherError(context, tetherStates, TetherType.BLUETOOTH)?.let {
                                     if (length > 0) append('\n')
                                     append(it)
                                 }
@@ -395,7 +395,7 @@ internal fun TetheringScreen(
                             icon = TetherType.ETHERNET.icon,
                             title = R.string.tethering_manage_ethernet,
                             checked = tetheredTypes.contains(TetherType.ETHERNET),
-                            summary = tetherError(tetherStates, TetherType.ETHERNET),
+                            summary = tetherError(context, tetherStates, TetherType.ETHERNET),
                             tetheringType = TetheringManagerCompat.TETHERING_ETHERNET,
                             snackbarHostState = snackbarHostState,
                         )
@@ -657,7 +657,7 @@ private fun tetheringCallback(
                     ManageBar.start(context::startActivity)
                 }
             } else GlobalScope.launch(Dispatchers.Main.immediate) {
-                snackbarHostState.showLongSnackbar("$tetherType: ${TetheringManagerCompat.tetherErrorLookup(it)}")
+                snackbarHostState.showLongSnackbar("$tetherType: ${tetherErrorLabel(context, it)}")
             }
         }
         onChanged()
@@ -670,7 +670,7 @@ private fun tetheringCallback(
                 ManageBar.start(context::startActivity)
             }
         } else GlobalScope.launch(Dispatchers.Main.immediate) {
-            snackbarHostState.showLongSnackbar("$tetherType: ${TetheringManagerCompat.tetherErrorLookup(error)}")
+            snackbarHostState.showLongSnackbar("$tetherType: ${tetherErrorLabel(context, error)}")
         }
         onChanged()
     }
@@ -824,13 +824,13 @@ private fun wifiSummary(
             if (length > 0) append('\n')
             content()
         }
-        failureReason?.let { line { append(WifiApManager.failureReasonLookup(it)) } }
+        failureReason?.let { line { append(softApStartFailureLabel(context, it)) } }
         baseError?.takeIf { it.text.isNotEmpty() }?.let { line { append(it) } }
         for (parcel in info) line {
             val softApInfo = SoftApInfo(parcel)
             val frequency = softApInfo.frequency
             val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
-            val bandwidth = SoftApInfo.channelWidthLookup(softApInfo.bandwidth, true)
+            val bandwidth = channelBandwidthLabel(context, softApInfo.bandwidth)
             if (Build.VERSION.SDK_INT >= 31) {
                 val bssid = softApInfo.bssid?.toString()
                 val bssidAp = bssid?.let { softApInfo.apInstanceIdentifier?.let { id -> "$it%$id" } ?: it }
@@ -844,7 +844,7 @@ private fun wifiSummary(
                     bandwidth,
                     bssidAp,
                     integerFormat.format(softApInfo.wifiStandard.toLong()),
-                    DateUtils.formatElapsedTime(timeout / 1000),
+                    formatTimeoutMillis(context, timeout),
                 )
                 val bssidText = bssid
                 if (bssidText == null) {
@@ -931,11 +931,11 @@ private fun networkInterfaceAddressesText(
     }
 }
 
-private fun tetherError(states: TetherStates, tetherType: TetherType): AnnotatedString? {
+private fun tetherError(context: Context, states: TetherStates, tetherType: TetherType): AnnotatedString? {
     val interested = states.errored.keys.filter { TetherType.ofInterface(it).isA(tetherType) }
     return if (interested.isEmpty()) null else AnnotatedString(interested.joinToString("\n") { iface ->
         "$iface: " + try {
-            TetheringManagerCompat.tetherErrorLookup(if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+            tetherErrorLabel(context, if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                 TetheringManagerCompat.getLastTetherError(iface)
             } else states.errored[iface] ?: 0)
         } catch (e: InvocationTargetException) {

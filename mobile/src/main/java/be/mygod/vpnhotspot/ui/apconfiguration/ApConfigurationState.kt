@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
+import be.mygod.vpnhotspot.ui.channelBandwidthLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
