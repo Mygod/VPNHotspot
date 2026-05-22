@@ -136,7 +136,7 @@ internal fun ApConfigurationScreen(
                         onSelect = { state.securityType = it.value },
                     )
                 }
-                row { PasswordApRow(state) }
+                if (state.passwordEnabled) row("password") { PasswordApRow(state) }
                 if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
                     row {
                         TextSwitchApRow(

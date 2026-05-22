@@ -34,8 +34,8 @@ import be.mygod.vpnhotspot.ui.annotatedStringResource
 
 @Composable
 internal fun PasswordApRow(state: ApConfigurationState) {
+    if (!state.passwordEnabled) return
     val context = LocalContext.current
-    val enabled = state.passwordEnabled
     val maxLength = state.passwordMaxLength
     var editing by rememberSaveable(state.password) { mutableStateOf(false) }
     val draft = rememberSaveable(state.password, editing, saver = TextFieldState.Saver) {
@@ -47,9 +47,8 @@ internal fun PasswordApRow(state: ApConfigurationState) {
     PreferenceRow(
         icon = R.drawable.ic_device_wifi_lock,
         title = stringResource(R.string.wifi_password),
-        summary = if (!enabled || state.password.isEmpty()) "" else "\u2022".repeat(8),
-        enabled = enabled,
-        onClick = if (enabled) ({ editing = true }) else null,
+        summary = if (state.password.isEmpty()) "" else "\u2022".repeat(8),
+        onClick = { editing = true },
     )
     if (editing) AlertDialog(
         onDismissRequest = { editing = false },
