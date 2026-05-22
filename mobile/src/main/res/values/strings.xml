@@ -87,6 +87,10 @@
         <item quantity="one">%1$s/%2$s client connected\nSupported features: %3$s</item>
         <item quantity="other">%1$s/%2$s clients connected\nSupported features: %3$s</item>
     </plurals>
+    <plurals name="tethering_manage_wifi_client_limit">
+        <item quantity="one">%1$s/%2$s client connected</item>
+        <item quantity="other">%1$s/%2$s clients connected</item>
+    </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="one">%1$s client connected</item>
         <item quantity="other">%1$s clients connected</item>

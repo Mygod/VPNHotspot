@@ -84,6 +84,7 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -746,6 +747,7 @@ private fun rememberWifiSummary(
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
         var wifiInfo = emptyList<Parcelable>()
+        var wifiCapability: Parcelable? = null
         fun update() {
             value = wifiSummary(
                 context,
@@ -753,6 +755,7 @@ private fun rememberWifiSummary(
                 wifiFailureReason,
                 wifiNumClients,
                 wifiInfo,
+                wifiCapability,
                 baseError,
                 linkStyles,
             )
@@ -771,6 +774,11 @@ private fun rememberWifiSummary(
 
             override fun onInfoChanged(info: List<Parcelable>) {
                 wifiInfo = info
+                update()
+            }
+
+            override fun onCapabilityChanged(capability: Parcelable) {
+                wifiCapability = capability
                 update()
             }
         }
@@ -806,6 +814,7 @@ private fun wifiSummary(
     failureReason: Int?,
     numClients: Int?,
     info: List<Parcelable>,
+    capability: Parcelable?,
     baseError: AnnotatedString?,
     linkStyles: TextLinkStyles,
 ): AnnotatedString? {
@@ -859,7 +868,15 @@ private fun wifiSummary(
                 appendMacAddress(it.toString(), linkStyles)
             }
         }
-        numClients?.let {
+        capability?.takeIf { Build.VERSION.SDK_INT >= 30 }?.let { parcel ->
+            val capability = SoftApCapability(parcel)
+            line { append(context.resources.getQuantityString(
+                R.plurals.tethering_manage_wifi_client_limit,
+                numClients ?: 0,
+                numClients?.let { integerFormat.format(it.toLong()) } ?: "?",
+                integerFormat.format(capability.maxSupportedClients.toLong()),
+            )) }
+        } ?: numClients?.let {
             line { append(context.resources.getQuantityString(
                 R.plurals.tethering_manage_wifi_clients,
                 it,
