@@ -156,33 +156,31 @@ fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) 
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
-        } else item {
-            PreferenceGroup {
-                for (client in clients) {
-                    row(key = client.iface to client.mac) {
-                        ClientRow(
-                            client = client,
-                            rate = rates[client.iface to client.mac],
-                            snackbarHostState = snackbarHostState,
-                            tetherTypeRevision = tetherTypeRevision,
-                            onNickname = { nickname ->
-                                GlobalScope.launch(Dispatchers.Main.immediate) {
-                                    updateNickname(client.mac, nickname, snackbarHostState)
-                                }
-                            },
-                            onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
-                            onToggleBlocked = {
-                                val wasWorking = TrafficRecorder.isWorking(client.mac)
-                                val record = client.obtainRecord().apply { blocked = !blocked }
-                                GlobalScope.launch(Dispatchers.Unconfined) {
-                                    AppDatabase.instance.clientRecordDao.update(record)
-                                }
-                                if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
-                                    snackbarHostState.showLongSnackbar(blockServiceInactive)
-                                }
-                            },
-                        )
-                    }
+        } else preferenceGroup(key = "clients") {
+            for (client in clients) {
+                row(key = client.iface to client.mac) {
+                    ClientRow(
+                        client = client,
+                        rate = rates[client.iface to client.mac],
+                        snackbarHostState = snackbarHostState,
+                        tetherTypeRevision = tetherTypeRevision,
+                        onNickname = { nickname ->
+                            GlobalScope.launch(Dispatchers.Main.immediate) {
+                                updateNickname(client.mac, nickname, snackbarHostState)
+                            }
+                        },
+                        onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
+                        onToggleBlocked = {
+                            val wasWorking = TrafficRecorder.isWorking(client.mac)
+                            val record = client.obtainRecord().apply { blocked = !blocked }
+                            GlobalScope.launch(Dispatchers.Unconfined) {
+                                AppDatabase.instance.clientRecordDao.update(record)
+                            }
+                            if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
+                                snackbarHostState.showLongSnackbar(blockServiceInactive)
+                            }
+                        },
+                    )
                 }
             }
         }
@@ -606,42 +604,40 @@ private fun ClientsConnectedPreviewContent() {
     VpnHotspotPreviewSurface {
         val clientsContentDescription = stringResource(R.string.title_clients)
         SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
-            item {
-                PreferenceGroup {
-                    row {
-                        ClientRowLayout(
-                            icon = R.drawable.ic_device_network_wifi,
-                            title = AnnotatedString("Pixel 9"),
-                            description = AnnotatedString(
-                                "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
-                            ),
-                            rateText = "${'\u25B2'} 128 KB/s\t\t${'\u25BC'} 2.1 MB/s",
-                            blocked = false,
-                            onClick = {},
-                        )
-                    }
-                    row {
-                        ClientRowLayout(
-                            icon = R.drawable.ic_device_usb,
-                            title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
-                            description = AnnotatedString("172.20.10.4 (reachable)"),
-                            rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
-                            blocked = true,
-                            onClick = {},
-                        )
-                    }
-                    row {
-                        ClientRowLayout(
-                            icon = R.drawable.ic_content_inbox,
-                            title = AnnotatedString("Work laptop"),
-                            description = AnnotatedString(
-                                "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
-                            ),
-                            rateText = null,
-                            blocked = false,
-                            onClick = {},
-                        )
-                    }
+            preferenceGroup(key = "clients_preview") {
+                row("pixel") {
+                    ClientRowLayout(
+                        icon = R.drawable.ic_device_network_wifi,
+                        title = AnnotatedString("Pixel 9"),
+                        description = AnnotatedString(
+                            "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
+                        ),
+                        rateText = "${'\u25B2'} 128 KB/s\t\t${'\u25BC'} 2.1 MB/s",
+                        blocked = false,
+                        onClick = {},
+                    )
+                }
+                row("usb") {
+                    ClientRowLayout(
+                        icon = R.drawable.ic_device_usb,
+                        title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
+                        description = AnnotatedString("172.20.10.4 (reachable)"),
+                        rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
+                        blocked = true,
+                        onClick = {},
+                    )
+                }
+                row("laptop") {
+                    ClientRowLayout(
+                        icon = R.drawable.ic_content_inbox,
+                        title = AnnotatedString("Work laptop"),
+                        description = AnnotatedString(
+                            "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
+                        ),
+                        rateText = null,
+                        blocked = false,
+                        onClick = {},
+                    )
                 }
             }
         }

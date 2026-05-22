@@ -161,237 +161,227 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val showRepeaterSafeMode = inspectionMode || (Services.p2p != null && RepeaterService.safeModeConfigurable)
 
     SettingsList {
-        item {
-            PreferenceGroup {
-                row {
-                    PreferenceRow(
-                        icon = R.drawable.ic_action_settings_backup_restore,
-                        title = stringResource(R.string.settings_service_clean),
-                        summary = stringResource(R.string.settings_service_clean_summary),
-                        onClick = {
-                            if (!inspectionMode) GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() }
-                        },
-                    )
-                }
+        preferenceGroup(key = R.string.settings_service_clean) {
+            row(R.string.settings_service_clean) {
+                PreferenceRow(
+                    icon = R.drawable.ic_action_settings_backup_restore,
+                    title = stringResource(R.string.settings_service_clean),
+                    summary = stringResource(R.string.settings_service_clean_summary),
+                    onClick = {
+                        if (!inspectionMode) GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() }
+                    },
+                )
             }
         }
-        item {
-            PreferenceGroup(title = stringResource(R.string.settings_upstream)) {
+        preferenceGroup(title = R.string.settings_upstream) {
+            row(R.string.settings_service_upstream) {
                 val fallback = stringResource(R.string.settings_service_upstream_auto)
-                row {
-                    TextPreferenceRow(
-                        icon = R.drawable.ic_action_settings_ethernet,
-                        title = R.string.settings_service_upstream,
-                        value = primaryPreference.orEmpty(),
-                        summary = upstreamSummary(
-                            fallback = fallback,
-                            preference = primaryPreference,
-                            upstream = primaryUpstream,
-                        ),
-                        description = annotatedStringResource(R.string.settings_service_upstream_help),
-                        placeholder = fallback,
-                        suggestNetworkInterfaces = true,
-                        onValueChange = {
-                            if (!inspectionMode) app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) }
-                        },
-                    )
-                }
+                TextPreferenceRow(
+                    icon = R.drawable.ic_action_settings_ethernet,
+                    title = R.string.settings_service_upstream,
+                    value = primaryPreference.orEmpty(),
+                    summary = upstreamSummary(
+                        fallback = fallback,
+                        preference = primaryPreference,
+                        upstream = primaryUpstream,
+                    ),
+                    description = annotatedStringResource(R.string.settings_service_upstream_help),
+                    placeholder = fallback,
+                    suggestNetworkInterfaces = true,
+                    onValueChange = {
+                        if (!inspectionMode) app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) }
+                    },
+                )
+            }
+            row(R.string.settings_upstream_fallback) {
                 val fallbackLabel = stringResource(R.string.settings_upstream_fallback_auto)
-                row {
-                    TextPreferenceRow(
-                        icon = R.drawable.ic_action_settings_input_component,
-                        title = R.string.settings_upstream_fallback,
-                        value = fallbackPreference.orEmpty(),
-                        summary = upstreamSummary(
-                            fallback = fallbackLabel,
-                            preference = fallbackPreference,
-                            upstream = fallbackUpstream,
-                        ),
-                        description = annotatedStringResource(R.string.settings_upstream_fallback_help),
-                        placeholder = fallbackLabel,
-                        suggestNetworkInterfaces = true,
-                        onValueChange = {
-                            if (!inspectionMode) {
-                                app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) }
-                            }
-                        },
-                    )
-                }
+                TextPreferenceRow(
+                    icon = R.drawable.ic_action_settings_input_component,
+                    title = R.string.settings_upstream_fallback,
+                    value = fallbackPreference.orEmpty(),
+                    summary = upstreamSummary(
+                        fallback = fallbackLabel,
+                        preference = fallbackPreference,
+                        upstream = fallbackUpstream,
+                    ),
+                    description = annotatedStringResource(R.string.settings_upstream_fallback_help),
+                    placeholder = fallbackLabel,
+                    suggestNetworkInterfaces = true,
+                    onValueChange = {
+                        if (!inspectionMode) {
+                            app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) }
+                        }
+                    },
+                )
             }
         }
-        item {
-            PreferenceGroup(title = stringResource(R.string.settings_downstream)) {
-                row {
-                    ListPreferenceRow(
-                        icon = R.drawable.ic_social_people,
-                        title = R.string.settings_service_masquerade,
-                        entries = stringArrayResource(R.array.settings_service_masquerade),
-                        entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
-                        values = stringArrayResource(R.array.settings_service_masquerade_values),
-                        selectedValue = masqueradeMode,
-                        onValueChange = {
-                            masqueradeMode = it
-                            if (!inspectionMode) RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
-                        },
-                    )
-                }
-                row {
-                    ListPreferenceRow(
-                        icon = R.drawable.ic_image_looks_6,
-                        title = R.string.settings_service_ipv6_mode,
-                        entries = stringArrayResource(R.array.settings_service_ipv6_mode),
-                        entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
-                        values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
-                        selectedValue = ipv6Mode,
-                        onValueChange = {
-                            ipv6Mode = it
-                            if (!inspectionMode) RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
-                        },
-                    )
-                }
-                row {
-                    SwitchPreferenceRow(
-                        icon = R.drawable.ic_device_battery_charging_full,
-                        title = R.string.settings_system_tether_offload,
-                        summary = stringResource(R.string.settings_system_tether_offload_summary),
-                        checked = offloadEnabled,
-                        enabled = !offloadChanging,
-                        onCheckedChange = { enabled ->
-                            if (inspectionMode) {
-                                offloadEnabled = enabled
-                                return@SwitchPreferenceRow
+        preferenceGroup(title = R.string.settings_downstream) {
+            row(R.string.settings_service_masquerade) {
+                ListPreferenceRow(
+                    icon = R.drawable.ic_social_people,
+                    title = R.string.settings_service_masquerade,
+                    entries = stringArrayResource(R.array.settings_service_masquerade),
+                    entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
+                    values = stringArrayResource(R.array.settings_service_masquerade_values),
+                    selectedValue = masqueradeMode,
+                    onValueChange = {
+                        masqueradeMode = it
+                        if (!inspectionMode) RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
+                    },
+                )
+            }
+            row(R.string.settings_service_ipv6_mode) {
+                ListPreferenceRow(
+                    icon = R.drawable.ic_image_looks_6,
+                    title = R.string.settings_service_ipv6_mode,
+                    entries = stringArrayResource(R.array.settings_service_ipv6_mode),
+                    entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
+                    values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
+                    selectedValue = ipv6Mode,
+                    onValueChange = {
+                        ipv6Mode = it
+                        if (!inspectionMode) RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
+                    },
+                )
+            }
+            row(R.string.settings_system_tether_offload) {
+                SwitchPreferenceRow(
+                    icon = R.drawable.ic_device_battery_charging_full,
+                    title = R.string.settings_system_tether_offload,
+                    summary = stringResource(R.string.settings_system_tether_offload_summary),
+                    checked = offloadEnabled,
+                    enabled = !offloadChanging,
+                    onCheckedChange = { enabled ->
+                        if (inspectionMode) {
+                            offloadEnabled = enabled
+                            return@SwitchPreferenceRow
+                        }
+                        if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
+                        scope.launch {
+                            offloadChanging = true
+                            try {
+                                TetherOffloadManager.setEnabled(enabled)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Timber.w(e)
+                                snackbarHostState.showLongSnackbar(e.readableMessage)
+                            } finally {
+                                offloadEnabled = TetherOffloadManager.enabled
+                                offloadChanging = false
                             }
-                            if (TetherOffloadManager.enabled == enabled) return@SwitchPreferenceRow
-                            scope.launch {
-                                offloadChanging = true
-                                try {
-                                    TetherOffloadManager.setEnabled(enabled)
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    Timber.w(e)
-                                    snackbarHostState.showLongSnackbar(e.readableMessage)
-                                } finally {
-                                    offloadEnabled = TetherOffloadManager.enabled
-                                    offloadChanging = false
-                                }
-                            }
-                        },
-                    )
-                }
+                        }
+                    },
+                )
             }
         }
-        item {
-            PreferenceGroup(title = stringResource(R.string.settings_misc)) {
-                row {
-                    ListPreferenceRow(
-                        icon = R.drawable.ic_device_wifi_lock,
-                        title = R.string.settings_service_wifi_lock,
-                        entries = stringArrayResource(R.array.settings_service_wifi_lock),
-                        entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
-                        values = stringArrayResource(R.array.settings_service_wifi_lock_values),
-                        selectedValue = wifiLockMode,
-                        onValueChange = {
-                            wifiLockMode = it
-                            if (!inspectionMode) WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
-                        },
-                    )
-                }
-                row {
-                    SwitchPreferenceRow(
-                        icon = R.drawable.ic_action_autorenew,
-                        title = R.string.settings_service_auto_start,
-                        summary = stringResource(R.string.settings_service_auto_start_summary),
-                        checked = autoStart,
-                        onCheckedChange = { enabled ->
-                            if (!inspectionMode) {
-                                app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
-                                scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
-                            }
-                        },
-                    )
-                }
-                if (showRepeaterSafeMode) row {
-                    SwitchPreferenceRow(
-                        icon = R.drawable.ic_alert_warning,
-                        title = R.string.settings_service_repeater_safe_mode,
-                        summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
-                        checked = repeaterSafeMode,
-                        onCheckedChange = {
-                            if (!inspectionMode) app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) }
-                        },
-                    )
-                }
-                if (Build.VERSION.SDK_INT >= 30) row {
-                    SwitchPreferenceRow(
-                        icon = R.drawable.ic_content_file_copy,
-                        title = R.string.settings_service_temp_hotspot_use_system,
-                        summary = stringResource(if (Build.VERSION.SDK_INT >= 31) {
-                            R.string.settings_service_temp_hotspot_use_system_summary
-                        } else R.string.settings_service_temp_hotspot_use_system_summary_api30),
-                        checked = useSystemTempHotspot,
-                        onCheckedChange = {
-                            if (!inspectionMode) {
-                                app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) }
-                            }
-                        },
-                    )
-                }
+        preferenceGroup(title = R.string.settings_misc) {
+            row(R.string.settings_service_wifi_lock) {
+                ListPreferenceRow(
+                    icon = R.drawable.ic_device_wifi_lock,
+                    title = R.string.settings_service_wifi_lock,
+                    entries = stringArrayResource(R.array.settings_service_wifi_lock),
+                    entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
+                    values = stringArrayResource(R.array.settings_service_wifi_lock_values),
+                    selectedValue = wifiLockMode,
+                    onValueChange = {
+                        wifiLockMode = it
+                        if (!inspectionMode) WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
+                    },
+                )
+            }
+            row(R.string.settings_service_auto_start) {
+                SwitchPreferenceRow(
+                    icon = R.drawable.ic_action_autorenew,
+                    title = R.string.settings_service_auto_start,
+                    summary = stringResource(R.string.settings_service_auto_start_summary),
+                    checked = autoStart,
+                    onCheckedChange = { enabled ->
+                        if (!inspectionMode) {
+                            app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
+                            scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
+                        }
+                    },
+                )
+            }
+            if (showRepeaterSafeMode) row(R.string.settings_service_repeater_safe_mode) {
+                SwitchPreferenceRow(
+                    icon = R.drawable.ic_alert_warning,
+                    title = R.string.settings_service_repeater_safe_mode,
+                    summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
+                    checked = repeaterSafeMode,
+                    onCheckedChange = {
+                        if (!inspectionMode) app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) }
+                    },
+                )
+            }
+            if (Build.VERSION.SDK_INT >= 30) row(R.string.settings_service_temp_hotspot_use_system) {
+                SwitchPreferenceRow(
+                    icon = R.drawable.ic_content_file_copy,
+                    title = R.string.settings_service_temp_hotspot_use_system,
+                    summary = stringResource(if (Build.VERSION.SDK_INT >= 31) {
+                        R.string.settings_service_temp_hotspot_use_system_summary
+                    } else R.string.settings_service_temp_hotspot_use_system_summary_api30),
+                    checked = useSystemTempHotspot,
+                    onCheckedChange = {
+                        if (!inspectionMode) {
+                            app.pref.edit { putBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, it) }
+                        }
+                    },
+                )
             }
         }
-        item {
-            PreferenceGroup(title = stringResource(R.string.settings_help)) {
-                row {
-                    PreferenceRow(
-                        icon = R.drawable.ic_toggle_star,
-                        title = stringResource(R.string.settings_misc_source),
-                        summary = stringResource(R.string.settings_misc_source_summary),
-                        onClick = {
-                            if (!inspectionMode) {
-                                context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
+        preferenceGroup(title = R.string.settings_help) {
+            row(R.string.settings_misc_source) {
+                PreferenceRow(
+                    icon = R.drawable.ic_toggle_star,
+                    title = stringResource(R.string.settings_misc_source),
+                    summary = stringResource(R.string.settings_misc_source_summary),
+                    onClick = {
+                        if (!inspectionMode) {
+                            context.launchUrl("https://github.com/Mygod/VPNHotspot/blob/master/README.md")
+                        }
+                    },
+                )
+            }
+            row(R.string.settings_misc_logcat) {
+                PreferenceRow(
+                    icon = R.drawable.ic_action_bug_report,
+                    title = stringResource(R.string.settings_misc_logcat),
+                    summary = stringResource(R.string.settings_misc_logcat_summary),
+                    onClick = {
+                        if (!inspectionMode) GlobalScope.launch(Dispatchers.Main.immediate) {
+                            try {
+                                shareLogcat(context)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Timber.w(e)
+                                snackbarHostState.showLongSnackbar(e.readableMessage)
                             }
-                        },
-                    )
-                }
-                row {
-                    PreferenceRow(
-                        icon = R.drawable.ic_action_bug_report,
-                        title = stringResource(R.string.settings_misc_logcat),
-                        summary = stringResource(R.string.settings_misc_logcat_summary),
-                        onClick = {
-                            if (!inspectionMode) GlobalScope.launch(Dispatchers.Main.immediate) {
-                                try {
-                                    shareLogcat(context)
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (e: Exception) {
-                                    Timber.w(e)
-                                    snackbarHostState.showLongSnackbar(e.readableMessage)
-                                }
-                            }
-                        },
-                    )
-                }
-                row {
-                    PreferenceRow(
-                        icon = R.drawable.ic_action_card_giftcard,
-                        title = stringResource(R.string.settings_misc_donate),
-                        summary = stringResource(R.string.settings_misc_donate_summary),
-                        onClick = { if (!inspectionMode) context.launchUrl("https://mygod.be/donate/") },
-                    )
-                }
-                row {
-                    PreferenceRow(
-                        icon = R.drawable.ic_action_code,
-                        title = stringResource(OssLicensesR.string.oss_license_title),
-                        summary = stringResource(OssLicensesR.string.preferences_license_summary),
-                        onClick = {
-                            if (!inspectionMode) {
-                                context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
-                            }
-                        },
-                    )
-                }
+                        }
+                    },
+                )
+            }
+            row(R.string.settings_misc_donate) {
+                PreferenceRow(
+                    icon = R.drawable.ic_action_card_giftcard,
+                    title = stringResource(R.string.settings_misc_donate),
+                    summary = stringResource(R.string.settings_misc_donate_summary),
+                    onClick = { if (!inspectionMode) context.launchUrl("https://mygod.be/donate/") },
+                )
+            }
+            row(OssLicensesR.string.oss_license_title) {
+                PreferenceRow(
+                    icon = R.drawable.ic_action_code,
+                    title = stringResource(OssLicensesR.string.oss_license_title),
+                    summary = stringResource(OssLicensesR.string.preferences_license_summary),
+                    onClick = {
+                        if (!inspectionMode) {
+                            context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
+                        }
+                    },
+                )
             }
         }
     }

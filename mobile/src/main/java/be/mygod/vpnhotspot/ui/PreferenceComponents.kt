@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -50,9 +52,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.NonSkippableComposable
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.key
@@ -72,8 +72,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
-import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
 
 val PreferenceSplitControlWidth: Dp = 52.dp
 
@@ -96,55 +94,88 @@ fun SettingsList(
     )
 }
 
+fun LazyListScope.preferenceGroup(
+    key: Any? = null,
+    @StringRes title: Int? = null,
+    content: PreferenceGroupScope.() -> Unit,
+) {
+    val scope = PreferenceGroupScope().apply(content)
+    item(key = key ?: title) {
+        PreferenceGroupContent(
+            title = title?.let { stringResource(it) },
+            scope = scope,
+        )
+    }
+}
+
 @Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceGroup(
     title: String? = null,
-    content: @Composable PreferenceGroupScope.() -> Unit,
+    content: PreferenceGroupScope.() -> Unit,
 ) {
-    val scope = PreferenceGroupScope()
-    ComposeSettingsGroup(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    PreferenceGroupContent(
+        title = title,
+        scope = PreferenceGroupScope().apply(content),
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun PreferenceGroupContent(
+    title: String?,
+    scope: PreferenceGroupScope,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
-        title = title?.let { { Text(it, fontWeight = FontWeight.SemiBold) } },
     ) {
-        scope.clear()
-        scope.content()
-        scope.Render()
+        title?.let {
+            Text(
+                text = it,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        scope.render()
     }
 }
 
 class PreferenceGroupScope {
     private val items = ArrayList<PreferenceGroupItem>()
 
-    @Composable
-    @NonSkippableComposable
-    fun row(key: Any? = currentCompositeKeyHashCode, content: @Composable () -> Unit) {
+    fun row(key: Any? = null, content: @Composable () -> Unit) {
         items += PreferenceGroupItem.Row(key, content)
     }
 
-    @Composable
-    @NonSkippableComposable
-    fun contentItem(key: Any? = currentCompositeKeyHashCode, content: @Composable () -> Unit) {
+    fun contentItem(key: Any? = null, content: @Composable () -> Unit) {
         items += PreferenceGroupItem.Content(key, content)
     }
 
-    fun clear() {
-        items.clear()
-    }
-
     @Composable
-    fun Render() {
+    internal fun render() {
         val count = items.count { it is PreferenceGroupItem.Row }
         var index = 0
         for (item in items) when (item) {
-            is PreferenceGroupItem.Row -> key(item.key) {
-                CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index++, count)) {
-                    item.content()
+            is PreferenceGroupItem.Row -> {
+                val position = PreferenceRowPosition(index++, count)
+
+                @Composable
+                fun Content() {
+                    CompositionLocalProvider(LocalPreferenceRowPosition provides position) {
+                        item.content()
+                    }
+                }
+                if (item.key == null) Content() else key(item.key) {
+                    Content()
                 }
             }
-            is PreferenceGroupItem.Content -> key(item.key) {
-                item.content()
+            is PreferenceGroupItem.Content -> {
+                if (item.key == null) item.content() else key(item.key) {
+                    item.content()
+                }
             }
         }
     }
@@ -196,25 +227,27 @@ fun PreferenceRow(
     onClick: (() -> Unit)? = null,
 ) {
     val position = LocalPreferenceRowPosition.current
-    SettingsTileScaffold(
-        title = titleContent,
-        modifier = modifier.fillMaxWidth(),
-        enabled = enabled,
+    SegmentedListItem(
+        selected = false,
         onClick = onClick ?: {},
-        supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
-        leadingContent = iconContent,
-        colors = if (position == null) {
-            ListItemDefaults.colors()
-        } else {
-            ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-        },
         shapes = when {
             position == null -> ListItemDefaults.shapes()
             position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
             else -> ListItemDefaults.segmentedShapes(position.index, position.count)
         },
+        modifier = Modifier.fillMaxWidth().then(modifier.fillMaxWidth()),
+        enabled = enabled,
+        leadingContent = iconContent,
         trailingContent = trailing,
-    )
+        supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+        colors = if (position == null) {
+            ListItemDefaults.colors()
+        } else {
+            ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+        },
+    ) {
+        titleContent()
+    }
 }
 
 class PreferenceRowPosition(val index: Int, val count: Int)

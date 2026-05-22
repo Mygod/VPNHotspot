@@ -209,7 +209,6 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation(libs.activity.compose)
     implementation(libs.browser)
-    implementation(libs.compose.settings.ui.tiles.expressive)
     implementation(libs.core.i18n)
     implementation(libs.core.ktx)
     implementation(libs.dexmaker)
