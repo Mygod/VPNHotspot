@@ -2,7 +2,12 @@ package be.mygod.vpnhotspot.room
 
 import android.net.MacAddress
 import androidx.compose.ui.text.AnnotatedString
-import androidx.room.*
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Transaction
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toLong
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map

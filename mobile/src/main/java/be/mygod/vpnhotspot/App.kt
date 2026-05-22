@@ -53,7 +53,9 @@ class App : Application() {
         super.onCreate()
         app = this
         deviceStorage = DeviceStorageApp(this)
-        deviceStorage.moveSharedPreferencesFrom(this, sharedPreferencesName)
+        @Suppress("DEPRECATION")
+        deviceStorage.moveSharedPreferencesFrom(this,
+            android.preference.PreferenceManager.getDefaultSharedPreferencesName(this))
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         Services.init { this }
 
@@ -149,7 +151,8 @@ class App : Application() {
             setLocale(Locale.ENGLISH)
         })
     }
-    val pref by lazy { deviceStorage.getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE) }
+    @Suppress("DEPRECATION")
+    val pref by lazy { android.preference.PreferenceManager.getDefaultSharedPreferences(this) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
     val location by lazy { getSystemService<LocationManager>() }
 

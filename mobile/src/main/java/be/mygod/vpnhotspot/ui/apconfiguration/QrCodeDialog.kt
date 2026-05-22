@@ -14,8 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.dimensionResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.graphics.set
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.readableMessage
@@ -29,7 +29,7 @@ import java.nio.charset.StandardCharsets
 @Composable
 fun QrCodeDialog(value: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val size = dimensionResource(R.dimen.qrcode_size)
+    val size = 264.dp
     val density = LocalDensity.current
     val (bitmap, error) = remember(value, size, density) {
         try {
