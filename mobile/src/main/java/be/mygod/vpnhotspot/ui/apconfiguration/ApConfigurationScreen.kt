@@ -47,8 +47,10 @@ import be.mygod.vpnhotspot.ui.softApFeatureLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import kotlinx.coroutines.launch
 import timber.log.Timber
+import java.util.Locale
 
 @Composable
 internal fun ApConfigurationScreen(
@@ -516,8 +518,11 @@ private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): 
     val lines = mutableListOf(
         context.getString(R.string.repeater_features) + softApSupportedFeatures(context, capability),
     )
-    if (Build.VERSION.SDK_INT >= 31) capability.countryCode?.let {
-        lines += context.getString(R.string.tethering_manage_wifi_country_code, it).trimStart()
+    if (Build.VERSION.SDK_INT >= 31) capability.countryCode?.let { countryCode ->
+        val label = countryCode.toRegionalIndicatorFlagOrNull()?.let { flag ->
+            "${countryCode.uppercase(Locale.US)} $flag"
+        } ?: countryCode
+        lines += context.getString(R.string.tethering_manage_wifi_country_code, label).trimStart()
     }
     return lines.joinToString("\n")
 }

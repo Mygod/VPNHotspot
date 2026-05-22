@@ -9,6 +9,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.connectCancellable
+import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -79,8 +80,7 @@ object MacLookup {
                     val company = vendor.getString("companyName")
                     val match = extractCountry(mac, response, vendor, obj)
                     if (match != null) {
-                        String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' +
-                                company
+                        match.groupValues[1].toRegionalIndicatorFlagOrNull()?.let { "$it $company" } ?: company
                     } else company
                 } else null
                 Timber.d("$mac -> $result")

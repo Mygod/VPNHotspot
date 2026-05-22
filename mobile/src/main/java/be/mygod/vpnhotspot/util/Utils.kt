@@ -37,6 +37,7 @@ import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
+import java.util.Locale
 import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
@@ -44,6 +45,12 @@ tailrec fun Throwable.getRootCause(): Throwable {
     return this
 }
 val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
+
+fun String.toRegionalIndicatorFlagOrNull(): String? {
+    val code = uppercase(Locale.US)
+    if (code.length != 2 || code.any { it !in 'A'..'Z' }) return null
+    return String(code.flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray())
+}
 
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
