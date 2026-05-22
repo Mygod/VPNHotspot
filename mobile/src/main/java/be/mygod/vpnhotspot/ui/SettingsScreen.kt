@@ -82,9 +82,7 @@ import be.mygod.vpnhotspot.util.Services
 import com.google.android.gms.oss.licenses.R as OssLicensesR
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -95,7 +93,6 @@ import java.io.PrintWriter
 import java.net.InetAddress
 
 @Composable
-@OptIn(DelicateCoroutinesApi::class)
 fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
@@ -168,7 +165,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     title = stringResource(R.string.settings_service_clean),
                     summary = stringResource(R.string.settings_service_clean_summary),
                     onClick = {
-                        if (!inspectionMode) GlobalScope.launch(Dispatchers.Default) { RoutingManager.clean() }
+                        if (!inspectionMode) scope.launch(Dispatchers.Default) { RoutingManager.clean() }
                     },
                 )
             }
@@ -350,7 +347,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     title = stringResource(R.string.settings_misc_logcat),
                     summary = stringResource(R.string.settings_misc_logcat_summary),
                     onClick = {
-                        if (!inspectionMode) GlobalScope.launch(Dispatchers.Main.immediate) {
+                        if (!inspectionMode) scope.launch {
                             try {
                                 shareLogcat(context)
                             } catch (e: CancellationException) {

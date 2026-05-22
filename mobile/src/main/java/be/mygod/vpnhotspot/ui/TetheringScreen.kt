@@ -43,6 +43,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -92,9 +93,7 @@ import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -109,7 +108,6 @@ data class TetheringServiceState(
     val monitoredIfaces: Set<String> = emptySet(),
 )
 
-@OptIn(DelicateCoroutinesApi::class)
 @Composable
 fun TetheringScreen(
     snackbarHostState: SnackbarHostState,
@@ -123,6 +121,7 @@ fun TetheringScreen(
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
+    val scope = rememberCoroutineScope()
     val linkStyles = rememberNetworkAddressLinkStyles()
     val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null) ?: rememberNullState()
@@ -204,7 +203,7 @@ fun TetheringScreen(
             onResult = { granted ->
                 if (granted) {
                     app.startServiceWithLocation<RepeaterService>(context)
-                } else GlobalScope.launch(Dispatchers.Main.immediate) {
+                } else scope.launch {
                     snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
                 }
             },
@@ -498,6 +497,7 @@ private fun TetheringTypeRow(
     onConfigure: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val toggle = toggle@{
         if (!Settings.System.canWrite(context)) try {
             context.startActivity(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:${context.packageName}".toUri()))
@@ -505,7 +505,12 @@ private fun TetheringTypeRow(
         } catch (e: RuntimeException) {
             app.logEvent("manage_write_settings") { param("message", e.toString()) }
         }
-        val callback = tetheringCallback(context, snackbarHostState, TetherType.fromTetheringType(tetheringType))
+        val callback = tetheringCallback(
+            context,
+            snackbarHostState,
+            TetherType.fromTetheringType(tetheringType),
+            scope,
+        )
         if (checked) TetheringManagerCompat.stopTethering(tetheringType, callback)
         else TetheringManagerCompat.startTethering(tetheringType, true, callback)
     }
@@ -529,6 +534,7 @@ private fun BluetoothTetheringRow(
     onRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     TetheringRow(
         icon = R.drawable.ic_device_bluetooth,
         title = stringResource(R.string.tethering_manage_bluetooth),
@@ -542,7 +548,7 @@ private fun BluetoothTetheringRow(
             } catch (e: RuntimeException) {
                 app.logEvent("manage_write_settings") { param("message", e.toString()) }
             }
-            val callback = tetheringCallback(context, snackbarHostState, TetherType.BLUETOOTH, onRefresh)
+            val callback = tetheringCallback(context, snackbarHostState, TetherType.BLUETOOTH, scope, onRefresh)
             when (active) {
                 true -> {
                     bluetoothTethering?.stop(callback)
@@ -626,11 +632,11 @@ private fun TetheringPreviewContent() {
     }
 }
 
-@OptIn(DelicateCoroutinesApi::class)
 private fun tetheringCallback(
     context: Context,
     snackbarHostState: SnackbarHostState,
     tetherType: TetherType,
+    scope: CoroutineScope,
     onChanged: () -> Unit = {},
 ) = object : TetheringManagerCompat.StartTetheringCallback, TetheringManagerCompat.StopTetheringCallback {
     override fun onTetheringStarted() = onChanged()
@@ -640,11 +646,11 @@ private fun tetheringCallback(
     override fun onTetheringFailed(error: Int?) {
         error?.let {
             if (Build.VERSION.SDK_INT >= 30 && it == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-                GlobalScope.launch(Dispatchers.Main.immediate) {
+                scope.launch {
                     Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
                     ManageBar.start(context::startActivity)
                 }
-            } else GlobalScope.launch(Dispatchers.Main.immediate) {
+            } else scope.launch {
                 snackbarHostState.showLongSnackbar(tetherErrorMessage(context, tetherType, it))
             }
         }
@@ -653,11 +659,11 @@ private fun tetheringCallback(
 
     override fun onStopTetheringFailed(error: Int) {
         if (error == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-            GlobalScope.launch(Dispatchers.Main.immediate) {
+            scope.launch {
                 Toast.makeText(context, R.string.permission_missing, Toast.LENGTH_LONG).show()
                 ManageBar.start(context::startActivity)
             }
-        } else GlobalScope.launch(Dispatchers.Main.immediate) {
+        } else scope.launch {
             snackbarHostState.showLongSnackbar(tetherErrorMessage(context, tetherType, error))
         }
         onChanged()
@@ -665,7 +671,7 @@ private fun tetheringCallback(
 
     override fun onException(e: Exception) {
         super<TetheringManagerCompat.StartTetheringCallback>.onException(e)
-        GlobalScope.launch(Dispatchers.Main.immediate) {
+        scope.launch {
             Toast.makeText(context, e.readableMessage, Toast.LENGTH_LONG).show()
             ManageBar.start(context::startActivity)
         }

@@ -23,9 +23,6 @@ import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.showLongSnackbar
 import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -77,7 +74,6 @@ fun ApConfigurationTopBarActions(
 }
 
 @Composable
-@OptIn(DelicateCoroutinesApi::class)
 fun ApConfigurationSaveFab(
     state: ApConfigurationState,
     session: ApConfigurationSession,
@@ -85,6 +81,7 @@ fun ApConfigurationSaveFab(
     onApplied: () -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val save = stringResource(R.string.wifi_save)
     val canSave = state.canSave(context)
     val containerColor = if (canSave) {
@@ -108,7 +105,7 @@ fun ApConfigurationSaveFab(
         onClick = {
             if (canSave) {
                 val config = state.generateConfig()
-                GlobalScope.launch(Dispatchers.Main.immediate) {
+                scope.launch {
                     try {
                         if (session.onApply(config)) onApplied()
                     } catch (e: CancellationException) {

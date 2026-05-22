@@ -4,8 +4,6 @@ import android.net.MacAddress
 import androidx.recyclerview.widget.DiffUtil
 import be.mygod.vpnhotspot.net.InetAddressComparator
 import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.ClientRecord
 import java.net.InetAddress
 import java.util.Objects
 import java.util.TreeMap
@@ -21,15 +19,12 @@ class Client(val mac: MacAddress, iface: String? = null, val type: TetherType = 
     val ifaces = LinkedHashSet<String>().also { iface?.let(it::add) }
     val iface get() = ifaces.firstOrNull()
     val macString by lazy { mac.toString() }
-    val record = AppDatabase.instance.clientRecordDao.lookupOrDefaultSync(mac)
 
     val icon get() = type.icon
 
     fun addSource(iface: String?) {
         ifaces.add(iface ?: return)
     }
-
-    fun obtainRecord() = record.value ?: ClientRecord(mac)
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

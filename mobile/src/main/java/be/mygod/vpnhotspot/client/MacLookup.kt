@@ -12,9 +12,8 @@ import be.mygod.vpnhotspot.util.connectCancellable
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONException
@@ -55,9 +54,9 @@ object MacLookup {
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
     @MainThread
-    fun perform(mac: MacAddress, explicit: Boolean = false) {
+    fun perform(scope: CoroutineScope, mac: MacAddress, explicit: Boolean = false) {
         abort(mac)
-        macLookupBusy[mac] = GlobalScope.launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
+        macLookupBusy[mac] = scope.launch(Dispatchers.IO) {
             var response: String? = null
             try {
                 response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->

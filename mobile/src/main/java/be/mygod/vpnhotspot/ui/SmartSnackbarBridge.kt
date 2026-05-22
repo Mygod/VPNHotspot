@@ -1,13 +1,11 @@
 package be.mygod.vpnhotspot.ui
 
-import android.view.View
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -21,10 +19,9 @@ suspend fun SnackbarHostState.showLongSnackbar(message: String) {
 
 @Composable
 fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    DisposableEffect(snackbarHostState, context, lifecycleOwner, scope) {
+    DisposableEffect(snackbarHostState, lifecycleOwner, scope) {
         var registration: AutoCloseable? = null
         fun register() {
             if (registration != null) return
@@ -35,7 +32,7 @@ fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
                         actionLabel = request.actionText?.toString(),
                         duration = SnackbarDuration.Long,
                     )
-                    if (result == SnackbarResult.ActionPerformed) request.action?.invoke(View(context))
+                    if (result == SnackbarResult.ActionPerformed) request.action?.invoke()
                 }
             }
         }

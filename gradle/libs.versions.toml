@@ -20,11 +20,9 @@ kotlinx-collections-immutable = "org.jetbrains.kotlinx:kotlinx-collections-immut
 kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
 ktor-io-jvm = "io.ktor:ktor-io-jvm:3.5.0"
 librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha05"
-lifecycle-livedata-ktx = { module = "androidx.lifecycle:lifecycle-livedata-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycle" }
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-material = "com.google.android.material:material:1.14.0"
 navigation-compose = "androidx.navigation:navigation-compose:2.9.8"
 oss-licenses-plugin = "com.google.android.gms:oss-licenses-plugin:0.12.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"

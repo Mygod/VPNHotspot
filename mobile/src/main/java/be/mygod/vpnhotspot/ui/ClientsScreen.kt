@@ -2,15 +2,10 @@ package be.mygod.vpnhotspot.ui
 
 import android.content.Context
 import android.content.res.Configuration
-import android.net.MacAddress
-import android.os.Build
 import android.os.Parcelable
 import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
-import androidx.collection.LongObjectMap
-import androidx.collection.MutableScatterMap
-import androidx.collection.ObjectList
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,10 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -62,79 +54,44 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LiveData
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.client.Client
 import be.mygod.vpnhotspot.client.ClientViewModel
-import be.mygod.vpnhotspot.client.MacLookup
-import be.mygod.vpnhotspot.net.TetherType
-import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
-import be.mygod.vpnhotspot.room.AppDatabase
-import be.mygod.vpnhotspot.room.ClientRecord
 import be.mygod.vpnhotspot.room.ClientStats
-import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.text.NumberFormat
 
-@OptIn(DelicateCoroutinesApi::class)
 @Composable
 fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) {
-    val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val clients by model.clients.observeAsState(emptyList())
-    val rates = remember { mutableStateMapOf<Pair<String?, MacAddress>, TrafficRate>() }
-    var tetherTypeRevision by remember { mutableIntStateOf(0) }
+    val rows by model.clientRows.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val blockServiceInactive = stringResource(R.string.clients_popup_block_service_inactive)
     val clientsContentDescription = stringResource(R.string.title_clients)
 
     if (!inspectionMode) {
         DisposableEffect(lifecycleOwner, model) {
             lifecycleOwner.lifecycle.addObserver(model.clientsFragmentObserver)
-            onDispose { lifecycleOwner.lifecycle.removeObserver(model.clientsFragmentObserver) }
-        }
-    }
-    LaunchedEffect(clients) {
-        clients.forEach { client ->
-            val key = client.iface to client.mac
-            if (rates[key] == null) rates[key] = TrafficRate()
-        }
-    }
-    if (!inspectionMode) {
-        LaunchedEffect(lifecycleOwner, clients) {
-            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                if (Build.VERSION.SDK_INT >= 30) launch {
-                    TetherType.changes.collect { tetherTypeRevision++ }
-                }
-                launch {
-                    TrafficRecorder.foregroundUpdates.collect { (newRecords, oldRecords) ->
-                        updateTrafficRates(clients, rates, newRecords, oldRecords)
-                    }
-                }
-                withContext(Dispatchers.Default) {
-                    TrafficRecorder.rescheduleUpdate()
-                }
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(model.clientsFragmentObserver)
+                model.stopClientsScreen()
             }
         }
     }
 
     SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {
-        if (clients.isEmpty()) item {
+        if (rows.isEmpty()) item {
             Column(
                 modifier = Modifier
                     .fillParentMaxSize()
@@ -157,29 +114,37 @@ fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) 
                 )
             }
         } else preferenceGroup(key = "clients") {
-            for (client in clients) {
+            for (row in rows) {
+                val client = row.client
                 row(key = client.iface to client.mac) {
                     ClientRow(
-                        client = client,
-                        rate = rates[client.iface to client.mac],
+                        row = row,
                         snackbarHostState = snackbarHostState,
-                        tetherTypeRevision = tetherTypeRevision,
+                        onPendingMacLookup = { model.performMacLookup(client.mac) },
                         onNickname = { nickname ->
-                            GlobalScope.launch(Dispatchers.Main.immediate) {
-                                updateNickname(client.mac, nickname, snackbarHostState)
+                            scope.launch {
+                                try {
+                                    model.updateNickname(client.mac, nickname)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    snackbarHostState.showClientError(e)
+                                }
                             }
                         },
-                        onSetNicknameToVendor = { MacLookup.perform(client.mac, true) },
+                        onSetNicknameToVendor = { model.performMacLookup(client.mac, true) },
                         onToggleBlocked = {
-                            val wasWorking = TrafficRecorder.isWorking(client.mac)
-                            val record = client.obtainRecord().apply { blocked = !blocked }
-                            GlobalScope.launch(Dispatchers.Unconfined) {
-                                AppDatabase.instance.clientRecordDao.update(record)
-                            }
-                            if (!wasWorking && record.blocked) GlobalScope.launch(Dispatchers.Main.immediate) {
-                                snackbarHostState.showLongSnackbar(blockServiceInactive)
+                            scope.launch {
+                                try {
+                                    if (model.toggleBlocked(row)) snackbarHostState.showLongSnackbar(blockServiceInactive)
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    snackbarHostState.showClientError(e)
+                                }
                             }
                         },
+                        onQueryStats = { model.queryStats(client.mac) },
                     )
                 }
             }
@@ -189,25 +154,24 @@ fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) 
 
 @Composable
 private fun ClientRow(
-    client: Client,
-    rate: TrafficRate?,
+    row: ClientViewModel.ClientRowState,
     snackbarHostState: SnackbarHostState,
-    tetherTypeRevision: Int,
+    onPendingMacLookup: () -> Unit,
     onNickname: (AnnotatedString) -> Unit,
     onSetNicknameToVendor: () -> Unit,
     onToggleBlocked: () -> Unit,
+    onQueryStats: suspend () -> ClientStats,
 ) {
+    val client = row.client
+    val record = row.record
     val context = LocalContext.current
-    val loadedRecord by client.record.observeAsState<ClientRecord?, ClientRecord>(null)
-    val record = loadedRecord ?: ClientRecord(client.mac)
     val linkStyles = rememberNetworkAddressLinkStyles()
     val neighbourStateIncomplete = stringResource(R.string.connected_state_incomplete)
     val neighbourStateValid = stringResource(R.string.connected_state_valid)
     val neighbourStateFailed = stringResource(R.string.connected_state_failed)
     val nickname = record.nickname
-    LaunchedEffect(client.mac, loadedRecord) {
-        val currentRecord = loadedRecord ?: return@LaunchedEffect
-        if (currentRecord.nickname.isEmpty() && currentRecord.macLookupPending) MacLookup.perform(client.mac)
+    LaunchedEffect(client.mac, record) {
+        if (record.nickname.isEmpty() && record.macLookupPending) onPendingMacLookup()
     }
     val title = buildAnnotatedString {
         if (nickname.isNotEmpty()) append(nickname) else appendClientAddress(client, client.iface, linkStyles)
@@ -243,12 +207,12 @@ private fun ClientRow(
             }
         }
     }
-    val rateText = formatTrafficRate(context, rate)
+    val rateText = formatTrafficRate(context, row.rate)
     var expanded by remember { mutableStateOf(false) }
     var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
     var statsDialog by rememberSaveable(client.mac.toString()) { mutableStateOf<ClientStatsDialog?>(null) }
     val scope = rememberCoroutineScope()
-    val icon = remember(client, tetherTypeRevision) { client.icon }
+    val icon = client.icon
 
     Box {
         ClientRowLayout(
@@ -282,15 +246,11 @@ private fun ClientRow(
                     expanded = false
                     scope.launch {
                         try {
-                            val stats = withContext(Dispatchers.Unconfined) {
-                                AppDatabase.instance.trafficRecordDao.queryStats(client.mac)
-                            }
-                            statsDialog = ClientStatsDialog(title.text, stats)
+                            statsDialog = ClientStatsDialog(title.text, onQueryStats())
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            Timber.w(e)
-                            snackbarHostState.showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
+                            snackbarHostState.showClientError(e)
                         }
                     }
                 },
@@ -335,7 +295,6 @@ private fun ClientRow(
             },
             confirmButton = {
                 DialogConfirmButton(onClick = {
-                    MacLookup.abort(client.mac)
                     onNickname(nicknameDraft.annotatedString)
                     editingNickname = false
                 }) {
@@ -425,67 +384,12 @@ private fun AnnotatedString.Builder.appendClientAddress(client: Client, iface: S
     }
 }
 
-private suspend fun updateNickname(
-    mac: MacAddress,
-    nickname: AnnotatedString,
-    snackbarHostState: SnackbarHostState,
-) {
-    try {
-        withContext(Dispatchers.Unconfined) {
-            AppDatabase.instance.clientRecordDao.upsert(mac) { this.nickname = nickname }
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Timber.w(e)
-        snackbarHostState.showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
-    }
+private suspend fun SnackbarHostState.showClientError(e: Exception) {
+    Timber.w(e)
+    showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
 }
 
-@Composable
-private fun <R, T : R> LiveData<T>.observeAsState(initial: R): State<R> {
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val state = remember(this) { mutableStateOf<R>(value ?: initial) }
-    DisposableEffect(this, lifecycleOwner) {
-        val observer = androidx.lifecycle.Observer<T> { state.value = it ?: initial }
-        observe(lifecycleOwner, observer)
-        onDispose { removeObserver(observer) }
-    }
-    return state
-}
-
-private fun updateTrafficRates(
-    clients: List<Client>,
-    rates: androidx.compose.runtime.snapshots.SnapshotStateMap<Pair<String?, MacAddress>, TrafficRate>,
-    newRecords: ObjectList<TrafficRecord>,
-    oldRecords: LongObjectMap<TrafficRecord>,
-) {
-    for (key in rates.keys.toList()) rates[key] = TrafficRate()
-    val rateKeys = MutableScatterMap<Pair<String, MacAddress>, Pair<String?, MacAddress>>()
-    clients.forEach { client ->
-        client.ifaces.forEach { rateKeys[it to client.mac] = client.iface to client.mac }
-    }
-    newRecords.forEach { newRecord ->
-        val oldRecord = oldRecords[newRecord.previousId ?: return@forEach] ?: return@forEach
-        val elapsed = newRecord.timestamp - oldRecord.timestamp
-        if (elapsed == 0L) {
-            if (newRecord.sentPackets != oldRecord.sentPackets || newRecord.sentBytes != oldRecord.sentBytes ||
-                newRecord.receivedPackets != oldRecord.receivedPackets || newRecord.receivedBytes != oldRecord.receivedBytes
-            ) Timber.w(Exception("wtf"))
-            return@forEach
-        }
-        val key = rateKeys[newRecord.downstream to newRecord.mac] ?: (newRecord.downstream to newRecord.mac)
-        val rate = rates[key] ?: TrafficRate()
-        rates[key] = TrafficRate(
-            send = (if (rate.send < 0 || rate.receive < 0) 0 else rate.send) +
-                    (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed,
-            receive = (if (rate.send < 0 || rate.receive < 0) 0 else rate.receive) +
-                    (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed,
-        )
-    }
-}
-
-private fun formatTrafficRate(context: Context, rate: TrafficRate?): String? {
+private fun formatTrafficRate(context: Context, rate: ClientViewModel.TrafficRate?): String? {
     if (rate == null || rate.send < 0 || rate.receive < 0) return null
     return "${'\u25B2'} ${Formatter.formatFileSize(context, rate.send)}/s\t\t" +
             "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
@@ -643,5 +547,3 @@ private fun ClientsConnectedPreviewContent() {
         }
     }
 }
-
-private data class TrafficRate(val send: Long = -1, val receive: Long = -1)
