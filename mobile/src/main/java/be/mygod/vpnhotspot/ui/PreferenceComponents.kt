@@ -112,10 +112,12 @@ fun LazyListScope.preferenceGroup(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceGroup(
     title: String? = null,
+    horizontalPadding: Dp = 16.dp,
     content: PreferenceGroupScope.() -> Unit,
 ) {
     PreferenceGroupContent(
         title = title,
+        horizontalPadding = horizontalPadding,
         scope = PreferenceGroupScope().apply(content),
     )
 }
@@ -124,12 +126,13 @@ fun PreferenceGroup(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun PreferenceGroupContent(
     title: String?,
+    horizontalPadding: Dp = 16.dp,
     scope: PreferenceGroupScope,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = horizontalPadding, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
     ) {
         title?.let {
@@ -337,8 +340,8 @@ fun VpnHotspotModalBottomSheet(
 
 @Composable
 fun modalBottomSheetListContentPadding() = PaddingValues(
-    start = 16.dp,
-    end = 16.dp,
+    start = 24.dp,
+    end = 24.dp,
     bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
 )
 

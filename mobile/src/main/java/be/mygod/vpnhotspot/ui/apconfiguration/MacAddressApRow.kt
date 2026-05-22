@@ -112,7 +112,7 @@ private fun MacAddressApDialog(
                 if (state.p2pMode) {
                     bssidField()
                 } else {
-                    PreferenceGroup {
+                    PreferenceGroup(horizontalPadding = 0.dp) {
                         row(SoftApConfigurationCompat.RANDOMIZATION_NONE) {
                             MacRandomizationOptionRow(
                                 selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
