@@ -227,6 +227,7 @@ internal fun PreferenceSwitch(
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    interactionSource: MutableInteractionSource? = null,
 ) {
     Switch(
         checked = checked,
@@ -240,6 +241,7 @@ internal fun PreferenceSwitch(
             )
         },
         enabled = enabled,
+        interactionSource = interactionSource,
     )
 }
 
@@ -249,6 +251,7 @@ internal fun PreferenceSplitSwitch(
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -267,6 +270,8 @@ internal fun PreferenceSplitSwitch(
                 .height(48.dp)
                 .toggleable(
                     value = checked,
+                    interactionSource = interactionSource,
+                    indication = null,
                     enabled = enabled,
                     role = Role.Switch,
                     onValueChange = onCheckedChange,
@@ -278,6 +283,7 @@ internal fun PreferenceSplitSwitch(
                 modifier = Modifier.clearAndSetSemantics { },
                 enabled = enabled,
                 onCheckedChange = null,
+                interactionSource = interactionSource,
             )
         }
     }
