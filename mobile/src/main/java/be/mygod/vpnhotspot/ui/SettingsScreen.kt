@@ -26,7 +26,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
@@ -519,7 +518,7 @@ private fun TextPreferenceRow(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogConfirmButton(onClick = {
                     onValueChange(draft.text)
                     editing = false
                 }) {
@@ -527,7 +526,7 @@ private fun TextPreferenceRow(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { editing = false }) {
+                DialogDismissButton(onClick = { editing = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
             },

@@ -13,7 +13,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -32,6 +31,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.ui.DialogConfirmButton
+import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitControlWidth
 import be.mygod.vpnhotspot.ui.TooltipIconButton
@@ -153,7 +154,7 @@ internal fun SsidApRow(
             }
         },
         confirmButton = {
-            TextButton(
+            DialogConfirmButton(
                 enabled = draftError == null,
                 onClick = {
                     state.setSsid(draft.text, draftHex)
@@ -164,7 +165,7 @@ internal fun SsidApRow(
             }
         },
         dismissButton = {
-            TextButton(onClick = { editing = false }) {
+            DialogDismissButton(onClick = { editing = false }) {
                 Text(stringResource(android.R.string.cancel))
             }
         },

@@ -13,7 +13,6 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,6 +27,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.ui.DialogConfirmButton
+import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
@@ -100,7 +101,7 @@ internal fun PasswordApRow(state: ApConfigurationState) {
             }
         },
         confirmButton = {
-            TextButton(
+            DialogConfirmButton(
                 enabled = error == null,
                 onClick = {
                     state.password = password
@@ -111,7 +112,7 @@ internal fun PasswordApRow(state: ApConfigurationState) {
             }
         },
         dismissButton = {
-            TextButton(onClick = { editing = false }) {
+            DialogDismissButton(onClick = { editing = false }) {
                 Text(stringResource(android.R.string.cancel))
             }
         },

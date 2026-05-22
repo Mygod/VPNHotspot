@@ -24,7 +24,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -318,7 +317,7 @@ private fun ClientRow(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogConfirmButton(onClick = {
                     MacLookup.abort(client.mac)
                     onNickname(nicknameDraft.annotatedString)
                     editingNickname = false
@@ -327,13 +326,13 @@ private fun ClientRow(
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
+                DialogNeutralButton(onClick = {
                     onSetNicknameToVendor()
                     editingNickname = false
                 }) {
                     Text(stringResource(R.string.clients_nickname_set_to_vendor))
                 }
-                TextButton(onClick = { editingNickname = false }) {
+                DialogDismissButton(onClick = { editingNickname = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
             },
@@ -349,7 +348,7 @@ private fun ClientRow(
             },
             text = { Text(formatClientStats(context, dialog.stats)) },
             confirmButton = {
-                TextButton(onClick = {
+                DialogConfirmButton(onClick = {
                     statsDialog = null
                 }) {
                     Text(stringResource(android.R.string.ok))

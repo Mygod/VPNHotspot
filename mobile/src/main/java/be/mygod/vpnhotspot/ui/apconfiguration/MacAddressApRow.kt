@@ -11,7 +11,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -26,6 +25,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.ui.DialogConfirmButton
+import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceGroup
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.annotatedStringResource
@@ -166,7 +167,7 @@ private fun MacAddressApDialog(
             }
         },
         confirmButton = {
-            TextButton(
+            DialogConfirmButton(
                 enabled = bssidError == null && persistentRandomizedMacError == null,
                 onClick = {
                     state.macRandomization = draftRandomization
@@ -181,7 +182,7 @@ private fun MacAddressApDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismissRequest) {
+            DialogDismissButton(onClick = onDismissRequest) {
                 Text(stringResource(android.R.string.cancel))
             }
         },

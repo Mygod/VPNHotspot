@@ -34,7 +34,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -435,7 +434,7 @@ internal fun TetheringScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogConfirmButton(onClick = {
                     StaticIpSetter.ips = staticIpDraftText.text.trim()
                     staticIpDraft = null
                 }) {
@@ -443,7 +442,7 @@ internal fun TetheringScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
+                DialogDismissButton(onClick = {
                     staticIpDraft = null
                 }) {
                     Text(stringResource(android.R.string.cancel))
@@ -473,7 +472,7 @@ internal fun TetheringScreen(
                 )
             },
             confirmButton = {
-                TextButton(onClick = {
+                DialogConfirmButton(onClick = {
                     repeaterBinder?.startWps(wpsPin.text)
                     wpsDialog = false
                 }) {
@@ -481,13 +480,13 @@ internal fun TetheringScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
+                DialogNeutralButton(onClick = {
                     repeaterBinder?.startWps(null)
                     wpsDialog = false
                 }) {
                     Text(stringResource(R.string.repeater_wps_dialog_pbc))
                 }
-                TextButton(onClick = { wpsDialog = false }) {
+                DialogDismissButton(onClick = { wpsDialog = false }) {
                     Text(stringResource(android.R.string.cancel))
                 }
             },
