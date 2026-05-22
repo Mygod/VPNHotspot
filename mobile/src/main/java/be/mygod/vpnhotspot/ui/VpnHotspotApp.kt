@@ -52,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -72,6 +73,7 @@ import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationScreen
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationSession
+import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationSaveFab
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationState
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationTarget
 import be.mygod.vpnhotspot.ui.apconfiguration.ApConfigurationTopBarActions
@@ -438,21 +440,34 @@ private fun ApConfigurationRoute(
 ) {
     if (state == null) LaunchedEffect(Unit) {
         navController.popBackStack()
-    } else DestinationScaffold(
-        title = destination.title,
-        snackbarHostState = snackbarHostState,
-        showSnackbarHost = showSnackbarHost,
-        onNavigateUp = { navController.popBackStack() },
-        actions = {
-            if (session != null) ApConfigurationTopBarActions(
-                state = state,
-                session = session,
-                snackbarHostState = snackbarHostState,
-                onApplied = { navController.popBackStack() },
+    } else {
+        val saveSession = if (state.readOnly) null else session
+        DestinationScaffold(
+            title = destination.title,
+            snackbarHostState = snackbarHostState,
+            showSnackbarHost = showSnackbarHost,
+            onNavigateUp = { navController.popBackStack() },
+            actions = {
+                if (session != null) ApConfigurationTopBarActions(
+                    state = state,
+                    snackbarHostState = snackbarHostState,
+                )
+            },
+            floatingActionButton = {
+                if (saveSession != null) ApConfigurationSaveFab(
+                    state = state,
+                    session = saveSession,
+                    snackbarHostState = snackbarHostState,
+                    onApplied = { navController.popBackStack() },
+                )
+            },
+        ) {
+            ApConfigurationScreen(
+                state,
+                snackbarHostState,
+                floatingActionButtonPadding = if (saveSession == null) 0.dp else 88.dp,
             )
-        },
-    ) {
-        ApConfigurationScreen(state, snackbarHostState)
+        }
     }
 }
 
@@ -465,6 +480,7 @@ private fun DestinationScaffold(
     onNavigateUp: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    floatingActionButton: @Composable () -> Unit = {},
     contentWindowInsets: WindowInsets = WindowInsets(),
     content: @Composable () -> Unit,
 ) {
@@ -472,6 +488,7 @@ private fun DestinationScaffold(
         modifier = modifier,
         topBar = { DestinationTopAppBar(title, onNavigateUp, actions) },
         bottomBar = bottomBar,
+        floatingActionButton = floatingActionButton,
         snackbarHost = {
             if (showSnackbarHost) SnackbarHost(snackbarHostState) { data ->
                 SwipeToDismissBox(

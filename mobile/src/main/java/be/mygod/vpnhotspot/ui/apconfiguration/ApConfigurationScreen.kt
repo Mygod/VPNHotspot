@@ -26,6 +26,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -56,6 +57,7 @@ import java.util.Locale
 internal fun ApConfigurationScreen(
     state: ApConfigurationState,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    floatingActionButtonPadding: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -107,7 +109,7 @@ internal fun ApConfigurationScreen(
     SettingsList(
         contentPadding = PaddingValues(
             top = 8.dp,
-            bottom = 8.dp + navigationBarPadding.calculateBottomPadding(),
+            bottom = 8.dp + floatingActionButtonPadding + navigationBarPadding.calculateBottomPadding(),
         ),
     ) {
         item {

@@ -1,22 +1,22 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TooltipAnchorPosition
-import androidx.compose.material3.TooltipBox
-import androidx.compose.material3.TooltipDefaults
-import androidx.compose.material3.rememberTooltipState
+import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.TooltipIconButton
@@ -30,12 +30,9 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @Composable
-@OptIn(DelicateCoroutinesApi::class)
 internal fun ApConfigurationTopBarActions(
     state: ApConfigurationState,
-    session: ApConfigurationSession,
     snackbarHostState: SnackbarHostState,
-    onApplied: () -> Unit,
 ) {
     val context = LocalContext.current
     rememberCoroutineScope().let { scope ->
@@ -76,35 +73,55 @@ internal fun ApConfigurationTopBarActions(
                 contentDescription = stringResource(android.R.string.paste),
             )
         }
-        if (!state.readOnly) {
-            val save = stringResource(R.string.wifi_save)
-            TooltipBox(
-                positionProvider = TooltipDefaults.rememberTooltipPositionProvider(TooltipAnchorPosition.Above),
-                tooltip = { PlainTooltip { Text(save) } },
-                state = rememberTooltipState(),
-            ) {
-                FilledTonalIconButton(
-                    enabled = state.canSave(context),
-                    onClick = {
-                        val config = state.generateConfig()
-                        GlobalScope.launch(Dispatchers.Main.immediate) {
-                            try {
-                                if (session.onApply(config)) onApplied()
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                Timber.w(e)
-                                snackbarHostState.showLongSnackbar(e.readableMessage)
-                            }
-                        }
-                    },
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_content_save),
-                        contentDescription = save,
-                    )
+    }
+}
+
+@Composable
+@OptIn(DelicateCoroutinesApi::class)
+internal fun ApConfigurationSaveFab(
+    state: ApConfigurationState,
+    session: ApConfigurationSession,
+    snackbarHostState: SnackbarHostState,
+    onApplied: () -> Unit,
+) {
+    val context = LocalContext.current
+    val save = stringResource(R.string.wifi_save)
+    val canSave = state.canSave(context)
+    val containerColor = if (canSave) {
+        FloatingActionButtonDefaults.containerColor
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    }
+    val contentColor = if (canSave) {
+        contentColorFor(containerColor)
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    }
+    ExtendedFloatingActionButton(
+        text = { Text(save) },
+        icon = {
+            Icon(
+                painter = painterResource(R.drawable.ic_content_save),
+                contentDescription = null,
+            )
+        },
+        onClick = {
+            if (canSave) {
+                val config = state.generateConfig()
+                GlobalScope.launch(Dispatchers.Main.immediate) {
+                    try {
+                        if (session.onApply(config)) onApplied()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        snackbarHostState.showLongSnackbar(e.readableMessage)
+                    }
                 }
             }
-        }
-    }
+        },
+        modifier = (if (canSave) Modifier else Modifier.semantics { disabled() }).navigationBarsPadding(),
+        containerColor = containerColor,
+        contentColor = contentColor,
+    )
 }
