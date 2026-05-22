@@ -20,21 +20,17 @@ fun DialogConfirmButton(
 @Composable
 fun DialogNeutralButton(
     onClick: () -> Unit,
-    enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) = OutlinedButton(
     onClick = onClick,
-    enabled = enabled,
     content = content,
 )
 
 @Composable
 fun DialogDismissButton(
     onClick: () -> Unit,
-    enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
 ) = TextButton(
     onClick = onClick,
-    enabled = enabled,
     content = content,
 )

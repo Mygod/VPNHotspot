@@ -12,8 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -28,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
@@ -45,7 +44,7 @@ fun ChannelApRow(
     @StringRes title: Int,
     selected: ChannelOption,
     entries: List<ChannelOption>,
-    description: AnnotatedString? = null,
+    description: AnnotatedString,
     onSelect: (ChannelOption) -> Unit,
 ) {
     val context = LocalContext.current
@@ -72,14 +71,14 @@ private fun ChannelApSheet(
     title: String,
     selected: ChannelOption,
     entries: List<ChannelOption>,
-    description: AnnotatedString?,
+    description: AnnotatedString,
     onDismissRequest: () -> Unit,
     onSelect: (ChannelOption) -> Unit,
 ) {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
-    val disabledOption = entries.firstOrNull { it === ChannelOption.Disabled }
-    val channelEntries = entries.filter { it !== ChannelOption.Disabled }
+    val disabledOption = entries.firstOrNull { it == ChannelOption.Disabled }
+    val channelEntries = entries.filter { it != ChannelOption.Disabled }
     val bands = BAND_ORDER.filter { band -> channelEntries.any { it.band and band == band } }
     var selectedBandMask by rememberSaveable(selected.band, selected.channel, entries.size) {
         mutableIntStateOf(if (selected.band > 0) selected.band else 0)
@@ -103,21 +102,19 @@ private fun ChannelApSheet(
             contentPadding = modalBottomSheetListContentPadding(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            description?.let {
-                item("description") {
-                    Text(
-                        text = it,
-                        modifier = Modifier.padding(bottom = 8.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+            item("description") {
+                Text(
+                    text = description,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
             disabledOption?.let {
                 item("disabled") {
                     PreferenceSelectionRow(
                         index = 0,
                         count = 1,
-                        selected = selected === ChannelOption.Disabled,
+                        selected = selected == ChannelOption.Disabled,
                         title = it.label(context),
                     ) {
                         onSelect(it)
@@ -151,13 +148,19 @@ private fun ChannelApSheet(
                                 label = {
                                     Text(stringResource(
                                         R.string.wifi_ap_choose_G_short,
-                                        format.format(BAND_GHZ.getValue(band)),
+                                        format.format(when (band) {
+                                            SoftApConfiguration.BAND_2GHZ -> 2.4
+                                            SoftApConfiguration.BAND_5GHZ -> 5
+                                            SoftApConfiguration.BAND_6GHZ -> 6
+                                            SoftApConfiguration.BAND_60GHZ -> 60
+                                            else -> error("Invalid band $band")
+                                        }),
                                     ))
                                 },
                                 leadingIcon = if (selectedBand) {
                                     {
                                         Icon(
-                                            imageVector = Icons.Filled.Check,
+                                            painter = painterResource(R.drawable.ic_action_check),
                                             contentDescription = null,
                                             modifier = Modifier.size(18.dp),
                                         )
@@ -172,7 +175,7 @@ private fun ChannelApSheet(
                 PreferenceSelectionRow(
                     index = index,
                     count = selectableChannels.size,
-                    selected = selected.sameChannel(option),
+                    selected = selected == option,
                     title = if (option.channel == 0) {
                         stringResource(R.string.wifi_channel_width_auto)
                     } else option.label(context),
@@ -186,19 +189,9 @@ private fun ChannelApSheet(
     }
 }
 
-private fun ChannelOption.sameChannel(other: ChannelOption) = this === ChannelOption.Disabled && other === ChannelOption.Disabled ||
-        this !== ChannelOption.Disabled && other !== ChannelOption.Disabled &&
-        band == other.band && channel == other.channel
-
 private val BAND_ORDER = listOf(
     SoftApConfiguration.BAND_2GHZ,
     SoftApConfiguration.BAND_5GHZ,
     SoftApConfiguration.BAND_6GHZ,
     SoftApConfiguration.BAND_60GHZ,
-)
-private val BAND_GHZ = mapOf(
-    SoftApConfiguration.BAND_2GHZ to 2.4,
-    SoftApConfiguration.BAND_5GHZ to 5,
-    SoftApConfiguration.BAND_6GHZ to 6,
-    SoftApConfiguration.BAND_60GHZ to 60,
 )

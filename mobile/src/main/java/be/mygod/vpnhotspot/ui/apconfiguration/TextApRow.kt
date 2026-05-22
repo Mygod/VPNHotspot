@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.ui.DialogConfirmButton
 import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
+import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
@@ -31,17 +32,12 @@ fun TextApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     value: String,
-    readOnly: Boolean,
-    summary: String = value,
-    description: AnnotatedString? = null,
+    description: AnnotatedString,
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     maxLength: Int? = null,
     minLines: Int = if (value.contains('\n')) 3 else 1,
-    placeholder: String? = null,
-    suffix: String? = null,
-    supportingText: String? = null,
-    validator: (String) -> String? = { null },
+    validator: (String) -> String?,
     onValueChange: (String) -> Unit,
 ) {
     var editing by rememberSaveable(value) { mutableStateOf(false) }
@@ -50,8 +46,7 @@ fun TextApRow(
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
-        summary = summary,
-        enabled = !readOnly,
+        summary = value,
         onClick = { editing = true },
     )
     if (editing) AlertDialog(
@@ -60,12 +55,10 @@ fun TextApRow(
         text = {
             val focusRequester = rememberDialogFocusRequester()
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                description?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = maxLength?.let(it::takeText) ?: it },
@@ -73,16 +66,13 @@ fun TextApRow(
                         .fillMaxWidth()
                         .focusRequester(focusRequester),
                     keyboardOptions = keyboardOptions,
-                    placeholder = placeholder?.let { { Text(it) } },
                     singleLine = minLines == 1,
                     minLines = minLines,
                     isError = error != null,
-                    suffix = suffix?.let { { Text(it) } },
-                    supportingText = if (error != null || supportingText != null || maxLength != null) {
+                    supportingText = if (error != null || maxLength != null) {
                         {
                             Column {
                                 error?.let { ErrorApText(it) }
-                                if (error == null) supportingText?.let { Text(it) }
                                 maxLength?.let { Text("${draft.text.length}/$it") }
                             }
                         }

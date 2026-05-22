@@ -22,7 +22,6 @@
     <string name="title_clients">Clients</string>
     <string name="title_settings">Settings</string>
     <string name="action_bar_up_description">Navigate up</string>
-    <string name="action_menu_overflow_description">More options</string>
     <string name="share_with">Share with</string>
 
     <string name="repeater_frequency">%s MHz</string>
@@ -89,10 +88,6 @@
         width %3$s, idle timeout in %6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, channel %2$s,
         width %3$s, idle timeout disabled</string>
-    <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="one">%1$s/%2$s client connected\nSupported features: %3$s</item>
-        <item quantity="other">%1$s/%2$s clients connected\nSupported features: %3$s</item>
-    </plurals>
     <plurals name="tethering_manage_wifi_client_limit">
         <item quantity="one">%1$s/%2$s client connected</item>
         <item quantity="other">%1$s/%2$s clients connected</item>
@@ -383,7 +378,6 @@
     <string name="wifi_mac_address_non_persistent_randomization">Non-persistent randomization</string>
     <string name="wifi_mac_address_help">Configure BSSID and MAC randomization for the AP. Android rejects all-zero, multicast, and broadcast BSSIDs. An explicit BSSID is used only when MAC randomization is disabled.</string>
     <string name="wifi_p2p_mac_address_help">Configure the P2P device address used by the repeater. Leave empty to let Android choose the address.</string>
-    <string name="wifi_advanced_mac_address_help">BSSID for the AP. Android rejects all-zero, multicast, and broadcast MAC addresses. When setting a BSSID, MAC randomization must be disabled.</string>
     <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_hidden_network_help">Do not broadcast the SSID.</string>
@@ -394,8 +388,6 @@
     <string name="wifi_client_user_control">User control of client association</string>
     <string name="wifi_client_user_control_help">When off, any client not in the blocked list can connect with the correct credentials until hotspot capacity is reached, and the allowed list has no effect. When on, Android uses the allowed and blocked lists to accept, reject, or require approval for clients. Clients in the allowed list are auto-accepted; clients on neither list are rejected and reported so they can be added later. Requires client force-disconnect support; otherwise starting the hotspot can fail.</string>
     <string name="wifi_allowed_list">Allowed list of clients</string>
-    <string name="wifi_mac_randomization">Use randomized MAC</string>
-    <string name="wifi_mac_randomization_help">Controls BSSID randomization. Randomization applies only when no explicit BSSID is set and requires MAC address customization support.</string>
     <string name="wifi_mac_randomization_none">No randomization</string>
     <string name="wifi_mac_randomization_none_help">Use the factory or explicitly configured AP MAC address.</string>
     <string name="wifi_mac_randomization_persistent">Persistent randomization</string>

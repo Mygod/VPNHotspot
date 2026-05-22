@@ -41,6 +41,7 @@ import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.SettingsList
 import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.channelBandwidthLabel
 import be.mygod.vpnhotspot.ui.preferenceGroup
 import be.mygod.vpnhotspot.ui.showLongSnackbar
 import be.mygod.vpnhotspot.ui.softApBandLabel
@@ -56,8 +57,8 @@ import java.util.Locale
 @Composable
 fun ApConfigurationScreen(
     state: ApConfigurationState,
-    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    floatingActionButtonPadding: Dp = 0.dp,
+    snackbarHostState: SnackbarHostState,
+    floatingActionButtonPadding: Dp,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -125,16 +126,18 @@ fun ApConfigurationScreen(
                     },
                 )
             }
-            state.actionError(context)?.let {
+            (state.copyError(context) ?: state.saveError(context))?.let {
                 contentItem("action_error") { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
             }
             if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) row(R.string.wifi_security) {
+                val entries = state.securityEntries
+                val selected = entries.firstOrNull { it.value == state.securityType }
                 ListApRow(
                     icon = R.drawable.ic_action_wifi_protected_setup,
                     title = R.string.wifi_security,
-                    selected = state.securityLabel,
-                    enabled = true,
-                    entries = state.securityEntries(),
+                    selected = selected,
+                    selectedLabel = selected?.label ?: state.securityType.toString(),
+                    entries = entries,
                     entryLabel = { it.label },
                     onSelect = { state.securityType = it.value },
                 )
@@ -148,9 +151,6 @@ fun ApConfigurationScreen(
                         valueTitle = R.string.wifi_hotspot_timeout,
                         checked = state.autoShutdown,
                         value = state.timeout,
-                        valueSummary = "",
-                        switchReadOnly = false,
-                        valueReadOnly = false,
                         summary = annotatedStringResource(
                             R.string.wifi_hotspot_auto_off_help,
                             timeoutSummary(context, state.timeout, defaultTimeout),
@@ -179,7 +179,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_timer,
                         title = R.string.wifi_hotspot_auto_off,
                         checked = state.autoShutdown,
-                        readOnly = false,
                         summary = annotatedStringResource(
                             R.string.wifi_hotspot_auto_off_help,
                             timeoutSummary(context, state.timeout, defaultTimeout),
@@ -197,8 +196,6 @@ fun ApConfigurationScreen(
                         valueTitle = R.string.wifi_hotspot_timeout_bridged,
                         checked = state.bridgedModeOpportunisticShutdown,
                         value = state.bridgedTimeout,
-                        valueSummary = "",
-                        switchReadOnly = false,
                         valueReadOnly = Build.VERSION.SDK_INT < 33,
                         summary = annotatedStringResource(
                             R.string.wifi_bridged_mode_opportunistic_shutdown_help,
@@ -228,7 +225,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_tune,
                         title = R.string.wifi_band_optimization,
                         checked = state.bandOptimization,
-                        readOnly = false,
                         summary = annotatedStringResource(R.string.wifi_band_optimization_help),
                     ) {
                         state.bandOptimization = it
@@ -266,7 +262,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_tune,
                         title = R.string.wifi_hotspot_acs_channel_2g,
                         value = state.acs2g,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         validator = { validateAcsChannels(SoftApConfiguration.BAND_2GHZ, it) },
@@ -277,7 +272,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_tune,
                         title = R.string.wifi_hotspot_acs_channel_5g,
                         value = state.acs5g,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         validator = { validateAcsChannels(SoftApConfiguration.BAND_5GHZ, it) },
@@ -288,19 +282,21 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_tune,
                         title = R.string.wifi_hotspot_acs_channel_6g,
                         value = state.acs6g,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         validator = { validateAcsChannels(SoftApConfiguration.BAND_6GHZ, it) },
                     ) { state.acs6g = it }
                 }
                 row(R.string.wifi_hotspot_max_channel_bandwidth) {
+                    val entries = state.bandwidthEntries
+                    val selected = entries.firstOrNull { it.width == state.maxChannelBandwidth }
                     ListApRow(
                         icon = R.drawable.ic_action_settings_input_antenna,
                         title = R.string.wifi_hotspot_max_channel_bandwidth,
-                        selected = state.maxChannelBandwidthLabel(context),
-                        enabled = true,
-                        entries = state.bandwidthEntries(),
+                        selected = selected,
+                        selectedLabel = selected?.label(context)
+                            ?: channelBandwidthLabel(context, state.maxChannelBandwidth),
+                        entries = entries,
                         entryLabel = { it.label(context) },
                         description = annotatedStringResource(R.string.wifi_hotspot_max_channel_bandwidth_help),
                         onSelect = { state.maxChannelBandwidth = it.width },
@@ -325,7 +321,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_social_people,
                         title = R.string.wifi_max_clients,
                         value = state.maxClients,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_max_clients_help),
                         keyboardType = KeyboardType.Number,
                         maxLength = 10,
@@ -344,7 +339,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_block,
                         title = R.string.wifi_blocked_list,
                         value = state.blockedList,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_blocked_list_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         minLines = 3,
@@ -359,8 +353,6 @@ fun ApConfigurationScreen(
                         checked = state.clientUserControl,
                         value = state.allowedList,
                         valueSummary = state.allowedList,
-                        switchReadOnly = false,
-                        valueReadOnly = false,
                         description = annotatedStringResource(R.string.wifi_client_user_control_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         minLines = 3,
@@ -391,7 +383,6 @@ fun ApConfigurationScreen(
                     icon = R.drawable.ic_action_visibility_off,
                     title = R.string.wifi_hidden_network,
                     checked = state.hiddenSsid,
-                    readOnly = false,
                     summary = annotatedStringResource(R.string.wifi_hidden_network_help),
                 ) {
                     state.hiddenSsid = it
@@ -403,7 +394,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_image_looks_6,
                         title = R.string.wifi_ieee_80211ax,
                         checked = state.ieee80211ax,
-                        readOnly = false,
                         summary = annotatedStringResource(R.string.wifi_ieee_80211ax_help),
                     ) {
                         state.ieee80211ax = it
@@ -414,7 +404,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_device_network_wifi,
                         title = R.string.wifi_ieee_80211be,
                         checked = state.ieee80211be,
-                        readOnly = false,
                         summary = annotatedStringResource(R.string.wifi_ieee_80211be_help),
                     ) { state.ieee80211be = it }
                 }
@@ -425,7 +414,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_code,
                         title = R.string.wifi_vendor_elements,
                         value = state.vendorElements,
-                        readOnly = false,
                         description = annotatedStringResource(R.string.wifi_vendor_elements_help),
                         keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                         minLines = 3,
@@ -448,7 +436,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_block,
                         title = R.string.wifi_client_isolation,
                         checked = state.clientIsolation,
-                        readOnly = false,
                         summary = annotatedStringResource(R.string.wifi_client_isolation_help),
                     ) {
                         state.clientIsolation = it
@@ -461,7 +448,6 @@ fun ApConfigurationScreen(
                         icon = R.drawable.ic_action_settings,
                         title = R.string.wifi_user_config,
                         checked = state.userConfig,
-                        readOnly = false,
                     ) {
                         state.userConfig = it
                     }

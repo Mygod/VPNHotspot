@@ -4,6 +4,7 @@ import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
+import android.os.Parcelable
 import androidx.compose.material3.SnackbarHostState
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -22,17 +23,16 @@ import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
-class ApConfigurationSession(
+@Parcelize
+data class ApConfigurationSession(
     val initial: SoftApConfigurationCompat,
-    val readOnly: Boolean = false,
-    val p2pMode: Boolean = false,
     val target: ApConfigurationTarget,
-    val repeaterMaster: P2pSupplicantConfiguration? = null,
-    val onApply: suspend (SoftApConfigurationCompat) -> Boolean,
-)
+    val readOnly: Boolean = false,
+) : Parcelable
 
 enum class ApConfigurationTarget {
     System,
@@ -40,18 +40,20 @@ enum class ApConfigurationTarget {
     Temporary,
 }
 
-suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): SoftApConfigurationCompat? {
+suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): ApConfigurationSession? {
     return try {
-        if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+        val config = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             WifiApManager.configurationLegacy?.toCompat() ?: SoftApConfigurationCompat()
         } else WifiApManager.configuration.toCompat()
+        ApConfigurationSession(config, ApConfigurationTarget.System)
     } catch (e: InvocationTargetException) {
         if (e.targetException !is SecurityException) Timber.w(e)
         try {
-            if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+            val config = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                 RootManager.use { it.execute(WifiApCommands.GetConfigurationLegacy()) }?.toCompat()
                     ?: SoftApConfigurationCompat()
             } else RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }.toCompat()
+            ApConfigurationSession(config, ApConfigurationTarget.System)
         } catch (_: CancellationException) {
             null
         } catch (eRoot: Exception) {
@@ -144,15 +146,12 @@ suspend fun loadRepeaterApConfiguration(
                 bssid = RepeaterService.deviceAddress
                 setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
             }
-            return ApConfigurationSession(config, p2pMode = true, target = ApConfigurationTarget.Repeater) {
-                applyRepeaterApConfiguration(null, it, snackbarHostState)
-            }
+            return ApConfigurationSession(config, ApConfigurationTarget.Repeater)
         }
     } else if (binder != null) {
         val group = binder.group.value ?: binder.fetchPersistentGroup().let { binder.group.value }
         if (group != null) {
             var readOnly = false
-            var master: P2pSupplicantConfiguration? = null
             val config = SoftApConfigurationCompat(
                 ssid = WifiSsidCompat.fromUtf8Text(group.networkName),
                 securityType = if (Build.VERSION.SDK_INT >= 36) when (group.securityType) {
@@ -169,9 +168,9 @@ suspend fun loadRepeaterApConfiguration(
             ).apply {
                 setChannel(RepeaterService.operatingChannel)
                 try {
-                    val parsed = P2pSupplicantConfiguration(group)
-                    parsed.init(binder.obtainDeviceAddress()?.toString())
-                    master = parsed
+                    val parsed = P2pSupplicantConfiguration(group).also {
+                        it.init(binder.obtainDeviceAddress()?.toString())
+                    }
                     passphrase = parsed.psk
                     bssid = parsed.bssid
                 } catch (e: Exception) {
@@ -186,13 +185,9 @@ suspend fun loadRepeaterApConfiguration(
             }
             return ApConfigurationSession(
                 config,
+                ApConfigurationTarget.Repeater,
                 readOnly = readOnly,
-                p2pMode = true,
-                target = ApConfigurationTarget.Repeater,
-                repeaterMaster = master,
-            ) {
-                applyRepeaterApConfiguration(binder, it, snackbarHostState, master)
-            }
+            )
         }
     }
     snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
@@ -203,7 +198,6 @@ suspend fun applyRepeaterApConfiguration(
     binder: RepeaterService.Binder?,
     config: SoftApConfigurationCompat,
     snackbarHostState: SnackbarHostState,
-    master: P2pSupplicantConfiguration? = null,
 ): Boolean {
     if (RepeaterService.safeMode) {
         RepeaterService.networkName = config.ssid
@@ -213,17 +207,17 @@ suspend fun applyRepeaterApConfiguration(
         applyRepeaterCommonConfiguration(config)
         return true
     }
-    if (binder == null && master == null) {
+    if (binder == null) {
         snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
         return false
     }
-    val group = binder?.group?.value ?: binder?.fetchPersistentGroup()?.let { binder.group.value }
-    if (group == null && master == null) {
+    val group = binder.group.value ?: binder.fetchPersistentGroup().let { binder.group.value }
+    if (group == null) {
         snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
         return false
     }
-    val parsed = master ?: try {
-        P2pSupplicantConfiguration(group).also { it.init(binder?.obtainDeviceAddress()?.toString()) }
+    val parsed = try {
+        P2pSupplicantConfiguration(group).also { it.init(binder.obtainDeviceAddress()?.toString()) }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
@@ -231,30 +225,19 @@ suspend fun applyRepeaterApConfiguration(
         snackbarHostState.showLongSnackbar(e.readableMessage)
         return false
     }
-    applySupplicantRepeaterConfiguration(parsed, binder, config, snackbarHostState)
-    applyRepeaterCommonConfiguration(config)
-    return true
-}
-
-private suspend fun applySupplicantRepeaterConfiguration(
-    master: P2pSupplicantConfiguration,
-    binder: RepeaterService.Binder?,
-    config: SoftApConfigurationCompat,
-    snackbarHostState: SnackbarHostState,
-) {
-    val group = binder?.group?.value
-    val mayBeModified = master.psk != config.passphrase || master.bssid != config.bssid || config.ssid.run {
-        if (this != null) decode().let { it == null || group?.networkName != it }
-        else group?.networkName != null
+    val mayBeModified = parsed.psk != config.passphrase || parsed.bssid != config.bssid || config.ssid.run {
+        if (this != null) decode().let { it == null || group.networkName != it }
+        else group.networkName != null
     }
-    if (!mayBeModified) return
-    try {
-        withContext(Dispatchers.Default) { master.update(config.ssid!!, config.passphrase!!, config.bssid) }
-        binder?.clearGroup()
+    if (mayBeModified) try {
+        withContext(Dispatchers.Default) { parsed.update(config.ssid!!, config.passphrase!!, config.bssid) }
+        binder.clearGroup()
     } catch (e: Exception) {
         Timber.w(e)
         snackbarHostState.showLongSnackbar(e.readableMessage)
     }
+    applyRepeaterCommonConfiguration(config)
+    return true
 }
 
 private fun applyRepeaterCommonConfiguration(config: SoftApConfigurationCompat) {

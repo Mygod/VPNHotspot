@@ -69,11 +69,6 @@
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, canal %2$s, ancho de banda de %3$s, tiempo de espera de inactividad de %6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, canal %2$s,
 ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
-    <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="one">%1$s/%2$s cliente conectado\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="many">%1$s/%2$s clientes conectados\nCaracterísticas compatibles: %3$s</item>
-        <item quantity="other">%1$s/%2$s clientes conectados\nCaracterísticas compatibles: %3$s</item>
-    </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="one">%1$s cliente conectado</item>
         <item quantity="many">%1$s de clientes conectados</item>
@@ -203,7 +198,6 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
     <string name="wifi_client_user_control">Controla qué cliente puede usar el punto de acceso</string>
     <string name="wifi_blocked_list">Lista de clientes bloqueados</string>
     <string name="wifi_allowed_list">Lista de clientes permitidos</string>
-    <string name="wifi_mac_randomization">Usar MAC aleatorio</string>
     <string name="wifi_mac_randomization_none">Ninguno</string>
     <string name="wifi_mac_randomization_persistent">Persistente</string>
     <string name="wifi_mac_randomization_non_persistent">No persistente</string>

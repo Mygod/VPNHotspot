@@ -27,10 +27,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -52,15 +48,18 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.key
+import androidx.compose.runtime.key as composeKey
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -72,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import be.mygod.vpnhotspot.R
 
 val PreferenceSplitControlWidth: Dp = 52.dp
 
@@ -80,6 +80,19 @@ fun rememberTextFieldValueAtEnd(text: String, vararg inputs: Any?): MutableState
     rememberSaveable(text, *inputs, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(text, TextRange(text.length)))
     }
+
+@Composable
+fun rememberDialogFocusRequester(enabled: Boolean = true): FocusRequester {
+    val focusRequester = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(enabled) {
+        if (enabled) {
+            focusRequester.requestFocus()
+            keyboard?.show()
+        }
+    }
+    return focusRequester
+}
 
 @Composable
 fun SettingsList(
@@ -99,11 +112,10 @@ fun LazyListScope.preferenceGroup(
     @StringRes title: Int? = null,
     content: PreferenceGroupScope.() -> Unit,
 ) {
-    val scope = PreferenceGroupScope().apply(content)
     item(key = key ?: title) {
-        PreferenceGroupContent(
+        PreferenceGroup(
             title = title?.let { stringResource(it) },
-            scope = scope,
+            content = content,
         )
     }
 }
@@ -115,20 +127,8 @@ fun PreferenceGroup(
     horizontalPadding: Dp = 16.dp,
     content: PreferenceGroupScope.() -> Unit,
 ) {
-    PreferenceGroupContent(
-        title = title,
-        horizontalPadding = horizontalPadding,
-        scope = PreferenceGroupScope().apply(content),
-    )
-}
-
-@Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-private fun PreferenceGroupContent(
-    title: String?,
-    horizontalPadding: Dp = 16.dp,
-    scope: PreferenceGroupScope,
-) {
+    val items = ArrayList<@Composable () -> Unit>()
+    PreferenceGroupScope(items).apply(content)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -142,43 +142,32 @@ private fun PreferenceGroupContent(
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        scope.render()
+        for (item in items) item()
     }
 }
 
-class PreferenceGroupScope {
-    private val items = ArrayList<PreferenceGroupItem>()
+class PreferenceGroupScope(private val items: MutableList<@Composable () -> Unit>) {
+    private var rowCount = 0
 
     fun row(key: Any? = null, content: @Composable () -> Unit) {
-        items += PreferenceGroupItem.Row(key, content)
+        val index = rowCount++
+        items += {
+            if (key == null) {
+                CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, rowCount)) {
+                    content()
+                }
+            } else composeKey(key) {
+                CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, rowCount)) {
+                    content()
+                }
+            }
+        }
     }
 
     fun contentItem(key: Any? = null, content: @Composable () -> Unit) {
-        items += PreferenceGroupItem.Content(key, content)
-    }
-
-    @Composable
-    internal fun render() {
-        val count = items.count { it is PreferenceGroupItem.Row }
-        var index = 0
-        for (item in items) when (item) {
-            is PreferenceGroupItem.Row -> {
-                val position = PreferenceRowPosition(index++, count)
-
-                @Composable
-                fun Content() {
-                    CompositionLocalProvider(LocalPreferenceRowPosition provides position) {
-                        item.content()
-                    }
-                }
-                if (item.key == null) Content() else key(item.key) {
-                    Content()
-                }
-            }
-            is PreferenceGroupItem.Content -> {
-                if (item.key == null) item.content() else key(item.key) {
-                    item.content()
-                }
+        items += {
+            if (key == null) content() else composeKey(key) {
+                content()
             }
         }
     }
@@ -238,7 +227,7 @@ fun PreferenceRow(
             position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
             else -> ListItemDefaults.segmentedShapes(position.index, position.count)
         },
-        modifier = Modifier.fillMaxWidth().then(modifier.fillMaxWidth()),
+        modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         leadingContent = iconContent,
         trailingContent = trailing,
@@ -254,7 +243,7 @@ fun PreferenceRow(
     }
 }
 
-class PreferenceRowPosition(val index: Int, val count: Int)
+private class PreferenceRowPosition(val index: Int, val count: Int)
 
 private val LocalPreferenceRowPosition = compositionLocalOf<PreferenceRowPosition?> { null }
 
@@ -272,7 +261,7 @@ fun PreferenceSwitch(
         modifier = modifier,
         thumbContent = {
             Icon(
-                imageVector = if (checked) Icons.Filled.Check else Icons.Filled.Close,
+                painter = painterResource(if (checked) R.drawable.ic_action_check else R.drawable.ic_action_close),
                 contentDescription = null,
                 modifier = Modifier.size(SwitchDefaults.IconSize),
             )
@@ -285,13 +274,13 @@ fun PreferenceSwitch(
 @Composable
 fun PreferenceSplitSwitch(
     checked: Boolean,
-    enabled: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            painter = painterResource(R.drawable.ic_navigation_chevron_right),
             contentDescription = null,
             modifier = Modifier.padding(start = 16.dp, end = 8.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -353,7 +342,7 @@ fun PreferenceSelectionSheet(
     entryCount: Int,
     selectedIndex: Int,
     entryLabel: (Int) -> String,
-    entrySummary: @Composable (Int) -> AnnotatedString? = { null },
+    entrySummary: (Int) -> AnnotatedString? = { null },
     description: AnnotatedString? = null,
     onDismissRequest: () -> Unit,
     onSelect: (Int) -> Unit,
@@ -419,18 +408,6 @@ fun PreferenceSelectionRow(
 fun annotatedStringResource(@StringRes id: Int, vararg formatArgs: Any) = AnnotatedString.fromHtml(
     if (formatArgs.isEmpty()) stringResource(id) else stringResource(id, *formatArgs),
 )
-
-private sealed interface PreferenceGroupItem {
-    class Row(
-        val key: Any?,
-        val content: @Composable () -> Unit,
-    ) : PreferenceGroupItem
-
-    class Content(
-        val key: Any?,
-        val content: @Composable () -> Unit,
-    ) : PreferenceGroupItem
-}
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)

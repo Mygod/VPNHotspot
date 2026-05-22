@@ -28,6 +28,7 @@ import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitSwitch
 import be.mygod.vpnhotspot.ui.PreferenceSwitch
+import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
@@ -37,19 +38,17 @@ fun TextSwitchApRow(
     @StringRes valueTitle: Int,
     checked: Boolean,
     value: String,
-    valueSummary: String,
-    switchReadOnly: Boolean,
-    valueReadOnly: Boolean,
+    valueSummary: String = "",
+    valueReadOnly: Boolean = false,
     summary: AnnotatedString? = null,
-    description: AnnotatedString? = null,
+    description: AnnotatedString,
     keyboardType: KeyboardType = KeyboardType.Text,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = keyboardType),
     maxLength: Int? = null,
     minLines: Int = if (value.contains('\n')) 3 else 1,
     placeholder: String? = null,
     suffix: String? = null,
-    supportingText: String? = null,
-    validator: (String) -> String? = { null },
+    validator: (String) -> String?,
     onCheckedChange: (Boolean) -> Unit,
     onValueChange: (String) -> Unit,
 ) {
@@ -67,11 +66,9 @@ fun TextSwitchApRow(
                 }
             }
         },
-        enabled = true,
         trailing = {
             PreferenceSplitSwitch(
                 checked = checked,
-                enabled = !switchReadOnly,
                 onCheckedChange = onCheckedChange,
             )
         },
@@ -92,20 +89,17 @@ fun TextSwitchApRow(
                     )
                     PreferenceSwitch(
                         checked = checked,
-                        enabled = !switchReadOnly,
-                        onCheckedChange = if (switchReadOnly) null else onCheckedChange,
+                        onCheckedChange = onCheckedChange,
                     )
                 }
             },
             text = {
                 val focusRequester = rememberDialogFocusRequester(fieldEnabled)
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    description?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     OutlinedTextField(
                         value = draft,
                         onValueChange = { draft = maxLength?.let(it::takeText) ?: it },
@@ -120,12 +114,10 @@ fun TextSwitchApRow(
                         minLines = minLines,
                         isError = fieldEnabled && error != null,
                         suffix = suffix?.let { { Text(it) } },
-                        supportingText = if ((fieldEnabled && error != null) || supportingText != null ||
-                            maxLength != null) {
+                        supportingText = if ((fieldEnabled && error != null) || maxLength != null) {
                             {
                                 Column {
                                     if (fieldEnabled) error?.let { ErrorApText(it) }
-                                    if (error == null) supportingText?.let { Text(it) }
                                     maxLength?.let { Text("${draft.text.length}/$it") }
                                 }
                             }

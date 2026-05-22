@@ -22,7 +22,6 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
-import be.mygod.vpnhotspot.ui.channelBandwidthLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -81,34 +80,33 @@ class ApConfigurationState(
     private var originalUnderlying = initial.underlying
     private val ssidHexToggleable = if (p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
-    private val securityOptions = when {
-        p2pMode && Build.VERSION.SDK_INT >= 36 -> P2P_SECURITY_TYPES.mapIndexed { index, label ->
-            SecurityOption(label, index + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
-        }
+    val securityEntries = when {
+        p2pMode && Build.VERSION.SDK_INT >= 36 ->
+            arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal").mapIndexed { index, label ->
+                SecurityOption(label, index + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
+            }
         p2pMode -> listOf(SecurityOption("WPA2-Personal", SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
         else -> SoftApConfigurationCompat.securityTypes.mapIndexed { index, label -> SecurityOption(label, index) }
     }
     private val channelOptions = currentChannelOptions(p2pMode)
-    private val bandwidthOptions = if (Build.VERSION.SDK_INT >= 33) {
+    val bandwidthEntries = if (Build.VERSION.SDK_INT >= 33) {
         SoftApInfo.channelWidthLookup.lookup.let { lookup ->
             List(lookup.size()) {
                 val width = lookup.keyAt(it)
                 BandWidth(width, lookup.valueAt(it).substring(14))
-            }.sorted()
+            }.sortedBy { it.width }
         }
     } else emptyList()
 
     private fun normalizeMaxChannelBandwidth(
         width: Int,
-        fallback: Int = bandwidthOptions.firstOrNull()?.width ?: width,
+        fallback: Int = bandwidthEntries.firstOrNull()?.width ?: width,
     ): Int {
-        if (Build.VERSION.SDK_INT < 33 || bandwidthOptions.any { it.width == width }) return width
+        if (Build.VERSION.SDK_INT < 33 || bandwidthEntries.any { it.width == width }) return width
         Timber.w(Exception("Cannot locate bandwidth $width"))
         return fallback
     }
 
-    var revision by mutableIntStateOf(0)
-        private set
     var ssid by mutableStateOf(displaySsid(initial.ssid))
     var securityType by mutableIntStateOf(initial.securityType)
     var password by mutableStateOf(initial.passphrase.orEmpty())
@@ -144,19 +142,21 @@ class ApConfigurationState(
     var acs6g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_6GHZ]).orEmpty())
     var maxChannelBandwidth by mutableIntStateOf(normalizeMaxChannelBandwidth(initial.maxChannelBandwidth))
 
-    val copyError get() = copyError(app)
-    val saveError get() = saveError(app)
-    val actionError get() = copyError ?: saveError
-    val canSave get() = !readOnly && saveError == null
-    val canCopy get() = copyError == null
-    val canShare get() = generateConfigOrNull(requirePassword = false, full = false) != null
-    val possiblyInvalid get() = possiblyInvalid(app)
-    val securityLabel get() = securityOptions.firstOrNull { it.value == securityType }?.label ?: securityType.toString()
+    val canShare get() = try {
+        generateConfig(requirePassword = false, full = false)
+        true
+    } catch (_: RuntimeException) {
+        false
+    }
     val ssidHex get() = hexSsid
     val canToggleSsidHex get() = ssidHexToggleable
-    val passwordEnabled get() = selectedSecurityType !in SECURITY_TYPES_WITHOUT_PASSWORD
+    val passwordEnabled get() = when (selectedSecurityType) {
+        SoftApConfiguration.SECURITY_TYPE_OPEN,
+        SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
+        SoftApConfiguration.SECURITY_TYPE_WPA3_OWE -> false
+        else -> true
+    }
     val passwordMaxLength get() = selectedSecurityType != SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
-    val bssidEnabled get() = bssidEnabled(macRandomization)
     val channelError get() = if (!p2pMode && Build.VERSION.SDK_INT >= 30) try {
         SoftApConfigurationCompat.testPlatformValidity(generateChannels())
         null
@@ -173,23 +173,15 @@ class ApConfigurationState(
         SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
     } else securityType
 
-    fun generateConfigOrNull(requirePassword: Boolean = true, full: Boolean = true) = try {
-        generateConfig(requirePassword, full)
-    } catch (e: Exception) {
-        null
-    }
-
     fun copyError(context: Context) = generateConfigError(context, requirePassword = false, checkChannels = false)
     fun saveError(context: Context) = if (readOnly) null else generateConfigError(
         context,
         requirePassword = true,
         checkChannels = true,
     )
-    fun actionError(context: Context) = copyError(context) ?: saveError(context)
     fun canSave(context: Context) = !readOnly && saveError(context) == null
-    fun canCopy(context: Context) = copyError(context) == null
     fun possiblyInvalid(context: Context) = canSave(context) && Build.VERSION.SDK_INT >= 34 && !p2pMode && try {
-        generateConfigOrNull()?.let { !Services.wifi.validateSoftApConfiguration(it.toPlatform()) } == true
+        !Services.wifi.validateSoftApConfiguration(generateConfig().toPlatform())
     } catch (e: Exception) {
         Timber.d(e)
         false
@@ -208,7 +200,7 @@ class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
-        if (bssidEnabled) validateOptionalMac(bssid) {
+        if (bssidEditable(macRandomization)) validateOptionalMac(bssid) {
             if (Build.VERSION.SDK_INT >= 30 && !p2pMode) SoftApConfigurationCompat.testPlatformValidity(it)
         }?.let { return it }
         if (maxClients.isNotEmpty()) try {
@@ -269,7 +261,7 @@ class ApConfigurationState(
             allowedClientList = parseMacList(allowedList)
             blockedClientList = parseMacList(blockedList)
             macRandomizationSetting = macRandomization
-            bssid = if (bssidEnabled && this@ApConfigurationState.bssid.isNotEmpty()) {
+            bssid = if (bssidEditable(macRandomization) && this@ApConfigurationState.bssid.isNotEmpty()) {
                 MacAddress.fromString(this@ApConfigurationState.bssid)
             } else null
             isBridgedModeOpportunisticShutdownEnabled = bridgedModeOpportunisticShutdown
@@ -316,7 +308,6 @@ class ApConfigurationState(
     fun setSsid(value: String, hex: Boolean) {
         hexSsid = hex
         ssid = value
-        revision++
     }
 
     fun convertSsidDisplay(value: String, hex: Boolean): String {
@@ -390,7 +381,6 @@ class ApConfigurationState(
         acs5g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_5GHZ]).orEmpty()
         acs6g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_6GHZ]).orEmpty()
         maxChannelBandwidth = normalizeMaxChannelBandwidth(config.maxChannelBandwidth, maxChannelBandwidth)
-        revision++
     }
 
     private fun displaySsid(value: WifiSsidCompat?): String {
@@ -404,19 +394,10 @@ class ApConfigurationState(
         } else decoded
     }
 
-    fun securityEntries() = securityOptions
     fun channelEntries(allowDisabled: Boolean = false) = if (allowDisabled) listOf(ChannelOption.Disabled) +
             channelOptions else channelOptions
-    fun bandwidthEntries() = bandwidthOptions
-    fun maxChannelBandwidthLabel(context: Context) = bandwidthOptions.firstOrNull {
-        it.width == maxChannelBandwidth
-    }?.label(context) ?: channelBandwidthLabel(context, maxChannelBandwidth)
-    fun bssidEnabled(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
+    fun bssidEditable(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
             macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE
-    fun bssidEditable(macRandomization: Int) = p2pMode || (bssidEnabled(macRandomization) &&
-            (Build.VERSION.SDK_INT < 31 || macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE))
-    val macAddressEditable get() = !readOnly && (bssidEditable(macRandomization) ||
-            !p2pMode && Build.VERSION.SDK_INT >= 31)
     fun macAddressSummary(context: Context) = if (p2pMode) {
         bssid.ifEmpty {
             if (macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {

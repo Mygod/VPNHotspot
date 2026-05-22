@@ -30,18 +30,20 @@ import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceGroup
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
 fun MacAddressApRow(state: ApConfigurationState) {
     val context = LocalContext.current
     var editing by rememberSaveable { mutableStateOf(false) }
+    val enabled = !state.readOnly
     PreferenceRow(
         icon = R.drawable.ic_content_push_pin,
         title = stringResource(R.string.wifi_advanced_mac_address_title),
         summary = state.macAddressSummary(context),
-        enabled = state.macAddressEditable,
-        onClick = if (state.macAddressEditable) ({ editing = true }) else null,
+        enabled = enabled,
+        onClick = if (enabled) ({ editing = true }) else null,
     )
     if (editing) MacAddressApDialog(
         state = state,
@@ -57,11 +59,9 @@ private fun MacAddressApDialog(
     var draftRandomization by rememberSaveable { mutableIntStateOf(state.macRandomization) }
     var draftBssid by rememberTextFieldValueAtEnd(state.bssid)
     var draftPersistentRandomizedMac by rememberTextFieldValueAtEnd(state.persistentRandomizedMac)
-    val randomizationSelectable = !state.p2pMode && Build.VERSION.SDK_INT >= 31
     val randomizationVisible = !state.p2pMode && Build.VERSION.SDK_INT >= 31
     val bssidEnabled = state.bssidEditable(draftRandomization)
     val persistentRandomizedMacVisible = !state.p2pMode && Build.VERSION.SDK_INT >= 33
-    val persistentRandomizedMacEnabled = persistentRandomizedMacVisible
     val bssidError = if (bssidEnabled) {
         validateOptionalMac(draftBssid.text) { mac ->
             if (Build.VERSION.SDK_INT >= 30 && !state.p2pMode) {
@@ -81,7 +81,7 @@ private fun MacAddressApDialog(
                         draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE),
             )
             val persistentFocusRequester = rememberDialogFocusRequester(
-                persistentRandomizedMacEnabled &&
+                persistentRandomizedMacVisible &&
                         draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
             )
             val bssidField: @Composable () -> Unit = {
@@ -117,7 +117,6 @@ private fun MacAddressApDialog(
                             MacRandomizationOptionRow(
                                 selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
                                 showRadio = randomizationVisible,
-                                radioEnabled = randomizationSelectable,
                                 title = stringResource(R.string.wifi_mac_randomization_none),
                                 description = annotatedStringResource(R.string.wifi_mac_randomization_none_help),
                                 onSelect = { draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NONE },
@@ -129,8 +128,6 @@ private fun MacAddressApDialog(
                             row(SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT) {
                                 MacRandomizationOptionRow(
                                     selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
-                                    showRadio = true,
-                                    radioEnabled = randomizationSelectable,
                                     title = stringResource(R.string.wifi_mac_randomization_persistent),
                                     description = annotatedStringResource(
                                         R.string.wifi_mac_randomization_persistent_help),
@@ -145,7 +142,6 @@ private fun MacAddressApDialog(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .focusRequester(persistentFocusRequester),
-                                            enabled = persistentRandomizedMacEnabled,
                                             label = {
                                                 Text(stringResource(
                                                     R.string.wifi_advanced_mac_address_persistent_randomized))
@@ -162,8 +158,6 @@ private fun MacAddressApDialog(
                                 MacRandomizationOptionRow(
                                     selected = draftRandomization ==
                                             SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT,
-                                    showRadio = true,
-                                    radioEnabled = randomizationSelectable,
                                     title = stringResource(R.string.wifi_mac_randomization_non_persistent),
                                     description = annotatedStringResource(
                                         R.string.wifi_mac_randomization_non_persistent_help),
@@ -203,8 +197,7 @@ private fun MacAddressApDialog(
 @Composable
 private fun MacRandomizationOptionRow(
     selected: Boolean,
-    showRadio: Boolean,
-    radioEnabled: Boolean,
+    showRadio: Boolean = true,
     title: String,
     description: AnnotatedString,
     onSelect: () -> Unit,
@@ -222,11 +215,10 @@ private fun MacRandomizationOptionRow(
             {
                 RadioButton(
                     selected = selected,
-                    enabled = radioEnabled,
                     onClick = null,
                 )
             }
         } else null,
-        onClick = if (radioEnabled) onSelect else null,
+        onClick = if (showRadio) onSelect else null,
     )
 }

@@ -67,9 +67,6 @@
         关闭延迟 %6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, 频道 %2$s, 频宽 %3$s,
         不自动关闭</string>
-    <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="other">已连接 %1$s/%2$s 个设备\n支持功能：%3$s</item>
-    </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="other">已连接 %1$s 个设备</item>
     </plurals>
@@ -188,7 +185,6 @@
     <string name="wifi_client_user_control">过滤可以连接的设备</string>
     <string name="wifi_blocked_list">设备黑名单</string>
     <string name="wifi_allowed_list">设备白名单</string>
-    <string name="wifi_mac_randomization">随机生成 MAC 地址</string>
     <string name="wifi_mac_randomization_none">无</string>
     <string name="wifi_mac_randomization_persistent">持久化</string>
     <string name="wifi_mac_randomization_non_persistent">不持久化</string>

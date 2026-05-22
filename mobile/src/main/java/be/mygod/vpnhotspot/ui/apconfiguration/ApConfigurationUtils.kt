@@ -10,21 +10,19 @@ import android.os.Build
 import android.util.Base64
 import android.util.SparseIntArray
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.text.input.KeyboardType
-import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.channelBandwidthLabel
-import be.mygod.vpnhotspot.ui.softApBandLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.readableMessage
 import timber.log.Timber
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
-fun parseMacList(value: String) = value.split(NON_MAC_CHARS).filter { it.isNotEmpty() }.map(MacAddress::fromString)
+fun parseMacList(value: String) =
+    value.split(NON_MAC_CHARS).filter { it.isNotEmpty() }.map(MacAddress::fromString)
 
 fun validateOptionalLong(value: String, validate: (Long) -> Unit): String? {
     if (value.isEmpty()) return null
@@ -129,19 +127,13 @@ private fun genAutoOptions(band: Int) = (1..band).filter { it and band == it }.m
 
 data class SecurityOption(val label: String, val value: Int)
 
-open class ChannelOption(val band: Int = 0, val channel: Int = 0) {
-    object Disabled : ChannelOption(-1) {
-        override fun toString() = app.getString(R.string.wifi_ap_choose_disabled)
+data class ChannelOption(val band: Int = 0, val channel: Int = 0) {
+    companion object {
+        val Disabled = ChannelOption(-1)
     }
-
-    override fun toString() = if (channel == 0) {
-        softApBandLabel(app, band)
-    } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
 }
 
-class BandWidth(val width: Int, val name: String = "") : Comparable<BandWidth> {
-    override fun compareTo(other: BandWidth) = width - other.width
-}
+class BandWidth(val width: Int, val name: String = "")
 
 fun BandWidth.label(context: Context) = channelBandwidthLabel(context, width, name)
 
@@ -150,8 +142,6 @@ val MACHINE_TEXT_KEYBOARD_OPTIONS = KeyboardOptions(
     autoCorrectEnabled = false,
     keyboardType = KeyboardType.Ascii,
 )
-val WIFI_SSID_CONTENT_TYPE = ContentType.NewUsername + ContentType.Username
-val WIFI_PASSWORD_CONTENT_TYPE = ContentType("wifiPassword") + ContentType.Password
 private val NON_MAC_CHARS = "[^0-9a-fA-F:]+".toRegex()
 private val CHANNELS_2G = (1..14).map { ChannelOption(SoftApConfiguration.BAND_2GHZ, it) }
 private val CHANNELS_6G by lazy {
@@ -177,9 +167,3 @@ private val SOFT_AP_OPTIONS by lazy {
                 (1..6).map { ChannelOption(SoftApConfiguration.BAND_60GHZ, it) }
     } else P2P_SAFE_OPTIONS
 }
-val SECURITY_TYPES_WITHOUT_PASSWORD = setOf(
-    SoftApConfiguration.SECURITY_TYPE_OPEN,
-    SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
-    SoftApConfiguration.SECURITY_TYPE_WPA3_OWE,
-)
-val P2P_SECURITY_TYPES = arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal")

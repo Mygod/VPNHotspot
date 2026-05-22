@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.ui
 
 import android.content.Context
 import android.content.res.Configuration
-import android.os.Parcelable
 import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
@@ -32,11 +31,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -67,7 +64,6 @@ import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
-import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.text.NumberFormat
 
@@ -82,9 +78,9 @@ fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) 
 
     if (!inspectionMode) {
         DisposableEffect(lifecycleOwner, model) {
-            lifecycleOwner.lifecycle.addObserver(model.clientsFragmentObserver)
+            lifecycleOwner.lifecycle.addObserver(model.clientsScreenObserver)
             onDispose {
-                lifecycleOwner.lifecycle.removeObserver(model.clientsFragmentObserver)
+                lifecycleOwner.lifecycle.removeObserver(model.clientsScreenObserver)
                 model.stopClientsScreen()
             }
         }
@@ -207,10 +203,13 @@ private fun ClientRow(
             }
         }
     }
-    val rateText = formatTrafficRate(context, row.rate)
+    val rateText = row.rate?.let { rate ->
+        "${'\u25B2'} ${Formatter.formatFileSize(context, rate.send)}/s\t\t" +
+                "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
+    }
     var expanded by remember { mutableStateOf(false) }
     var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
-    var statsDialog by rememberSaveable(client.mac.toString()) { mutableStateOf<ClientStatsDialog?>(null) }
+    var statsDialog by remember { mutableStateOf<ClientStats?>(null) }
     val scope = rememberCoroutineScope()
     val icon = client.icon
 
@@ -246,7 +245,7 @@ private fun ClientRow(
                     expanded = false
                     scope.launch {
                         try {
-                            statsDialog = ClientStatsDialog(title.text, onQueryStats())
+                            statsDialog = onQueryStats()
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -259,8 +258,7 @@ private fun ClientRow(
     }
 
     if (editingNickname) {
-        val focusRequester = remember { FocusRequester() }
-        val keyboard = LocalSoftwareKeyboardController.current
+        val focusRequester = rememberDialogFocusRequester()
         val initialNickname = remember(client.mac.toString(), editingNickname) {
             record.nickname
         }
@@ -270,10 +268,6 @@ private fun ClientRow(
             stateSaver = TextFieldValue.Saver,
         ) {
             mutableStateOf(TextFieldValue(initialNickname, TextRange(initialNickname.length)))
-        }
-        LaunchedEffect(Unit) {
-            focusRequester.requestFocus()
-            keyboard?.show()
         }
         AlertDialog(
             onDismissRequest = { editingNickname = false },
@@ -314,15 +308,15 @@ private fun ClientRow(
             },
         )
     }
-    statsDialog?.let { dialog ->
+    statsDialog?.let { stats ->
         AlertDialog(
             onDismissRequest = {
                 statsDialog = null
             },
             title = {
-                Text(stringResource(R.string.clients_stats_title, dialog.title))
+                Text(stringResource(R.string.clients_stats_title, title.text))
             },
-            text = { Text(formatClientStats(context, dialog.stats)) },
+            text = { Text(formatClientStats(context, stats)) },
             confirmButton = {
                 DialogConfirmButton(onClick = {
                     statsDialog = null
@@ -373,9 +367,6 @@ private fun ClientRowLayout(
     )
 }
 
-@Parcelize
-private data class ClientStatsDialog(val title: String, val stats: ClientStats) : Parcelable
-
 private fun AnnotatedString.Builder.appendClientAddress(client: Client, iface: String?, linkStyles: TextLinkStyles) {
     appendMacAddress(client.macString, linkStyles)
     iface?.let {
@@ -387,12 +378,6 @@ private fun AnnotatedString.Builder.appendClientAddress(client: Client, iface: S
 private suspend fun SnackbarHostState.showClientError(e: Exception) {
     Timber.w(e)
     showLongSnackbar(e.localizedMessage ?: e.javaClass.name)
-}
-
-private fun formatTrafficRate(context: Context, rate: ClientViewModel.TrafficRate?): String? {
-    if (rate == null || rate.send < 0 || rate.receive < 0) return null
-    return "${'\u25B2'} ${Formatter.formatFileSize(context, rate.send)}/s\t\t" +
-            "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
 }
 
 private fun formatClientStats(context: Context, stats: ClientStats): AnnotatedString {
@@ -466,9 +451,6 @@ private fun formatClientStats(context: Context, stats: ClientStats): AnnotatedSt
 }
 
 @Preview(name = "Clients", showBackground = true, widthDp = 420, heightDp = 720)
-@Composable
-private fun ClientsPreview() = ClientsPreviewContent()
-
 @Preview(
     name = "Clients - dark",
     showBackground = true,
@@ -477,10 +459,7 @@ private fun ClientsPreview() = ClientsPreviewContent()
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun ClientsDarkPreview() = ClientsPreviewContent()
-
-@Composable
-private fun ClientsPreviewContent() {
+private fun ClientsPreview() {
     VpnHotspotPreviewSurface {
         ClientsScreen(
             model = remember { ClientViewModel() },
@@ -490,9 +469,6 @@ private fun ClientsPreviewContent() {
 }
 
 @Preview(name = "Clients - connected", showBackground = true, widthDp = 420, heightDp = 720)
-@Composable
-private fun ClientsConnectedPreview() = ClientsConnectedPreviewContent()
-
 @Preview(
     name = "Clients - connected dark",
     showBackground = true,
@@ -501,10 +477,7 @@ private fun ClientsConnectedPreview() = ClientsConnectedPreviewContent()
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun ClientsConnectedDarkPreview() = ClientsConnectedPreviewContent()
-
-@Composable
-private fun ClientsConnectedPreviewContent() {
+private fun ClientsConnectedPreview() {
     VpnHotspotPreviewSurface {
         val clientsContentDescription = stringResource(R.string.title_clients)
         SettingsList(modifier = Modifier.semantics { contentDescription = clientsContentDescription }) {

@@ -19,13 +19,12 @@ object Converters {
     private const val ANNOTATED_STRING_FORMAT = 0x41535401
     @Suppress("UNCHECKED_CAST")
     private val annotatedStringSaver = AnnotatedString.Saver as Saver<AnnotatedString, Any>
-    private val saverScope = SaverScope { true }
 
     @JvmStatic
     @TypeConverter
     fun persistAnnotatedString(text: AnnotatedString) = useParcel { p ->
         p.writeInt(ANNOTATED_STRING_FORMAT)
-        p.writeValue(with(annotatedStringSaver) { saverScope.save(text) })
+        p.writeValue(with(annotatedStringSaver) { SaverScope { true }.save(text) })
         p.marshall()
     }
 

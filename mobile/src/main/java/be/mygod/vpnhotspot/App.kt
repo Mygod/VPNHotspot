@@ -21,7 +21,6 @@ import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.getSystemService
-import androidx.preference.PreferenceManager
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
@@ -50,13 +49,11 @@ class App : Application() {
         lateinit var app: App
     }
 
-    @SuppressLint("RestrictedApi")
     override fun onCreate() {
         super.onCreate()
         app = this
         deviceStorage = DeviceStorageApp(this)
-        // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
-        deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
+        deviceStorage.moveSharedPreferencesFrom(this, sharedPreferencesName)
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         Services.init { this }
 
@@ -146,12 +143,13 @@ class App : Application() {
     }
 
     lateinit var deviceStorage: Application
+    private val sharedPreferencesName get() = "${packageName}_preferences"
     val english by lazy {
         createConfigurationContext(Configuration(resources.configuration).apply {
             setLocale(Locale.ENGLISH)
         })
     }
-    val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
+    val pref by lazy { deviceStorage.getSharedPreferences(sharedPreferencesName, Context.MODE_PRIVATE) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
     val location by lazy { getSystemService<LocationManager>() }
 

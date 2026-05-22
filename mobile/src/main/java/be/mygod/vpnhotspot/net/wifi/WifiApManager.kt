@@ -304,13 +304,12 @@ object WifiApManager {
                         if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
                         callback.onNumClientsChanged(args!![0] as Int)
                     }
-                    method.matches1<java.util.List<*>>("onConnectedClientsChanged") -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
+                    Build.VERSION.SDK_INT >= 30 &&
+                            method.matches1<List<*>>("onConnectedClientsChanged") -> {
                         @Suppress("UNCHECKED_CAST")
                         callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
                     }
-                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
+                    Build.VERSION.SDK_INT >= 30 && method.matches1<List<*>>("onInfoChanged") -> {
                         @Suppress("UNCHECKED_CAST")
                         val list = args!![0] as List<Parcelable>
                         if (Build.VERSION.SDK_INT >= 35) for (info in list) (SoftApInfo.getVendorData(info) as List<*>?)

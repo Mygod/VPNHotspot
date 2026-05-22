@@ -495,7 +495,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)
-        } else @TargetApi(29) {
+        } else {
             p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
                 try {   // bypass networkName check
                     UnblockCentral.WifiP2pConfig_Builder_mNetworkName.set(this, networkName)

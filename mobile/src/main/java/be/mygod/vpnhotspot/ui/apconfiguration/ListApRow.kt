@@ -16,11 +16,10 @@ import be.mygod.vpnhotspot.ui.PreferenceSelectionSheet
 fun <T> ListApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
-    selected: String,
-    enabled: Boolean,
+    selected: T?,
     entries: List<T>,
     entryLabel: (T) -> String,
-    entrySummary: @Composable (T) -> AnnotatedString? = { null },
+    selectedLabel: String,
     description: AnnotatedString? = null,
     onSelect: (T) -> Unit,
 ) {
@@ -28,16 +27,14 @@ fun <T> ListApRow(
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
-        summary = selected,
-        enabled = enabled,
+        summary = selectedLabel,
         onClick = { selecting = true },
     )
     if (selecting) PreferenceSelectionSheet(
         title = stringResource(title),
         entryCount = entries.size,
-        selectedIndex = entries.indexOfFirst { entryLabel(it) == selected },
+        selectedIndex = entries.indexOf(selected),
         entryLabel = { entryLabel(entries[it]) },
-        entrySummary = { entrySummary(entries[it]) },
         description = description,
         onDismissRequest = { selecting = false },
         onSelect = { onSelect(entries[it]) },

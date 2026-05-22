@@ -27,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -37,11 +38,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -113,13 +112,15 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         remember { mutableStateOf<String?>(null) }
     } else rememberPreferenceString(Upstreams.KEY_FALLBACK)
     var masqueradeMode by remember {
-        mutableStateOf(if (inspectionMode) "Simple" else masqueradePreferenceValue())
+        mutableStateOf(if (inspectionMode) {
+            MasqueradeMode.MASQUERADE_MODE_SIMPLE
+        } else RoutingManager.masqueradeMode)
     }
     var ipv6Mode by remember {
-        mutableStateOf(if (inspectionMode) Ipv6Mode.Block.name else RoutingManager.ipv6Mode.name)
+        mutableStateOf(if (inspectionMode) Ipv6Mode.Block else RoutingManager.ipv6Mode)
     }
     var wifiLockMode by remember {
-        mutableStateOf(if (inspectionMode) WifiDoubleLock.Mode.None.name else WifiDoubleLock.mode.name)
+        mutableStateOf(if (inspectionMode) WifiDoubleLock.Mode.None else WifiDoubleLock.mode)
     }
     val autoStart by if (inspectionMode) {
         remember { mutableStateOf(false) }
@@ -134,17 +135,17 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     if (!inspectionMode) {
         LaunchedEffect(Unit) {
             WifiDoubleLock.mode = WifiDoubleLock.mode
-            wifiLockMode = WifiDoubleLock.mode.name
+            wifiLockMode = WifiDoubleLock.mode
             RoutingManager.masqueradeMode = RoutingManager.masqueradeMode
-            masqueradeMode = masqueradePreferenceValue()
+            masqueradeMode = RoutingManager.masqueradeMode
             RoutingManager.ipv6Mode = RoutingManager.ipv6Mode
-            ipv6Mode = RoutingManager.ipv6Mode.name
+            ipv6Mode = RoutingManager.ipv6Mode
         }
-        androidx.compose.runtime.DisposableEffect(lifecycleOwner, offloadChanging) {
+        DisposableEffect(lifecycleOwner, offloadChanging) {
             fun refresh() {
-                masqueradeMode = masqueradePreferenceValue()
-                ipv6Mode = RoutingManager.ipv6Mode.name
-                wifiLockMode = WifiDoubleLock.mode.name
+                masqueradeMode = RoutingManager.masqueradeMode
+                ipv6Mode = RoutingManager.ipv6Mode
+                wifiLockMode = WifiDoubleLock.mode
                 if (!offloadChanging) offloadEnabled = TetherOffloadManager.enabled
             }
             val observer = object : DefaultLifecycleObserver {
@@ -184,7 +185,6 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     ),
                     description = annotatedStringResource(R.string.settings_service_upstream_help),
                     placeholder = fallback,
-                    suggestNetworkInterfaces = true,
                     onValueChange = {
                         if (!inspectionMode) app.pref.edit { putString(Upstreams.KEY_PRIMARY, it.ifBlank { null }) }
                     },
@@ -203,7 +203,6 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     ),
                     description = annotatedStringResource(R.string.settings_upstream_fallback_help),
                     placeholder = fallbackLabel,
-                    suggestNetworkInterfaces = true,
                     onValueChange = {
                         if (!inspectionMode) {
                             app.pref.edit { putString(Upstreams.KEY_FALLBACK, it.ifBlank { null }) }
@@ -219,11 +218,15 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     title = R.string.settings_service_masquerade,
                     entries = stringArrayResource(R.array.settings_service_masquerade),
                     entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
-                    values = stringArrayResource(R.array.settings_service_masquerade_values),
+                    values = listOf(
+                        MasqueradeMode.MASQUERADE_MODE_NONE,
+                        MasqueradeMode.MASQUERADE_MODE_SIMPLE,
+                        MasqueradeMode.MASQUERADE_MODE_NETD,
+                    ),
                     selectedValue = masqueradeMode,
                     onValueChange = {
                         masqueradeMode = it
-                        if (!inspectionMode) RoutingManager.masqueradeMode = masqueradeModeFromPreferenceValue(it)
+                        if (!inspectionMode) RoutingManager.masqueradeMode = it
                     },
                 )
             }
@@ -233,11 +236,11 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     title = R.string.settings_service_ipv6_mode,
                     entries = stringArrayResource(R.array.settings_service_ipv6_mode),
                     entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
-                    values = stringArrayResource(R.array.settings_service_ipv6_mode_values),
+                    values = listOf(Ipv6Mode.System, Ipv6Mode.Block, Ipv6Mode.Nat),
                     selectedValue = ipv6Mode,
                     onValueChange = {
                         ipv6Mode = it
-                        if (!inspectionMode) RoutingManager.ipv6Mode = Ipv6Mode.valueOf(it)
+                        if (!inspectionMode) RoutingManager.ipv6Mode = it
                     },
                 )
             }
@@ -279,11 +282,15 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     title = R.string.settings_service_wifi_lock,
                     entries = stringArrayResource(R.array.settings_service_wifi_lock),
                     entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
-                    values = stringArrayResource(R.array.settings_service_wifi_lock_values),
+                    values = listOf(
+                        WifiDoubleLock.Mode.None,
+                        WifiDoubleLock.Mode.HighPerf,
+                        WifiDoubleLock.Mode.LowLatency,
+                    ),
                     selectedValue = wifiLockMode,
                     onValueChange = {
                         wifiLockMode = it
-                        if (!inspectionMode) WifiDoubleLock.mode = WifiDoubleLock.Mode.valueOf(it)
+                        if (!inspectionMode) WifiDoubleLock.mode = it
                     },
                 )
             }
@@ -385,30 +392,29 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
 }
 
 @Composable
-private fun ListPreferenceRow(
+private fun <T> ListPreferenceRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     entries: Array<String>,
-    entrySummaries: Array<String> = emptyArray(),
-    values: Array<String>,
-    selectedValue: String,
-    description: AnnotatedString? = null,
-    onValueChange: (String) -> Unit,
+    entrySummaries: Array<String>,
+    values: List<T>,
+    selectedValue: T,
+    onValueChange: (T) -> Unit,
 ) {
     var selecting by rememberSaveable { mutableStateOf(false) }
+    val selectedIndex = values.indexOf(selectedValue)
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
-        summary = entries.getOrElse(values.indexOf(selectedValue)) { selectedValue },
+        summary = entries.getOrElse(selectedIndex) { "" },
         onClick = { selecting = true },
     )
     if (selecting) PreferenceSelectionSheet(
         title = stringResource(title),
         entryCount = entries.size,
-        selectedIndex = values.indexOf(selectedValue),
+        selectedIndex = selectedIndex,
         entryLabel = entries::get,
         entrySummary = { entrySummaries.getOrNull(it)?.let(AnnotatedString::fromHtml) },
-        description = description,
         onDismissRequest = { selecting = false },
         onSelect = { values.getOrNull(it)?.let(onValueChange) },
     )
@@ -421,17 +427,14 @@ private fun TextPreferenceRow(
     @StringRes title: Int,
     value: String,
     summary: AnnotatedString,
-    description: AnnotatedString? = null,
-    placeholder: String? = null,
-    suggestNetworkInterfaces: Boolean = false,
+    description: AnnotatedString,
+    placeholder: String,
     onValueChange: (String) -> Unit,
 ) {
     var editing by rememberSaveable { mutableStateOf(false) }
     var draft by rememberTextFieldValueAtEnd(value, editing)
     var suggestionsExpanded by remember(editing) { mutableStateOf(false) }
-    val suggestions by rememberInterfaceNameSuggestions(
-        !LocalInspectionMode.current && editing && suggestNetworkInterfaces,
-    )
+    val suggestions by rememberInterfaceNameSuggestions(!LocalInspectionMode.current && editing)
     val filteredSuggestions = remember(suggestions, draft.text) {
         suggestions.filter { draft.text.isBlank() || it.contains(draft.text, ignoreCase = true) }
     }
@@ -445,24 +448,17 @@ private fun TextPreferenceRow(
         onClick = { editing = true },
     )
     if (editing) {
-        val focusRequester = remember { FocusRequester() }
-        val keyboard = LocalSoftwareKeyboardController.current
-        LaunchedEffect(Unit) {
-            focusRequester.requestFocus()
-            keyboard?.show()
-        }
+        val focusRequester = rememberDialogFocusRequester()
         AlertDialog(
             onDismissRequest = { editing = false },
             title = { Text(stringResource(title)) },
             text = {
                 val menuExpanded = suggestionsExpanded && filteredSuggestions.isNotEmpty()
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    description?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     ExposedDropdownMenuBox(
                         expanded = menuExpanded,
                         onExpandedChange = { suggestionsExpanded = it },
@@ -477,15 +473,13 @@ private fun TextPreferenceRow(
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
                                 .fillMaxWidth()
                                 .focusRequester(focusRequester),
-                            placeholder = placeholder?.let { { Text(it) } },
-                            trailingIcon = if (suggestNetworkInterfaces) {
-                                {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(
-                                        expanded = menuExpanded,
-                                        modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
-                                    )
-                                }
-                            } else null,
+                            placeholder = { Text(placeholder) },
+                            trailingIcon = {
+                                ExposedDropdownMenuDefaults.TrailingIcon(
+                                    expanded = menuExpanded,
+                                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
+                                )
+                            },
                             colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
                             singleLine = true,
                         )
@@ -649,9 +643,6 @@ private fun rememberPreferenceBoolean(key: String, defaultValue: Boolean): State
 }
 
 @Preview(name = "Settings", showBackground = true, widthDp = 420, heightDp = 720)
-@Composable
-private fun SettingsPreview() = SettingsPreviewContent()
-
 @Preview(
     name = "Settings - dark",
     showBackground = true,
@@ -660,27 +651,10 @@ private fun SettingsPreview() = SettingsPreviewContent()
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun SettingsDarkPreview() = SettingsPreviewContent()
-
-@Composable
-private fun SettingsPreviewContent() {
+private fun SettingsPreview() {
     VpnHotspotPreviewSurface {
         SettingsScreen(snackbarHostState = remember { SnackbarHostState() })
     }
-}
-
-private fun masqueradePreferenceValue() = when (RoutingManager.masqueradeMode) {
-    MasqueradeMode.MASQUERADE_MODE_NONE -> "None"
-    MasqueradeMode.MASQUERADE_MODE_SIMPLE -> "Simple"
-    MasqueradeMode.MASQUERADE_MODE_NETD -> "Netd"
-    is MasqueradeMode.Unrecognized -> throw IllegalArgumentException("Invalid masquerade mode")
-}
-
-private fun masqueradeModeFromPreferenceValue(value: String) = when (value) {
-    "None" -> MasqueradeMode.MASQUERADE_MODE_NONE
-    "Simple" -> MasqueradeMode.MASQUERADE_MODE_SIMPLE
-    "Netd" -> MasqueradeMode.MASQUERADE_MODE_NETD
-    else -> throw IllegalArgumentException("Invalid masquerade mode $value")
 }
 
 private suspend fun shareLogcat(context: Context) {

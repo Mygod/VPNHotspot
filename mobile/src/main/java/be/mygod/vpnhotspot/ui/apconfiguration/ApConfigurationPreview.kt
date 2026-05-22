@@ -2,17 +2,16 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.content.res.Configuration
 import android.net.wifi.SoftApConfiguration
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 
 @Preview(name = "Wi-Fi Configuration", showBackground = true, widthDp = 420, heightDp = 720)
-@Composable
-private fun ApConfigurationPreview() = ApConfigurationPreviewContent()
-
 @Preview(
     name = "Wi-Fi Configuration - dark",
     showBackground = true,
@@ -21,10 +20,7 @@ private fun ApConfigurationPreview() = ApConfigurationPreviewContent()
     uiMode = Configuration.UI_MODE_NIGHT_YES,
 )
 @Composable
-private fun ApConfigurationDarkPreview() = ApConfigurationPreviewContent()
-
-@Composable
-private fun ApConfigurationPreviewContent() {
+private fun ApConfigurationPreview() {
     VpnHotspotPreviewSurface {
         ApConfigurationScreen(
             remember {
@@ -38,6 +34,8 @@ private fun ApConfigurationPreviewContent() {
                     p2pMode = false,
                 )
             },
+            snackbarHostState = remember { SnackbarHostState() },
+            floatingActionButtonPadding = 0.dp,
         )
     }
 }

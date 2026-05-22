@@ -14,7 +14,6 @@ fun SwitchApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     checked: Boolean,
-    readOnly: Boolean,
     summary: AnnotatedString? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
@@ -22,12 +21,10 @@ fun SwitchApRow(
         icon = icon,
         title = stringResource(title),
         summaryContent = summary?.let { { Text(it) } },
-        enabled = !readOnly,
         trailing = {
             PreferenceSwitch(
                 checked = checked,
-                enabled = !readOnly,
-                onCheckedChange = if (readOnly) null else onCheckedChange,
+                onCheckedChange = onCheckedChange,
             )
         },
         onClick = { onCheckedChange(!checked) },

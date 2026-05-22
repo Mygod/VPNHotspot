@@ -19,6 +19,7 @@ import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.showLongSnackbar
 import be.mygod.vpnhotspot.util.readableMessage
@@ -32,51 +33,50 @@ fun ApConfigurationTopBarActions(
     snackbarHostState: SnackbarHostState,
 ) {
     val context = LocalContext.current
-    rememberCoroutineScope().let { scope ->
-        if (state.possiblyInvalid(context)) Icon(
-            painter = painterResource(R.drawable.ic_alert_warning),
-            contentDescription = stringResource(R.string.configuration_invalid),
-            tint = MaterialTheme.colorScheme.error,
-            modifier = Modifier.size(24.dp),
+    val scope = rememberCoroutineScope()
+    if (state.possiblyInvalid(context)) Icon(
+        painter = painterResource(R.drawable.ic_alert_warning),
+        contentDescription = stringResource(R.string.configuration_invalid),
+        tint = MaterialTheme.colorScheme.error,
+        modifier = Modifier.size(24.dp),
+    )
+    TooltipIconButton(
+        tooltip = stringResource(android.R.string.copy),
+        enabled = state.copyError(context) == null,
+        onClick = {
+            try {
+                state.copyToClipboard()
+            } catch (e: RuntimeException) {
+                scope.launch { snackbarHostState.showLongSnackbar(e.readableMessage) }
+            }
+        },
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_content_file_copy),
+            contentDescription = stringResource(android.R.string.copy),
         )
-        TooltipIconButton(
-            tooltip = stringResource(android.R.string.copy),
-            enabled = state.canCopy(context),
-            onClick = {
-                try {
-                    state.copyToClipboard()
-                } catch (e: RuntimeException) {
-                    scope.launch { snackbarHostState.showLongSnackbar(e.readableMessage) }
-                }
-            },
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_content_file_copy),
-                contentDescription = stringResource(android.R.string.copy),
-            )
-        }
-        TooltipIconButton(
-            tooltip = stringResource(android.R.string.paste),
-            onClick = {
-                try {
-                    state.pasteFromClipboard()
-                } catch (e: RuntimeException) {
-                    scope.launch { snackbarHostState.showLongSnackbar(e.readableMessage) }
-                }
-            },
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_content_paste),
-                contentDescription = stringResource(android.R.string.paste),
-            )
-        }
+    }
+    TooltipIconButton(
+        tooltip = stringResource(android.R.string.paste),
+        onClick = {
+            try {
+                state.pasteFromClipboard()
+            } catch (e: RuntimeException) {
+                scope.launch { snackbarHostState.showLongSnackbar(e.readableMessage) }
+            }
+        },
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_content_paste),
+            contentDescription = stringResource(android.R.string.paste),
+        )
     }
 }
 
 @Composable
 fun ApConfigurationSaveFab(
     state: ApConfigurationState,
-    session: ApConfigurationSession,
+    onApply: suspend (SoftApConfigurationCompat) -> Boolean,
     snackbarHostState: SnackbarHostState,
     onApplied: () -> Unit,
 ) {
@@ -107,7 +107,7 @@ fun ApConfigurationSaveFab(
                 val config = state.generateConfig()
                 scope.launch {
                     try {
-                        if (session.onApply(config)) onApplied()
+                        if (onApply(config)) onApplied()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {

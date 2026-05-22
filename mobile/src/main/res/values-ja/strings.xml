@@ -65,9 +65,6 @@
     <string name="tethering_manage_wifi_info">%1$s MHz - チャンネル: %2$s - 幅: %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$s - %1$s MHz - チャンネル: %2$s -         幅: %3$s - アイドルタイムアウトまで %6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s: Wi\u2011Fi %5$s - %1$s MHz - チャンネル: %2$s -         幅: %3$s - アイドルタイムアウト無効</string>
-    <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="other">%1$s/%2$s 件のクライアントが接続済み\n対応している機能: %3$s</item>
-    </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="other">%1$s 個のクライアントが接続済み</item>
     </plurals>
@@ -183,7 +180,6 @@
     <string name="wifi_client_user_control">どのクライアントがホットスポットを使用できるか制御する</string>
     <string name="wifi_blocked_list">クライアントのブロック一覧</string>
     <string name="wifi_allowed_list">クライアントの許可一覧</string>
-    <string name="wifi_mac_randomization">ランダムな MAC を使用する</string>
     <string name="wifi_mac_randomization_none">なし</string>
     <string name="wifi_mac_randomization_persistent">永続</string>
     <string name="wifi_mac_randomization_non_persistent">非永続</string>

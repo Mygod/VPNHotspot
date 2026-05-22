@@ -25,14 +25,14 @@ fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
         var registration: AutoCloseable? = null
         fun register() {
             if (registration != null) return
-            registration = SmartSnackbar.registerComposeHandler { request ->
+            registration = SmartSnackbar.registerComposeHandler { text, actionText, action ->
                 scope.launch {
                     val result = snackbarHostState.showSnackbar(
-                        message = request.text.toString(),
-                        actionLabel = request.actionText?.toString(),
+                        message = text.toString(),
+                        actionLabel = actionText?.toString(),
                         duration = SnackbarDuration.Long,
                     )
-                    if (result == SnackbarResult.ActionPerformed) request.action?.invoke()
+                    if (result == SnackbarResult.ActionPerformed) action?.invoke()
                 }
             }
         }

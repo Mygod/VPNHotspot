@@ -18,7 +18,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.compose.ui.text.AnnotatedString
@@ -54,15 +54,17 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.net.Inet4Address
 
-class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, WifiApManager.SoftApCallbackCompat,
-    TetherStates.Callback {
+class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver,
+    WifiApManager.SoftApCallbackCompat, TetherStates.Callback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
         private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
@@ -74,8 +76,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
     }
 
-    data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
-    data class TrafficRate(val send: Long = -1, val receive: Long = -1)
+    private data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
+    data class TrafficRate(val send: Long = 0, val receive: Long = 0)
     data class ClientRowState(val client: Client, val record: ClientRecord, val rate: TrafficRate?)
 
     private val tetherStatesState = MutableStateFlow(TetherStates())
@@ -93,7 +95,13 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var netlinkSnapshot = NetlinkNeighbour.Snapshot(emptyList(), persistentMapOf())
     private var tetheringClients = MutableScatterMap<MacAddress, TetheredClient>()
     private val clientsState = MutableStateFlow<List<Client>>(emptyList())
-    val clients = clientsState.asStateFlow()
+    val validClientCount = clientsState.map { clients ->
+        clients.count {
+            it.ip.any { (ip, info) ->
+                ip is Inet4Address && info.state == NeighbourState.NEIGHBOUR_STATE_VALID
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     private val trafficRates = MutableStateFlow<Map<Pair<String?, MacAddress>, TrafficRate>>(emptyMap())
     @OptIn(ExperimentalCoroutinesApi::class)
     val clientRows = clientsState.flatMapLatest { clients ->
@@ -107,10 +115,10 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private var clientsScreenJob: Job? = null
-    val clientsFragmentObserver = object : DefaultLifecycleObserver {
+    val clientsScreenObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
             clientsScreenJob?.cancel()
-            clientsScreenJob = owner.lifecycleScope.launch {
+            clientsScreenJob = owner.lifecycle.coroutineScope.launch {
                 if (Build.VERSION.SDK_INT >= 30) {
                     launch {
                         try {
@@ -245,7 +253,6 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     ) {
         val clients = clientsState.value
         val rates = HashMap<Pair<String?, MacAddress>, TrafficRate>()
-        clients.forEach { rates[it.iface to it.mac] = TrafficRate() }
         val rateKeys = MutableScatterMap<Pair<String, MacAddress>, Pair<String?, MacAddress>>()
         clients.forEach { client ->
             client.ifaces.forEach { rateKeys[it to client.mac] = client.iface to client.mac }
@@ -264,10 +271,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
             val key = rateKeys[newRecord.downstream to newRecord.mac] ?: (newRecord.downstream to newRecord.mac)
             val rate = rates[key] ?: TrafficRate()
             rates[key] = TrafficRate(
-                send = (if (rate.send < 0 || rate.receive < 0) 0 else rate.send) +
-                        (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed,
-                receive = (if (rate.send < 0 || rate.receive < 0) 0 else rate.receive) +
-                        (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed,
+                send = rate.send + (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed,
+                receive = rate.receive + (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed,
             )
         }
         trafficRates.value = rates
@@ -301,7 +306,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     override fun onCreate(owner: LifecycleOwner) {
-        owner.lifecycleScope.launch {
+        owner.lifecycle.coroutineScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     NetlinkNeighbour.monitorSnapshots.collect {

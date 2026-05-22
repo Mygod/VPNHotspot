@@ -22,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.autofill.contentType
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
@@ -37,6 +38,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitControlWidth
 import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 import be.mygod.vpnhotspot.util.readableMessage
 
@@ -88,7 +90,6 @@ fun SsidApRow(
                 }
             }
         },
-        enabled = true,
         onClick = { editing = true },
     )
     if (editing) AlertDialog(
@@ -110,7 +111,7 @@ fun SsidApRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
-                        .contentType(WIFI_SSID_CONTENT_TYPE),
+                        .contentType(ContentType.NewUsername + ContentType.Username),
                     singleLine = true,
                     isError = draftError != null,
                     supportingText = {

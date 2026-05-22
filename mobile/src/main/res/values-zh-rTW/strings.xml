@@ -77,9 +77,6 @@
         閒置逾時：%6$s</string>
     <string name="tethering_manage_wifi_info_timeout_disabled">%4$s：Wi\u2011Fi %5$s，%1$s MHz，頻道 %2$s，頻寬 %3$s，
         閒置逾時：已停用</string>
-    <plurals name="tethering_manage_wifi_capabilities">
-        <item quantity="other">已連線 %1$s/%2$s 台裝置\n支援功能：%3$s</item>
-    </plurals>
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="other">已連線 %1$s 台裝置</item>
     </plurals>
@@ -199,7 +196,6 @@
     <string name="wifi_client_user_control">控制允許連線的裝置</string>
     <string name="wifi_blocked_list">封鎖清單</string>
     <string name="wifi_allowed_list">允許清單</string>
-    <string name="wifi_mac_randomization">MAC 位址隨機化</string>
     <string name="wifi_mac_randomization_none">停用</string>
     <string name="wifi_mac_randomization_persistent">持續</string>
     <string name="wifi_mac_randomization_non_persistent">非持續</string>
