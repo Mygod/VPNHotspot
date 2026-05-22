@@ -40,7 +40,7 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
 @Composable
-internal fun ChannelApRow(
+fun ChannelApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     selected: ChannelOption,

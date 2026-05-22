@@ -41,7 +41,7 @@ import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 import be.mygod.vpnhotspot.util.readableMessage
 
 @Composable
-internal fun SsidApRow(
+fun SsidApRow(
     state: ApConfigurationState,
     onShowQrCode: () -> Unit,
 ) {

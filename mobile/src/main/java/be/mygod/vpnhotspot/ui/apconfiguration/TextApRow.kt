@@ -27,7 +27,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
-internal fun TextApRow(
+fun TextApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     value: String,

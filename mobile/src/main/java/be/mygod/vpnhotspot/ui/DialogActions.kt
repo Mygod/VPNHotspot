@@ -7,7 +7,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 
 @Composable
-internal fun DialogConfirmButton(
+fun DialogConfirmButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
@@ -18,7 +18,7 @@ internal fun DialogConfirmButton(
 )
 
 @Composable
-internal fun DialogNeutralButton(
+fun DialogNeutralButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,
@@ -29,7 +29,7 @@ internal fun DialogNeutralButton(
 )
 
 @Composable
-internal fun DialogDismissButton(
+fun DialogDismissButton(
     onClick: () -> Unit,
     enabled: Boolean = true,
     content: @Composable RowScope.() -> Unit,

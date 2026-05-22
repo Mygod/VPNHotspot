@@ -24,9 +24,9 @@ import timber.log.Timber
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
-internal fun parseMacList(value: String) = value.split(NON_MAC_CHARS).filter { it.isNotEmpty() }.map(MacAddress::fromString)
+fun parseMacList(value: String) = value.split(NON_MAC_CHARS).filter { it.isNotEmpty() }.map(MacAddress::fromString)
 
-internal fun validateOptionalLong(value: String, validate: (Long) -> Unit): String? {
+fun validateOptionalLong(value: String, validate: (Long) -> Unit): String? {
     if (value.isEmpty()) return null
     return try {
         validate(value.toLong())
@@ -36,14 +36,14 @@ internal fun validateOptionalLong(value: String, validate: (Long) -> Unit): Stri
     }
 }
 
-internal fun validateMacList(value: String): String? = try {
+fun validateMacList(value: String): String? = try {
     parseMacList(value)
     null
 } catch (e: IllegalArgumentException) {
     e.readableMessage
 }
 
-internal fun validateOptionalMac(value: String, validate: (MacAddress) -> Unit = {}): String? {
+fun validateOptionalMac(value: String, validate: (MacAddress) -> Unit = {}): String? {
     if (value.isEmpty()) return null
     return try {
         validate(MacAddress.fromString(value))
@@ -53,21 +53,21 @@ internal fun validateOptionalMac(value: String, validate: (MacAddress) -> Unit =
     }
 }
 
-internal fun validateAcsChannels(band: Int, value: String): String? = try {
+fun validateAcsChannels(band: Int, value: String): String? = try {
     SoftApConfigurationCompat.testPlatformValidity(band, RangeInput.fromString(value).toIntArray())
     null
 } catch (e: Exception) {
     e.readableMessage
 }
 
-internal fun timeoutSummary(context: Context, value: String, defaultMillis: Long): String {
+fun timeoutSummary(context: Context, value: String, defaultMillis: Long): String {
     val millis = value.toLongOrNull()
     return if (millis == null || millis <= 0) {
         context.getString(R.string.wifi_hotspot_timeout_default, formatTimeoutMillis(context, defaultMillis))
     } else formatTimeoutMillis(context, millis)
 }
 
-internal fun formatTimeoutMillis(context: Context, millis: Long): String {
+fun formatTimeoutMillis(context: Context, millis: Long): String {
     val formatter = MeasureFormat.getInstance(
         context.resources.configuration.locales[0],
         MeasureFormat.FormatWidth.NUMERIC,
@@ -90,7 +90,7 @@ internal fun formatTimeoutMillis(context: Context, millis: Long): String {
     return formatter.formatMeasures(*measures.toTypedArray())
 }
 
-internal fun ChannelOption.label(context: Context): String {
+fun ChannelOption.label(context: Context): String {
     if (this == ChannelOption.Disabled) return context.getString(R.string.wifi_ap_choose_disabled)
     return if (channel == 0) {
         val format = DecimalFormat("#.#", DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]))
@@ -103,13 +103,13 @@ internal fun ChannelOption.label(context: Context): String {
     } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
 }
 
-internal fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = when {
+fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = when {
     !p2pMode -> SOFT_AP_OPTIONS
     RepeaterService.safeMode -> P2P_SAFE_OPTIONS
     else -> P2P_UNSAFE_OPTIONS
 }
 
-internal fun locate(
+fun locate(
     channels: SparseIntArray,
     index: Int,
     options: List<ChannelOption>,
@@ -127,9 +127,9 @@ internal fun locate(
 
 private fun genAutoOptions(band: Int) = (1..band).filter { it and band == it }.map { ChannelOption(it) }
 
-internal data class SecurityOption(val label: String, val value: Int)
+data class SecurityOption(val label: String, val value: Int)
 
-internal open class ChannelOption(val band: Int = 0, val channel: Int = 0) {
+open class ChannelOption(val band: Int = 0, val channel: Int = 0) {
     object Disabled : ChannelOption(-1) {
         override fun toString() = app.getString(R.string.wifi_ap_choose_disabled)
     }
@@ -139,19 +139,19 @@ internal open class ChannelOption(val band: Int = 0, val channel: Int = 0) {
     } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
 }
 
-internal class BandWidth(val width: Int, val name: String = "") : Comparable<BandWidth> {
+class BandWidth(val width: Int, val name: String = "") : Comparable<BandWidth> {
     override fun compareTo(other: BandWidth) = width - other.width
 }
 
-internal fun BandWidth.label(context: Context) = channelBandwidthLabel(context, width, name)
+fun BandWidth.label(context: Context) = channelBandwidthLabel(context, width, name)
 
-internal const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
-internal val MACHINE_TEXT_KEYBOARD_OPTIONS = KeyboardOptions(
+const val BASE64_FLAGS = Base64.NO_PADDING or Base64.NO_WRAP
+val MACHINE_TEXT_KEYBOARD_OPTIONS = KeyboardOptions(
     autoCorrectEnabled = false,
     keyboardType = KeyboardType.Ascii,
 )
-internal val WIFI_SSID_CONTENT_TYPE = ContentType.NewUsername + ContentType.Username
-internal val WIFI_PASSWORD_CONTENT_TYPE = ContentType("wifiPassword") + ContentType.Password
+val WIFI_SSID_CONTENT_TYPE = ContentType.NewUsername + ContentType.Username
+val WIFI_PASSWORD_CONTENT_TYPE = ContentType("wifiPassword") + ContentType.Password
 private val NON_MAC_CHARS = "[^0-9a-fA-F:]+".toRegex()
 private val CHANNELS_2G = (1..14).map { ChannelOption(SoftApConfiguration.BAND_2GHZ, it) }
 private val CHANNELS_6G by lazy {
@@ -177,9 +177,9 @@ private val SOFT_AP_OPTIONS by lazy {
                 (1..6).map { ChannelOption(SoftApConfiguration.BAND_60GHZ, it) }
     } else P2P_SAFE_OPTIONS
 }
-internal val SECURITY_TYPES_WITHOUT_PASSWORD = setOf(
+val SECURITY_TYPES_WITHOUT_PASSWORD = setOf(
     SoftApConfiguration.SECURITY_TYPE_OPEN,
     SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
     SoftApConfiguration.SECURITY_TYPE_WPA3_OWE,
 )
-internal val P2P_SECURITY_TYPES = arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal")
+val P2P_SECURITY_TYPES = arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal")

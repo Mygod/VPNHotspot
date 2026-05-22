@@ -13,7 +13,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSelectionSheet
 
 @Composable
-internal fun <T> ListApRow(
+fun <T> ListApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     selected: String,

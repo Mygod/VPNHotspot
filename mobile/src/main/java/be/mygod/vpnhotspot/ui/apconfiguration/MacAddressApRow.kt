@@ -33,7 +33,7 @@ import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
-internal fun MacAddressApRow(state: ApConfigurationState) {
+fun MacAddressApRow(state: ApConfigurationState) {
     val context = LocalContext.current
     var editing by rememberSaveable { mutableStateOf(false) }
     PreferenceRow(

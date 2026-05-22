@@ -93,7 +93,7 @@ import java.text.NumberFormat
 
 @OptIn(DelicateCoroutinesApi::class)
 @Composable
-internal fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) {
+fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val lifecycleOwner = LocalLifecycleOwner.current

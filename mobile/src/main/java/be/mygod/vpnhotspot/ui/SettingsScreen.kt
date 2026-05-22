@@ -96,7 +96,7 @@ import java.net.InetAddress
 
 @Composable
 @OptIn(DelicateCoroutinesApi::class)
-internal fun SettingsScreen(snackbarHostState: SnackbarHostState) {
+fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val lifecycleOwner = LocalLifecycleOwner.current

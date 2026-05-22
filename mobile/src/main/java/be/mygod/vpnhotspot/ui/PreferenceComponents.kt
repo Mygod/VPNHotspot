@@ -75,16 +75,16 @@ import androidx.compose.ui.unit.dp
 import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
 import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
 
-internal val PreferenceSplitControlWidth: Dp = 52.dp
+val PreferenceSplitControlWidth: Dp = 52.dp
 
 @Composable
-internal fun rememberTextFieldValueAtEnd(text: String, vararg inputs: Any?): MutableState<TextFieldValue> =
+fun rememberTextFieldValueAtEnd(text: String, vararg inputs: Any?): MutableState<TextFieldValue> =
     rememberSaveable(text, *inputs, stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(text, TextRange(text.length)))
     }
 
 @Composable
-internal fun SettingsList(
+fun SettingsList(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
     content: LazyListScope.() -> Unit,
@@ -98,7 +98,7 @@ internal fun SettingsList(
 
 @Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-internal fun PreferenceGroup(
+fun PreferenceGroup(
     title: String? = null,
     content: @Composable PreferenceGroupScope.() -> Unit,
 ) {
@@ -114,7 +114,7 @@ internal fun PreferenceGroup(
     }
 }
 
-internal class PreferenceGroupScope internal constructor() {
+class PreferenceGroupScope {
     private val items = ArrayList<PreferenceGroupItem>()
 
     @Composable
@@ -129,12 +129,12 @@ internal class PreferenceGroupScope internal constructor() {
         items += PreferenceGroupItem.Content(key, content)
     }
 
-    internal fun clear() {
+    fun clear() {
         items.clear()
     }
 
     @Composable
-    internal fun Render() {
+    fun Render() {
         val count = items.count { it is PreferenceGroupItem.Row }
         var index = 0
         for (item in items) when (item) {
@@ -151,7 +151,7 @@ internal class PreferenceGroupScope internal constructor() {
 }
 
 @Composable
-internal fun PreferenceRow(
+fun PreferenceRow(
     title: String,
     modifier: Modifier = Modifier,
     @DrawableRes icon: Int? = null,
@@ -185,7 +185,7 @@ internal fun PreferenceRow(
 
 @Composable
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-internal fun PreferenceRow(
+fun PreferenceRow(
     titleContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     summary: String? = null,
@@ -217,12 +217,12 @@ internal fun PreferenceRow(
     )
 }
 
-internal class PreferenceRowPosition internal constructor(val index: Int, val count: Int)
+class PreferenceRowPosition(val index: Int, val count: Int)
 
 private val LocalPreferenceRowPosition = compositionLocalOf<PreferenceRowPosition?> { null }
 
 @Composable
-internal fun PreferenceSwitch(
+fun PreferenceSwitch(
     checked: Boolean,
     onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier,
@@ -246,7 +246,7 @@ internal fun PreferenceSwitch(
 }
 
 @Composable
-internal fun PreferenceSplitSwitch(
+fun PreferenceSplitSwitch(
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
@@ -291,7 +291,7 @@ internal fun PreferenceSplitSwitch(
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-internal fun VpnHotspotModalBottomSheet(
+fun VpnHotspotModalBottomSheet(
     onDismissRequest: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -303,7 +303,7 @@ internal fun VpnHotspotModalBottomSheet(
 }
 
 @Composable
-internal fun modalBottomSheetListContentPadding() = PaddingValues(
+fun modalBottomSheetListContentPadding() = PaddingValues(
     start = 16.dp,
     end = 16.dp,
     bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding(),
@@ -311,7 +311,7 @@ internal fun modalBottomSheetListContentPadding() = PaddingValues(
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
-internal fun PreferenceSelectionSheet(
+fun PreferenceSelectionSheet(
     title: String,
     entryCount: Int,
     selectedIndex: Int,
@@ -360,7 +360,7 @@ internal fun PreferenceSelectionSheet(
 }
 
 @Composable
-internal fun PreferenceSelectionRow(
+fun PreferenceSelectionRow(
     index: Int,
     count: Int,
     selected: Boolean,
@@ -379,7 +379,7 @@ internal fun PreferenceSelectionRow(
 }
 
 @Composable
-internal fun annotatedStringResource(@StringRes id: Int, vararg formatArgs: Any) = AnnotatedString.fromHtml(
+fun annotatedStringResource(@StringRes id: Int, vararg formatArgs: Any) = AnnotatedString.fromHtml(
     if (formatArgs.isEmpty()) stringResource(id) else stringResource(id, *formatArgs),
 )
 
@@ -397,7 +397,7 @@ private sealed interface PreferenceGroupItem {
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-internal fun TooltipIconButton(
+fun TooltipIconButton(
     tooltip: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -419,7 +419,7 @@ internal fun TooltipIconButton(
 }
 
 @Composable
-internal fun RowSelectionContainer(content: @Composable () -> Unit) {
+fun RowSelectionContainer(content: @Composable () -> Unit) {
     SelectionContainer(
         modifier = Modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },

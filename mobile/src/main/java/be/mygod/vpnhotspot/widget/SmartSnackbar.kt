@@ -46,7 +46,7 @@ sealed class SmartSnackbar {
 
         private class ComposeRegistration(val handler: (ComposeRequest) -> Unit)
 
-        internal fun sendToCompose(request: ComposeRequest): Boolean {
+        fun sendToCompose(request: ComposeRequest): Boolean {
             val registration = composeRegistration.get() ?: return false
             registration.handler(request)
             return true

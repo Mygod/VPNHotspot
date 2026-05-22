@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @Composable
-internal fun ApConfigurationTopBarActions(
+fun ApConfigurationTopBarActions(
     state: ApConfigurationState,
     snackbarHostState: SnackbarHostState,
 ) {
@@ -78,7 +78,7 @@ internal fun ApConfigurationTopBarActions(
 
 @Composable
 @OptIn(DelicateCoroutinesApi::class)
-internal fun ApConfigurationSaveFab(
+fun ApConfigurationSaveFab(
     state: ApConfigurationState,
     session: ApConfigurationSession,
     snackbarHostState: SnackbarHostState,

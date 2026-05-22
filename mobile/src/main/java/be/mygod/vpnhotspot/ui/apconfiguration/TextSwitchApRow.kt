@@ -31,7 +31,7 @@ import be.mygod.vpnhotspot.ui.PreferenceSwitch
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
-internal fun TextSwitchApRow(
+fun TextSwitchApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     @StringRes valueTitle: Int,

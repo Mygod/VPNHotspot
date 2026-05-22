@@ -10,7 +10,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSwitch
 
 @Composable
-internal fun SwitchApRow(
+fun SwitchApRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
     checked: Boolean,

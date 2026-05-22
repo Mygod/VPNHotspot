@@ -104,7 +104,7 @@ import java.net.SocketException
 import java.text.NumberFormat
 import java.util.Locale
 
-internal data class TetheringServiceState(
+data class TetheringServiceState(
     val managedIfaces: Set<String> = emptySet(),
     val inactiveIfaces: Set<String> = emptySet(),
     val monitoredIfaces: Set<String> = emptySet(),
@@ -112,7 +112,7 @@ internal data class TetheringServiceState(
 
 @OptIn(DelicateCoroutinesApi::class)
 @Composable
-internal fun TetheringScreen(
+fun TetheringScreen(
     snackbarHostState: SnackbarHostState,
     repeaterBinder: RepeaterService.Binder?,
     localOnlyBinder: LocalOnlyHotspotService.Binder?,
@@ -690,7 +690,7 @@ private fun tetherErrorMessage(context: Context, tetherType: TetherType, error: 
 )
 
 @Composable
-internal fun <T : IBinder> rememberServiceBinder(clazz: Class<out Service>): State<T?> {
+fun <T : IBinder> rememberServiceBinder(clazz: Class<out Service>): State<T?> {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     return produceState<T?>(null, context, lifecycleOwner, clazz) {
@@ -728,7 +728,7 @@ internal fun <T : IBinder> rememberServiceBinder(clazz: Class<out Service>): Sta
 }
 
 @Composable
-internal fun <T> rememberNullState(): State<T?> = remember { mutableStateOf(null) }
+fun <T> rememberNullState(): State<T?> = remember { mutableStateOf(null) }
 
 @Composable
 private fun rememberTetherTypeVersion(): State<Int> {
@@ -892,7 +892,7 @@ private fun wifiSummary(
     return if (summary.text.isEmpty()) null else summary
 }
 
-internal fun ScatterSet<String>?.toSet(): Set<String> = buildSet {
+fun ScatterSet<String>?.toSet(): Set<String> = buildSet {
     this@toSet?.forEach { add(it) }
 }
 

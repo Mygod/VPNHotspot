@@ -54,7 +54,7 @@ import timber.log.Timber
 import java.util.Locale
 
 @Composable
-internal fun ApConfigurationScreen(
+fun ApConfigurationScreen(
     state: ApConfigurationState,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     floatingActionButtonPadding: Dp = 0.dp,

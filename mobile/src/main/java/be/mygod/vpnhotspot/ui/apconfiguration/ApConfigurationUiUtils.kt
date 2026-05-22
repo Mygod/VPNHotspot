@@ -12,7 +12,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 
 @Composable
-internal fun rememberDialogFocusRequester(enabled: Boolean = true): FocusRequester {
+fun rememberDialogFocusRequester(enabled: Boolean = true): FocusRequester {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     LaunchedEffect(enabled) {
@@ -24,7 +24,7 @@ internal fun rememberDialogFocusRequester(enabled: Boolean = true): FocusRequest
     return focusRequester
 }
 
-internal fun TextFieldValue.takeText(maxLength: Int): TextFieldValue {
+fun TextFieldValue.takeText(maxLength: Int): TextFieldValue {
     if (text.length <= maxLength) return this
     val text = text.take(maxLength)
     return TextFieldValue(
@@ -34,7 +34,7 @@ internal fun TextFieldValue.takeText(maxLength: Int): TextFieldValue {
 }
 
 @Composable
-internal fun ErrorApText(text: String, modifier: Modifier = Modifier) {
+fun ErrorApText(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         color = MaterialTheme.colorScheme.error,

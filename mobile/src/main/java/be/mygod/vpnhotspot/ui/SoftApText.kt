@@ -12,7 +12,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 
-internal fun channelBandwidthLabel(
+fun channelBandwidthLabel(
     context: Context,
     width: Int,
     fallback: String = SoftApInfo.channelWidthLookup(width, true),
@@ -33,7 +33,7 @@ internal fun channelBandwidthLabel(
     else -> fallback
 }
 
-internal fun softApBandLabel(
+fun softApBandLabel(
     context: Context,
     band: Int,
     fallback: String = SoftApConfigurationCompat.bandLookup(band, true),
@@ -53,7 +53,7 @@ internal fun softApBandLabel(
     }
 }
 
-internal fun tetherErrorLabel(
+fun tetherErrorLabel(
     context: Context,
     error: Int,
     fallback: String = TetheringManagerCompat.tetherErrorLookup(error),
@@ -82,7 +82,7 @@ internal fun tetherErrorLabel(
     else -> fallback
 }
 
-internal fun softApStartFailureLabel(
+fun softApStartFailureLabel(
     context: Context,
     reason: Int,
     fallback: String = WifiApManager.failureReasonLookup(reason),
@@ -94,7 +94,7 @@ internal fun softApStartFailureLabel(
     else -> fallback
 }
 
-internal fun softApClientBlockReasonLabel(
+fun softApClientBlockReasonLabel(
     context: Context,
     reason: Int,
     fallback: String = WifiApManager.clientBlockLookup(reason, true),
@@ -104,7 +104,7 @@ internal fun softApClientBlockReasonLabel(
     else -> fallback
 }
 
-internal fun softApClientDisconnectReasonLabel(
+fun softApClientDisconnectReasonLabel(
     context: Context,
     reason: Int,
     fallback: String = WifiApManager.deauthenticationReasonLookup(reason, true),
@@ -174,7 +174,7 @@ internal fun softApClientDisconnectReasonLabel(
     else -> fallback
 }
 
-internal fun softApFeatureLabel(
+fun softApFeatureLabel(
     context: Context,
     feature: Long,
     fallback: String = SoftApCapability.featureLookup(feature, true).replace('_', ' '),

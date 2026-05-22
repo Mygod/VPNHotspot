@@ -15,12 +15,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.launch
 
-internal suspend fun SnackbarHostState.showLongSnackbar(message: String) {
+suspend fun SnackbarHostState.showLongSnackbar(message: String) {
     showSnackbar(message = message, duration = SnackbarDuration.Long)
 }
 
 @Composable
-internal fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
+fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()

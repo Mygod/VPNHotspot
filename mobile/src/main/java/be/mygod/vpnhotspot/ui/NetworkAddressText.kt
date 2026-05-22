@@ -14,7 +14,7 @@ import be.mygod.vpnhotspot.util.isBogon
 import java.net.InetAddress
 
 @Composable
-internal fun rememberNetworkAddressLinkStyles(): TextLinkStyles {
+fun rememberNetworkAddressLinkStyles(): TextLinkStyles {
     val style = SpanStyle(
         color = MaterialTheme.colorScheme.primary,
         textDecoration = TextDecoration.Underline,
@@ -22,11 +22,11 @@ internal fun rememberNetworkAddressLinkStyles(): TextLinkStyles {
     return remember(style) { TextLinkStyles(style = style) }
 }
 
-internal fun AnnotatedString.Builder.appendMacAddress(mac: String, linkStyles: TextLinkStyles) {
+fun AnnotatedString.Builder.appendMacAddress(mac: String, linkStyles: TextLinkStyles) {
     appendLinkedText(mac, "https://macaddress.io/macaddress/$mac", linkStyles)
 }
 
-internal fun AnnotatedString.Builder.appendIpAddress(ip: InetAddress, linkStyles: TextLinkStyles) {
+fun AnnotatedString.Builder.appendIpAddress(ip: InetAddress, linkStyles: TextLinkStyles) {
     val address = ip.hostAddress ?: ip.toString()
     if (ip.isBogon) append(address) else appendLinkedText(address, "https://ipinfo.io/$address", linkStyles)
 }

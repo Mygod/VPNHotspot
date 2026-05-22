@@ -122,7 +122,7 @@ private data class SavedApConfigurationSession(
     }
 }
 
-internal class ApConfigurationSessionHolder : ViewModel() {
+class ApConfigurationSessionHolder : ViewModel() {
     var repeaterMaster: P2pSupplicantConfiguration? = null
 }
 

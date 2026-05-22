@@ -29,7 +29,7 @@ fun VpnHotspotTheme(dynamicColor: Boolean = true, content: @Composable () -> Uni
 }
 
 @Composable
-internal fun VpnHotspotPreviewSurface(content: @Composable () -> Unit) {
+fun VpnHotspotPreviewSurface(content: @Composable () -> Unit) {
     VpnHotspotTheme(dynamicColor = false) {
         Surface(content = content)
     }

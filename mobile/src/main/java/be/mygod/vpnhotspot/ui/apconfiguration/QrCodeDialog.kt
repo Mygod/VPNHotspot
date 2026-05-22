@@ -27,7 +27,7 @@ import timber.log.Timber
 import java.nio.charset.StandardCharsets
 
 @Composable
-internal fun QrCodeDialog(value: String, onDismiss: () -> Unit) {
+fun QrCodeDialog(value: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val size = dimensionResource(R.dimen.qrcode_size)
     val density = LocalDensity.current

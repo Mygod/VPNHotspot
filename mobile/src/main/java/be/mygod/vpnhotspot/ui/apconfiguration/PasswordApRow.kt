@@ -34,7 +34,7 @@ import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 
 @Composable
-internal fun PasswordApRow(state: ApConfigurationState) {
+fun PasswordApRow(state: ApConfigurationState) {
     if (!state.passwordEnabled) return
     val context = LocalContext.current
     val maxLength = state.passwordMaxLength

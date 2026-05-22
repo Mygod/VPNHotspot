@@ -31,7 +31,7 @@ import be.mygod.vpnhotspot.util.toParcelable
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
-internal class ApConfigurationState(
+class ApConfigurationState(
     initial: SoftApConfigurationCompat,
     val readOnly: Boolean,
     val p2pMode: Boolean,

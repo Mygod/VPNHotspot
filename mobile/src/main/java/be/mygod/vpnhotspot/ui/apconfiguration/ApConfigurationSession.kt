@@ -25,7 +25,7 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 
-internal class ApConfigurationSession(
+class ApConfigurationSession(
     val initial: SoftApConfigurationCompat,
     val readOnly: Boolean = false,
     val p2pMode: Boolean = false,
@@ -34,13 +34,13 @@ internal class ApConfigurationSession(
     val onApply: suspend (SoftApConfigurationCompat) -> Boolean,
 )
 
-internal enum class ApConfigurationTarget {
+enum class ApConfigurationTarget {
     System,
     Repeater,
     Temporary,
 }
 
-internal suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): SoftApConfigurationCompat? {
+suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): SoftApConfigurationCompat? {
     return try {
         if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
             WifiApManager.configurationLegacy?.toCompat() ?: SoftApConfigurationCompat()
@@ -67,7 +67,7 @@ internal suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostSt
     }
 }
 
-internal suspend fun applySystemApConfiguration(
+suspend fun applySystemApConfiguration(
     configuration: SoftApConfigurationCompat,
     snackbarHostState: SnackbarHostState,
 ): Boolean {
@@ -122,7 +122,7 @@ internal suspend fun applySystemApConfiguration(
     return false
 }
 
-internal suspend fun loadRepeaterApConfiguration(
+suspend fun loadRepeaterApConfiguration(
     binder: RepeaterService.Binder?,
     snackbarHostState: SnackbarHostState,
 ): ApConfigurationSession? {
@@ -199,7 +199,7 @@ internal suspend fun loadRepeaterApConfiguration(
     return null
 }
 
-internal suspend fun applyRepeaterApConfiguration(
+suspend fun applyRepeaterApConfiguration(
     binder: RepeaterService.Binder?,
     config: SoftApConfigurationCompat,
     snackbarHostState: SnackbarHostState,
