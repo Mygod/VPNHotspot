@@ -333,9 +333,15 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             }
             composable(RootDestination.Clients.route) { ClientsScreen(clientViewModel, snackbarHostState) }
             composable(RootDestination.Settings.route) { SettingsScreen(snackbarHostState) }
-            composable(AppDestination.ApConfiguration.route) { ApConfigurationRoute(apState, navController) }
-            composable(AppDestination.RepeaterConfiguration.route) { ApConfigurationRoute(apState, navController) }
-            composable(AppDestination.TemporaryHotspotConfiguration.route) { ApConfigurationRoute(apState, navController) }
+            composable(AppDestination.ApConfiguration.route) {
+                ApConfigurationRoute(apState, navController, snackbarHostState)
+            }
+            composable(AppDestination.RepeaterConfiguration.route) {
+                ApConfigurationRoute(apState, navController, snackbarHostState)
+            }
+            composable(AppDestination.TemporaryHotspotConfiguration.route) {
+                ApConfigurationRoute(apState, navController, snackbarHostState)
+            }
         }
     }
 }
@@ -343,8 +349,14 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
 private fun ApConfigurationSession.toSaved() = SavedApConfigurationSession(initial, readOnly, p2pMode, target)
 
 @Composable
-private fun ApConfigurationRoute(state: ApConfigurationState?, navController: NavHostController) {
-    if (state == null) LaunchedEffect(Unit) { navController.popBackStack() } else ApConfigurationScreen(state)
+private fun ApConfigurationRoute(
+    state: ApConfigurationState?,
+    navController: NavHostController,
+    snackbarHostState: SnackbarHostState,
+) {
+    if (state == null) LaunchedEffect(Unit) {
+        navController.popBackStack()
+    } else ApConfigurationScreen(state, snackbarHostState)
 }
 
 @Composable

@@ -11,10 +11,16 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
@@ -35,14 +41,21 @@ import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.PreferenceGroup
 import be.mygod.vpnhotspot.ui.SettingsList
 import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.showLongSnackbar
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
+import kotlinx.coroutines.launch
 import timber.log.Timber
 
 @Composable
-internal fun ApConfigurationScreen(state: ApConfigurationState) {
+internal fun ApConfigurationScreen(
+    state: ApConfigurationState,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var qrCode by rememberSaveable { mutableStateOf<String?>(null) }
     val inspectionMode = LocalInspectionMode.current
     val defaultTimeout = if (inspectionMode) 600_000L else TetherTimeoutMonitor.defaultTimeout.toLong()
     val defaultBridgedTimeout = if (inspectionMode || Build.VERSION.SDK_INT < 31) {
@@ -95,7 +108,18 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
     ) {
         item {
             PreferenceGroup {
-                row { SsidApRow(state) }
+                row {
+                    SsidApRow(
+                        state = state,
+                        onShowQrCode = {
+                            try {
+                                qrCode = state.generateConfig(requirePassword = false, full = false).toQrCode()
+                            } catch (e: RuntimeException) {
+                                scope.launch { snackbarHostState.showLongSnackbar(e.readableMessage) }
+                            }
+                        },
+                    )
+                }
                 state.actionError(context)?.let {
                     contentItem { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
                 }
@@ -448,6 +472,9 @@ internal fun ApConfigurationScreen(state: ApConfigurationState) {
                 staticInfo?.let { contentItem { StaticApInfoText(it) } }
             }
         }
+    }
+    qrCode?.let { value ->
+        QrCodeDialog(value) { qrCode = null }
     }
 }
 

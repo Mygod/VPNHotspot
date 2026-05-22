@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.selection.toggleable
@@ -64,9 +63,12 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.alorma.compose.settings.ui.expressive.SettingsGroup as ComposeSettingsGroup
 import com.alorma.compose.settings.ui.expressive.SettingsTileScaffold
+
+internal val PreferenceSplitControlWidth: Dp = 52.dp
 
 @Composable
 internal fun rememberTextFieldValueAtEnd(text: String, vararg inputs: Any?): MutableState<TextFieldValue> =
@@ -254,7 +256,7 @@ internal fun PreferenceSplitSwitch(
         Spacer(Modifier.width(12.dp))
         Box(
             modifier = Modifier
-                .widthIn(min = 48.dp)
+                .width(PreferenceSplitControlWidth)
                 .height(48.dp)
                 .toggleable(
                     value = checked,
