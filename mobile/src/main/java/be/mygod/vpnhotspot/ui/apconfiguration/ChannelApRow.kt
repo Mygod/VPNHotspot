@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -76,6 +77,7 @@ private fun ChannelApSheet(
     onSelect: (ChannelOption) -> Unit,
 ) {
     val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
     val disabledOption = entries.firstOrNull { it === ChannelOption.Disabled }
     val channelEntries = entries.filter { it !== ChannelOption.Disabled }
     val bands = BAND_ORDER.filter { band -> channelEntries.any { it.band and band == band } }
@@ -135,7 +137,7 @@ private fun ChannelApSheet(
                     ) {
                         val format = DecimalFormat(
                             "#.#",
-                            DecimalFormatSymbols.getInstance(context.resources.configuration.locales[0]),
+                            DecimalFormatSymbols.getInstance(locale),
                         )
                         for (band in bands) {
                             val selectedBand = selectedBandMask and band == band
