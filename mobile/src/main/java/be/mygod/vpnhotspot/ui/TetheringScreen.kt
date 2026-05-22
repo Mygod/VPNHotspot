@@ -11,9 +11,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.MacAddress
 import android.net.TetheringManager
-import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
-import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Parcelable
@@ -85,14 +83,12 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
-import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
@@ -244,7 +240,7 @@ internal fun TetheringScreen(
                         TetheringRow(
                             icon = R.drawable.ic_action_settings_input_antenna,
                             title = repeaterTitle(repeaterGroup?.frequency),
-                            summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles, p2p),
+                            summary = repeaterSummary(repeaterGroup, ifaceLookup, linkStyles),
                             checked = repeaterStatus == RepeaterService.Status.STARTING || active,
                             enabled = true,
                             switchEnabled = switchEnabled,
@@ -774,7 +770,6 @@ private fun rememberWifiSummary(
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
         var wifiInfo = emptyList<Parcelable>()
-        var wifiCapability: Parcelable? = null
         fun update() {
             value = wifiSummary(
                 context,
@@ -782,7 +777,6 @@ private fun rememberWifiSummary(
                 wifiFailureReason,
                 wifiNumClients,
                 wifiInfo,
-                wifiCapability,
                 baseError,
                 linkStyles,
             )
@@ -801,11 +795,6 @@ private fun rememberWifiSummary(
 
             override fun onInfoChanged(info: List<Parcelable>) {
                 wifiInfo = info
-                update()
-            }
-
-            override fun onCapabilityChanged(capability: Parcelable) {
-                wifiCapability = capability
                 update()
             }
         }
@@ -841,7 +830,6 @@ private fun wifiSummary(
     failureReason: Int?,
     numClients: Int?,
     info: List<Parcelable>,
-    capability: Parcelable?,
     baseError: AnnotatedString?,
     linkStyles: TextLinkStyles,
 ): AnnotatedString? {
@@ -884,60 +872,7 @@ private fun wifiSummary(
                 appendMacAddress(it.toString(), linkStyles)
             }
         }
-        capability?.let { parcel -> line {
-            val capability = SoftApCapability(parcel)
-            val maxClients = capability.maxSupportedClients
-            var features = capability.supportedFeatures
-            if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
-                SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfiguration.BAND_6GHZ,
-                SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfiguration.BAND_60GHZ,
-            )) {
-                if (capability.getSupportedChannelList(band).isEmpty()) continue
-                features = features and flag.inv()
-            }
-            append(context.resources.getQuantityString(
-                R.plurals.tethering_manage_wifi_capabilities,
-                numClients ?: 0,
-                numClients?.let { integerFormat.format(it.toLong()) } ?: "?",
-                integerFormat.format(maxClients.toLong()),
-                sequence {
-                    if (WifiApManager.isApMacRandomizationSupported) yield(context.getString(
-                        R.string.tethering_manage_wifi_feature_ap_mac_randomization))
-                    if (Services.wifi.isStaApConcurrencySupported) yield(context.getString(
-                        R.string.tethering_manage_wifi_feature_sta_ap_concurrency))
-                    if (Build.VERSION.SDK_INT >= 31) {
-                        if (Services.wifi.isBridgedApConcurrencySupported) yield(context.getString(
-                            R.string.tethering_manage_wifi_feature_bridged_ap_concurrency))
-                        if (Services.wifi.isStaBridgedApConcurrencySupported) yield(context.getString(
-                            R.string.tethering_manage_wifi_feature_sta_bridged_ap_concurrency))
-                    }
-                    if (features != 0L) while (features != 0L) {
-                        val bit = features.takeLowestOneBit()
-                        yield(SoftApCapability.featureLookup(bit, true).replace('_', ' '))
-                        features = features and bit.inv()
-                    }
-                }.joinToString().ifEmpty { context.getString(R.string.tethering_manage_wifi_no_features) },
-            ))
-            if (Build.VERSION.SDK_INT >= 31) {
-                val channels = buildList {
-                    for (band in SoftApConfigurationCompat.BAND_TYPES) {
-                        val list = capability.getSupportedChannelList(band)
-                        if (list.isNotEmpty()) {
-                            add("${SoftApConfigurationCompat.bandLookup(band, true)} (${RangeInput.toString(list)})")
-                        }
-                    }
-                }
-                if (channels.isNotEmpty()) append(context.getString(
-                    R.string.tethering_manage_wifi_supported_channels,
-                    channels.joinToString("; "),
-                ))
-                capability.countryCode?.let {
-                    append(context.getString(R.string.tethering_manage_wifi_country_code, it))
-                }
-            }
-        } } ?: numClients?.let {
+        numClients?.let {
             line { append(context.resources.getQuantityString(
                 R.plurals.tethering_manage_wifi_clients,
                 it,
@@ -1018,24 +953,7 @@ private fun repeaterSummary(
     group: WifiP2pGroup?,
     ifaceLookup: Map<String, NetworkInterface>,
     linkStyles: TextLinkStyles,
-    p2p: WifiP2pManager?,
 ): AnnotatedString {
-    val labels = mutableListOf<String>()
-    val features = stringResource(R.string.repeater_features)
-    fun WifiP2pManager.test(label: String, sdk: Int, action: (WifiP2pManager) -> Boolean) {
-        try {
-            if (!action(this)) return
-            labels += label
-        } catch (e: NoSuchMethodError) {
-            if (Build.VERSION.SDK_INT >= sdk) Timber.w(e)
-        }
-    }
-    if (Build.VERSION.SDK_INT >= 30) p2p?.apply {
-        test(stringResource(R.string.repeater_feature_set_vendor_elements), 33) { isSetVendorElementsSupported }
-        test(stringResource(R.string.repeater_feature_group_client_removal), 33) { isGroupClientRemovalSupported }
-        test(stringResource(R.string.repeater_feature_pcc_mode), 36) { isPccModeSupported }
-        test(stringResource(R.string.repeater_feature_wifi_direct_r2), 36) { isWiFiDirectR2Supported }
-    }
     val addresses = group?.let { p2pGroup ->
         networkInterfaceAddressesText(
             ifaceLookup[p2pGroup.`interface`],
@@ -1048,16 +966,7 @@ private fun repeaterSummary(
             } else null,
         )
     } ?: AnnotatedString("")
-    return buildAnnotatedString {
-        if (labels.isNotEmpty()) {
-            append(features)
-            append(labels.joinToString())
-        }
-        if (addresses.text.isNotEmpty()) {
-            if (length > 0) append('\n')
-            append(addresses)
-        }
-    }
+    return addresses
 }
 
 private val wifiP2pGroupInterfaceAddress by lazy { WifiP2pGroup::class.java.getDeclaredField("interfaceAddress") }
