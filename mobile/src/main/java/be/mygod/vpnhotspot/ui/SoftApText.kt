@@ -79,9 +79,6 @@ internal fun tetherErrorLabel(
     TetheringManager.TETHER_ERROR_UNKNOWN_TYPE -> context.getString(R.string.tether_error_unknown_type)
     TetheringManager.TETHER_ERROR_UNKNOWN_REQUEST -> context.getString(R.string.tether_error_unknown_request)
     TetheringManager.TETHER_ERROR_DUPLICATE_REQUEST -> context.getString(R.string.tether_error_duplicate_request)
-    // In android-latest-release but not compileSdk 37.
-    19 -> context.getString(R.string.tether_error_bluetooth_service_pending)
-    20 -> context.getString(R.string.tether_error_soft_ap_callback_pending)
     else -> fallback
 }
 
