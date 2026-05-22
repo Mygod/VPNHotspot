@@ -205,6 +205,7 @@ dependencies {
     implementation(platform(libs.compose.bom))
     implementation("androidx.compose.material:material-icons-core")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3.adaptive:adaptive")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation(libs.activity.compose)
     implementation(libs.browser)

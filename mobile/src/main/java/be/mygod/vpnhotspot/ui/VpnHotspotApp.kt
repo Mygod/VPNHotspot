@@ -9,10 +9,14 @@ import androidx.annotation.StringRes
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.DropdownMenu
@@ -23,6 +27,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -30,6 +36,8 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +52,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -51,9 +62,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
@@ -115,7 +124,11 @@ internal class ApConfigurationSessionHolder : ViewModel() {
     var repeaterMaster: P2pSupplicantConfiguration? = null
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(
+    ExperimentalMaterial3AdaptiveApi::class,
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+)
 @Composable
 fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val appContext = LocalContext.current
@@ -212,8 +225,11 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
         popExitTransition = { fadeOut(navFadeSpec) },
     ) {
         composable(RootDestination.Tethering.route) {
-            DestinationScaffold(
+            RootDestinationScaffold(
                 title = R.string.app_name,
+                selectedDestination = RootDestination.Tethering,
+                navController = navController,
+                validClientCount = validClientCount,
                 snackbarHostState = snackbarHostState,
                 showSnackbarHost = route == RootDestination.Tethering.route,
                 actions = {
@@ -224,9 +240,6 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                         },
                     )
-                },
-                bottomBar = {
-                    RootNavigationBar(RootDestination.Tethering, navController, validClientCount)
                 },
             ) {
                 TetheringScreen(
@@ -288,25 +301,25 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             }
         }
         composable(RootDestination.Clients.route) {
-            DestinationScaffold(
+            RootDestinationScaffold(
                 title = R.string.app_name,
+                selectedDestination = RootDestination.Clients,
+                navController = navController,
+                validClientCount = validClientCount,
                 snackbarHostState = snackbarHostState,
                 showSnackbarHost = route == RootDestination.Clients.route,
-                bottomBar = {
-                    RootNavigationBar(RootDestination.Clients, navController, validClientCount)
-                },
             ) {
                 ClientsScreen(clientViewModel, snackbarHostState)
             }
         }
         composable(RootDestination.Settings.route) {
-            DestinationScaffold(
+            RootDestinationScaffold(
                 title = R.string.app_name,
+                selectedDestination = RootDestination.Settings,
+                navController = navController,
+                validClientCount = validClientCount,
                 snackbarHostState = snackbarHostState,
                 showSnackbarHost = route == RootDestination.Settings.route,
-                bottomBar = {
-                    RootNavigationBar(RootDestination.Settings, navController, validClientCount)
-                },
             ) {
                 SettingsScreen(snackbarHostState)
             }
@@ -347,6 +360,74 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
 private fun ApConfigurationSession.toSaved() = SavedApConfigurationSession(initial, readOnly, p2pMode, target)
 
 @Composable
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+private fun RootDestinationScaffold(
+    @StringRes title: Int,
+    selectedDestination: RootDestination,
+    navController: NavHostController,
+    validClientCount: Int,
+    snackbarHostState: SnackbarHostState,
+    showSnackbarHost: Boolean,
+    actions: @Composable RowScope.() -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    val adaptiveInfo = currentWindowAdaptiveInfo()
+    val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
+    val navigateToRoot: (RootDestination) -> Unit = { destination ->
+        navController.navigate(destination.route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+    if (useNavigationRail) {
+        Row(Modifier.fillMaxSize()) {
+            NavigationRail {
+                for (destination in RootDestination.entries) {
+                    NavigationRailItem(
+                        selected = destination == selectedDestination,
+                        onClick = { navigateToRoot(destination) },
+                        icon = { RootNavigationIcon(destination, validClientCount) },
+                        label = { Text(stringResource(destination.title)) },
+                    )
+                }
+            }
+            DestinationScaffold(
+                title = title,
+                modifier = Modifier.weight(1f),
+                snackbarHostState = snackbarHostState,
+                showSnackbarHost = showSnackbarHost,
+                actions = actions,
+                contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom),
+                content = content,
+            )
+        }
+    } else {
+        DestinationScaffold(
+            title = title,
+            snackbarHostState = snackbarHostState,
+            showSnackbarHost = showSnackbarHost,
+            actions = actions,
+            bottomBar = {
+                NavigationBar {
+                    for (destination in RootDestination.entries) {
+                        NavigationBarItem(
+                            selected = destination == selectedDestination,
+                            onClick = { navigateToRoot(destination) },
+                            icon = { RootNavigationIcon(destination, validClientCount) },
+                            label = { Text(stringResource(destination.title)) },
+                        )
+                    }
+                }
+            },
+            content = content,
+        )
+    }
+}
+
+@Composable
 private fun ApConfigurationRoute(
     destination: AppDestination,
     showSnackbarHost: Boolean,
@@ -378,14 +459,17 @@ private fun ApConfigurationRoute(
 @Composable
 private fun DestinationScaffold(
     @StringRes title: Int,
+    modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState,
     showSnackbarHost: Boolean,
     onNavigateUp: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    contentWindowInsets: WindowInsets = WindowInsets(),
     content: @Composable () -> Unit,
 ) {
     Scaffold(
+        modifier = modifier,
         topBar = { DestinationTopAppBar(title, onNavigateUp, actions) },
         bottomBar = bottomBar,
         snackbarHost = {
@@ -399,7 +483,7 @@ private fun DestinationScaffold(
                 }
             }
         },
-        contentWindowInsets = WindowInsets(),
+        contentWindowInsets = contentWindowInsets,
     ) { contentPadding ->
         Box(Modifier.padding(contentPadding)) {
             content()
@@ -432,47 +516,24 @@ private fun DestinationTopAppBar(
 }
 
 @Composable
-private fun RootNavigationBar(
-    selectedDestination: RootDestination,
-    navController: NavHostController,
-    validClientCount: Int,
-) {
-    NavigationBar {
-        for (destination in RootDestination.entries) {
-            NavigationBarItem(
-                selected = destination == selectedDestination,
-                onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
-                icon = {
-                    if (destination == RootDestination.Clients && validClientCount > 0) {
-                        BadgedBox(badge = {
-                            Badge(
-                                containerColor = MaterialTheme.colorScheme.secondary,
-                                contentColor = MaterialTheme.colorScheme.onSecondary,
-                            ) {
-                                Text(validClientCount.toString())
-                            }
-                        }) {
-                            NavIcon(destination.icon, destination.title)
-                        }
-                    } else NavIcon(destination.icon, destination.title)
-                },
-                label = { Text(stringResource(destination.title)) },
-            )
-        }
-    }
+private fun NavIcon(@DrawableRes icon: Int, @StringRes description: Int) {
+    NavIcon(icon, stringResource(description))
 }
 
 @Composable
-private fun NavIcon(@DrawableRes icon: Int, @StringRes description: Int) {
-    NavIcon(icon, stringResource(description))
+private fun RootNavigationIcon(destination: RootDestination, validClientCount: Int) {
+    if (destination == RootDestination.Clients && validClientCount > 0) {
+        BadgedBox(badge = {
+            Badge(
+                containerColor = MaterialTheme.colorScheme.secondary,
+                contentColor = MaterialTheme.colorScheme.onSecondary,
+            ) {
+                Text(validClientCount.toString())
+            }
+        }) {
+            NavIcon(destination.icon, destination.title)
+        }
+    } else NavIcon(destination.icon, destination.title)
 }
 
 @Composable
