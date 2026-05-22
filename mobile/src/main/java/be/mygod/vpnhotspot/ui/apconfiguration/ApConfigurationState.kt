@@ -413,18 +413,26 @@ internal class ApConfigurationState(
     }?.label(context) ?: channelBandwidthLabel(context, maxChannelBandwidth)
     fun bssidEnabled(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
             macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE
-    fun bssidEditable(macRandomization: Int) = bssidEnabled(macRandomization) &&
-            (Build.VERSION.SDK_INT < 31 || macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE)
+    fun bssidEditable(macRandomization: Int) = p2pMode || (bssidEnabled(macRandomization) &&
+            (Build.VERSION.SDK_INT < 31 || macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE))
     val macAddressEditable get() = !readOnly && (bssidEditable(macRandomization) ||
             !p2pMode && Build.VERSION.SDK_INT >= 31)
-    fun macAddressSummary(context: Context) = when {
-        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT ->
-            context.getString(R.string.wifi_mac_address_non_persistent_randomization)
-        macRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT -> {
-            if (persistentRandomizedMac.isEmpty()) ""
-            else context.getString(R.string.wifi_mac_address_persistent_randomization, persistentRandomizedMac)
+    fun macAddressSummary(context: Context) = if (p2pMode) {
+        bssid.ifEmpty {
+            if (macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
+                context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+            } else ""
         }
-        else -> bssid
+    } else {
+        when {
+            macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT ->
+                context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+            macRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT -> {
+                if (persistentRandomizedMac.isEmpty()) ""
+                else context.getString(R.string.wifi_mac_address_persistent_randomization, persistentRandomizedMac)
+            }
+            else -> bssid
+        }
     }
 
     private fun generateChannels() = SparseIntArray(2).also { channels ->

@@ -382,6 +382,7 @@
     <string name="wifi_mac_address_persistent_randomization">Persistent randomization: %s</string>
     <string name="wifi_mac_address_non_persistent_randomization">Non-persistent randomization</string>
     <string name="wifi_mac_address_help">Configure BSSID and MAC randomization for the AP. Android rejects all-zero, multicast, and broadcast BSSIDs. An explicit BSSID is used only when MAC randomization is disabled.</string>
+    <string name="wifi_p2p_mac_address_help">Configure the P2P device address used by the repeater. Leave empty to let Android choose the address.</string>
     <string name="wifi_advanced_mac_address_help">BSSID for the AP. Android rejects all-zero, multicast, and broadcast MAC addresses. When setting a BSSID, MAC randomization must be disabled.</string>
     <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <string name="wifi_hidden_network">Hidden network</string>

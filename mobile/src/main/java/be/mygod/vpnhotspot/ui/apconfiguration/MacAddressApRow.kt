@@ -58,7 +58,7 @@ private fun MacAddressApDialog(
     var draftBssid by rememberTextFieldValueAtEnd(state.bssid)
     var draftPersistentRandomizedMac by rememberTextFieldValueAtEnd(state.persistentRandomizedMac)
     val randomizationSelectable = !state.p2pMode && Build.VERSION.SDK_INT >= 31
-    val randomizationVisible = state.p2pMode || Build.VERSION.SDK_INT >= 31
+    val randomizationVisible = !state.p2pMode && Build.VERSION.SDK_INT >= 31
     val bssidEnabled = state.bssidEditable(draftRandomization)
     val persistentRandomizedMacVisible = !state.p2pMode && Build.VERSION.SDK_INT >= 33
     val persistentRandomizedMacEnabled = persistentRandomizedMacVisible
@@ -77,90 +77,101 @@ private fun MacAddressApDialog(
         title = { Text(stringResource(R.string.wifi_advanced_mac_address_title)) },
         text = {
             val bssidFocusRequester = rememberDialogFocusRequester(
-                bssidEnabled && draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                bssidEnabled && (state.p2pMode ||
+                        draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE),
             )
             val persistentFocusRequester = rememberDialogFocusRequester(
                 persistentRandomizedMacEnabled &&
                         draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
             )
+            val bssidField: @Composable () -> Unit = {
+                OutlinedTextField(
+                    value = draftBssid,
+                    onValueChange = { draftBssid = it.takeText(17) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(bssidFocusRequester),
+                    enabled = bssidEnabled,
+                    label = { Text(stringResource(R.string.wifi_advanced_mac_address_title)) },
+                    keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                    singleLine = true,
+                    isError = bssidError != null,
+                    supportingText = bssidError?.let { { ErrorApText(it) } },
+                )
+            }
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
-                    text = annotatedStringResource(R.string.wifi_mac_address_help),
+                    text = annotatedStringResource(if (state.p2pMode) {
+                        R.string.wifi_p2p_mac_address_help
+                    } else R.string.wifi_mac_address_help),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                PreferenceGroup {
-                    row(SoftApConfigurationCompat.RANDOMIZATION_NONE) {
-                        MacRandomizationOptionRow(
-                            selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
-                            showRadio = randomizationVisible,
-                            radioEnabled = randomizationSelectable,
-                            title = stringResource(R.string.wifi_mac_randomization_none),
-                            description = annotatedStringResource(R.string.wifi_mac_randomization_none_help),
-                            onSelect = { draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NONE },
-                        ) {
-                            OutlinedTextField(
-                                value = draftBssid,
-                                onValueChange = { draftBssid = it.takeText(17) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .focusRequester(bssidFocusRequester),
-                                enabled = bssidEnabled,
-                                label = { Text(stringResource(R.string.wifi_advanced_mac_address_title)) },
-                                keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                                singleLine = true,
-                                isError = bssidError != null,
-                                supportingText = bssidError?.let { { ErrorApText(it) } },
-                            )
-                        }
-                    }
-                    if (randomizationVisible) {
-                        row(SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT) {
+                if (state.p2pMode) {
+                    bssidField()
+                } else {
+                    PreferenceGroup {
+                        row(SoftApConfigurationCompat.RANDOMIZATION_NONE) {
                             MacRandomizationOptionRow(
-                                selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
-                                showRadio = true,
+                                selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                                showRadio = randomizationVisible,
                                 radioEnabled = randomizationSelectable,
-                                title = stringResource(R.string.wifi_mac_randomization_persistent),
-                                description = annotatedStringResource(R.string.wifi_mac_randomization_persistent_help),
-                                onSelect = {
-                                    draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT
-                                },
+                                title = stringResource(R.string.wifi_mac_randomization_none),
+                                description = annotatedStringResource(R.string.wifi_mac_randomization_none_help),
+                                onSelect = { draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NONE },
                             ) {
-                                if (persistentRandomizedMacVisible) {
-                                    OutlinedTextField(
-                                        value = draftPersistentRandomizedMac,
-                                        onValueChange = { draftPersistentRandomizedMac = it.takeText(17) },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .focusRequester(persistentFocusRequester),
-                                        enabled = persistentRandomizedMacEnabled,
-                                        label = {
-                                            Text(stringResource(
-                                                R.string.wifi_advanced_mac_address_persistent_randomized))
-                                        },
-                                        keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
-                                        singleLine = true,
-                                        isError = persistentRandomizedMacError != null,
-                                        supportingText = persistentRandomizedMacError?.let { { ErrorApText(it) } },
-                                    )
-                                }
+                                bssidField()
                             }
                         }
-                        row(SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
-                            MacRandomizationOptionRow(
-                                selected = draftRandomization ==
-                                        SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT,
-                                showRadio = true,
-                                radioEnabled = randomizationSelectable,
-                                title = stringResource(R.string.wifi_mac_randomization_non_persistent),
-                                description = annotatedStringResource(
-                                    R.string.wifi_mac_randomization_non_persistent_help),
-                                onSelect = {
-                                    draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
-                                },
-                            )
+                        if (randomizationVisible) {
+                            row(SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT) {
+                                MacRandomizationOptionRow(
+                                    selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
+                                    showRadio = true,
+                                    radioEnabled = randomizationSelectable,
+                                    title = stringResource(R.string.wifi_mac_randomization_persistent),
+                                    description = annotatedStringResource(
+                                        R.string.wifi_mac_randomization_persistent_help),
+                                    onSelect = {
+                                        draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT
+                                    },
+                                ) {
+                                    if (persistentRandomizedMacVisible) {
+                                        OutlinedTextField(
+                                            value = draftPersistentRandomizedMac,
+                                            onValueChange = { draftPersistentRandomizedMac = it.takeText(17) },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(persistentFocusRequester),
+                                            enabled = persistentRandomizedMacEnabled,
+                                            label = {
+                                                Text(stringResource(
+                                                    R.string.wifi_advanced_mac_address_persistent_randomized))
+                                            },
+                                            keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
+                                            singleLine = true,
+                                            isError = persistentRandomizedMacError != null,
+                                            supportingText = persistentRandomizedMacError?.let { { ErrorApText(it) } },
+                                        )
+                                    }
+                                }
+                            }
+                            row(SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
+                                MacRandomizationOptionRow(
+                                    selected = draftRandomization ==
+                                            SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT,
+                                    showRadio = true,
+                                    radioEnabled = randomizationSelectable,
+                                    title = stringResource(R.string.wifi_mac_randomization_non_persistent),
+                                    description = annotatedStringResource(
+                                        R.string.wifi_mac_randomization_non_persistent_help),
+                                    onSelect = {
+                                        draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
+                                    },
+                                )
+                            }
                         }
                     }
                 }

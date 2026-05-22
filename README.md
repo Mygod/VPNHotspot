@@ -53,8 +53,10 @@ Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
    If things stopped working after you use this feature, simply delete this file and everything should start working again.
 2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will also persist.
    Undo those changes if you face any issues.
+3. If you toggle tethering hardware offload through this app, the Android global `tether_offload_disabled` setting will persist.
+   Toggle it back in this app or the matching Developer options setting to revert it.
 
-Everything else is fully reversible and automatically so upon reboot.
+Routing, firewall, addresses, and daemon/service state managed by this app are cleaned up when stopped, by Clean, or upon reboot.
 
 ### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
 
