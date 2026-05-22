@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -19,7 +18,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSelectionRow
+import be.mygod.vpnhotspot.ui.VpnHotspotModalBottomSheet
+import be.mygod.vpnhotspot.ui.modalBottomSheetListContentPadding
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
@@ -88,7 +88,7 @@ private fun ChannelApSheet(
             it.band == selectedBandMask && it.channel != 0
         })
     }
-    ModalBottomSheet(onDismissRequest = onDismissRequest) {
+    VpnHotspotModalBottomSheet(onDismissRequest = onDismissRequest) {
         Text(
             text = title,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
@@ -98,7 +98,7 @@ private fun ChannelApSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            contentPadding = modalBottomSheetListContentPadding(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             description?.let {

@@ -462,7 +462,7 @@ internal fun ApConfigurationScreen(
                             icon = R.drawable.ic_action_settings,
                             title = R.string.wifi_user_config,
                             checked = state.userConfig,
-                            readOnly = true,
+                            readOnly = false,
                         ) {
                             state.userConfig = it
                         }
