@@ -846,12 +846,12 @@ private fun wifiSummary(
             val frequency = softApInfo.frequency
             val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
             val bandwidth = SoftApInfo.channelWidthLookup(softApInfo.bandwidth, true)
-            append(if (Build.VERSION.SDK_INT >= 31) {
-                val bssidAp = softApInfo.bssid?.let { bssid ->
-                    softApInfo.apInstanceIdentifier?.let { "$bssid%$it" } ?: bssid.toString()
-                } ?: softApInfo.apInstanceIdentifier ?: "?"
+            if (Build.VERSION.SDK_INT >= 31) {
+                val bssid = softApInfo.bssid?.toString()
+                val bssidAp = bssid?.let { softApInfo.apInstanceIdentifier?.let { id -> "$it%$id" } ?: it }
+                    ?: softApInfo.apInstanceIdentifier ?: "?"
                 val timeout = softApInfo.autoShutdownTimeoutMillis
-                context.getString(if (timeout == 0L) {
+                val line = context.getString(if (timeout == 0L) {
                     R.string.tethering_manage_wifi_info_timeout_disabled
                 } else R.string.tethering_manage_wifi_info_timeout_enabled,
                     integerFormat.format(frequency.toLong()),
@@ -861,12 +861,23 @@ private fun wifiSummary(
                     integerFormat.format(softApInfo.wifiStandard.toLong()),
                     DateUtils.formatElapsedTime(timeout / 1000),
                 )
-            } else context.getString(
-                R.string.tethering_manage_wifi_info,
-                integerFormat.format(frequency.toLong()),
-                integerFormat.format(channel.toLong()),
-                bandwidth,
-            ))
+                val bssidText = bssid
+                if (bssidText == null) {
+                    append(line)
+                } else {
+                    val bssidStart = line.indexOf(bssidText)
+                    if (bssidStart < 0) append(line) else {
+                        append(line.substring(0, bssidStart))
+                        appendMacAddress(bssidText, linkStyles)
+                        append(line.substring(bssidStart + bssidText.length))
+                    }
+                }
+            } else append(context.getString(
+                    R.string.tethering_manage_wifi_info,
+                    integerFormat.format(frequency.toLong()),
+                    integerFormat.format(channel.toLong()),
+                    bandwidth,
+                ))
             softApInfo.mldAddress?.let {
                 append(", MLD MAC ")
                 appendMacAddress(it.toString(), linkStyles)
