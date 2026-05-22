@@ -5,6 +5,7 @@ import android.net.TetheringManager
 import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
+import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.util.findIdentifier
@@ -14,17 +15,17 @@ import kotlinx.coroutines.flow.asSharedFlow
 import timber.log.Timber
 import java.util.regex.Pattern
 
-enum class TetherType(@get:DrawableRes val icon: Int) {
-    NONE(R.drawable.ic_device_wifi_tethering),
-    WIFI_P2P(R.drawable.ic_action_settings_input_antenna),
-    USB(R.drawable.ic_device_usb),
-    WIFI(R.drawable.ic_device_network_wifi),
-    BLUETOOTH(R.drawable.ic_device_bluetooth),
+enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: Int) {
+    NONE(R.drawable.ic_device_wifi_tethering, R.string.tether_type_none),
+    WIFI_P2P(R.drawable.ic_action_settings_input_antenna, R.string.tether_type_wifi_p2p),
+    USB(R.drawable.ic_device_usb, R.string.tethering_manage_usb),
+    WIFI(R.drawable.ic_device_network_wifi, R.string.tethering_manage_wifi),
+    BLUETOOTH(R.drawable.ic_device_bluetooth, R.string.tethering_manage_bluetooth),
     // if you have an issue with these Ethernet icon namings, blame Google
-    NCM(R.drawable.ic_action_settings_ethernet),
-    ETHERNET(R.drawable.ic_content_inbox),
-    WIGIG(R.drawable.ic_image_flash_on),
-    VIRTUAL(R.drawable.ic_deployed_code),
+    NCM(R.drawable.ic_action_settings_ethernet, R.string.tether_type_ncm),
+    ETHERNET(R.drawable.ic_content_inbox, R.string.tethering_manage_ethernet),
+    WIGIG(R.drawable.ic_image_flash_on, R.string.tether_type_wigig),
+    VIRTUAL(R.drawable.ic_deployed_code, R.string.tether_type_virtual),
     ;
 
     val isWifi get() = when (this) {

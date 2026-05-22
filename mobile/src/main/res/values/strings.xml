@@ -78,6 +78,12 @@
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
+    <string name="tether_type_none">Unknown tethering type</string>
+    <string name="tether_type_wifi_p2p">Wi\u2011Fi Direct</string>
+    <string name="tether_type_ncm">USB NCM tethering</string>
+    <string name="tether_type_wigig">WiGig tethering</string>
+    <string name="tether_type_virtual">Virtual tethering</string>
+    <string name="tether_error_message">%1$s: %2$s</string>
     <string name="tethering_manage_wifi_info">%1$s MHz, channel %2$s, width %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, channel %2$s,
         width %3$s, idle timeout in %6$s</string>

@@ -8,7 +8,10 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -21,10 +24,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -123,8 +129,12 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val rootDestination = RootDestination.entries.firstOrNull { it.route == route }
-    val appDestination = AppDestination.entries.firstOrNull { it.route == route }
     val visibleEntries by navController.visibleEntries.collectAsStateWithLifecycle()
+    val appDestinationVisible = visibleEntries.any { entry ->
+        entry.destination.hierarchy.any { destination ->
+            AppDestination.entries.any { it.route == destination.route }
+        }
+    }
     val tetheringDestinationVisible = rootDestination == RootDestination.Tethering || visibleEntries.any { entry ->
         entry.destination.hierarchy.any { it.route == RootDestination.Tethering.route }
     }
@@ -182,98 +192,43 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
             ApConfigurationState(session.initial, session.readOnly, session.p2pMode)
         }
     }
-    LaunchedEffect(rootDestination) {
-        if (rootDestination != null) {
+    LaunchedEffect(rootDestination, appDestinationVisible) {
+        if (rootDestination != null && !appDestinationVisible) {
             savedApSession = null
             apSessionHolder.repeaterMaster = null
         }
     }
-    val title = appDestination?.title ?: R.string.app_name
     BackHandler(rootDestination != null) {
         (appContext as? Activity)?.finish()
     }
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(title)) },
-                navigationIcon = {
-                    if (appDestination != null) {
-                        val tooltip = stringResource(R.string.action_bar_up_description)
-                        TooltipIconButton(
-                            tooltip = tooltip,
-                            onClick = { navController.popBackStack() },
-                        ) {
-                            NavIcon(R.drawable.ic_navigation_arrow_back, tooltip)
-                        }
-                    }
-                },
+    val navFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    NavHost(
+        navController = navController,
+        startDestination = RootDestination.Tethering.route,
+        modifier = Modifier.fillMaxSize(),
+        enterTransition = { fadeIn(navFadeSpec) },
+        exitTransition = { fadeOut(navFadeSpec) },
+        popEnterTransition = { fadeIn(navFadeSpec) },
+        popExitTransition = { fadeOut(navFadeSpec) },
+    ) {
+        composable(RootDestination.Tethering.route) {
+            DestinationScaffold(
+                title = R.string.app_name,
+                snackbarHostState = snackbarHostState,
+                showSnackbarHost = route == RootDestination.Tethering.route,
                 actions = {
-                    if (rootDestination == RootDestination.Tethering) TetheringActions(
+                    TetheringActions(
                         monitorableIfaces = monitorableIfaces,
                         onMonitorInterface = { iface ->
                             appContext.startForegroundService(Intent(appContext, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                         },
                     )
-                    if (appDestination != null && apState != null && apSession != null) {
-                        ApConfigurationTopBarActions(
-                            state = apState,
-                            session = apSession,
-                            snackbarHostState = snackbarHostState,
-                            onApplied = { navController.popBackStack() },
-                        )
-                    }
                 },
-            )
-        },
-        bottomBar = {
-            if (rootDestination != null) NavigationBar {
-                for (destination in RootDestination.entries) {
-                    val selected = backStackEntry?.destination?.hierarchy?.any { it.route == destination.route } == true
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(destination.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        icon = {
-                            if (destination == RootDestination.Clients && validClientCount > 0) {
-                                BadgedBox(badge = {
-                                    Badge(
-                                        containerColor = MaterialTheme.colorScheme.secondary,
-                                        contentColor = MaterialTheme.colorScheme.onSecondary,
-                                    ) {
-                                        Text(validClientCount.toString())
-                                    }
-                                }) {
-                                    NavIcon(destination.icon, destination.title)
-                                }
-                            } else NavIcon(destination.icon, destination.title)
-                        },
-                        label = { Text(stringResource(destination.title)) },
-                    )
-                }
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = WindowInsets(),
-    ) { contentPadding ->
-        val navFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-        NavHost(
-            navController = navController,
-            startDestination = RootDestination.Tethering.route,
-            modifier = Modifier.padding(contentPadding),
-            enterTransition = { fadeIn(navFadeSpec) },
-            exitTransition = { fadeOut(navFadeSpec) },
-            popEnterTransition = { fadeIn(navFadeSpec) },
-            popExitTransition = { fadeOut(navFadeSpec) },
-        ) {
-            composable(RootDestination.Tethering.route) {
+                bottomBar = {
+                    RootNavigationBar(RootDestination.Tethering, navController, validClientCount)
+                },
+            ) {
                 TetheringScreen(
                     snackbarHostState,
                     repeaterBinder,
@@ -331,17 +286,60 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel, validClientCount: Int) {
                     },
                 )
             }
-            composable(RootDestination.Clients.route) { ClientsScreen(clientViewModel, snackbarHostState) }
-            composable(RootDestination.Settings.route) { SettingsScreen(snackbarHostState) }
-            composable(AppDestination.ApConfiguration.route) {
-                ApConfigurationRoute(apState, navController, snackbarHostState)
+        }
+        composable(RootDestination.Clients.route) {
+            DestinationScaffold(
+                title = R.string.app_name,
+                snackbarHostState = snackbarHostState,
+                showSnackbarHost = route == RootDestination.Clients.route,
+                bottomBar = {
+                    RootNavigationBar(RootDestination.Clients, navController, validClientCount)
+                },
+            ) {
+                ClientsScreen(clientViewModel, snackbarHostState)
             }
-            composable(AppDestination.RepeaterConfiguration.route) {
-                ApConfigurationRoute(apState, navController, snackbarHostState)
+        }
+        composable(RootDestination.Settings.route) {
+            DestinationScaffold(
+                title = R.string.app_name,
+                snackbarHostState = snackbarHostState,
+                showSnackbarHost = route == RootDestination.Settings.route,
+                bottomBar = {
+                    RootNavigationBar(RootDestination.Settings, navController, validClientCount)
+                },
+            ) {
+                SettingsScreen(snackbarHostState)
             }
-            composable(AppDestination.TemporaryHotspotConfiguration.route) {
-                ApConfigurationRoute(apState, navController, snackbarHostState)
-            }
+        }
+        composable(AppDestination.ApConfiguration.route) {
+            ApConfigurationRoute(
+                AppDestination.ApConfiguration,
+                route == AppDestination.ApConfiguration.route,
+                apState,
+                apSession,
+                navController,
+                snackbarHostState,
+            )
+        }
+        composable(AppDestination.RepeaterConfiguration.route) {
+            ApConfigurationRoute(
+                AppDestination.RepeaterConfiguration,
+                route == AppDestination.RepeaterConfiguration.route,
+                apState,
+                apSession,
+                navController,
+                snackbarHostState,
+            )
+        }
+        composable(AppDestination.TemporaryHotspotConfiguration.route) {
+            ApConfigurationRoute(
+                AppDestination.TemporaryHotspotConfiguration,
+                route == AppDestination.TemporaryHotspotConfiguration.route,
+                apState,
+                apSession,
+                navController,
+                snackbarHostState,
+            )
         }
     }
 }
@@ -350,13 +348,126 @@ private fun ApConfigurationSession.toSaved() = SavedApConfigurationSession(initi
 
 @Composable
 private fun ApConfigurationRoute(
+    destination: AppDestination,
+    showSnackbarHost: Boolean,
     state: ApConfigurationState?,
+    session: ApConfigurationSession?,
     navController: NavHostController,
     snackbarHostState: SnackbarHostState,
 ) {
     if (state == null) LaunchedEffect(Unit) {
         navController.popBackStack()
-    } else ApConfigurationScreen(state, snackbarHostState)
+    } else DestinationScaffold(
+        title = destination.title,
+        snackbarHostState = snackbarHostState,
+        showSnackbarHost = showSnackbarHost,
+        onNavigateUp = { navController.popBackStack() },
+        actions = {
+            if (session != null) ApConfigurationTopBarActions(
+                state = state,
+                session = session,
+                snackbarHostState = snackbarHostState,
+                onApplied = { navController.popBackStack() },
+            )
+        },
+    ) {
+        ApConfigurationScreen(state, snackbarHostState)
+    }
+}
+
+@Composable
+private fun DestinationScaffold(
+    @StringRes title: Int,
+    snackbarHostState: SnackbarHostState,
+    showSnackbarHost: Boolean,
+    onNavigateUp: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    Scaffold(
+        topBar = { DestinationTopAppBar(title, onNavigateUp, actions) },
+        bottomBar = bottomBar,
+        snackbarHost = {
+            if (showSnackbarHost) SnackbarHost(snackbarHostState) { data ->
+                SwipeToDismissBox(
+                    state = rememberSwipeToDismissBoxState(),
+                    backgroundContent = {},
+                    onDismiss = { data.dismiss() },
+                ) {
+                    Snackbar(data)
+                }
+            }
+        },
+        contentWindowInsets = WindowInsets(),
+    ) { contentPadding ->
+        Box(Modifier.padding(contentPadding)) {
+            content()
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DestinationTopAppBar(
+    @StringRes title: Int,
+    onNavigateUp: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    TopAppBar(
+        title = { Text(stringResource(title)) },
+        navigationIcon = {
+            if (onNavigateUp != null) {
+                val tooltip = stringResource(R.string.action_bar_up_description)
+                TooltipIconButton(
+                    tooltip = tooltip,
+                    onClick = onNavigateUp,
+                ) {
+                    NavIcon(R.drawable.ic_navigation_arrow_back, tooltip)
+                }
+            }
+        },
+        actions = actions,
+    )
+}
+
+@Composable
+private fun RootNavigationBar(
+    selectedDestination: RootDestination,
+    navController: NavHostController,
+    validClientCount: Int,
+) {
+    NavigationBar {
+        for (destination in RootDestination.entries) {
+            NavigationBarItem(
+                selected = destination == selectedDestination,
+                onClick = {
+                    navController.navigate(destination.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                icon = {
+                    if (destination == RootDestination.Clients && validClientCount > 0) {
+                        BadgedBox(badge = {
+                            Badge(
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = MaterialTheme.colorScheme.onSecondary,
+                            ) {
+                                Text(validClientCount.toString())
+                            }
+                        }) {
+                            NavIcon(destination.icon, destination.title)
+                        }
+                    } else NavIcon(destination.icon, destination.title)
+                },
+                label = { Text(stringResource(destination.title)) },
+            )
+        }
+    }
 }
 
 @Composable

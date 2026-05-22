@@ -657,7 +657,7 @@ private fun tetheringCallback(
                     ManageBar.start(context::startActivity)
                 }
             } else GlobalScope.launch(Dispatchers.Main.immediate) {
-                snackbarHostState.showLongSnackbar("$tetherType: ${tetherErrorLabel(context, it)}")
+                snackbarHostState.showLongSnackbar(tetherErrorMessage(context, tetherType, it))
             }
         }
         onChanged()
@@ -670,7 +670,7 @@ private fun tetheringCallback(
                 ManageBar.start(context::startActivity)
             }
         } else GlobalScope.launch(Dispatchers.Main.immediate) {
-            snackbarHostState.showLongSnackbar("$tetherType: ${tetherErrorLabel(context, error)}")
+            snackbarHostState.showLongSnackbar(tetherErrorMessage(context, tetherType, error))
         }
         onChanged()
     }
@@ -683,6 +683,12 @@ private fun tetheringCallback(
         }
     }
 }
+
+private fun tetherErrorMessage(context: Context, tetherType: TetherType, error: Int) = context.getString(
+    R.string.tether_error_message,
+    context.getString(tetherType.label),
+    tetherErrorLabel(context, error),
+)
 
 @Composable
 internal fun <T : IBinder> rememberServiceBinder(clazz: Class<out Service>): State<T?> {
