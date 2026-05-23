@@ -41,7 +41,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
@@ -216,8 +215,16 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 ListPreferenceRow(
                     icon = R.drawable.ic_nat,
                     title = R.string.settings_service_masquerade,
-                    entries = stringArrayResource(R.array.settings_service_masquerade),
-                    entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
+                    entries = listOf(
+                        stringResource(R.string.settings_service_masquerade_none),
+                        stringResource(R.string.settings_service_masquerade_simple),
+                        stringResource(R.string.settings_service_masquerade_netd),
+                    ),
+                    entrySummaries = listOf(
+                        annotatedStringResource(R.string.settings_service_masquerade_none_summary),
+                        annotatedStringResource(R.string.settings_service_masquerade_simple_summary),
+                        annotatedStringResource(R.string.settings_service_masquerade_netd_summary),
+                    ),
                     values = listOf(
                         MasqueradeMode.MASQUERADE_MODE_NONE,
                         MasqueradeMode.MASQUERADE_MODE_SIMPLE,
@@ -234,8 +241,16 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 ListPreferenceRow(
                     icon = R.drawable.ic_counter_6,
                     title = R.string.settings_service_ipv6_mode,
-                    entries = stringArrayResource(R.array.settings_service_ipv6_mode),
-                    entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
+                    entries = listOf(
+                        stringResource(R.string.settings_service_ipv6_mode_system),
+                        stringResource(R.string.settings_service_ipv6_mode_block),
+                        stringResource(R.string.settings_service_ipv6_mode_nat),
+                    ),
+                    entrySummaries = listOf(
+                        annotatedStringResource(R.string.settings_service_ipv6_mode_system_summary),
+                        annotatedStringResource(R.string.settings_service_ipv6_mode_block_summary),
+                        annotatedStringResource(R.string.settings_service_ipv6_mode_nat_summary),
+                    ),
                     values = listOf(Ipv6Mode.System, Ipv6Mode.Block, Ipv6Mode.Nat),
                     selectedValue = ipv6Mode,
                     onValueChange = {
@@ -280,8 +295,16 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 ListPreferenceRow(
                     icon = R.drawable.ic_wifi_lock,
                     title = R.string.settings_service_wifi_lock,
-                    entries = stringArrayResource(R.array.settings_service_wifi_lock),
-                    entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
+                    entries = listOf(
+                        stringResource(R.string.settings_service_wifi_lock_none),
+                        stringResource(R.string.settings_service_wifi_lock_high_perf_v29),
+                        stringResource(R.string.settings_service_wifi_lock_low_latency),
+                    ),
+                    entrySummaries = listOf(
+                        annotatedStringResource(R.string.settings_service_wifi_lock_none_summary),
+                        annotatedStringResource(R.string.settings_service_wifi_lock_high_perf_v29_summary),
+                        annotatedStringResource(R.string.settings_service_wifi_lock_low_latency_summary),
+                    ),
                     values = listOf(
                         WifiDoubleLock.Mode.None,
                         WifiDoubleLock.Mode.HighPerf,
@@ -395,8 +418,8 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
 private fun <T> ListPreferenceRow(
     @DrawableRes icon: Int,
     @StringRes title: Int,
-    entries: Array<String>,
-    entrySummaries: Array<String>,
+    entries: List<String>,
+    entrySummaries: List<AnnotatedString>,
     values: List<T>,
     selectedValue: T,
     onValueChange: (T) -> Unit,
@@ -414,7 +437,7 @@ private fun <T> ListPreferenceRow(
         entryCount = entries.size,
         selectedIndex = selectedIndex,
         entryLabel = entries::get,
-        entrySummary = { entrySummaries.getOrNull(it)?.let(AnnotatedString::fromHtml) },
+        entrySummary = entrySummaries::getOrNull,
         onDismissRequest = { selecting = false },
         onSelect = { values.getOrNull(it)?.let(onValueChange) },
     )
