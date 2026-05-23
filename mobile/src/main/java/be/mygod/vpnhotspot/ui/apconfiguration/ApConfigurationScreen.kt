@@ -235,7 +235,7 @@ fun ApConfigurationScreen(
             }
             row(R.string.wifi_hotspot_ap_channel_band_title) {
                 ChannelApRow(
-                    icon = R.drawable.ic_wifi_channel,
+                    icon = R.drawable.ic_settings_input_antenna,
                     title = R.string.wifi_hotspot_ap_channel_band_title,
                     selected = state.primaryChannel,
                     entries = state.channelEntries(),
@@ -247,7 +247,7 @@ fun ApConfigurationScreen(
                 R.string.wifi_hotspot_concurrent_ap_channel_band_title,
             ) {
                 ChannelApRow(
-                    icon = R.drawable.ic_settings_input_antenna,
+                    icon = R.drawable.ic_wifi_channel,
                     title = R.string.wifi_hotspot_concurrent_ap_channel_band_title,
                     selected = state.secondaryChannel,
                     entries = state.channelEntries(allowDisabled = true),
