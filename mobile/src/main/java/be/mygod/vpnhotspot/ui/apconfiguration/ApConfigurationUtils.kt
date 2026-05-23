@@ -9,6 +9,7 @@ import android.net.wifi.SoftApConfiguration
 import android.os.Build
 import android.util.Base64
 import android.util.SparseIntArray
+import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import be.mygod.vpnhotspot.R
@@ -125,7 +126,9 @@ fun locate(
 
 private fun genAutoOptions(band: Int) = (1..band).filter { it and band == it }.map { ChannelOption(it) }
 
-data class SecurityOption(val label: String, val value: Int)
+data class SecurityOption(@StringRes val label: Int, val value: Int)
+
+fun SecurityOption.label(context: Context) = context.getString(label)
 
 data class ChannelOption(val band: Int = 0, val channel: Int = 0) {
     companion object {

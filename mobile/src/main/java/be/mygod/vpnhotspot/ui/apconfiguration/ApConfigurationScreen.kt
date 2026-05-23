@@ -138,9 +138,9 @@ fun ApConfigurationScreen(
                     icon = R.drawable.ic_encrypted,
                     title = R.string.wifi_security,
                     selected = selected,
-                    selectedLabel = selected?.label ?: state.securityType.toString(),
+                    selectedLabel = selected?.label(context) ?: state.securityType.toString(),
                     entries = entries,
-                    entryLabel = { it.label },
+                    entryLabel = { it.label(context) },
                     onSelect = { state.securityType = it.value },
                 )
             }
@@ -366,7 +366,7 @@ fun ApConfigurationScreen(
                                     emptySet()
                                 }
                                 require(parseMacList(value).none { it in blocked }) {
-                                    "A MAC address exists in both client lists"
+                                    context.getString(R.string.wifi_client_lists_overlap_error)
                                 }
                                 null
                             } catch (e: IllegalArgumentException) {
@@ -457,7 +457,7 @@ fun ApConfigurationScreen(
                         minLines = 3,
                         validator = { value ->
                             try {
-                                VendorData.deserialize(value)
+                                VendorData.deserialize(value, context)
                                 null
                             } catch (e: Exception) {
                                 e.readableMessage

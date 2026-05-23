@@ -30,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.DialogConfirmButton
 import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
@@ -141,7 +142,7 @@ fun TextSwitchApRow(
                             {
                                 Column {
                                     if (fieldEnabled) error?.let { ErrorApText(it) }
-                                    maxLength?.let { Text("${text.length}/$it") }
+                                    maxLength?.let { Text(stringResource(R.string.configuration_input_length, text.length, it)) }
                                 }
                             }
                         } else null,

@@ -1,7 +1,10 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
+import android.content.Context
 import android.os.PersistableBundle
 import androidx.annotation.RequiresApi
+import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.OuiKeyedData
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -19,7 +22,7 @@ object VendorData {
         String.format(Locale.ROOT, "%06x:%s", data.oui, output.toString(StandardCharsets.UTF_8.name()).trimEnd('\n'))
     }
 
-    fun deserialize(input: CharSequence?): List<OuiKeyedData> {
+    fun deserialize(input: CharSequence?, context: Context = app): List<OuiKeyedData> {
         val lines = input?.toString()?.lines() ?: return emptyList()
         val result = ArrayList<OuiKeyedData>()
         var index = 0
@@ -28,10 +31,10 @@ object VendorData {
             if (index >= lines.size) return result
             val lineNumber = index + 1
             val match = header.matchEntire(lines[index])
-                ?: throw IllegalArgumentException("Expected vendor data header at line $lineNumber")
+                ?: throw IllegalArgumentException(context.getString(R.string.wifi_vendor_data_error_header, lineNumber))
             val ouiText = match.groupValues[1]
             val oui = ouiText.toInt(16)
-            require(oui != 0) { "OUI must be non-zero at line $lineNumber" }
+            require(oui != 0) { context.getString(R.string.wifi_vendor_data_error_oui_zero, lineNumber) }
             val xml = StringBuilder(match.groupValues[2])
             while (true) {
                 try {
@@ -44,7 +47,10 @@ object VendorData {
                 } catch (e: IOException) {
                     ++index
                     if (index >= lines.size) {
-                        throw IllegalArgumentException("Incomplete vendor data XML for OUI $ouiText", e)
+                        throw IllegalArgumentException(
+                            context.getString(R.string.wifi_vendor_data_error_incomplete_xml, ouiText),
+                            e,
+                        )
                     }
                     xml.append('\n').append(lines[index])
                 }

@@ -82,12 +82,21 @@ class ApConfigurationState(
     private val ssidHexToggleable = if (p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
     val securityEntries = when {
-        p2pMode && Build.VERSION.SDK_INT >= 36 ->
-            arrayOf("WPA2-Personal", "WPA3-Personal Compatibility Mode", "WPA3-Personal").mapIndexed { index, label ->
-                SecurityOption(label, index + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK)
-            }
-        p2pMode -> listOf(SecurityOption("WPA2-Personal", SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
-        else -> SoftApConfigurationCompat.securityTypes.mapIndexed { index, label -> SecurityOption(label, index) }
+        p2pMode && Build.VERSION.SDK_INT >= 36 -> listOf(
+            R.string.wifi_security_wpa2_personal,
+            R.string.wifi_security_wpa3_personal_transition,
+            R.string.wifi_security_wpa3_personal,
+        ).mapIndexed { index, label -> SecurityOption(label, index + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK) }
+        p2pMode -> listOf(SecurityOption(R.string.wifi_security_wpa2_personal,
+            SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
+        else -> listOf(
+            R.string.wifi_security_open,
+            R.string.wifi_security_wpa2_psk,
+            R.string.wifi_security_wpa3_sae_transition,
+            R.string.wifi_security_wpa3_sae,
+            R.string.wifi_security_wpa3_owe_transition,
+            R.string.wifi_security_wpa3_owe,
+        ).mapIndexed { index, label -> SecurityOption(label, index) }
     }
     private val channelOptions = currentChannelOptions(p2pMode)
     val bandwidthEntries = if (Build.VERSION.SDK_INT >= 33) {
@@ -220,7 +229,7 @@ class ApConfigurationState(
             }
             try {
                 for (mac in parseMacList(allowedList)) {
-                    require(mac !in blocked) { "A MAC address exists in both client lists" }
+                    require(mac !in blocked) { context.getString(R.string.wifi_client_lists_overlap_error) }
                 }
             } catch (e: IllegalArgumentException) {
                 return e.readableMessage
@@ -237,7 +246,7 @@ class ApConfigurationState(
             return e.readableMessage
         }
         if (!p2pMode && Build.VERSION.SDK_INT >= 35) try {
-            VendorData.deserialize(vendorData)
+            VendorData.deserialize(vendorData, context)
         } catch (e: Exception) {
             return e.readableMessage
         }
@@ -322,9 +331,10 @@ class ApConfigurationState(
         ssid = value
     }
 
-    fun convertSsidDisplay(value: String, hex: Boolean): String {
+    fun convertSsidDisplay(value: String, hex: Boolean, context: Context = app): String {
         val parsedSsid = if (hex) WifiSsidCompat.fromHex(value) else WifiSsidCompat.fromUtf8Text(value)
-        return if (hex) parsedSsid?.decode() ?: throw IllegalArgumentException("Invalid UTF-8")
+        return if (hex) parsedSsid?.decode()
+            ?: throw IllegalArgumentException(context.getString(R.string.wifi_ssid_invalid_utf8))
         else parsedSsid?.hex.orEmpty()
     }
 

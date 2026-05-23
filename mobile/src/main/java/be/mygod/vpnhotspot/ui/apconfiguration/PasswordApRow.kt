@@ -74,7 +74,7 @@ fun PasswordApRow(state: ApConfigurationState) {
                         {
                             Column {
                                 error?.let { ErrorApText(it) }
-                                if (maxLength) Text("${password.length}/63")
+                                if (maxLength) Text(stringResource(R.string.configuration_input_length, password.length, 63))
                             }
                         }
                     } else null,

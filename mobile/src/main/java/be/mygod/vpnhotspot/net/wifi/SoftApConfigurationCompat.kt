@@ -113,15 +113,6 @@ data class SoftApConfigurationCompat(
          */
         private const val LEGACY_WPA2_PSK = 4
 
-        val securityTypes = arrayOf(
-            "OPEN",
-            "WPA2-PSK",
-            "WPA3-SAE Transition mode",
-            "WPA3-SAE",
-            "WPA3-OWE Transition",
-            "WPA3-OWE",
-        )
-
         /**
          * Based on:
          * https://elixir.bootlin.com/linux/v5.12.8/source/net/wireless/util.c#L75

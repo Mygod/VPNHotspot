@@ -123,7 +123,7 @@ fun SsidApRow(
                             )?.let {
                                 ErrorApText(it)
                             }
-                            Text("$draftByteCount/32")
+                            Text(stringResource(R.string.configuration_input_length, draftByteCount, 32))
                         }
                     },
                     trailingIcon = if (state.canToggleSsidHex) {
@@ -133,7 +133,7 @@ fun SsidApRow(
                                 tooltip = tooltip,
                                 onClick = {
                                     try {
-                                        val converted = state.convertSsidDisplay(draft.text, draftHex)
+                                        val converted = state.convertSsidDisplay(draft.text, draftHex, context)
                                         draft = TextFieldValue(converted, TextRange(converted.length))
                                         draftHex = !draftHex
                                         error = null
