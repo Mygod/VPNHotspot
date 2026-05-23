@@ -68,6 +68,7 @@ class ApConfigurationState(
         ieee80211ax = saved.ieee80211ax
         ieee80211be = saved.ieee80211be
         vendorElements = saved.vendorElements
+        vendorData = saved.vendorData
         clientIsolation = saved.clientIsolation
         userConfig = saved.userConfig
         acs2g = saved.acs2g
@@ -135,6 +136,9 @@ class ApConfigurationState(
     var ieee80211ax by mutableStateOf(initial.isIeee80211axEnabled)
     var ieee80211be by mutableStateOf(initial.isIeee80211beEnabled)
     var vendorElements by mutableStateOf(VendorElements.serialize(initial.vendorElements))
+    var vendorData by mutableStateOf(if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+        VendorData.serialize(initial.vendorData)
+    } else "")
     var clientIsolation by mutableStateOf(if (Build.VERSION.SDK_INT >= 36) initial.isClientIsolationEnabled else false)
     var userConfig by mutableStateOf(initial.isUserConfiguration)
     var acs2g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty())
@@ -232,6 +236,11 @@ class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
+        if (!p2pMode && Build.VERSION.SDK_INT >= 35) try {
+            VendorData.deserialize(vendorData)
+        } catch (e: Exception) {
+            return e.readableMessage
+        }
         validateOptionalMac(persistentRandomizedMac)?.let { return it }
         if (!p2pMode && Build.VERSION.SDK_INT >= 33) {
             validateAcsChannels(SoftApConfiguration.BAND_2GHZ, acs2g)?.let { return it }
@@ -270,6 +279,9 @@ class ApConfigurationState(
             isUserConfiguration = userConfig
             bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
             vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
+            if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+                vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
+            }
             persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
             allowedAcsChannels = mapOf(
                 SoftApConfiguration.BAND_2GHZ to RangeInput.fromString(acs2g),
@@ -375,6 +387,9 @@ class ApConfigurationState(
         ieee80211ax = config.isIeee80211axEnabled
         ieee80211be = config.isIeee80211beEnabled
         vendorElements = VendorElements.serialize(config.vendorElements)
+        vendorData = if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+            VendorData.serialize(config.vendorData)
+        } else ""
         clientIsolation = if (Build.VERSION.SDK_INT >= 36) config.isClientIsolationEnabled else false
         userConfig = config.isUserConfiguration
         acs2g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty()
@@ -452,6 +467,7 @@ class ApConfigurationState(
         ieee80211ax = ieee80211ax,
         ieee80211be = ieee80211be,
         vendorElements = vendorElements,
+        vendorData = vendorData,
         clientIsolation = clientIsolation,
         userConfig = userConfig,
         acs2g = acs2g,
@@ -491,6 +507,7 @@ private data class SavedApConfigurationState(
     val ieee80211ax: Boolean,
     val ieee80211be: Boolean,
     val vendorElements: String,
+    val vendorData: String,
     val clientIsolation: Boolean,
     val userConfig: Boolean,
     val acs2g: String,
