@@ -145,7 +145,6 @@ class App : Application() {
     }
 
     lateinit var deviceStorage: Application
-    private val sharedPreferencesName get() = "${packageName}_preferences"
     val english by lazy {
         createConfigurationContext(Configuration(resources.configuration).apply {
             setLocale(Locale.ENGLISH)
