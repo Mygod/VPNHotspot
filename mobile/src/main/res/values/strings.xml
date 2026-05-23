@@ -2,9 +2,12 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">VPN Hotspot</string>
     <string name="title_repeater">Repeater</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4063 -->
     <string name="title_tethering">Tethering</string>
     <string name="title_clients">Clients</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:590 -->
     <string name="title_settings">Settings</string>
+    <!-- Android translation-index match: frameworks/base/core/res/res/values/strings.xml:4364 -->
     <string name="action_bar_up_description">Navigate up</string>
 
     <string name="repeater_frequency">%s MHz</string>
@@ -14,6 +17,7 @@
     <string name="repeater_feature_pcc_mode">WPA3-SAE Compatibility Mode</string>
     <string name="repeater_feature_wifi_direct_r2">WPA3-SAE</string>
     <string name="repeater_wps">WPS (insecure)</string>
+    <!-- Android translation-index match: frameworks/base/core/res/res/values/strings.xml:4593 -->
     <string name="repeater_wps_dialog_title">Enter PIN</string>
     <string name="repeater_wps_dialog_pbc">Push Button</string>
     <string name="repeater_wps_success_pbc">Please use WPS push button within the next 2 minutes to connect your
@@ -24,6 +28,7 @@
     <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4720 -->
     <string name="repeater_p2p_unavailable_enable">Enable</string>
     <string name="repeater_create_group_failure">Failed to create P2P group (reason: %s)</string>
     <string name="repeater_remove_group_failure">Failed to remove P2P group (reason: %s)</string>
@@ -40,6 +45,7 @@
         location</string>
     <string name="repeater_location_off">Due to system restrictions, turning Location off may lead to things not working
         properly and increased battery usage</string>
+    <!-- Android translation-index match: frameworks/base/packages/VpnDialogs/res/values/strings.xml:89 -->
     <string name="repeater_location_off_configure">Configure</string>
 
     <string name="tethering_temp_hotspot">Temporary Wi\u2011Fi hotspot</string>
@@ -55,15 +61,21 @@
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
         if VPN tethering does not work.</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4057 -->
     <string name="tethering_manage_usb">USB tethering</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2585 -->
     <string name="tethering_manage_wifi">Wi\u2011Fi hotspot</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4061 -->
     <string name="tethering_manage_bluetooth">Bluetooth tethering</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4152 -->
     <string name="tethering_manage_ethernet">Ethernet tethering</string>
     <string name="tether_type_none">Unknown tethering type</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2189 -->
     <string name="tether_type_wifi_p2p">Wi\u2011Fi Direct</string>
     <string name="tether_type_ncm">USB NCM tethering</string>
     <string name="tether_type_wigig">WiGig tethering</string>
     <string name="tether_type_virtual">Virtual tethering</string>
+    <!-- Android translation-index match: frameworks/base/core/res/res/values/strings.xml:5370 -->
     <string name="tether_error_message">%1$s: %2$s</string>
     <string name="tethering_manage_wifi_info">%1$s MHz, channel %2$s, width %3$s</string>
     <string name="tethering_manage_wifi_info_timeout_enabled">%4$s: Wi\u2011Fi %5$s, %1$s MHz, channel %2$s,
@@ -94,6 +106,7 @@
     <string name="tethering_manage_wifi_feature_wpa3_owe_transition">WPA3-OWE transition</string>
     <string name="tethering_manage_wifi_feature_wpa3_owe">WPA3-OWE</string>
     <string name="tethering_manage_wifi_feature_mlo">Multiple link operation</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:51 -->
     <string name="tethering_manage_wifi_no_features">None</string>
     <string name="tethering_manage_wifi_client_blocked">Blocked %1$s: %2$s</string>
     <string name="tethering_manage_wifi_client_disconnected">%1$s disconnected: %2$s</string>
@@ -195,9 +208,12 @@
 
     <string name="clients_empty">No clients connected</string>
     <string name="clients_popup_nickname">Nickname…</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:1421 -->
     <string name="clients_nickname_hint">Nickname</string>
+    <!-- Android translation-index match: packages/apps/Dialer/java/com/android/dialer/historyitemactions/res/values/strings.xml:37 -->
     <string name="clients_popup_block">Block</string>
     <string name="clients_popup_block_service_inactive">This client will be blocked when service for this interface is turned on</string>
+    <!-- Android translation-index match: frameworks/base/core/res/res/values/strings.xml:6262 -->
     <string name="clients_popup_unblock">Unblock</string>
     <string name="clients_popup_stats">Stats…</string>
     <string name="clients_mac_lookup_unexpected_error">Server returned error for %1$s: %2$s</string>
@@ -206,7 +222,9 @@
     <string name="clients_stats_title">Stats for %1$s</string>
     <string name="clients_stats_empty">No traffic recorded</string>
     <string name="clients_stats_since">Since %1$s</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/arrays.xml:464 -->
     <string name="clients_stats_ipv4">IPv4</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2516 -->
     <string name="clients_stats_dns">DNS</string>
     <string name="clients_stats_nat66_tcp">NAT66 TCP</string>
     <string name="clients_stats_nat66_udp">NAT66 UDP</string>
@@ -237,11 +255,14 @@
     <string name="settings_upstream">Upstream</string>
     <string name="settings_downstream">Downstream</string>
     <string name="settings_service_masquerade">IPv4 masquerade mode</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:51 -->
     <string name="settings_service_masquerade_none">None</string>
     <string name="settings_service_masquerade_simple">Simple</string>
     <string name="settings_service_masquerade_netd">Android Netd Service</string>
     <string name="settings_service_ipv6_mode">IPv6 mode</string>
+    <!-- Android translation-index match: packages/apps/Dialer/java/com/android/dialer/historyitemactions/res/values/strings.xml:37 -->
     <string name="settings_service_ipv6_mode_block">Block</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:51 -->
     <string name="settings_service_ipv6_mode_system">System</string>
     <string name="settings_service_ipv6_mode_nat">NAT (Userspace)</string>
     <string name="settings_service_upstream_help">Main upstream interface regex used to reroute downstream traffic. VPN Hotspot itself must be allowed to use that VPN to work. Use &lt;tt&gt;none&lt;/tt&gt;, &lt;tt&gt;a^&lt;/tt&gt;, or another invalid regex to suppress tethering through VPN.</string>
@@ -268,6 +289,7 @@
         hotspot. Also uses more resources in the background unless installed as a system app. Most likely functional on
         Android 12 or newer</string>
     <string name="settings_service_wifi_lock">Keep Wi\u2011Fi alive</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:520 -->
     <string name="settings_service_wifi_lock_none">System default</string>
     <string name="settings_service_wifi_lock_high_perf_v29">Disable power save</string>
     <string name="settings_service_wifi_lock_low_latency">Low latency mode</string>
@@ -282,9 +304,11 @@
     <string name="settings_service_clean">Clean/reapply routing rules</string>
     <string name="settings_service_clean_summary">Update changed settings to current active services. Can also fix rare
         race conditions</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:664 -->
     <string name="settings_system_tether_offload">Tethering hardware acceleration</string>
     <string name="settings_system_tether_offload_summary">Shortcut to system Developer options. Turning this off is often needed for VPN tethering over system tethering, but it can reduce battery life while tethering is active</string>
     <string name="settings_misc">Misc</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4162 -->
     <string name="settings_help">Help</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
@@ -317,11 +341,14 @@
     <string name="configuration_invalid">Possibly invalid configuration</string>
     <string name="configuration_share">Share via QR code</string>
     <string name="configuration_rejected">Android system refuses such configuration. (see logcat)</string>
+    <!-- Android translation-index match: frameworks/base/packages/PrintSpooler/res/values/strings.xml:86 -->
     <string name="configuration_input_length">%1$d/%2$d</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2233 -->
     <string name="wifi_ssid">Network name</string>
     <string name="wifi_ssid_toggle_hex">Toggle hex display</string>
     <string name="wifi_ssid_help">Hotspot SSID in UTF-8.</string>
     <string name="wifi_ssid_invalid_utf8">Invalid UTF-8</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:760 -->
     <string name="wifi_security">Security</string>
     <string name="wifi_security_open">OPEN</string>
     <string name="wifi_security_wpa2_psk">WPA2-PSK</string>
@@ -329,20 +356,28 @@
     <string name="wifi_security_wpa3_sae">WPA3-SAE</string>
     <string name="wifi_security_wpa3_owe_transition">WPA3-OWE Transition</string>
     <string name="wifi_security_wpa3_owe">WPA3-OWE</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:58 -->
     <string name="wifi_security_wpa2_personal">WPA2-Personal</string>
     <string name="wifi_security_wpa3_personal_transition">WPA3-Personal Compatibility Mode</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:76 -->
     <string name="wifi_security_wpa3_personal">WPA3-Personal</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:1478 -->
     <string name="wifi_password">Password</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2279 -->
     <string name="wifi_password_show">Show password</string>
+    <!-- Android translation-index match: packages/apps/TvSettings/Settings/res/values/widget-strings.xml:19 -->
     <string name="wifi_password_hide">Hide password</string>
     <string name="wifi_password_error_required">Password is required</string>
     <string name="wifi_password_error_length">Password must be 8–63 characters</string>
     <string name="wifi_password_help">Pre-shared key for WPA2/WPA3 personal security. WPA2-PSK and WPA3-SAE transition passphrases must be 8–63 characters.</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2614 -->
     <string name="wifi_hotspot_auto_off">Turn off hotspot automatically</string>
     <string name="wifi_hotspot_auto_off_help">When no devices are connected for the shutdown timeout: %s</string>
     <string name="wifi_hotspot_timeout">Shutdown timeout</string>
     <string name="wifi_hotspot_timeout_help">Configure the time to wait with no connected devices before auto shutdown.&lt;br&gt;&lt;br&gt;Default: %s</string>
     <string name="wifi_hotspot_timeout_default">Default (%s)</string>
+    <string name="wifi_hotspot_timeout_milliseconds">ms</string>
+    <!-- Android translation-index match: packages/apps/Car/Settings/res/values/strings.xml:325 -->
     <string name="wifi_hotspot_ap_band_title">AP Band</string>
     <string name="wifi_hotspot_ap_channel_band_title">AP channel/band</string>
     <string name="wifi_hotspot_ap_channel_band_help">Unsupported band/channel can fail when the hotspot starts.</string>
@@ -350,6 +385,7 @@
     <string name="wifi_hotspot_concurrent_ap_channel_band_help">Adds a second AP instance when bridged AP concurrency is supported. Unsupported band/channel combinations can fail when the hotspot starts.</string>
     <string name="wifi_band_optimization">Enable band optimization</string>
     <string name="wifi_band_optimization_help">Lets Android optimize band settings, such as appending the 2.4 GHz band for coexistence or country-code restrictions</string>
+    <!-- Android translation-index match: frameworks/base/packages/SettingsLib/res/values/strings.xml:91 -->
     <string name="wifi_ap_choose_disabled">Disabled</string>
     <string name="wifi_ap_choose_G">%s GHz Band</string>
     <string name="wifi_ap_choose_G_short">%s GHz</string>
@@ -359,19 +395,23 @@
     <string name="wifi_hotspot_acs_channel_help" tools:ignore="TypographyDashes">Channel numbers allowed for Automatic Channel Selection in this band. Enter comma-separated channels or ranges, such as &lt;tt&gt;1,6,11&lt;/tt&gt; or &lt;tt&gt;36-48,149-161&lt;/tt&gt;. Leave empty to allow all channels in the band. Requires ACS offload support; otherwise Android ignores this setting.</string>
     <string name="wifi_hotspot_max_channel_bandwidth">Maximum channel bandwidth</string>
     <string name="wifi_hotspot_max_channel_bandwidth_help">Caps Soft AP channel bandwidth. Auto lets Android use the maximum bandwidth achievable on the device.</string>
+    <!-- Android translation-index match: packages/apps/Camera2/res/values/strings.xml:109 -->
     <string name="wifi_channel_width_auto">Auto</string>
     <string name="wifi_channel_width_invalid">Invalid</string>
     <string name="wifi_channel_width_mhz">%d MHz</string>
     <string name="wifi_channel_width_20mhz_no_ht">20 MHz (no HT)</string>
     <string name="wifi_channel_width_160mhz_80_plus_80">160 MHz (80 + 80 MHz)</string>
     <string name="wifi_hotspot_access_control_title">Access Control</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2227 -->
     <string name="wifi_hotspot_ap_advanced_title">Advanced options</string>
+    <!-- Android translation-index match: packages/apps/Car/Settings/res/values/strings.xml:268 -->
     <string name="wifi_advanced_mac_address_title">MAC address</string>
     <string name="wifi_mac_address_persistent_randomization">Persistent randomization: %s</string>
     <string name="wifi_mac_address_non_persistent_randomization">Non-persistent randomization</string>
     <string name="wifi_mac_address_help">Configure BSSID and MAC randomization for the AP. Android rejects all-zero, multicast, and broadcast BSSIDs. An explicit BSSID is used only when MAC randomization is disabled.</string>
     <string name="wifi_p2p_mac_address_help">Configure the P2P device address used by the repeater. Leave empty to let Android choose the address.</string>
     <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2239 -->
     <string name="wifi_hidden_network">Hidden network</string>
     <string name="wifi_hidden_network_help">Do not broadcast the SSID</string>
     <string name="wifi_max_clients">Maximum number of clients</string>
@@ -406,6 +446,7 @@
     <string name="wifi_vendor_data_error_incomplete_xml">Incomplete vendor data XML for OUI %1$s</string>
     <string name="wifi_client_isolation">Client isolation</string>
     <string name="wifi_client_isolation_help">Disallow connected clients from communicating with other connected clients</string>
+    <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:579 -->
     <string name="wifi_save">Save</string>
 
 </resources>

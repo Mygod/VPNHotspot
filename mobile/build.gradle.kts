@@ -143,7 +143,6 @@ android {
         versionCode = 2000
         versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        androidResources.localeFilters += listOf("es", "it", "ja", "pt-rBR", "ru", "zh-rCN", "zh-rTW")
     }
     buildFeatures {
         buildConfig = true

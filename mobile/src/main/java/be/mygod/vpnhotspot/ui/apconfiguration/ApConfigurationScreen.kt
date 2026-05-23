@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -164,7 +165,7 @@ fun ApConfigurationScreen(
                         keyboardType = KeyboardType.Number,
                         maxLength = 19,
                         placeholder = defaultTimeout.toString(),
-                        suffix = "ms",
+                        suffix = stringResource(R.string.wifi_hotspot_timeout_milliseconds),
                         validator = { value ->
                             validateOptionalLong(value) { timeout ->
                                 if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
@@ -250,7 +251,7 @@ fun ApConfigurationScreen(
                         keyboardType = KeyboardType.Number,
                         maxLength = 19,
                         placeholder = defaultBridgedTimeout.toString(),
-                        suffix = "ms",
+                        suffix = stringResource(R.string.wifi_hotspot_timeout_milliseconds),
                         validator = { value ->
                             validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
                         },
@@ -348,6 +349,7 @@ fun ApConfigurationScreen(
                     ) { state.blockedList = it }
                 }
                 row(R.string.wifi_client_user_control) {
+                    val clientListsOverlapError = stringResource(R.string.wifi_client_lists_overlap_error)
                     TextSwitchApRow(
                         icon = R.drawable.ic_supervisor_account,
                         title = R.string.wifi_client_user_control,
@@ -366,7 +368,7 @@ fun ApConfigurationScreen(
                                     emptySet()
                                 }
                                 require(parseMacList(value).none { it in blocked }) {
-                                    context.getString(R.string.wifi_client_lists_overlap_error)
+                                    clientListsOverlapError
                                 }
                                 null
                             } catch (e: IllegalArgumentException) {

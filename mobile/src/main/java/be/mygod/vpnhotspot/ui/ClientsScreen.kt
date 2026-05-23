@@ -334,17 +334,12 @@ private fun ClientRow(
             val titlePlaceholder = "\uFFFC"
             val titleText = stringResource(R.string.clients_stats_title, titlePlaceholder)
             val titlePlaceholderIndex = titleText.indexOf(titlePlaceholder)
-            val clientAddress = remember(client.macString, client.iface, linkStyles) {
-                buildAnnotatedString {
-                    appendClientAddress(client, client.iface, linkStyles)
-                }
-            }
             Text(
                 text = if (titlePlaceholderIndex < 0) {
                     AnnotatedString(titleText)
                 } else buildAnnotatedString {
                     append(titleText.substring(0, titlePlaceholderIndex))
-                    append(clientAddress)
+                    append(title)
                     append(titleText.substring(titlePlaceholderIndex + titlePlaceholder.length))
                 },
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
