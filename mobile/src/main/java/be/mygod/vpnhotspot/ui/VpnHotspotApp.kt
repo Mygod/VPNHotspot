@@ -579,7 +579,7 @@ private fun TetheringActions(
             tooltip = tooltip,
             onClick = { monitorExpanded = true },
         ) {
-            NavIcon(R.drawable.ic_image_remove_red_eye, tooltip)
+            NavIcon(R.drawable.ic_action_visibility, tooltip)
         }
         DropdownMenu(expanded = monitorExpanded, onDismissRequest = { monitorExpanded = false }) {
             for (iface in monitorableIfaces) DropdownMenuItem(

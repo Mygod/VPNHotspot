@@ -261,7 +261,7 @@ fun PreferenceSwitch(
         modifier = modifier,
         thumbContent = {
             Icon(
-                painter = painterResource(if (checked) R.drawable.ic_action_check else R.drawable.ic_action_close),
+                painter = painterResource(if (checked) R.drawable.ic_navigation_check else R.drawable.ic_navigation_close),
                 contentDescription = null,
                 modifier = Modifier.size(SwitchDefaults.IconSize),
             )

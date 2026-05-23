@@ -89,7 +89,7 @@ fun PasswordApRow(state: ApConfigurationState) {
                             Icon(
                                 painter = painterResource(if (visible) {
                                     R.drawable.ic_action_visibility_off
-                                } else R.drawable.ic_image_remove_red_eye),
+                                } else R.drawable.ic_action_visibility),
                                 contentDescription = tooltip,
                             )
                         }

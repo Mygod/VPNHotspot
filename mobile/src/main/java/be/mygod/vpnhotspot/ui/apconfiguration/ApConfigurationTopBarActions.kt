@@ -67,7 +67,7 @@ fun ApConfigurationTopBarActions(
         },
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_content_paste),
+            painter = painterResource(R.drawable.ic_content_content_paste),
             contentDescription = stringResource(android.R.string.paste),
         )
     }

@@ -83,7 +83,7 @@ fun SsidApRow(
                         onClick = onShowQrCode,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_settings_qrcode),
+                            painter = painterResource(R.drawable.ic_communication_qr_code_2),
                             contentDescription = tooltip,
                         )
                     }
@@ -145,7 +145,7 @@ fun SsidApRow(
                                 Icon(
                                     painter = painterResource(if (draftHex) {
                                         R.drawable.ic_av_closed_caption
-                                    } else R.drawable.ic_av_closed_caption_off),
+                                    } else R.drawable.ic_av_closed_caption_disabled),
                                     contentDescription = tooltip,
                                 )
                             }

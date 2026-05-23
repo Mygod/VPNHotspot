@@ -214,7 +214,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         preferenceGroup(title = R.string.settings_downstream) {
             row(R.string.settings_service_masquerade) {
                 ListPreferenceRow(
-                    icon = R.drawable.ic_social_people,
+                    icon = R.drawable.ic_social_group,
                     title = R.string.settings_service_masquerade,
                     entries = stringArrayResource(R.array.settings_service_masquerade),
                     entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
@@ -369,7 +369,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_misc_donate) {
                 PreferenceRow(
-                    icon = R.drawable.ic_action_card_giftcard,
+                    icon = R.drawable.ic_action_redeem,
                     title = stringResource(R.string.settings_misc_donate),
                     summary = stringResource(R.string.settings_misc_donate_summary),
                     onClick = { if (!inspectionMode) context.launchUrl("https://mygod.be/donate/") },
