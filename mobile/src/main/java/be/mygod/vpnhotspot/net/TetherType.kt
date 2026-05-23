@@ -16,16 +16,16 @@ import timber.log.Timber
 import java.util.regex.Pattern
 
 enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: Int) {
-    NONE(R.drawable.ic_wifi_tethering, R.string.tether_type_none),
-    WIFI_P2P(R.drawable.ic_settings_input_antenna, R.string.tether_type_wifi_p2p),
+    NONE(R.drawable.ic_device_unknown, R.string.tether_type_none),
+    WIFI_P2P(R.drawable.ic_router, R.string.tether_type_wifi_p2p),
     USB(R.drawable.ic_usb, R.string.tethering_manage_usb),
     WIFI(R.drawable.ic_network_wifi, R.string.tethering_manage_wifi),
     BLUETOOTH(R.drawable.ic_bluetooth, R.string.tethering_manage_bluetooth),
     // if you have an issue with these Ethernet icon namings, blame Google
-    NCM(R.drawable.ic_settings_ethernet, R.string.tether_type_ncm),
-    ETHERNET(R.drawable.ic_inbox, R.string.tethering_manage_ethernet),
-    WIGIG(R.drawable.ic_flash_on, R.string.tether_type_wigig),
-    VIRTUAL(R.drawable.ic_deployed_code, R.string.tether_type_virtual),
+    NCM(R.drawable.ic_cable, R.string.tether_type_ncm),
+    ETHERNET(R.drawable.ic_lan, R.string.tethering_manage_ethernet),
+    WIGIG(R.drawable.ic_network_wifi, R.string.tether_type_wigig),
+    VIRTUAL(R.drawable.ic_hub, R.string.tether_type_virtual),
     ;
 
     val isWifi get() = when (this) {

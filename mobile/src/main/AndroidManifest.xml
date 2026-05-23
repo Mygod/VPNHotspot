@@ -118,7 +118,7 @@
             android:name=".manage.RepeaterTileService"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_settings_input_antenna"
+            android:icon="@drawable/ic_router"
             android:label="@string/title_repeater"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -132,7 +132,7 @@
             android:name=".manage.LocalOnlyHotspotTileService"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_perm_scan_wifi"
+            android:icon="@drawable/ic_android_wifi_3_bar_plus"
             android:label="@string/tethering_temp_hotspot"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -189,7 +189,7 @@
             android:directBootAware="true"
             android:enabled="@bool/api_ge_30"
             android:exported="true"
-            android:icon="@drawable/ic_inbox"
+            android:icon="@drawable/ic_lan"
             android:label="@string/tethering_manage_ethernet"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             tools:targetApi="30">

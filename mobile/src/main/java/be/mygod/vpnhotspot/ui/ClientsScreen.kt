@@ -527,7 +527,7 @@ private fun ClientsConnectedPreview() {
                 }
                 row("laptop") {
                     ClientRowLayout(
-                        icon = R.drawable.ic_inbox,
+                        icon = R.drawable.ic_lan,
                         title = AnnotatedString("Work laptop"),
                         description = AnnotatedString(
                             "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",

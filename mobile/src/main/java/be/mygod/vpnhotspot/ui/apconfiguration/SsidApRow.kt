@@ -144,8 +144,8 @@ fun SsidApRow(
                             ) {
                                 Icon(
                                     painter = painterResource(if (draftHex) {
-                                        R.drawable.ic_closed_caption
-                                    } else R.drawable.ic_closed_caption_disabled),
+                                        R.drawable.ic_abc
+                                    } else R.drawable.ic_numbers),
                                     contentDescription = tooltip,
                                 )
                             }

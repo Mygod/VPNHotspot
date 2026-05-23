@@ -52,7 +52,7 @@ fun ApConfigurationTopBarActions(
         },
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_file_copy),
+            painter = painterResource(R.drawable.ic_content_copy),
             contentDescription = stringResource(android.R.string.copy),
         )
     }

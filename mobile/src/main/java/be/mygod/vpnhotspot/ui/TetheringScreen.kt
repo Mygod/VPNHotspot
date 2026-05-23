@@ -238,7 +238,7 @@ fun TetheringScreen(
                 }
                 row(R.string.title_repeater) {
                     TetheringRow(
-                        icon = R.drawable.ic_settings_input_antenna,
+                        icon = R.drawable.ic_router,
                         title = stringResource(R.string.title_repeater),
                         summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
                         checked = repeaterStatus == RepeaterService.Status.STARTING || active,
@@ -265,7 +265,7 @@ fun TetheringScreen(
                     } else localOnlyBinder?.stop()
                 }
                 TetheringRow(
-                    icon = R.drawable.ic_perm_scan_wifi,
+                    icon = R.drawable.ic_android_wifi_3_bar_plus,
                     title = stringResource(R.string.tethering_temp_hotspot),
                     summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
                     checked = localOnlyIface != null,

@@ -133,7 +133,7 @@ fun ApConfigurationScreen(
                 val entries = state.securityEntries
                 val selected = entries.firstOrNull { it.value == state.securityType }
                 ListApRow(
-                    icon = R.drawable.ic_wifi_protected_setup,
+                    icon = R.drawable.ic_encrypted,
                     title = R.string.wifi_security,
                     selected = selected,
                     selectedLabel = selected?.label ?: state.securityType.toString(),
@@ -191,7 +191,7 @@ fun ApConfigurationScreen(
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                 row(R.string.wifi_bridged_mode_opportunistic_shutdown) {
                     TextSwitchApRow(
-                        icon = R.drawable.ic_timer,
+                        icon = R.drawable.ic_auto_timer,
                         title = R.string.wifi_bridged_mode_opportunistic_shutdown,
                         valueTitle = R.string.wifi_hotspot_timeout_bridged,
                         checked = state.bridgedModeOpportunisticShutdown,
@@ -233,7 +233,7 @@ fun ApConfigurationScreen(
             }
             row(R.string.wifi_hotspot_ap_channel_band_title) {
                 ChannelApRow(
-                    icon = R.drawable.ic_settings_input_antenna,
+                    icon = R.drawable.ic_wifi_channel,
                     title = R.string.wifi_hotspot_ap_channel_band_title,
                     selected = state.primaryChannel,
                     entries = state.channelEntries(),
@@ -259,7 +259,7 @@ fun ApConfigurationScreen(
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
                 row(R.string.wifi_hotspot_acs_channel_2g) {
                     TextApRow(
-                        icon = R.drawable.ic_tune,
+                        icon = R.drawable.ic_filter_2,
                         title = R.string.wifi_hotspot_acs_channel_2g,
                         value = state.acs2g,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
@@ -269,7 +269,7 @@ fun ApConfigurationScreen(
                 }
                 row(R.string.wifi_hotspot_acs_channel_5g) {
                     TextApRow(
-                        icon = R.drawable.ic_tune,
+                        icon = R.drawable.ic_filter_5,
                         title = R.string.wifi_hotspot_acs_channel_5g,
                         value = state.acs5g,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
@@ -279,7 +279,7 @@ fun ApConfigurationScreen(
                 }
                 row(R.string.wifi_hotspot_acs_channel_6g) {
                     TextApRow(
-                        icon = R.drawable.ic_tune,
+                        icon = R.drawable.ic_filter_6,
                         title = R.string.wifi_hotspot_acs_channel_6g,
                         value = state.acs6g,
                         description = annotatedStringResource(R.string.wifi_hotspot_acs_channel_help),
@@ -291,7 +291,7 @@ fun ApConfigurationScreen(
                     val entries = state.bandwidthEntries
                     val selected = entries.firstOrNull { it.width == state.maxChannelBandwidth }
                     ListApRow(
-                        icon = R.drawable.ic_settings_input_antenna,
+                        icon = R.drawable.ic_speed,
                         title = R.string.wifi_hotspot_max_channel_bandwidth,
                         selected = selected,
                         selectedLabel = selected?.label(context)
@@ -318,7 +318,7 @@ fun ApConfigurationScreen(
             preferenceGroup(title = R.string.wifi_hotspot_access_control_title) {
                 row(R.string.wifi_max_clients) {
                     TextApRow(
-                        icon = R.drawable.ic_group,
+                        icon = R.drawable.ic_groups,
                         title = R.string.wifi_max_clients,
                         value = state.maxClients,
                         description = annotatedStringResource(R.string.wifi_max_clients_help),
@@ -336,7 +336,7 @@ fun ApConfigurationScreen(
                 }
                 row(R.string.wifi_blocked_list) {
                     TextApRow(
-                        icon = R.drawable.ic_block,
+                        icon = R.drawable.ic_person_cancel,
                         title = R.string.wifi_blocked_list,
                         value = state.blockedList,
                         description = annotatedStringResource(R.string.wifi_blocked_list_help),
@@ -347,7 +347,7 @@ fun ApConfigurationScreen(
                 }
                 row(R.string.wifi_client_user_control) {
                     TextSwitchApRow(
-                        icon = R.drawable.ic_group,
+                        icon = R.drawable.ic_supervisor_account,
                         title = R.string.wifi_client_user_control,
                         valueTitle = R.string.wifi_allowed_list,
                         checked = state.clientUserControl,
@@ -391,7 +391,7 @@ fun ApConfigurationScreen(
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
                 row(R.string.wifi_ieee_80211ax) {
                     SwitchApRow(
-                        icon = R.drawable.ic_looks_6,
+                        icon = R.drawable.ic_counter_6,
                         title = R.string.wifi_ieee_80211ax,
                         checked = state.ieee80211ax,
                         summary = annotatedStringResource(R.string.wifi_ieee_80211ax_help),
@@ -401,7 +401,7 @@ fun ApConfigurationScreen(
                 }
                 if (Build.VERSION.SDK_INT >= 33) row(R.string.wifi_ieee_80211be) {
                     SwitchApRow(
-                        icon = R.drawable.ic_network_wifi,
+                        icon = R.drawable.ic_counter_7,
                         title = R.string.wifi_ieee_80211be,
                         checked = state.ieee80211be,
                         summary = annotatedStringResource(R.string.wifi_ieee_80211be_help),
@@ -411,7 +411,7 @@ fun ApConfigurationScreen(
             if (Build.VERSION.SDK_INT >= 33) {
                 row(R.string.wifi_vendor_elements) {
                     TextApRow(
-                        icon = R.drawable.ic_code,
+                        icon = R.drawable.ic_data_object,
                         title = R.string.wifi_vendor_elements,
                         value = state.vendorElements,
                         description = annotatedStringResource(R.string.wifi_vendor_elements_help),
@@ -433,7 +433,7 @@ fun ApConfigurationScreen(
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 36) {
                 row(R.string.wifi_client_isolation) {
                     SwitchApRow(
-                        icon = R.drawable.ic_block,
+                        icon = R.drawable.ic_safety_divider,
                         title = R.string.wifi_client_isolation,
                         checked = state.clientIsolation,
                         summary = annotatedStringResource(R.string.wifi_client_isolation_help),

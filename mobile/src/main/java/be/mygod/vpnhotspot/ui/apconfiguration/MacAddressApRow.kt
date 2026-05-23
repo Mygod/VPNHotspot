@@ -39,7 +39,7 @@ fun MacAddressApRow(state: ApConfigurationState) {
     var editing by rememberSaveable { mutableStateOf(false) }
     val enabled = !state.readOnly
     PreferenceRow(
-        icon = R.drawable.ic_push_pin,
+        icon = R.drawable.ic_fingerprint,
         title = stringResource(R.string.wifi_advanced_mac_address_title),
         summary = state.macAddressSummary(context),
         enabled = enabled,
