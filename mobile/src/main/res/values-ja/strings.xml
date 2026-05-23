@@ -67,7 +67,7 @@
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="other">%1$s 個のクライアントが接続済み</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\n対応チャンネル: %1$s</string>
+    <string name="tethering_manage_wifi_supported_channels">\n対応チャンネル:%1$s</string>
     <string name="tethering_manage_wifi_country_code">\nドライバ国コード: %1$s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">ランダム化された AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ブリッジ AP の並行性</string>

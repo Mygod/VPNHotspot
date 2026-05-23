@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
+import android.icu.text.DateFormat
 import android.net.LinkProperties
 import android.net.NetworkRequest
 import android.net.RouteInfo
@@ -17,8 +18,6 @@ import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
 import androidx.annotation.RequiresExtension
-import androidx.core.i18n.DateTimeFormatter
-import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -37,6 +36,7 @@ import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URL
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executor
 
@@ -94,18 +94,9 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     } catch (_: IllegalArgumentException) { }
 }
 
-private val dateTimeFormat = DateTimeFormatterSkeletonOptions.Builder(
-    year = DateTimeFormatterSkeletonOptions.Year.NUMERIC,
-    month = DateTimeFormatterSkeletonOptions.Month.NUMERIC,
-    day = DateTimeFormatterSkeletonOptions.Day.NUMERIC,
-    period = DateTimeFormatterSkeletonOptions.Period.ABBREVIATED,
-    hour = DateTimeFormatterSkeletonOptions.Hour.NUMERIC,
-    minute = DateTimeFormatterSkeletonOptions.Minute.NUMERIC,
-    second = DateTimeFormatterSkeletonOptions.Second.NUMERIC,
-    fractionalSecond = DateTimeFormatterSkeletonOptions.FractionalSecond.NUMERIC_3_DIGITS,
-).build()
-fun Context.formatTimestamp(timestamp: Long) = DateTimeFormatter(this, dateTimeFormat,
-    resources.configuration.locales[0]).format(timestamp)
+fun Context.formatTimestamp(timestamp: Long) = DateFormat.getInstanceForSkeleton(
+    if (android.text.format.DateFormat.is24HourFormat(this)) "yMdHmsSSS" else "yMdahmsSSS",
+    resources.configuration.locales[0]).format(Date(timestamp))
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)

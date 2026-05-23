@@ -203,12 +203,11 @@ ksp {
 dependencies {
     ksp(libs.room.compiler)
     implementation(platform(libs.compose.bom))
-    implementation("androidx.compose.material3:material3:1.5.0-alpha20")
+    implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material3.adaptive:adaptive")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation(libs.activity.compose)
     implementation(libs.browser)
-    implementation(libs.core.i18n)
     implementation(libs.core.ktx)
     implementation(libs.dexmaker)
     implementation(libs.firebase.analytics)

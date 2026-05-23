@@ -59,7 +59,7 @@
         <item quantity="many">%1$s de clientes conectados</item>
         <item quantity="other">%1$s clientes conectados</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nCanais suportados: %1$s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nCanais suportados:%1$s</string>
     <string name="tethering_manage_wifi_country_code">\nCódigo do país do Driver: %1$s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP aleatório</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Simultaneidade de AP em ponte</string>

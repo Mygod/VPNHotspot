@@ -25,7 +25,7 @@
     <string name="share_with">Share with</string>
 
     <string name="repeater_frequency">%s MHz</string>
-    <string name="repeater_features">"Supported features: "</string>
+    <string name="repeater_features">Supported features:</string>
     <string name="repeater_feature_set_vendor_elements">Set vendor elements</string>
     <string name="repeater_feature_group_client_removal">Remove client</string>
     <string name="repeater_feature_pcc_mode">WPA3-SAE Compatibility Mode</string>
@@ -95,7 +95,7 @@
         <item quantity="one">%1$s client connected</item>
         <item quantity="other">%1$s clients connected</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nSupported channels: %1$s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nSupported channels:%1$s</string>
     <string name="tethering_manage_wifi_country_code">\nDriver country code: %1$s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">Randomized AP MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Bridged AP concurrency</string>

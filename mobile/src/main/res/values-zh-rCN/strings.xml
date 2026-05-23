@@ -69,7 +69,7 @@
     <plurals name="tethering_manage_wifi_clients">
         <item quantity="other">已连接 %1$s 个设备</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\n支持频道: %1$s</string>
+    <string name="tethering_manage_wifi_supported_channels">\n支持频道:%1$s</string>
     <string name="tethering_manage_wifi_country_code">\n驱动国家代码：%1$s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">随机接入点 MAC</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">桥接 AP 并发</string>

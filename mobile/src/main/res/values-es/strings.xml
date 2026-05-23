@@ -73,7 +73,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
         <item quantity="many">%1$s de clientes conectados</item>
         <item quantity="other">%1$s clientes conectados</item>
     </plurals>
-    <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles: %1$s</string>
+    <string name="tethering_manage_wifi_supported_channels">\nCanales compatibles:%1$s</string>
     <string name="tethering_manage_wifi_country_code">\nCódigo de país del controlador: %1$s</string>
     <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC aleatorio de AP</string>
     <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">Concurrencia puenteada de AP</string>

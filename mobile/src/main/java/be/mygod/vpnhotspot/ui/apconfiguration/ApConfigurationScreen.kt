@@ -531,7 +531,7 @@ private fun repeaterSupportedFeatures(context: Context): String? {
     }
     p2p.test(context.getString(R.string.repeater_feature_pcc_mode), 36) { it.isPccModeSupported }
     p2p.test(context.getString(R.string.repeater_feature_wifi_direct_r2), 36) { it.isWiFiDirectR2Supported }
-    return if (labels.isEmpty()) null else context.getString(R.string.repeater_features) + labels.joinToString()
+    return if (labels.isEmpty()) null else context.getString(R.string.repeater_features) + labels.joinAsBullets()
 }
 
 private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): String {
@@ -573,7 +573,9 @@ private fun softApSupportedFeatures(context: Context, capability: SoftApCapabili
             yield(softApFeatureLabel(context, bit))
             features = features and bit.inv()
         }
-    }.joinToString().ifEmpty { context.getString(R.string.tethering_manage_wifi_no_features) }
+    }.toList().ifEmpty {
+        listOf(context.getString(R.string.tethering_manage_wifi_no_features))
+    }.joinAsBullets()
 }
 
 private fun softApSupportedChannels(context: Context, capability: SoftApCapability): String? {
@@ -588,6 +590,8 @@ private fun softApSupportedChannels(context: Context, capability: SoftApCapabili
     }
     return if (channels.isEmpty()) null else context.getString(
         R.string.tethering_manage_wifi_supported_channels,
-        channels.joinToString("; "),
+        channels.joinAsBullets(),
     ).trimStart()
 }
+
+private fun Iterable<String>.joinAsBullets() = joinToString(separator = "\n• ", prefix = "\n• ")
