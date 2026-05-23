@@ -55,7 +55,7 @@ fun SsidApRow(
     val draftError = error ?: state.ssidError(draft.text, draftHex, context)
     val draftByteCount = state.ssidByteCount(draft.text, draftHex)
     PreferenceRow(
-        icon = R.drawable.ic_device_network_wifi,
+        icon = R.drawable.ic_network_wifi,
         title = stringResource(R.string.wifi_ssid),
         summaryContent = {
             Column {
@@ -83,7 +83,7 @@ fun SsidApRow(
                         onClick = onShowQrCode,
                     ) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_communication_qr_code_2),
+                            painter = painterResource(R.drawable.ic_qr_code_2),
                             contentDescription = tooltip,
                         )
                     }
@@ -144,8 +144,8 @@ fun SsidApRow(
                             ) {
                                 Icon(
                                     painter = painterResource(if (draftHex) {
-                                        R.drawable.ic_av_closed_caption
-                                    } else R.drawable.ic_av_closed_caption_disabled),
+                                        R.drawable.ic_closed_caption
+                                    } else R.drawable.ic_closed_caption_disabled),
                                     contentDescription = tooltip,
                                 )
                             }

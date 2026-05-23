@@ -35,7 +35,7 @@ fun ApConfigurationTopBarActions(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     if (state.possiblyInvalid(context)) Icon(
-        painter = painterResource(R.drawable.ic_alert_warning),
+        painter = painterResource(R.drawable.ic_warning),
         contentDescription = stringResource(R.string.configuration_invalid),
         tint = MaterialTheme.colorScheme.error,
         modifier = Modifier.size(24.dp),
@@ -52,7 +52,7 @@ fun ApConfigurationTopBarActions(
         },
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_content_file_copy),
+            painter = painterResource(R.drawable.ic_file_copy),
             contentDescription = stringResource(android.R.string.copy),
         )
     }
@@ -67,7 +67,7 @@ fun ApConfigurationTopBarActions(
         },
     ) {
         Icon(
-            painter = painterResource(R.drawable.ic_content_content_paste),
+            painter = painterResource(R.drawable.ic_content_paste),
             contentDescription = stringResource(android.R.string.paste),
         )
     }
@@ -98,7 +98,7 @@ fun ApConfigurationSaveFab(
         text = { Text(save) },
         icon = {
             Icon(
-                painter = painterResource(R.drawable.ic_content_save),
+                painter = painterResource(R.drawable.ic_save),
                 contentDescription = null,
             )
         },

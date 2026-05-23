@@ -162,7 +162,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         preferenceGroup(key = R.string.settings_service_clean) {
             row(R.string.settings_service_clean) {
                 PreferenceRow(
-                    icon = R.drawable.ic_action_settings_backup_restore,
+                    icon = R.drawable.ic_settings_backup_restore,
                     title = stringResource(R.string.settings_service_clean),
                     summary = stringResource(R.string.settings_service_clean_summary),
                     onClick = {
@@ -175,7 +175,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             row(R.string.settings_service_upstream) {
                 val fallback = stringResource(R.string.settings_service_upstream_auto)
                 TextPreferenceRow(
-                    icon = R.drawable.ic_action_settings_ethernet,
+                    icon = R.drawable.ic_settings_ethernet,
                     title = R.string.settings_service_upstream,
                     value = primaryPreference.orEmpty(),
                     summary = upstreamSummary(
@@ -193,7 +193,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             row(R.string.settings_upstream_fallback) {
                 val fallbackLabel = stringResource(R.string.settings_upstream_fallback_auto)
                 TextPreferenceRow(
-                    icon = R.drawable.ic_action_settings_input_component,
+                    icon = R.drawable.ic_settings_input_component,
                     title = R.string.settings_upstream_fallback,
                     value = fallbackPreference.orEmpty(),
                     summary = upstreamSummary(
@@ -214,7 +214,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         preferenceGroup(title = R.string.settings_downstream) {
             row(R.string.settings_service_masquerade) {
                 ListPreferenceRow(
-                    icon = R.drawable.ic_social_group,
+                    icon = R.drawable.ic_group,
                     title = R.string.settings_service_masquerade,
                     entries = stringArrayResource(R.array.settings_service_masquerade),
                     entrySummaries = stringArrayResource(R.array.settings_service_masquerade_summaries),
@@ -232,7 +232,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_service_ipv6_mode) {
                 ListPreferenceRow(
-                    icon = R.drawable.ic_image_looks_6,
+                    icon = R.drawable.ic_looks_6,
                     title = R.string.settings_service_ipv6_mode,
                     entries = stringArrayResource(R.array.settings_service_ipv6_mode),
                     entrySummaries = stringArrayResource(R.array.settings_service_ipv6_mode_summaries),
@@ -246,7 +246,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_system_tether_offload) {
                 SwitchPreferenceRow(
-                    icon = R.drawable.ic_device_battery_charging_full,
+                    icon = R.drawable.ic_battery_charging_full,
                     title = R.string.settings_system_tether_offload,
                     summary = stringResource(R.string.settings_system_tether_offload_summary),
                     checked = offloadEnabled,
@@ -278,7 +278,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         preferenceGroup(title = R.string.settings_misc) {
             row(R.string.settings_service_wifi_lock) {
                 ListPreferenceRow(
-                    icon = R.drawable.ic_device_wifi_lock,
+                    icon = R.drawable.ic_wifi_lock,
                     title = R.string.settings_service_wifi_lock,
                     entries = stringArrayResource(R.array.settings_service_wifi_lock),
                     entrySummaries = stringArrayResource(R.array.settings_service_wifi_lock_summaries),
@@ -296,7 +296,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_service_auto_start) {
                 SwitchPreferenceRow(
-                    icon = R.drawable.ic_action_autorenew,
+                    icon = R.drawable.ic_autorenew,
                     title = R.string.settings_service_auto_start,
                     summary = stringResource(R.string.settings_service_auto_start_summary),
                     checked = autoStart,
@@ -310,7 +310,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             if (showRepeaterSafeMode) row(R.string.settings_service_repeater_safe_mode) {
                 SwitchPreferenceRow(
-                    icon = R.drawable.ic_alert_warning,
+                    icon = R.drawable.ic_warning,
                     title = R.string.settings_service_repeater_safe_mode,
                     summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
                     checked = repeaterSafeMode,
@@ -321,7 +321,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             if (Build.VERSION.SDK_INT >= 30) row(R.string.settings_service_temp_hotspot_use_system) {
                 SwitchPreferenceRow(
-                    icon = R.drawable.ic_content_file_copy,
+                    icon = R.drawable.ic_file_copy,
                     title = R.string.settings_service_temp_hotspot_use_system,
                     summary = stringResource(if (Build.VERSION.SDK_INT >= 31) {
                         R.string.settings_service_temp_hotspot_use_system_summary
@@ -338,7 +338,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
         preferenceGroup(title = R.string.settings_help) {
             row(R.string.settings_misc_source) {
                 PreferenceRow(
-                    icon = R.drawable.ic_toggle_star,
+                    icon = R.drawable.ic_star,
                     title = stringResource(R.string.settings_misc_source),
                     summary = stringResource(R.string.settings_misc_source_summary),
                     onClick = {
@@ -350,7 +350,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_misc_logcat) {
                 PreferenceRow(
-                    icon = R.drawable.ic_action_bug_report,
+                    icon = R.drawable.ic_bug_report,
                     title = stringResource(R.string.settings_misc_logcat),
                     summary = stringResource(R.string.settings_misc_logcat_summary),
                     onClick = {
@@ -369,7 +369,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(R.string.settings_misc_donate) {
                 PreferenceRow(
-                    icon = R.drawable.ic_action_redeem,
+                    icon = R.drawable.ic_redeem,
                     title = stringResource(R.string.settings_misc_donate),
                     summary = stringResource(R.string.settings_misc_donate_summary),
                     onClick = { if (!inspectionMode) context.launchUrl("https://mygod.be/donate/") },
@@ -377,7 +377,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             }
             row(OssLicensesR.string.oss_license_title) {
                 PreferenceRow(
-                    icon = R.drawable.ic_action_code,
+                    icon = R.drawable.ic_code,
                     title = stringResource(OssLicensesR.string.oss_license_title),
                     summary = stringResource(OssLicensesR.string.preferences_license_summary),
                     onClick = {

@@ -160,7 +160,7 @@ private fun ChannelApSheet(
                                 leadingIcon = if (selectedBand) {
                                     {
                                         Icon(
-                                            painter = painterResource(R.drawable.ic_navigation_check),
+                                            painter = painterResource(R.drawable.ic_check),
                                             contentDescription = null,
                                             modifier = Modifier.size(18.dp),
                                         )

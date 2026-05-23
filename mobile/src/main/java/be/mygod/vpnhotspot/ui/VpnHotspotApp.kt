@@ -102,9 +102,9 @@ private enum class RootDestination(
     @param:StringRes val title: Int,
     @param:DrawableRes val icon: Int,
 ) {
-    Tethering("tethering", R.string.title_tethering, R.drawable.ic_device_wifi_tethering),
-    Clients("clients", R.string.title_clients, R.drawable.ic_device_devices),
-    Settings("settings", R.string.title_settings, R.drawable.ic_action_settings),
+    Tethering("tethering", R.string.title_tethering, R.drawable.ic_wifi_tethering),
+    Clients("clients", R.string.title_clients, R.drawable.ic_devices),
+    Settings("settings", R.string.title_settings, R.drawable.ic_settings),
 }
 
 private enum class AppDestination(val route: String) {
@@ -514,7 +514,7 @@ private fun DestinationScaffold(
                             tooltip = tooltip,
                             onClick = onNavigateUp,
                         ) {
-                            NavIcon(R.drawable.ic_navigation_arrow_back, tooltip)
+                            NavIcon(R.drawable.ic_arrow_back, tooltip)
                         }
                     }
                 },
@@ -579,7 +579,7 @@ private fun TetheringActions(
             tooltip = tooltip,
             onClick = { monitorExpanded = true },
         ) {
-            NavIcon(R.drawable.ic_action_visibility, tooltip)
+            NavIcon(R.drawable.ic_visibility, tooltip)
         }
         DropdownMenu(expanded = monitorExpanded, onDismissRequest = { monitorExpanded = false }) {
             for (iface in monitorableIfaces) DropdownMenuItem(

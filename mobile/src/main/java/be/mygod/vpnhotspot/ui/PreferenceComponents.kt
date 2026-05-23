@@ -261,7 +261,7 @@ fun PreferenceSwitch(
         modifier = modifier,
         thumbContent = {
             Icon(
-                painter = painterResource(if (checked) R.drawable.ic_navigation_check else R.drawable.ic_navigation_close),
+                painter = painterResource(if (checked) R.drawable.ic_check else R.drawable.ic_close),
                 contentDescription = null,
                 modifier = Modifier.size(SwitchDefaults.IconSize),
             )
@@ -280,7 +280,7 @@ fun PreferenceSplitSwitch(
     val interactionSource = remember { MutableInteractionSource() }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Icon(
-            painter = painterResource(R.drawable.ic_navigation_chevron_right),
+            painter = painterResource(R.drawable.ic_chevron_right),
             contentDescription = null,
             modifier = Modifier.padding(start = 16.dp, end = 8.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,

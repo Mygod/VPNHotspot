@@ -238,7 +238,7 @@ fun TetheringScreen(
                 }
                 row(R.string.title_repeater) {
                     TetheringRow(
-                        icon = R.drawable.ic_action_settings_input_antenna,
+                        icon = R.drawable.ic_settings_input_antenna,
                         title = stringResource(R.string.title_repeater),
                         summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
                         checked = repeaterStatus == RepeaterService.Status.STARTING || active,
@@ -250,7 +250,7 @@ fun TetheringScreen(
                 if (showRepeaterWps) row("repeater_wps") {
                     PreferenceRow(
                         modifier = Modifier.padding(start = 48.dp),
-                        icon = R.drawable.ic_action_wifi_protected_setup,
+                        icon = R.drawable.ic_wifi_protected_setup,
                         title = stringResource(R.string.repeater_wps),
                         onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
                     )
@@ -265,7 +265,7 @@ fun TetheringScreen(
                     } else localOnlyBinder?.stop()
                 }
                 TetheringRow(
-                    icon = R.drawable.ic_action_perm_scan_wifi,
+                    icon = R.drawable.ic_perm_scan_wifi,
                     title = stringResource(R.string.tethering_temp_hotspot),
                     summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
                     checked = localOnlyIface != null,
@@ -275,7 +275,7 @@ fun TetheringScreen(
             }
             row(R.string.tethering_static_ip) {
                 TetheringRow(
-                    icon = R.drawable.ic_content_push_pin,
+                    icon = R.drawable.ic_push_pin,
                     title = stringResource(R.string.tethering_static_ip),
                     summary = buildAnnotatedString {
                         for ((address, prefixLength) in staticIpAddresses) {
@@ -320,7 +320,7 @@ fun TetheringScreen(
         preferenceGroup(key = "manage_tethering") {
             row(R.string.tethering_manage) {
                 PreferenceRow(
-                    icon = R.drawable.ic_content_add,
+                    icon = R.drawable.ic_add,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     title = stringResource(R.string.tethering_manage),
                     summary = if (manageOffloadEnabled) {
@@ -331,7 +331,7 @@ fun TetheringScreen(
             }
             row(R.string.tethering_manage_wifi) {
                 TetheringTypeRow(
-                    icon = R.drawable.ic_device_network_wifi,
+                    icon = R.drawable.ic_network_wifi,
                     title = R.string.tethering_manage_wifi,
                     checked = tetheredTypes.contains(TetherType.WIFI),
                     summary = wifiSummary,
@@ -342,7 +342,7 @@ fun TetheringScreen(
             }
             row(R.string.tethering_manage_usb) {
                 TetheringTypeRow(
-                    icon = R.drawable.ic_device_usb,
+                    icon = R.drawable.ic_usb,
                     title = R.string.tethering_manage_usb,
                     checked = tetheredTypes.contains(TetherType.USB) || tetheredTypes.contains(TetherType.NCM),
                     summary = tetherError(context, tetherStates, TetherType.USB),
@@ -511,7 +511,7 @@ private fun BluetoothTetheringRow(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     TetheringRow(
-        icon = R.drawable.ic_device_bluetooth,
+        icon = R.drawable.ic_bluetooth,
         title = stringResource(R.string.tethering_manage_bluetooth),
         summary = summary,
         checked = active == true,

@@ -118,7 +118,7 @@
             android:name=".manage.RepeaterTileService"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_action_settings_input_antenna"
+            android:icon="@drawable/ic_settings_input_antenna"
             android:label="@string/title_repeater"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -132,7 +132,7 @@
             android:name=".manage.LocalOnlyHotspotTileService"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_action_perm_scan_wifi"
+            android:icon="@drawable/ic_perm_scan_wifi"
             android:label="@string/tethering_temp_hotspot"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -146,7 +146,7 @@
             android:name=".manage.TetheringTileService$Wifi"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_device_wifi_tethering"
+            android:icon="@drawable/ic_wifi_tethering"
             android:label="@string/tethering_manage_wifi"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -160,7 +160,7 @@
             android:name=".manage.TetheringTileService$Usb"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_device_usb"
+            android:icon="@drawable/ic_usb"
             android:label="@string/tethering_manage_usb"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -174,7 +174,7 @@
             android:name=".manage.TetheringTileService$Bluetooth"
             android:directBootAware="true"
             android:exported="true"
-            android:icon="@drawable/ic_device_bluetooth"
+            android:icon="@drawable/ic_bluetooth"
             android:label="@string/tethering_manage_bluetooth"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter>
@@ -189,7 +189,7 @@
             android:directBootAware="true"
             android:enabled="@bool/api_ge_30"
             android:exported="true"
-            android:icon="@drawable/ic_content_inbox"
+            android:icon="@drawable/ic_inbox"
             android:label="@string/tethering_manage_ethernet"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
             tools:targetApi="30">

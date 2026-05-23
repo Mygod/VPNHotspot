@@ -47,7 +47,7 @@ fun PasswordApRow(state: ApConfigurationState) {
     val password = draft.text.toString()
     val error = state.passwordError(password, context)
     PreferenceRow(
-        icon = R.drawable.ic_device_wifi_lock,
+        icon = R.drawable.ic_wifi_lock,
         title = stringResource(R.string.wifi_password),
         summary = if (state.password.isEmpty()) "" else "\u2022".repeat(8),
         onClick = { editing = true },
@@ -88,8 +88,8 @@ fun PasswordApRow(state: ApConfigurationState) {
                         ) {
                             Icon(
                                 painter = painterResource(if (visible) {
-                                    R.drawable.ic_action_visibility_off
-                                } else R.drawable.ic_action_visibility),
+                                    R.drawable.ic_visibility_off
+                                } else R.drawable.ic_visibility),
                                 contentDescription = tooltip,
                             )
                         }

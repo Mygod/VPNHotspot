@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 class LocalOnlyHotspotTileService : NetlinkNeighbourMonitoringTileService() {
-    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_perm_scan_wifi) }
+    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_perm_scan_wifi) }
 
     private var binder: LocalOnlyHotspotService.Binder? = null
     private var serviceJob: Job? = null

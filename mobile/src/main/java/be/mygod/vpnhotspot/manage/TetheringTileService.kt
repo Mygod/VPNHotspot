@@ -162,7 +162,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
     class Wifi : TetheringTileService() {
         override val labelString get() = R.string.tethering_manage_wifi
         override val tetherType get() = TetherType.WIFI
-        override val icon get() = R.drawable.ic_device_wifi_tethering
+        override val icon get() = R.drawable.ic_wifi_tethering
 
         override fun start() = TetheringManagerCompat.startTethering(TetheringManager.TETHERING_WIFI, true, this)
         override fun stop() = TetheringManagerCompat.stopTethering(TetheringManager.TETHERING_WIFI, this)

@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
 class RepeaterTileService : KillableTileService() {
-    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_action_settings_input_antenna) }
+    private val tile by lazy { Icon.createWithResource(application, R.drawable.ic_settings_input_antenna) }
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private var binder: RepeaterService.Binder? = null

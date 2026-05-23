@@ -96,7 +96,7 @@ fun ClientsScreen(model: ClientViewModel, snackbarHostState: SnackbarHostState) 
                 verticalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_device_devices),
+                    painter = painterResource(R.drawable.ic_devices),
                     contentDescription = null,
                     modifier = Modifier.size(64.dp),
                     tint = MaterialTheme.colorScheme.secondary,
@@ -484,7 +484,7 @@ private fun ClientsConnectedPreview() {
             preferenceGroup(key = "clients_preview") {
                 row("pixel") {
                     ClientRowLayout(
-                        icon = R.drawable.ic_device_network_wifi,
+                        icon = R.drawable.ic_network_wifi,
                         title = AnnotatedString("Pixel 9"),
                         description = AnnotatedString(
                             "02:00:00:12:34:56%wlan0\n192.168.43.23 (reachable)\nfd00::23 (reachable)",
@@ -496,7 +496,7 @@ private fun ClientsConnectedPreview() {
                 }
                 row("usb") {
                     ClientRowLayout(
-                        icon = R.drawable.ic_device_usb,
+                        icon = R.drawable.ic_usb,
                         title = AnnotatedString("7a:3f:11:90:2c:0d%rndis0"),
                         description = AnnotatedString("172.20.10.4 (reachable)"),
                         rateText = "${'\u25B2'} 8 KB/s\t\t${'\u25BC'} 64 KB/s",
@@ -506,7 +506,7 @@ private fun ClientsConnectedPreview() {
                 }
                 row("laptop") {
                     ClientRowLayout(
-                        icon = R.drawable.ic_content_inbox,
+                        icon = R.drawable.ic_inbox,
                         title = AnnotatedString("Work laptop"),
                         description = AnnotatedString(
                             "3c:22:fb:01:aa:90%eth0\n192.168.50.12 (reachable)",
