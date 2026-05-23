@@ -844,7 +844,6 @@ dependencies = [
  "prost",
  "prost-build",
  "protoc-bin-vendored",
- "regex",
  "rtnetlink",
  "socket2",
  "tokio",
