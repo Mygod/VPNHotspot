@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -209,7 +210,7 @@ private fun ClientRow(
     }
     var expanded by remember { mutableStateOf(false) }
     var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
-    var statsDialog by remember { mutableStateOf<ClientStats?>(null) }
+    var statsSheet by remember { mutableStateOf<ClientStats?>(null) }
     val scope = rememberCoroutineScope()
     val icon = client.icon
 
@@ -225,6 +226,7 @@ private fun ClientRow(
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.clients_popup_nickname)) },
+                leadingIcon = { MenuItemIcon(R.drawable.ic_edit) },
                 onClick = {
                     expanded = false
                     editingNickname = true
@@ -234,6 +236,9 @@ private fun ClientRow(
                 text = {
                     Text(stringResource(if (record.blocked) R.string.clients_popup_unblock else R.string.clients_popup_block))
                 },
+                leadingIcon = {
+                    MenuItemIcon(if (record.blocked) R.drawable.ic_person_check else R.drawable.ic_person_cancel)
+                },
                 onClick = {
                     expanded = false
                     onToggleBlocked()
@@ -241,11 +246,12 @@ private fun ClientRow(
             )
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.clients_popup_stats)) },
+                leadingIcon = { MenuItemIcon(R.drawable.ic_query_stats) },
                 onClick = {
                     expanded = false
                     scope.launch {
                         try {
-                            statsDialog = onQueryStats()
+                            statsSheet = onQueryStats()
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -308,23 +314,38 @@ private fun ClientRow(
             },
         )
     }
-    statsDialog?.let { stats ->
-        AlertDialog(
-            onDismissRequest = {
-                statsDialog = null
-            },
-            title = {
-                Text(stringResource(R.string.clients_stats_title, title.text))
-            },
-            text = { Text(formatClientStats(context, stats)) },
-            confirmButton = {
-                DialogConfirmButton(onClick = {
-                    statsDialog = null
-                }) {
-                    Text(stringResource(android.R.string.ok))
+    statsSheet?.let { stats ->
+        VpnHotspotModalBottomSheet(onDismissRequest = { statsSheet = null }) {
+            val titlePlaceholder = "\uFFFC"
+            val titleText = stringResource(R.string.clients_stats_title, titlePlaceholder)
+            val titlePlaceholderIndex = titleText.indexOf(titlePlaceholder)
+            val clientAddress = remember(client.macString, client.iface, linkStyles) {
+                buildAnnotatedString {
+                    appendClientAddress(client, client.iface, linkStyles)
                 }
-            },
-        )
+            }
+            Text(
+                text = if (titlePlaceholderIndex < 0) {
+                    AnnotatedString(titleText)
+                } else buildAnnotatedString {
+                    append(titleText.substring(0, titlePlaceholderIndex))
+                    append(clientAddress)
+                    append(titleText.substring(titlePlaceholderIndex + titlePlaceholder.length))
+                },
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.titleLarge,
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false),
+                contentPadding = modalBottomSheetListContentPadding(),
+            ) {
+                item("stats") {
+                    Text(formatClientStats(context, stats))
+                }
+            }
+        }
     }
 }
 

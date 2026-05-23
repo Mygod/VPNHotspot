@@ -405,6 +405,15 @@ fun PreferenceSelectionRow(
 }
 
 @Composable
+fun MenuItemIcon(@DrawableRes icon: Int) {
+    Icon(
+        painter = painterResource(icon),
+        contentDescription = null,
+        modifier = Modifier.size(24.dp),
+    )
+}
+
+@Composable
 fun annotatedStringResource(@StringRes id: Int, vararg formatArgs: Any) = AnnotatedString.fromHtml(
     if (formatArgs.isEmpty()) stringResource(id) else stringResource(id, *formatArgs),
 )
