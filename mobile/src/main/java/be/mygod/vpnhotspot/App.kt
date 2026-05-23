@@ -152,7 +152,7 @@ class App : Application() {
         })
     }
     @Suppress("DEPRECATION")
-    val pref by lazy { android.preference.PreferenceManager.getDefaultSharedPreferences(this) }
+    val pref by lazy { android.preference.PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
     val location by lazy { getSystemService<LocationManager>() }
 

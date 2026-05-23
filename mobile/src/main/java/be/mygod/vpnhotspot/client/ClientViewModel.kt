@@ -2,6 +2,8 @@ package be.mygod.vpnhotspot.client
 
 import android.content.ClipData
 import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.ServiceConnection
 import android.net.LinkAddress
 import android.net.MacAddress
@@ -41,6 +43,8 @@ import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.ui.softApClientBlockReasonLabel
 import be.mygod.vpnhotspot.ui.softApClientDisconnectReasonLabel
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.stopAndUnbind
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
@@ -325,12 +329,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        if (Services.p2p != null) app.bindService(Intent(app, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         TetherStates.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
         TetherStates.unregisterCallback(this)
+        if (Services.p2p != null) app.stopAndUnbind(this)
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
