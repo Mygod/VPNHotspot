@@ -38,8 +38,8 @@ object TrafficRecorder {
     )
 
     private data class ClientKey(val mac: MacAddress, val downstream: String)
-    internal data class CounterSource(val ip: InetAddress, val upstream: String?)
-    internal data class CounterKey(
+    data class CounterSource(val ip: InetAddress, val upstream: String?)
+    data class CounterKey(
         val mac: MacAddress,
         val downstream: String,
         val source: CounterSource,
@@ -229,13 +229,13 @@ object TrafficRecorder {
         false
     }
 
-    internal fun counterKey(counter: TrafficCounter): CounterKey? {
+    fun counterKey(counter: TrafficCounter): CounterKey? {
         val recordSource = counterSource(counter) ?: return null
         val mac = counter.mac.takeIf { it.size == 6 }?.toByteArray() ?: return null
         return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource)
     }
 
-    internal fun counterSource(counter: TrafficCounter): CounterSource? {
+    fun counterSource(counter: TrafficCounter): CounterSource? {
         val counterSource = counter.source
         return counterSource?.ipv4_forward_address?.let {
             if (it.size != 4) return@let null

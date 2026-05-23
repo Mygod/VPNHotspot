@@ -18,6 +18,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
 import be.mygod.vpnhotspot.root.LocalOnlyHotspotCallbacks
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.softApStartFailureLabel
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
@@ -158,7 +159,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         if (state?.first != WifiApManager.WIFI_AP_STATE_ENABLED) {
             if (state?.first == WifiApManager.WIFI_AP_STATE_FAILED) {
                 SmartSnackbar.make(getString(R.string.tethering_temp_hotspot_failure,
-                    WifiApManager.failureReasonLookup(state.third))).show()
+                    softApStartFailureLabel(this, state.third))).show()
                 dismissIfApplicable()
             }
             return stopService(generation = reservation.generation)

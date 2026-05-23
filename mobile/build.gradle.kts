@@ -12,6 +12,7 @@ import org.gradle.api.tasks.TaskAction
 
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.compose.compiler)
     alias(libs.plugins.crashlytics)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
@@ -134,8 +135,7 @@ android {
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
-    compileSdk = 36
-    compileSdkMinor = 1
+    compileSdk = 37
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
@@ -147,8 +147,7 @@ android {
     }
     buildFeatures {
         buildConfig = true
-        dataBinding = true
-        viewBinding = true
+        compose = true
     }
     buildTypes {
         debug {
@@ -203,28 +202,33 @@ ksp {
 
 dependencies {
     ksp(libs.room.compiler)
+    implementation(platform(libs.compose.bom))
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3.adaptive:adaptive")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation(libs.activity.compose)
     implementation(libs.browser)
     implementation(libs.core.i18n)
     implementation(libs.core.ktx)
     implementation(libs.dexmaker)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
-    implementation(libs.fragment.ktx)
     implementation(libs.hiddenapibypass)
     implementation(libs.ktor.io.jvm)
     implementation(libs.kotlinx.collections.immutable)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.librootkotlinx)
-    implementation(libs.lifecycle.livedata.ktx)
-    implementation(libs.lifecycle.runtime.ktx)
-    implementation(libs.material)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.navigation.compose)
     implementation(libs.play.services.oss.licenses)
-    implementation(libs.preference)
     implementation(libs.room.ktx)
     implementation(libs.timber)
     implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
+    debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation(libs.junit)
+    androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.espresso.core)
     androidTestImplementation(libs.junit.ktx)
     androidTestImplementation(libs.room.testing)

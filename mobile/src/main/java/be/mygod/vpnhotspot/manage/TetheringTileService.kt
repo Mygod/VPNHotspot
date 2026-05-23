@@ -16,6 +16,7 @@ import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
+import be.mygod.vpnhotspot.ui.tetherErrorLabel
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.CoroutineStart
@@ -135,7 +136,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
         Timber.d("onTetheringFailed: $error")
         if (error != null) GlobalScope.launch(Dispatchers.Main.immediate) {
             dismiss()
-            Toast.makeText(this@TetheringTileService, TetheringManagerCompat.tetherErrorLookup(error),
+            Toast.makeText(this@TetheringTileService, tetherErrorLabel(this@TetheringTileService, error),
                 Toast.LENGTH_LONG).show()
         }
         updateTile()
@@ -145,7 +146,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
         Timber.d("onStopTetheringFailed: $error")
         GlobalScope.launch(Dispatchers.Main.immediate) {
             dismiss()
-            Toast.makeText(this@TetheringTileService, TetheringManagerCompat.tetherErrorLookup(error),
+            Toast.makeText(this@TetheringTileService, tetherErrorLabel(this@TetheringTileService, error),
                 Toast.LENGTH_LONG).show()
         }
         updateTile()

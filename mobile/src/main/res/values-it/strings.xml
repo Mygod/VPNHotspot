@@ -13,7 +13,6 @@
     <string name="title_clients">Client</string>
     <string name="title_settings">Impostazioni</string>
 
-    <string name="repeater_channel">Ripetitore (%1$d MHz, channel %2$d)</string>
     <string name="repeater_wps">WPS (non sicuro)</string>
     <string name="repeater_wps_dialog_title">Inserisci PIN</string>
     <string name="repeater_wps_dialog_pbc">Premi il bottone</string>
@@ -71,16 +70,16 @@
     <string name="clients_mac_lookup_unexpected_error">Il server ha restituito questo errore per %1$s: %2$s</string>
     <string name="clients_nickname_title">Nickname per %s</string>
     <string name="clients_nickname_set_to_vendor">← 🏳️‍🌈 Venditore</string>
-    <string name="clients_stats_title">Statistiche per ^1</string>
+    <string name="clients_stats_title">Statistiche per %1$s</string>
     <plurals name="clients_stats_message_2">
-        <item quantity="one">\nInviato 1 pacchetto, ^2</item>
-        <item quantity="many">\nInviati ^1 di pacchetti, ^2</item>
-        <item quantity="other">\nInviati ^1 pacchetti, ^2</item>
+        <item quantity="one">\nInviato 1 pacchetto, %2$s</item>
+        <item quantity="many">\nInviati %1$s di pacchetti, %2$s</item>
+        <item quantity="other">\nInviati %1$s pacchetti, %2$s</item>
     </plurals>
     <plurals name="clients_stats_message_3">
-        <item quantity="one">\nRicevuto 1 pacchetto, ^2</item>
-        <item quantity="many">\nRicevuti ^1 di pacchetti, ^2</item>
-        <item quantity="other">\nRicevuti ^1 pacchetti, ^2</item>
+        <item quantity="one">\nRicevuto 1 pacchetto, %2$s</item>
+        <item quantity="many">\nRicevuti %1$s di pacchetti, %2$s</item>
+        <item quantity="other">\nRicevuti %1$s pacchetti, %2$s</item>
     </plurals>
 
     <string name="settings_upstream">Upstream</string>
@@ -98,7 +97,7 @@
     <string name="settings_service_upstream_auto">Individua automaticamente VPN del sistema</string>
     <string name="settings_upstream_fallback">Interfaccia fallback upstream</string>
     <string name="settings_upstream_fallback_auto">Individua automaticamente la rete default del sistema</string>
-    <string name="settings_upstream_current_summary">^1 (attuale: ^2)</string>
+    <string name="settings_upstream_current_summary">%1$s (attuale: %2$s)</string>
     <string name="settings_service_clean">Pulisci/riapplica regole di routing</string>
     <string name="settings_service_clean_summary">Aggiorna le impostazioni modificate ai servizi attivi. Può anche sistemare rare
         condizioni.</string>

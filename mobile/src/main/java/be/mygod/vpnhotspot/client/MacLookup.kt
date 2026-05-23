@@ -4,15 +4,16 @@ import android.content.Context
 import android.net.MacAddress
 import android.text.Html
 import androidx.annotation.MainThread
+import androidx.compose.ui.text.AnnotatedString
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.connectCancellable
+import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONException
@@ -53,9 +54,9 @@ object MacLookup {
     fun abort(mac: MacAddress) = macLookupBusy.remove(mac)?.cancel()
 
     @MainThread
-    fun perform(mac: MacAddress, explicit: Boolean = false) {
+    fun perform(scope: CoroutineScope, mac: MacAddress, explicit: Boolean = false) {
         abort(mac)
-        macLookupBusy[mac] = GlobalScope.launch(Dispatchers.Unconfined, CoroutineStart.UNDISPATCHED) {
+        macLookupBusy[mac] = scope.launch(Dispatchers.IO) {
             var response: String? = null
             try {
                 response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
@@ -78,13 +79,12 @@ object MacLookup {
                     val company = vendor.getString("companyName")
                     val match = extractCountry(mac, response, vendor, obj)
                     if (match != null) {
-                        String(match.groupValues[1].flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray()) + ' ' +
-                                company
+                        match.groupValues[1].toRegionalIndicatorFlagOrNull()?.let { "$it $company" } ?: company
                     } else company
                 } else null
                 Timber.d("$mac -> $result")
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
-                    if (result != null) nickname = result
+                    if (result != null) nickname = AnnotatedString(result)
                     macLookupPending = false
                 }
             } catch (_: CancellationException) {

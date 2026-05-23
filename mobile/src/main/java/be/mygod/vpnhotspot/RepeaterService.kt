@@ -414,7 +414,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private fun onLocationModeChanged(enabled: Boolean) = if (enabled) p2pPoller?.cancel() else {
         SmartSnackbar.make(R.string.repeater_location_off).apply {
             action(R.string.repeater_location_off_configure) {
-                it.context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }.show()
         p2pPoller = launch(start = CoroutineStart.UNDISPATCHED) {
@@ -495,7 +495,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
             p2pManager.createGroup(channel, listener)
-        } else @TargetApi(29) {
+        } else {
             p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
                 try {   // bypass networkName check
                     UnblockCentral.WifiP2pConfig_Builder_mNetworkName.set(this, networkName)
@@ -572,7 +572,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         dismissIfApplicable()
         SmartSnackbar.make(msg).apply {
             if (showWifiEnable) action(R.string.repeater_p2p_unavailable_enable) {
-                it.context.startActivity(Intent(Settings.Panel.ACTION_WIFI))
+                startActivity(Intent(Settings.Panel.ACTION_WIFI).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }.show()
         if (group != null) removeGroup() else clean()

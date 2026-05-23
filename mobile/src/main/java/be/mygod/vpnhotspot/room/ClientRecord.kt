@@ -1,16 +1,21 @@
 package be.mygod.vpnhotspot.room
 
 import android.net.MacAddress
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.map
-import androidx.room.*
+import androidx.compose.ui.text.AnnotatedString
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Transaction
 import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toLong
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 @Entity
 data class ClientRecord(@PrimaryKey
                         val mac: MacAddress,
-                        var nickname: CharSequence = "",
+                        var nickname: AnnotatedString = AnnotatedString(""),
                         var blocked: Boolean = false,
                         var macLookupPending: Boolean = true) {
     @androidx.room.Dao
@@ -24,8 +29,8 @@ data class ClientRecord(@PrimaryKey
         suspend fun lookupOrDefault(mac: MacAddress) = lookup(mac) ?: ClientRecord(mac)
 
         @Query("SELECT * FROM `ClientRecord` WHERE `mac` = :mac")
-        protected abstract fun lookupSync(mac: MacAddress): LiveData<ClientRecord?>
-        fun lookupOrDefaultSync(mac: MacAddress) = lookupSync(mac).map { it ?: ClientRecord(mac) }
+        protected abstract fun lookupFlow(mac: MacAddress): Flow<ClientRecord?>
+        fun lookupOrDefaultFlow(mac: MacAddress) = lookupFlow(mac).map { it ?: ClientRecord(mac) }
 
         @Query("SELECT `mac` FROM `ClientRecord` WHERE `blocked`")
         abstract fun observeBlockedMacs(): Flow<List<MacAddress>>

@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
 import android.net.LinkProperties
-import android.net.MacAddress
 import android.net.NetworkRequest
 import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
@@ -17,19 +16,12 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.SpannableStringBuilder
-import android.view.MenuItem
 import androidx.annotation.RequiresExtension
 import androidx.core.i18n.DateTimeFormatter
 import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
-import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.FragmentManager
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.InternalCoroutinesApi
@@ -44,9 +36,8 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.NetworkInterface
-import java.net.SocketException
 import java.net.URL
+import java.util.Locale
 import java.util.concurrent.Executor
 
 tailrec fun Throwable.getRootCause(): Throwable {
@@ -54,6 +45,12 @@ tailrec fun Throwable.getRootCause(): Throwable {
     return this
 }
 val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
+
+fun String.toRegionalIndicatorFlagOrNull(): String? {
+    val code = uppercase(Locale.US)
+    if (code.length != 2 || code.any { it !in 'A'..'Z' }) return null
+    return String(code.flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray())
+}
 
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
@@ -110,24 +107,11 @@ private val dateTimeFormat = DateTimeFormatterSkeletonOptions.Builder(
 fun Context.formatTimestamp(timestamp: Long) = DateTimeFormatter(this, dateTimeFormat,
     resources.configuration.locales[0]).format(timestamp)
 
-fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
-    if (!manager.isStateSaved) show(manager, tag)
-}
-
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
 }
 
 fun intentFilter(vararg actions: String) = IntentFilter().also { actions.forEach(it::addAction) }
-
-fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
-fun <T> Sequence<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
 
 private fun ByteArray.u32(index: Int) =
     (this[index].toInt() shl 24 or
@@ -188,41 +172,6 @@ val InetAddress.isBogon get() = address.let { bytes ->
     }
 }
 
-fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
-    if (!app.hasTouch || ip.isBogon) it else SpannableString(it).apply {
-        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$it"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
-}
-fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://macaddress.io/macaddress/$mac"), 0, length,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-} else mac
-
-fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
-                                      macOverride: MacAddress? = null) = SpannableStringBuilder().apply {
-    var address = macOverride
-    if (address == null && this@formatAddresses != null) try {
-        val hardwareAddress = hardwareAddress
-        address = try {
-            hardwareAddress?.let(MacAddress::fromBytes)
-        } catch (e: IllegalArgumentException) {
-            try {
-                hardwareAddress?.let { MacAddress.fromString(String(it)) }.also { Timber.d(e) }
-            } catch (e2: IllegalArgumentException) {
-                e.addSuppressed(e2)
-                Timber.w(e)
-                null
-            }
-        }
-    } catch (_: SocketException) { }
-    if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
-    if (!macOnly && this@formatAddresses != null) for (address in interfaceAddresses) {
-        append(makeIpSpan(address.address))
-        address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
-        appendLine()
-    }
-}.trimEnd()
-
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")
 val LinkProperties.allInterfaceNames get() = getAllInterfaceNames(this) as List<String>
@@ -242,13 +191,6 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)
     unbindService(connection)
 }
-
-var MenuItem.isNotGone: Boolean
-    get() = isVisible || isEnabled
-    set(value) {
-        isVisible = value
-        isEnabled = value
-    }
 
 fun Resources.findIdentifier(name: String, defType: String, defPackage: String, alternativePackage: String? = null) =
     getIdentifier(name, defType, defPackage).let {

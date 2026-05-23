@@ -2,6 +2,8 @@ package be.mygod.vpnhotspot.client
 
 import android.content.ClipData
 import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.ServiceConnection
 import android.net.LinkAddress
 import android.net.MacAddress
@@ -11,38 +13,62 @@ import android.os.IBinder
 import android.os.Parcelable
 import android.system.OsConstants
 import androidx.annotation.RequiresApi
+import androidx.collection.LongObjectMap
 import androidx.collection.MutableScatterMap
+import androidx.collection.ObjectList
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.coroutineScope
 import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.compose.ui.text.AnnotatedString
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
+import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.room.ClientRecord
+import be.mygod.vpnhotspot.room.ClientStats
+import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiClient
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
+import be.mygod.vpnhotspot.ui.softApClientBlockReasonLabel
+import be.mygod.vpnhotspot.ui.softApClientDisconnectReasonLabel
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.stopAndUnbind
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.net.Inet4Address
 
-class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, WifiApManager.SoftApCallbackCompat,
-    TetherStates.Callback {
+class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver,
+    WifiApManager.SoftApCallbackCompat, TetherStates.Callback {
     companion object {
         private val classTetheredClient by lazy { Class.forName("android.net.TetheredClient") }
         private val getMacAddress by lazy { classTetheredClient.getDeclaredMethod("getMacAddress") }
@@ -54,10 +80,15 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         private val getHostname by lazy { classAddressInfo.getDeclaredMethod("getHostname") }
     }
 
-    data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
+    private data class TetheredClient(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
+    data class TrafficRate(val send: Long = 0, val receive: Long = 0)
+    data class ClientRowState(val client: Client, val record: ClientRecord, val rate: TrafficRate?)
 
+    private val tetherStatesState = MutableStateFlow(TetherStates())
+    val tetherStates = tetherStatesState.asStateFlow()
     private var tetheredInterfaces = emptySet<String>()
     override fun onTetherStatesChanged(states: TetherStates) {
+        tetherStatesState.value = states
         tetheredInterfaces = states.tethered + states.localOnly
         populateClients()
     }
@@ -67,21 +98,68 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var wifiAp = MutableScatterMap<Pair<String, MacAddress>, Unit>()
     private var netlinkSnapshot = NetlinkNeighbour.Snapshot(emptyList(), persistentMapOf())
     private var tetheringClients = MutableScatterMap<MacAddress, TetheredClient>()
-    val clients = MutableLiveData<List<Client>>()
-    val clientsFragmentObserver = object : DefaultLifecycleObserver {
+    private val clientsState = MutableStateFlow<List<Client>>(emptyList())
+    val validClientCount = clientsState.map { clients ->
+        clients.count {
+            it.ip.any { (ip, info) ->
+                ip is Inet4Address && info.state == NeighbourState.NEIGHBOUR_STATE_VALID
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    private val trafficRates = MutableStateFlow<Map<Pair<String?, MacAddress>, TrafficRate>>(emptyMap())
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val clientRows = clientsState.flatMapLatest { clients ->
+        if (clients.isEmpty()) flowOf(emptyList()) else combine(clients.map { client ->
+            AppDatabase.instance.clientRecordDao.lookupOrDefaultFlow(client.mac)
+        }) { records ->
+            clients.zip(records)
+        }.combine(trafficRates) { rows, rates ->
+            rows.map { (client, record) -> ClientRowState(client, record, rates[client.iface to client.mac]) }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private var clientsScreenJob: Job? = null
+    val clientsScreenObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
-            if (Build.VERSION.SDK_INT >= 30) owner.lifecycleScope.launch {
-                try {
-                    RootManager.use {
-                        handleClientsChanged(it.flow(TetheringCommands.RegisterTetheringEventCallback()))
+            clientsScreenJob?.cancel()
+            clientsScreenJob = owner.lifecycle.coroutineScope.launch {
+                if (Build.VERSION.SDK_INT >= 30) {
+                    launch {
+                        try {
+                            RootManager.use {
+                                handleClientsChanged(it.flow(TetheringCommands.RegisterTetheringEventCallback()))
+                            }
+                        } catch (_: CancellationException) {
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            SmartSnackbar.make(e).show()
+                        }
                     }
-                } catch (_: CancellationException) {
-                } catch (e: Exception) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
+                    launch {
+                        TetherType.changes.collect {
+                            populateClients()
+                        }
+                    }
+                }
+                launch {
+                    TrafficRecorder.foregroundUpdates.collect { (newRecords, oldRecords) ->
+                        updateTrafficRates(newRecords, oldRecords)
+                    }
+                }
+                launch(Dispatchers.Default) {
+                    TrafficRecorder.rescheduleUpdate()
                 }
             }
         }
+
+        override fun onStop(owner: LifecycleOwner) {
+            stopClientsScreen()
+        }
+    }
+
+    fun stopClientsScreen() {
+        clientsScreenJob?.cancel()
+        clientsScreenJob = null
     }
 
     private suspend fun handleClientsChanged(
@@ -170,8 +248,60 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         val result = ArrayList<Client>(clients.size)
         clients.forEachValue { result.add(it) }
         result.sortWith(compareBy<Client> { it.iface }.thenBy { it.macString })
-        this.clients.postValue(result)
+        clientsState.value = result
     }
+
+    private fun updateTrafficRates(
+        newRecords: ObjectList<TrafficRecord>,
+        oldRecords: LongObjectMap<TrafficRecord>,
+    ) {
+        val clients = clientsState.value
+        val rates = HashMap<Pair<String?, MacAddress>, TrafficRate>()
+        val rateKeys = MutableScatterMap<Pair<String, MacAddress>, Pair<String?, MacAddress>>()
+        clients.forEach { client ->
+            client.ifaces.forEach { rateKeys[it to client.mac] = client.iface to client.mac }
+        }
+        newRecords.forEach { newRecord ->
+            val oldRecord = oldRecords[newRecord.previousId ?: return@forEach] ?: return@forEach
+            val elapsed = newRecord.timestamp - oldRecord.timestamp
+            if (elapsed == 0L) {
+                if (newRecord.sentPackets != oldRecord.sentPackets || newRecord.sentBytes != oldRecord.sentBytes ||
+                    newRecord.receivedPackets != oldRecord.receivedPackets ||
+                    newRecord.receivedBytes != oldRecord.receivedBytes) {
+                    Timber.w(Exception("Traffic counters changed without elapsed time: old=$oldRecord new=$newRecord"))
+                }
+                return@forEach
+            }
+            val key = rateKeys[newRecord.downstream to newRecord.mac] ?: (newRecord.downstream to newRecord.mac)
+            val rate = rates[key] ?: TrafficRate()
+            rates[key] = TrafficRate(
+                send = rate.send + (newRecord.sentBytes - oldRecord.sentBytes) * 1000 / elapsed,
+                receive = rate.receive + (newRecord.receivedBytes - oldRecord.receivedBytes) * 1000 / elapsed,
+            )
+        }
+        trafficRates.value = rates
+    }
+
+    suspend fun updateNickname(mac: MacAddress, nickname: AnnotatedString) {
+        MacLookup.abort(mac)
+        withContext(Dispatchers.IO) {
+            AppDatabase.instance.clientRecordDao.upsert(mac) {
+                this.nickname = nickname
+            }
+        }
+    }
+
+    suspend fun toggleBlocked(row: ClientRowState) = withContext(Dispatchers.IO) {
+        val wasWorking = TrafficRecorder.isWorking(row.client.mac)
+        AppDatabase.instance.clientRecordDao.update(row.record.copy(blocked = !row.record.blocked))
+        !wasWorking && !row.record.blocked
+    }
+
+    suspend fun queryStats(mac: MacAddress): ClientStats = withContext(Dispatchers.IO) {
+        AppDatabase.instance.trafficRecordDao.queryStats(mac)
+    }
+
+    fun performMacLookup(mac: MacAddress, explicit: Boolean = false) = MacLookup.perform(viewModelScope, mac, explicit)
 
     private fun refreshP2p() {
         val repeater = repeater.value
@@ -180,7 +310,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     override fun onCreate(owner: LifecycleOwner) {
-        owner.lifecycleScope.launch {
+        owner.lifecycle.coroutineScope.launch {
             owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch {
                     NetlinkNeighbour.monitorSnapshots.collect {
@@ -199,12 +329,14 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     override fun onStart(owner: LifecycleOwner) {
+        if (Services.p2p != null) app.bindService(Intent(app, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         TetherStates.registerCallback(this)
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
         if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
         TetherStates.unregisterCallback(this)
+        if (Services.p2p != null) app.stopAndUnbind(this)
     }
 
     override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -236,7 +368,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         val macAddress = client.macAddress
         var name = macAddress.toString()
         client.apInstanceIdentifier?.let { name += "%$it" }
-        val reason = WifiApManager.clientBlockLookup(blockedReason, true)
+        val reason = softApClientBlockReasonLabel(app, blockedReason)
         Timber.i("$name blocked from connecting: $reason ($blockedReason)")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
             action(R.string.tethering_manage_wifi_copy_mac) {
@@ -251,7 +383,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         val macAddress = client.macAddress
         var name = macAddress.toString()
         client.apInstanceIdentifier?.let { name += "%$it" }
-        val reason = WifiApManager.deauthenticationReasonLookup(client.disconnectReason, true)
+        val reason = softApClientDisconnectReasonLabel(app, client.disconnectReason)
         Timber.i("$client disconnected: $reason")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_disconnected, name, reason)).apply {
             action(R.string.tethering_manage_wifi_copy_mac) {

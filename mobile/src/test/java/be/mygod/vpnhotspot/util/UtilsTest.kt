@@ -1,11 +1,22 @@
 package be.mygod.vpnhotspot.util
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.net.InetAddress
 
 class UtilsTest {
+    @Test
+    fun formatsRegionalIndicatorFlags() {
+        val us = String(charArrayOf('\uD83C', '\uDDFA', '\uD83C', '\uDDF8'))
+        assertEquals(us, "US".toRegionalIndicatorFlagOrNull())
+        assertEquals(us, "us".toRegionalIndicatorFlagOrNull())
+        assertNull("00".toRegionalIndicatorFlagOrNull())
+        assertNull("USA".toRegionalIndicatorFlagOrNull())
+    }
+
     @Test
     fun detectsIpv4Bogons() {
         for (address in listOf(

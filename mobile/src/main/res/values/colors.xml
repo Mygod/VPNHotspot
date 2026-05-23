@@ -4,6 +4,4 @@
     <color name="dark_colorPrimary">#2e7d32</color>
 
     <color name="colorPrimary">@color/light_colorPrimary</color>
-    <color name="colorPrimaryDark">#087f23</color>
-    <color name="colorSecondary">#AEEA00</color>
 </resources>

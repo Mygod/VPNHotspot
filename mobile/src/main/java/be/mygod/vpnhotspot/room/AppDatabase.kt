@@ -7,8 +7,8 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import be.mygod.vpnhotspot.App.Companion.app
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 
 @Database(entities = [ClientRecord::class, TrafficRecord::class], version = 2)
 @TypeConverters(Converters::class)
@@ -21,7 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
                 addMigrations(
                         Migration2
                 )
-                setQueryExecutor { GlobalScope.launch { it.run() } }
+                setQueryExecutor(Dispatchers.IO.asExecutor())
             }.build()
         }
     }
