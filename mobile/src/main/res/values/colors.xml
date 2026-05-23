@@ -4,4 +4,5 @@
     <color name="dark_colorPrimary">#2e7d32</color>
 
     <color name="colorPrimary">@color/light_colorPrimary</color>
+    <color name="splash_screen_background">#FEF7FF</color>
 </resources>
