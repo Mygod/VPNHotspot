@@ -190,34 +190,6 @@ fun ApConfigurationScreen(
                     }
                 }
             }
-            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
-                row(R.string.wifi_bridged_mode_opportunistic_shutdown) {
-                    TextSwitchApRow(
-                        icon = R.drawable.ic_auto_timer,
-                        title = R.string.wifi_bridged_mode_opportunistic_shutdown,
-                        valueTitle = R.string.wifi_hotspot_timeout_bridged,
-                        checked = state.bridgedModeOpportunisticShutdown,
-                        value = state.bridgedTimeout,
-                        valueReadOnly = Build.VERSION.SDK_INT < 33,
-                        summary = annotatedStringResource(
-                            R.string.wifi_bridged_mode_opportunistic_shutdown_help,
-                            timeoutSummary(context, state.bridgedTimeout, defaultBridgedTimeout),
-                        ),
-                        description = annotatedStringResource(
-                            R.string.wifi_hotspot_timeout_bridged_help,
-                            formatTimeoutMillis(context, defaultBridgedTimeout),
-                        ),
-                        keyboardType = KeyboardType.Number,
-                        maxLength = 19,
-                        placeholder = defaultBridgedTimeout.toString(),
-                        suffix = "ms",
-                        validator = { value ->
-                            validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
-                        },
-                        onCheckedChange = { state.bridgedModeOpportunisticShutdown = it },
-                    ) { state.bridgedTimeout = it }
-                }
-            }
         }
         preferenceGroup(title = R.string.wifi_hotspot_ap_band_title) {
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 &&
@@ -257,6 +229,34 @@ fun ApConfigurationScreen(
             }
             state.channelError?.let {
                 contentItem("channel_error") { ErrorApText(it, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
+            }
+            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
+                row(R.string.wifi_bridged_mode_opportunistic_shutdown) {
+                    TextSwitchApRow(
+                        icon = R.drawable.ic_auto_timer,
+                        title = R.string.wifi_bridged_mode_opportunistic_shutdown,
+                        valueTitle = R.string.wifi_hotspot_timeout_bridged,
+                        checked = state.bridgedModeOpportunisticShutdown,
+                        value = state.bridgedTimeout,
+                        valueReadOnly = Build.VERSION.SDK_INT < 33,
+                        summary = annotatedStringResource(
+                            R.string.wifi_bridged_mode_opportunistic_shutdown_help,
+                            timeoutSummary(context, state.bridgedTimeout, defaultBridgedTimeout),
+                        ),
+                        description = annotatedStringResource(
+                            R.string.wifi_hotspot_timeout_bridged_help,
+                            formatTimeoutMillis(context, defaultBridgedTimeout),
+                        ),
+                        keyboardType = KeyboardType.Number,
+                        maxLength = 19,
+                        placeholder = defaultBridgedTimeout.toString(),
+                        suffix = "ms",
+                        validator = { value ->
+                            validateOptionalLong(value, SoftApConfigurationCompat::testPlatformBridgedTimeoutValidity)
+                        },
+                        onCheckedChange = { state.bridgedModeOpportunisticShutdown = it },
+                    ) { state.bridgedTimeout = it }
+                }
             }
             if (!state.p2pMode && Build.VERSION.SDK_INT >= 33) {
                 row(R.string.wifi_hotspot_acs_channel_2g) {
