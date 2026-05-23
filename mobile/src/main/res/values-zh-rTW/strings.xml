@@ -55,8 +55,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">模式不相容</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">已禁止網路共用</string>
 
-    <string name="tethering_monitor">監控…</string>
-    <string name="tethering_state_monitored">%s（監控中）</string>
+    <string name="tethering_watch_reconnect">監控重新連線</string>
 
     <string name="tethering_manage">系統網路共用管理…</string>
     <string name="tethering_manage_offload_enabled">若 VPN 網路共用無法運作，請在「開發人員選項」中關閉「網路共用硬體加速」。</string>

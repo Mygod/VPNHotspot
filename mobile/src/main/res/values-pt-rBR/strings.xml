@@ -41,8 +41,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">modo incompatível</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering não permitido</string>
 
-    <string name="tethering_monitor">Monitor…</string>
-    <string name="tethering_state_monitored">%s (monitorado)</string>
+    <string name="tethering_watch_reconnect">Monitorar reconexão</string>
 
     <string name="tethering_manage">Gerenciar tethering do sistema…</string>
     <string name="tethering_manage_offload_enabled">Por favor, desative a Aceleração de hardware de tethering nas configurações de desenvolvedor caso o VPN Hotspot não funcionar corretamente.</string>

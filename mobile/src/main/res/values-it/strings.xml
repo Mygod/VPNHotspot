@@ -44,8 +44,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">modalità incompatibile</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering non permesso</string>
 
-    <string name="tethering_monitor">Monitora…</string>
-    <string name="tethering_state_monitored">%s (monitorato)</string>
+    <string name="tethering_watch_reconnect">Controlla riconnessione</string>
 
     <string name="tethering_manage">Gestisci il tethering del sistema…</string>
     <string name="tethering_manage_offload_enabled">Per favore disabilita l\'accelerazione hardware tethering nelle opzioni sviluppatore

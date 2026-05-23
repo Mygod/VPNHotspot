@@ -23,8 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -177,9 +175,6 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     }
     val temporaryHotspotConfiguration by (localOnlyBinder?.configuration)?.collectAsStateWithLifecycle(null)
         ?: remember { mutableStateOf<SoftApConfigurationCompat?>(null) }
-    val monitorableIfaces = remember(tetherStates, tetheringServiceState.monitoredIfaces) {
-        (tetherStates.tethered - tetheringServiceState.monitoredIfaces).sorted()
-    }
     val applyApConfiguration: (suspend (SoftApConfigurationCompat) -> Boolean)? = when (savedApSession?.target) {
         ApConfigurationTarget.System -> {
             { config: SoftApConfigurationCompat -> applySystemApConfiguration(config, snackbarHostState) }
@@ -235,15 +230,6 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                     validClientCount = validClientCount,
                     snackbarHostState = snackbarHostState,
                     showSnackbarHost = route == RootDestination.Tethering.route,
-                    actions = {
-                        TetheringActions(
-                            monitorableIfaces = monitorableIfaces,
-                            onMonitorInterface = { iface ->
-                                appContext.startForegroundService(Intent(appContext, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
-                            },
-                        )
-                    },
                 ) {
                     TetheringScreen(
                         snackbarHostState,
@@ -565,30 +551,4 @@ private fun NavIcon(@DrawableRes icon: Int, description: String) {
         painter = painterResource(icon),
         contentDescription = description,
     )
-}
-
-@Composable
-private fun TetheringActions(
-    monitorableIfaces: List<String>,
-    onMonitorInterface: (String) -> Unit,
-) {
-    var monitorExpanded by remember { mutableStateOf(false) }
-    if (monitorableIfaces.isNotEmpty()) {
-        val tooltip = stringResource(R.string.tethering_monitor)
-        TooltipIconButton(
-            tooltip = tooltip,
-            onClick = { monitorExpanded = true },
-        ) {
-            NavIcon(R.drawable.ic_monitoring, tooltip)
-        }
-        DropdownMenu(expanded = monitorExpanded, onDismissRequest = { monitorExpanded = false }) {
-            for (iface in monitorableIfaces) DropdownMenuItem(
-                text = { Text(iface) },
-                onClick = {
-                    monitorExpanded = false
-                    onMonitorInterface(iface)
-                },
-            )
-        }
-    }
 }

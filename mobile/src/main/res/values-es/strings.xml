@@ -56,8 +56,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">modo incompatible</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">conexión compartida no permitida</string>
 
-    <string name="tethering_monitor">Monitor…</string>
-    <string name="tethering_state_monitored">%s (monitorizado)</string>
+    <string name="tethering_watch_reconnect">Vigilar reconexión</string>
 
     <string name="tethering_manage">Administrar conexión compartida del sistema…</string>
     <string name="tethering_manage_offload_enabled">Por favor, desactiva la aceleración por hardware para la conexión compartida en las opciones de desarrollador si la conexión compartida del VPN no funciona.</string>

@@ -29,6 +29,7 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
         const val EXTRA_ADD_INTERFACES_MONITOR = "interface.adds.monitor"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
+        const val EXTRA_REMOVE_INTERFACE_MONITOR = "interface.remove.monitor"
 
         var dismissHandle: TileServiceDismissHandle? = null
         private fun dismissIfApplicable() = dismissHandle?.run {
@@ -183,6 +184,12 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                     if (downstreamToStart?.start() == false) dismissIfApplicable()
                 }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
+                intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
+                    downstreams[iface]?.also { downstream ->
+                        downstream.monitor = false
+                        if (!downstream.started) downstreams.remove(iface)?.stop()
+                    }
+                }
                 onDownstreamsChangedLocked()
             } else if (downstreams.isEmpty()) stopSelf(startId)
         }

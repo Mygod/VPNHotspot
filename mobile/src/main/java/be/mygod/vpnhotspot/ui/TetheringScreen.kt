@@ -292,28 +292,50 @@ fun TetheringScreen(
                     onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
                 )
             }
-            for (iface in interfaceIfaces) {
-                row(key = iface) {
-                    val active = managed.contains(iface)
-                    val title = if (monitored.contains(iface)) {
-                        stringResource(R.string.tethering_state_monitored, iface)
-                    } else iface
-                    TetheringRow(
-                        icon = TetherType.ofInterface(iface).icon,
-                        title = title,
-                        summary = networkInterfaceAddressesText(
-                            ifaceLookup[iface],
-                            linkStyles,
-                            macOnly = inactive.contains(iface),
-                        ),
-                        checked = active,
-                        onClick = {
-                            if (active) context.startService(Intent(context, TetheringService::class.java)
-                                .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
-                            else context.startForegroundService(Intent(context, TetheringService::class.java)
-                                .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
-                        },
-                    )
+        }
+        for (iface in interfaceIfaces) {
+            item(key = "interface_$iface") {
+                val active = managed.contains(iface)
+                val watch = monitored.contains(iface)
+                val ifaceInactive = inactive.contains(iface)
+                val vpnTethering = active && !ifaceInactive
+                PreferenceGroup {
+                    row("vpn_tethering") {
+                        TetheringRow(
+                            icon = TetherType.ofInterface(iface).icon,
+                            title = iface,
+                            summary = networkInterfaceAddressesText(
+                                ifaceLookup[iface],
+                                linkStyles,
+                                macOnly = ifaceInactive,
+                            ),
+                            checked = vpnTethering,
+                            enabled = !ifaceInactive,
+                            onClick = {
+                                if (active) context.startService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
+                                else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
+                            },
+                        )
+                    }
+                    if (vpnTethering || watch) row("watch_reconnect") {
+                        PreferenceRow(
+                            title = stringResource(R.string.tethering_watch_reconnect),
+                            trailing = {
+                                PreferenceSwitch(
+                                    checked = watch,
+                                    onCheckedChange = null,
+                                )
+                            },
+                            onClick = {
+                                if (watch) context.startService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
+                                else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
+                            },
+                        )
+                    }
                 }
             }
         }

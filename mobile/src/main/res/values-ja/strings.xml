@@ -53,8 +53,7 @@
     <string name="tethering_temp_hotspot_failure_generic">一般的なエラー</string>
     <string name="tethering_temp_hotspot_failure_incompatible_mode">非互換モード</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">テザリングは許可されていません</string>
-    <string name="tethering_monitor">監視…</string>
-    <string name="tethering_state_monitored">%s (監視済み)</string>
+    <string name="tethering_watch_reconnect">再接続を監視</string>
     <string name="tethering_manage">システムのテザリングを管理…</string>
     <string name="tethering_manage_offload_enabled">VPN テザリングが機能しない場合は、開発者オプションから
         テザリング時のハードウェア アクセラレーションを無効化してください</string>

@@ -67,8 +67,7 @@
     <string name="tethering_temp_hotspot_failure_incompatible_mode">incompatible mode</string>
     <string name="tethering_temp_hotspot_failure_tethering_disallowed">tethering disallowed</string>
 
-    <string name="tethering_monitor">Monitor…</string>
-    <string name="tethering_state_monitored">%s (monitored)</string>
+    <string name="tethering_watch_reconnect">Watch for reconnect</string>
 
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
