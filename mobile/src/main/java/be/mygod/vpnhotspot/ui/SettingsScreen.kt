@@ -13,9 +13,11 @@ import android.os.ext.SdkExtensions
 import android.text.Html
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -477,6 +480,7 @@ private fun TextPreferenceRow(
             title = { Text(stringResource(title)) },
             text = {
                 val menuExpanded = suggestionsExpanded && filteredSuggestions.isNotEmpty()
+                val menuScrollState = rememberScrollState()
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         text = description,
@@ -509,6 +513,12 @@ private fun TextPreferenceRow(
                         ExposedDropdownMenu(
                             expanded = menuExpanded,
                             onDismissRequest = { suggestionsExpanded = false },
+                            modifier = Modifier.scrollbar(
+                                state = menuScrollState.scrollIndicatorState,
+                                orientation = Orientation.Vertical,
+                                isFadeEnabled = false,
+                            ),
+                            scrollState = menuScrollState,
                         ) {
                             for (suggestion in filteredSuggestions) DropdownMenuItem(
                                 text = { Text(suggestion) },

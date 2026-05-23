@@ -17,18 +17,23 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
@@ -126,7 +131,13 @@ fun TetheringScreen(
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
     var staticIpDraft by rememberSaveable { mutableStateOf<String?>(null) }
-    var staticIpDraftText by rememberTextFieldValueAtEnd(staticIpDraft.orEmpty(), staticIpDraft != null)
+    val staticIpDraftText = rememberSaveable(
+        staticIpDraft.orEmpty(),
+        staticIpDraft != null,
+        saver = TextFieldState.Saver,
+    ) {
+        TextFieldState(staticIpDraft.orEmpty())
+    }
     var wpsDialog by rememberSaveable { mutableStateOf(false) }
     var wpsPin by rememberTextFieldValueAtEnd("", wpsDialog)
     val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
@@ -419,25 +430,34 @@ fun TetheringScreen(
             },
             title = { Text(stringResource(R.string.tethering_static_ip)) },
             text = {
+                val scrollState = rememberScrollState()
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         text = stringResource(R.string.tethering_static_ip_help),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     OutlinedTextField(
-                        value = staticIpDraftText,
-                        onValueChange = { staticIpDraftText = it },
+                        state = staticIpDraftText,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester),
+                            .focusRequester(focusRequester)
+                            .scrollbar(
+                                state = scrollState.scrollIndicatorState,
+                                orientation = Orientation.Vertical,
+                                isFadeEnabled = false,
+                            ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                        minLines = 2,
+                        lineLimits = TextFieldLineLimits.MultiLine(
+                            minHeightInLines = 2,
+                            maxHeightInLines = 2,
+                        ),
+                        scrollState = scrollState,
                     )
                 }
             },
             confirmButton = {
                 DialogConfirmButton(onClick = {
-                    StaticIpSetter.ips = staticIpDraftText.text.trim()
+                    StaticIpSetter.ips = staticIpDraftText.text.toString().trim()
                     staticIpDraft = null
                 }) {
                     Text(stringResource(android.R.string.ok))

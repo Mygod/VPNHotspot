@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.os.Build
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -11,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,6 +86,7 @@ private fun MacAddressApDialog(
                 persistentRandomizedMacVisible &&
                         draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_PERSISTENT,
             )
+            val scrollState = rememberScrollState()
             val bssidField: @Composable () -> Unit = {
                 OutlinedTextField(
                     value = draftBssid,
@@ -100,7 +103,13 @@ private fun MacAddressApDialog(
                 )
             }
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier
+                    .scrollbar(
+                        state = scrollState.scrollIndicatorState,
+                        orientation = Orientation.Vertical,
+                        isFadeEnabled = false,
+                    )
+                    .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(

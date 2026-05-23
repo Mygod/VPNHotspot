@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 import android.net.wifi.SoftApConfiguration
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -12,11 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -90,15 +93,22 @@ private fun ChannelApSheet(
         })
     }
     VpnHotspotModalBottomSheet(onDismissRequest = onDismissRequest) {
+        val state = rememberLazyListState()
         Text(
             text = title,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             style = MaterialTheme.typography.titleLarge,
         )
         LazyColumn(
+            state = state,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false),
+                .weight(1f, fill = false)
+                .scrollbar(
+                    state = state.scrollIndicatorState,
+                    orientation = Orientation.Vertical,
+                    isFadeEnabled = false,
+                ),
             contentPadding = modalBottomSheetListContentPadding(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

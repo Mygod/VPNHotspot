@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -21,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -209,6 +213,7 @@ private fun ClientRow(
                 "${'\u25BC'} ${Formatter.formatFileSize(context, rate.receive)}/s"
     }
     var expanded by remember { mutableStateOf(false) }
+    val menuScrollState = rememberScrollState()
     var editingNickname by rememberSaveable(client.mac.toString()) { mutableStateOf(false) }
     var statsSheet by remember { mutableStateOf<ClientStats?>(null) }
     val scope = rememberCoroutineScope()
@@ -223,7 +228,16 @@ private fun ClientRow(
             blocked = record.blocked,
             onClick = { expanded = true },
         )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.scrollbar(
+                state = menuScrollState.scrollIndicatorState,
+                orientation = Orientation.Vertical,
+                isFadeEnabled = false,
+            ),
+            scrollState = menuScrollState,
+        ) {
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.clients_popup_nickname)) },
                 leadingIcon = { MenuItemIcon(R.drawable.ic_edit) },
@@ -316,6 +330,7 @@ private fun ClientRow(
     }
     statsSheet?.let { stats ->
         VpnHotspotModalBottomSheet(onDismissRequest = { statsSheet = null }) {
+            val state = rememberLazyListState()
             val titlePlaceholder = "\uFFFC"
             val titleText = stringResource(R.string.clients_stats_title, titlePlaceholder)
             val titlePlaceholderIndex = titleText.indexOf(titlePlaceholder)
@@ -336,9 +351,15 @@ private fun ClientRow(
                 style = MaterialTheme.typography.titleLarge,
             )
             LazyColumn(
+                state = state,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f, fill = false),
+                    .weight(1f, fill = false)
+                    .scrollbar(
+                        state = state.scrollIndicatorState,
+                        orientation = Orientation.Vertical,
+                        isFadeEnabled = false,
+                    ),
                 contentPadding = modalBottomSheetListContentPadding(),
             ) {
                 item("stats") {

@@ -2,15 +2,22 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +36,6 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitSwitch
 import be.mygod.vpnhotspot.ui.PreferenceSwitch
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
-import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
 @Composable
 fun TextSwitchApRow(
@@ -53,8 +59,11 @@ fun TextSwitchApRow(
     onValueChange: (String) -> Unit,
 ) {
     var editing by rememberSaveable(value) { mutableStateOf(false) }
-    var draft by rememberTextFieldValueAtEnd(value, editing)
-    val error = validator(draft.text)
+    val draft = rememberSaveable(value, editing, saver = TextFieldState.Saver) {
+        TextFieldState(value)
+    }
+    val text = draft.text.toString()
+    val error = validator(text)
     PreferenceRow(
         icon = icon,
         title = stringResource(title),
@@ -95,30 +104,44 @@ fun TextSwitchApRow(
             },
             text = {
                 val focusRequester = rememberDialogFocusRequester(fieldEnabled)
+                val multiline = minLines > 1
+                val scrollState = rememberScrollState()
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         text = description,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     OutlinedTextField(
-                        value = draft,
-                        onValueChange = { draft = maxLength?.let(it::takeText) ?: it },
+                        state = draft,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focusRequester),
+                            .focusRequester(focusRequester)
+                            .then(
+                                if (multiline) {
+                                    Modifier.scrollbar(
+                                        state = scrollState.scrollIndicatorState,
+                                        orientation = Orientation.Vertical,
+                                        isFadeEnabled = false,
+                                    )
+                                } else Modifier
+                            ),
                         enabled = fieldEnabled,
+                        inputTransformation = maxLength?.let { InputTransformation.maxLength(it) },
                         label = { Text(stringResource(valueTitle)) },
                         keyboardOptions = keyboardOptions,
                         placeholder = placeholder?.let { { Text(it) } },
-                        singleLine = minLines == 1,
-                        minLines = minLines,
+                        lineLimits = if (multiline) TextFieldLineLimits.MultiLine(
+                            minHeightInLines = minLines,
+                            maxHeightInLines = minLines,
+                        ) else TextFieldLineLimits.SingleLine,
+                        scrollState = scrollState,
                         isError = fieldEnabled && error != null,
                         suffix = suffix?.let { { Text(it) } },
                         supportingText = if ((fieldEnabled && error != null) || maxLength != null) {
                             {
                                 Column {
                                     if (fieldEnabled) error?.let { ErrorApText(it) }
-                                    maxLength?.let { Text("${draft.text.length}/$it") }
+                                    maxLength?.let { Text("${text.length}/$it") }
                                 }
                             }
                         } else null,
@@ -129,7 +152,7 @@ fun TextSwitchApRow(
                 DialogConfirmButton(
                     enabled = !fieldEnabled || error == null,
                     onClick = {
-                        if (fieldEnabled) onValueChange(draft.text)
+                        if (fieldEnabled) onValueChange(text)
                         editing = false
                     },
                 ) {
