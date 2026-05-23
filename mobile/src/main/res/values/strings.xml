@@ -1,21 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
- Values copied from:
-   https://android.googlesource.com/platform/packages/apps/Settings/+/7686ef8/res/xml/tether_prefs.xml
-   https://android.googlesource.com/platform/packages/apps/Settings/+/37c9c5b/res/values/strings.xml
-    * @string/usb_tethering_button_text
-    * @string/wifi_hotspot_checkbox_text
-    * @string/bluetooth_tether_checkbox_text
-    * @string/ethernet_tether_checkbox_text
-    * @string/wifi_ap_choose_auto
-    * @string/wifi_ap_choose_2G
-    * @string/wifi_ap_choose_5G
-    * @string/wifi_advanced_mac_address_title
-    * @string/wifi_hidden_network
-   https://android.googlesource.com/platform/frameworks/base/+/f41fdc9/packages/SystemUI/res/values/strings.xml#874
-    * @plurals/quick_settings_hotspot_secondary_label_num_devices
-  -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="app_name">VPN Hotspot</string>
     <string name="title_repeater">Repeater</string>
     <string name="title_tethering">Tethering</string>
@@ -373,7 +357,7 @@
     <string name="wifi_hotspot_acs_channel_2g">Allowed 2.4 GHz ACS channels</string>
     <string name="wifi_hotspot_acs_channel_5g">Allowed 5 GHz ACS channels</string>
     <string name="wifi_hotspot_acs_channel_6g">Allowed 6 GHz ACS channels</string>
-    <string name="wifi_hotspot_acs_channel_help">Channel numbers allowed for Automatic Channel Selection in this band. Enter comma-separated channels or ranges, such as &lt;tt&gt;1,6,11&lt;/tt&gt; or &lt;tt&gt;36-48,149-161&lt;/tt&gt;. Leave empty to allow all channels in the band. Requires ACS offload support; otherwise Android ignores this setting.</string>
+    <string name="wifi_hotspot_acs_channel_help" tools:ignore="TypographyDashes">Channel numbers allowed for Automatic Channel Selection in this band. Enter comma-separated channels or ranges, such as &lt;tt&gt;1,6,11&lt;/tt&gt; or &lt;tt&gt;36-48,149-161&lt;/tt&gt;. Leave empty to allow all channels in the band. Requires ACS offload support; otherwise Android ignores this setting.</string>
     <string name="wifi_hotspot_max_channel_bandwidth">Maximum channel bandwidth</string>
     <string name="wifi_hotspot_max_channel_bandwidth_help">Caps Soft AP channel bandwidth. Auto lets Android use the maximum bandwidth achievable on the device.</string>
     <string name="wifi_channel_width_auto">Auto</string>

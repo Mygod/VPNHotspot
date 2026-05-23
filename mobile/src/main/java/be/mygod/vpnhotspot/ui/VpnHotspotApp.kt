@@ -12,6 +12,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -217,7 +218,9 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
         NavHost(
             navController = navController,
             startDestination = RootDestination.Tethering.route,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
             enterTransition = { fadeIn(navFadeSpec) },
             exitTransition = { fadeOut(navFadeSpec) },
             popEnterTransition = { fadeIn(navFadeSpec) },
