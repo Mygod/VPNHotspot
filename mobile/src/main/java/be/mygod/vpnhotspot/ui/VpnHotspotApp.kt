@@ -46,6 +46,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -223,6 +224,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             popExitTransition = { fadeOut(navFadeSpec) },
         ) {
             composable(RootDestination.Tethering.route) {
+                var tetheringInterfaceRefreshVersion by remember { mutableIntStateOf(0) }
                 RootDestinationScaffold(
                     title = R.string.app_name,
                     selectedDestination = RootDestination.Tethering,
@@ -230,6 +232,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                     validClientCount = validClientCount,
                     snackbarHostState = snackbarHostState,
                     showSnackbarHost = route == RootDestination.Tethering.route,
+                    onReselect = { tetheringInterfaceRefreshVersion++ },
                 ) {
                     TetheringScreen(
                         snackbarHostState,
@@ -237,6 +240,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                         localOnlyBinder,
                         tetherStates,
                         tetheringServiceState,
+                        interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
                         onConfigureRepeater = {
                             if (!apConfigurationLoading) {
                                 apConfigurationLoading = true
@@ -375,11 +379,13 @@ private fun RootDestinationScaffold(
     snackbarHostState: SnackbarHostState,
     showSnackbarHost: Boolean,
     actions: @Composable RowScope.() -> Unit = {},
+    onReselect: () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
     val navigateToRoot: (RootDestination) -> Unit = { destination ->
+        if (destination == selectedDestination) onReselect()
         navController.navigate(destination.route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = true

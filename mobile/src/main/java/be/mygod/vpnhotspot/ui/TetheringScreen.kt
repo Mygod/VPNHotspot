@@ -106,6 +106,7 @@ fun TetheringScreen(
     localOnlyBinder: LocalOnlyHotspotService.Binder?,
     tetherStates: TetherStates,
     tetheringServiceState: TetheringServiceState,
+    interfaceRefreshVersion: Int = 0,
     onConfigureRepeater: () -> Unit,
     onConfigureTemporaryHotspot: (() -> Unit)?,
     onConfigureAp: () -> Unit,
@@ -131,7 +132,13 @@ fun TetheringScreen(
     val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
     val manageOffloadEnabled = if (inspectionMode) false else remember(manageBarVersion) { ManageBar.offloadEnabled }
-    val ifaceLookup = remember(tetherStates, tetheringServiceState, localOnlyIface, repeaterGroup) {
+    val ifaceLookup = remember(
+        tetherStates,
+        tetheringServiceState,
+        localOnlyIface,
+        repeaterGroup,
+        interfaceRefreshVersion,
+    ) {
         networkInterfaceLookup()
     }
     val monitored = tetheringServiceState.monitoredIfaces
