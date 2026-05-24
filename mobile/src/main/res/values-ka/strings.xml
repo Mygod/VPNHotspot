@@ -63,7 +63,8 @@
     <item quantity="other">%1$s კლიენტი დაკავშირებულია</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nმხარდაჭერილი არხები:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nდრაივერის ქვეყნის კოდი: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">დრაივერის ქვეყნის კოდი: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">მომწოდებლის მონაცემები:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">შემთხვევითი AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ხიდური AP ერთდროულობა</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ერთდროულობა</string>

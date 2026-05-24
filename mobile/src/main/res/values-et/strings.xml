@@ -63,7 +63,8 @@
     <item quantity="other">%1$s klienti ühendatud</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nToetatud kanalid:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nDraiveri riigikood: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Draiveri riigikood: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Tootjaandmed:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">juhuslik AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">sillatud AP samaaegsus</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP samaaegsus</string>

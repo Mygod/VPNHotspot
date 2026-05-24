@@ -63,7 +63,8 @@
     <item quantity="other">%1$s ਕਲਾਇੰਟ ਕਨੈਕਟ ਹਨ</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nਸਮਰਥਿਤ ਚੈਨਲ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nਡਰਾਈਵਰ ਦੇਸ਼ ਕੋਡ: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ਡਰਾਈਵਰ ਦੇਸ਼ ਕੋਡ: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ਵੇਂਡਰ ਡਾਟਾ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ਰੈਂਡਮ AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ਬ੍ਰਿਜਡ AP ਸਮਕਾਲੀਤਾ</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ਸਮਕਾਲੀਤਾ</string>

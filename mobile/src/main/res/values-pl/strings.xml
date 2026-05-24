@@ -65,7 +65,8 @@
     <item quantity="many">%1$s klientów połączonych</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nObsługiwane kanały:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nKod kraju sterownika: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Kod kraju sterownika: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Dane producenta:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">losowy MAC punktu AP</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">równoczesność mostkowanego AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">równoczesność STA + AP</string>

@@ -64,7 +64,8 @@
     <item quantity="other">%1$s клиента са свързани</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nПоддържани канали:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nКод на държава на драйвера: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Код на държава на драйвера: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Данни на доставчика:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">случаен MAC на AP</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">едновременност на мостови AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">едновременност STA + AP</string>

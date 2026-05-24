@@ -63,7 +63,8 @@
     <item quantity="other">%1$s amaklayenti axhunyiwe</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nIziteshi ezisekelwayo:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nIkhodi yezwe yomshayeli: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Ikhodi yezwe yomshayeli: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Idatha yomkhiqizi:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">i-AP MAC engahleliwe</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ukuhambisana kwe-AP ebhulojiwe</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">ukuhambisana kwe-STA + AP</string>

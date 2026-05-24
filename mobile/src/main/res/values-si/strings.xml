@@ -63,7 +63,8 @@
     <item quantity="other">%1$s සේවාලාභීන් සම්බන්ධයි</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nසහාය දක්වන නාලිකා:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nධාවක රට කේතය: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ධාවක රට කේතය: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">නිෂ්පාදක දත්ත:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">අහඹු AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">bridge කළ AP සමකාලීනතාව</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP සමකාලීනතාව</string>

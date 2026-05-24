@@ -62,7 +62,8 @@
     <item quantity="other">%1$s ကလိုင်းယင့်များ ချိတ်ဆက်ထားသည်</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nပံ့ပိုးထားသော ချန်နယ်များ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nဒရိုင်ဘာ နိုင်ငံကုဒ်: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ဒရိုင်ဘာ နိုင်ငံကုဒ်: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ထုတ်လုပ်သူဒေတာ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ကျပန်း AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">bridge လုပ်ထားသော AP ပြိုင်တူလုပ်ဆောင်မှု</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ပြိုင်တူလုပ်ဆောင်မှု</string>

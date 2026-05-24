@@ -63,7 +63,8 @@
     <item quantity="other">%1$s ക്ലയന്റുകൾ കണക്റ്റുചെയ്തു</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nപിന്തുണയുള്ള ചാനലുകൾ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nഡ്രൈവർ രാജ്യ കോഡ്: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ഡ്രൈവർ രാജ്യ കോഡ്: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">വെൻഡർ ഡാറ്റ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ക്രമരഹിത AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ബ്രിഡ്ജ് ചെയ്ത AP സമകാലികത</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP സമകാലികത</string>

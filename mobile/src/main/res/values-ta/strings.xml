@@ -63,7 +63,8 @@
     <item quantity="other">%1$s கிளையண்டுகள் இணைக்கப்பட்டன</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nஆதரிக்கப்படும் சேனல்கள்:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nஇயக்கி நாட்டுக் குறியீடு: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">இயக்கி நாட்டுக் குறியீடு: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">விற்பனையாளர் தரவு:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">சீரற்ற AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">bridge செய்யப்பட்ட AP ஒரேநேர செயல்</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ஒரேநேர செயல்</string>

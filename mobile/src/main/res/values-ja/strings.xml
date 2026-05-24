@@ -80,7 +80,8 @@
     <item quantity="other">%1$s 個のクライアントが接続済み</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\n対応チャンネル:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nドライバ国コード: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ドライバ国コード: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ベンダーデータ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ランダム化 AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ブリッジ AP の同時実行</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP の同時実行</string>

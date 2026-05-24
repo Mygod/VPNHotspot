@@ -63,7 +63,8 @@
     <item quantity="other">%1$s кардар туташты</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nКолдоого алынган каналдар:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nДрайвердин өлкө коду: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Драйвердин өлкө коду: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Өндүрүүчү маалыматтары:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">кокустук AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">көпүрөлөнгөн AP параллелдүүлүгү</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP параллелдүүлүгү</string>

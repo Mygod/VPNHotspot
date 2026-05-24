@@ -65,7 +65,8 @@
     <item quantity="zero">%1$s klienti pievienoti</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nAtbalstītie kanāli:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nDraivera valsts kods: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Draivera valsts kods: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Ražotāja dati:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">nejauša AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">tiltota AP vienlaicīgums</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP vienlaicīgums</string>

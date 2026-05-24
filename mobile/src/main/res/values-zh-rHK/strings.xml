@@ -62,7 +62,8 @@
     <item quantity="other">%1$s 個用戶端已連線</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\n支援的頻道:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\n驅動程式國家/地區代碼: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">驅動程式國家/地區代碼: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">廠商資料:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">隨機 AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">橋接 AP 並行</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP 並行</string>

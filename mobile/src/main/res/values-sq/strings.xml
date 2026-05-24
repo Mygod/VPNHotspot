@@ -62,7 +62,8 @@
     <item quantity="other">%1$s klientë të lidhur</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nKanalet e mbështetura:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nKodi i shtetit i drejtuesit: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Kodi i shtetit i drejtuesit: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Të dhëna prodhuesi:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP i rastësishëm</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">bashkëkohësi AP me urë</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">bashkëkohësi STA + AP</string>

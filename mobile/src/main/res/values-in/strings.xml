@@ -61,7 +61,8 @@
     <item quantity="other">%1$s klien tersambung</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nKanal yang didukung:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nKode negara driver: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Kode negara driver: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Data vendor:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP acak</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">konkurensi AP terjembatani</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">konkurensi STA + AP</string>

@@ -63,7 +63,8 @@
     <item quantity="other">%1$s asiakasta yhdistetty</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nTuetut kanavat:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nAjurin maakoodi: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Ajurin maakoodi: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Valmistajatiedot:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">satunnaistettu AP:n MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">silloitetun AP:n samanaikaisuus</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP samanaikaisuus</string>

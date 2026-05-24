@@ -65,7 +65,8 @@
     <item quantity="two">%1$s לקוחות מחוברים</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nערוצים נתמכים:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nקוד מדינה של מנהל ההתקן: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">קוד מדינה של מנהל ההתקן: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">נתוני ספק:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC אקראי של AP</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">מקביליות AP מגושר</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">מקביליות STA + AP</string>

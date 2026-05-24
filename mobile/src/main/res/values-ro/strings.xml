@@ -65,7 +65,8 @@
     <item quantity="few">%1$s clienți conectați</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nCanale acceptate:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nCodul de țară al driverului: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Codul de țară al driverului: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Date furnizor:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP aleatoriu</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">concurență AP în punte</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">concurență STA + AP</string>

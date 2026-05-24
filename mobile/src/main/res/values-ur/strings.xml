@@ -63,7 +63,8 @@
     <item quantity="other">%1$s کلائنٹس منسلک ہیں</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nمعاون چینلز:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nڈرائیور کا ملکی کوڈ: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ڈرائیور کا ملکی کوڈ: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">وینڈر ڈیٹا:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">بے ترتیب AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">برجڈ AP ہم وقتی</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ہم وقتی</string>

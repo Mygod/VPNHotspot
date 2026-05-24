@@ -71,7 +71,8 @@
     <item quantity="many">%1$s عملاء متصلون</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nالقنوات المدعومة:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nرمز بلد برنامج التشغيل: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">رمز بلد برنامج التشغيل: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">بيانات المورّد:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">عشوائية MAC لنقطة الوصول</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">تزامن نقاط الوصول الموصولة</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">تزامن STA + AP</string>

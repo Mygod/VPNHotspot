@@ -67,7 +67,8 @@
     <item quantity="many">%1$s кліентаў падключана</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nПадтрыманыя каналы:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nКод краіны драйвера: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Код краіны драйвера: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Даныя вытворцы:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">выпадковы AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">адначасовасць маставых AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">адначасовасць STA + AP</string>

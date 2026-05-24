@@ -65,7 +65,8 @@
     <item quantity="few">%1$s klijenata povezano</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nPodržani kanali:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nKôd zemlje drajvera: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Kôd zemlje drajvera: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Podaci proizvođača:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">nasumični AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">istovremenost premošćenog AP-a</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">istovremenost STA + AP</string>

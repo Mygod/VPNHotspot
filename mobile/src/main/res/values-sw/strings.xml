@@ -63,7 +63,8 @@
     <item quantity="other">%1$s wateja wameunganishwa</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nVituo vinavyotumika:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nMsimbo wa nchi wa kiendeshi: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Msimbo wa nchi wa kiendeshi: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Data ya mtengenezaji:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">AP MAC nasibu</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">uendeshaji sawia wa AP iliyounganishwa kwa daraja</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">uendeshaji sawia wa STA + AP</string>

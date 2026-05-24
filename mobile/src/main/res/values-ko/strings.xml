@@ -61,7 +61,8 @@
     <item quantity="other">%1$s개 클라이언트 연결됨</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\n지원 채널:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\n드라이버 국가 코드: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">드라이버 국가 코드: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">공급업체 데이터:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">무작위 AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">브리지 AP 동시성</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP 동시성</string>

@@ -67,7 +67,8 @@
     <item quantity="many">%1$s klientų prijungta</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nPalaikomi kanalai:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nTvarkyklės šalies kodas: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Tvarkyklės šalies kodas: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Tiekėjo duomenys:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">atsitiktinis AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">sujungto AP lygiagretumas</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP lygiagretumas</string>

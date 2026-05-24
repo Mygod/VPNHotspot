@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 import android.content.Context
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.SoftApInfo
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
@@ -73,6 +74,12 @@ fun ApConfigurationScreen(
         600_000L
     } else TetherTimeoutMonitor.defaultTimeoutBridged.toLong()
     val lifecycleOwner = LocalLifecycleOwner.current
+    var softApVendorData by rememberSaveable(
+        lifecycleOwner,
+        state.p2pMode,
+        state.readOnly,
+        inspectionMode,
+    ) { mutableStateOf("") }
     val softApCapability by produceState<SoftApCapability?>(
         null,
         lifecycleOwner,
@@ -80,8 +87,20 @@ fun ApConfigurationScreen(
         state.readOnly,
         inspectionMode,
     ) {
+        softApVendorData = ""
         if (state.p2pMode || state.readOnly || Build.VERSION.SDK_INT < 30 || inspectionMode) return@produceState
+        fun updateVendorData(infos: List<SoftApInfo>) {
+            if (Build.VERSION.SDK_INT >= 35) softApVendorData = VendorData.serialize(infos.flatMap { it.vendorData })
+        }
         val callback = object : `WifiManager$SoftApCallback` {
+            override fun onInfoChanged(info: SoftApInfo) {
+                updateVendorData(listOf(info))
+            }
+
+            override fun onInfoChanged(info: List<SoftApInfo>) {
+                updateVendorData(info)
+            }
+
             override fun onCapabilityChanged(capability: SoftApCapability) {
                 value = capability
             }
@@ -495,7 +514,7 @@ fun ApConfigurationScreen(
             val staticInfo = if (state.p2pMode) {
                 repeaterSupportedFeatures(context)
             } else {
-                softApCapability?.let { softApAdvancedInfo(context, it) }
+                softApCapability?.let { softApAdvancedInfo(context, it, softApVendorData) }
             }
             staticInfo?.let { contentItem("advanced_info") { StaticApInfoText(it) } }
         }
@@ -537,7 +556,7 @@ private fun repeaterSupportedFeatures(context: Context): String? {
     return if (labels.isEmpty()) null else context.getString(R.string.repeater_features) + labels.joinAsBullets()
 }
 
-private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): String {
+private fun softApAdvancedInfo(context: Context, capability: SoftApCapability, vendorData: String): String {
     val lines = mutableListOf(
         context.getString(R.string.repeater_features) + softApSupportedFeatures(context, capability),
     )
@@ -550,8 +569,9 @@ private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): 
         val label = countryCode.toRegionalIndicatorFlagOrNull()?.let { flag ->
             "${countryCode.uppercase(Locale.US)} $flag"
         } ?: countryCode
-        lines += context.getString(R.string.tethering_manage_wifi_country_code, label).trimStart()
+        lines += context.getString(R.string.tethering_manage_wifi_country_code, label)
     }
+    if (vendorData.isNotEmpty()) lines += context.getString(R.string.tethering_manage_wifi_vendor_data, vendorData)
     return lines.joinToString("\n")
 }
 

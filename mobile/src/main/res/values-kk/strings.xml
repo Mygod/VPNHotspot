@@ -63,7 +63,8 @@
     <item quantity="other">%1$s клиент қосылған</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nҚолдау көрсетілетін арналар:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nДрайвер ел коды: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Драйвер ел коды: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Жеткізуші деректері:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">кездейсоқ AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">көпірленген AP қатарлығы</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP қатарлығы</string>

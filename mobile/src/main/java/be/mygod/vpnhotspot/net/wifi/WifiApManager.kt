@@ -227,9 +227,6 @@ object WifiApManager {
             }
 
             override fun onInfoChanged(infos: MutableList<SoftApInfo>) {
-                if (Build.VERSION.SDK_INT >= 35) for (info in infos) info.vendorData.let {
-                    if (it.isNotEmpty()) Timber.w(Exception(it.toString()))
-                }
                 callback.onInfoChanged(infos)
             }
 

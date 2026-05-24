@@ -63,7 +63,8 @@
     <item quantity="other">%1$s πελάτες συνδέθηκαν</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nΥποστηριζόμενα κανάλια:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nΚωδικός χώρας οδηγού: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Κωδικός χώρας οδηγού: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Δεδομένα προμηθευτή:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">τυχαιοποιημένο MAC AP</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ταυτόχρονη γεφυρωμένη λειτουργία AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">ταυτόχρονη λειτουργία STA + AP</string>

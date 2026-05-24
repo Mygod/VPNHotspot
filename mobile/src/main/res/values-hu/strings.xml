@@ -63,7 +63,8 @@
     <item quantity="other">%1$s kliens csatlakoztatva</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nTámogatott csatornák:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nIllesztőprogram országkódja: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Illesztőprogram országkódja: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Gyártói adatok:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">véletlenszerű AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">áthidalt AP párhuzamosság</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP párhuzamosság</string>

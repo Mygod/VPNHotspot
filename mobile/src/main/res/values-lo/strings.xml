@@ -60,7 +60,8 @@
     <item quantity="other">%1$s ໄຄລເອນໄດ້ເຊື່ອມຕໍ່</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nຊ່ອງທີ່ຮອງຮັບ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nລະຫັດປະເທດໄດຣເວີ: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ລະຫັດປະເທດໄດຣເວີ: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ຂໍ້ມູນຜູ້ຜະລິດ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">AP MAC ສຸ່ມ</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ການໃຊ້ AP ແບບ bridge ພ້ອມກັນ</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">ການໃຊ້ STA + AP ພ້ອມກັນ</string>

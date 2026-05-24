@@ -63,7 +63,8 @@
     <item quantity="other">%1$s ক্লায়েন্ট সংযুক্ত</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nসমৰ্থিত চেনেল:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nড্ৰাইভাৰৰ দেশ কʼড: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ড্ৰাইভাৰৰ দেশ কʼড: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ভেণ্ডৰ ডাটা:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">AP MAC ৰেণ্ডমাইজেশ্যন</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ব্ৰিজ কৰা AP সমকালীনতা</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP সমকালীনতা</string>

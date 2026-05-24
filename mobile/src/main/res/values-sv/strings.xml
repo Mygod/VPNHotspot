@@ -62,7 +62,8 @@
     <item quantity="other">%1$s klienter anslutna</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nKanaler som stöds:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nDrivrutinens landskod: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Drivrutinens landskod: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Leverantörsdata:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">slumpmässig AP-MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">samtidighet för bryggad AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">samtidighet för STA + AP</string>

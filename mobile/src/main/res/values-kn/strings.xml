@@ -63,7 +63,8 @@
     <item quantity="other">%1$s ಕ್ಲೈಂಟ್‌ಗಳು ಸಂಪರ್ಕಗೊಂಡಿವೆ</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nಬೆಂಬಲಿತ ಚಾನಲ್‌ಗಳು:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nಡ್ರೈವರ್ ದೇಶ ಕೋಡ್: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">ಡ್ರೈವರ್ ದೇಶ ಕೋಡ್: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ವೆಂಡರ್ ಡೇಟಾ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ಯಾದೃಚ್ಛಿಕ AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">ಬ್ರಿಡ್ಜ್ ಮಾಡಿದ AP ಸಮಕಾಲೀನತೆ</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP ಸಮಕಾಲೀನತೆ</string>

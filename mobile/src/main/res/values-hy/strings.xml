@@ -64,7 +64,8 @@
     <item quantity="other">%1$s հաճախորդ միացված է</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nԱջակցվող ալիքներ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nԴրայվերի երկրի կոդ: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Դրայվերի երկրի կոդ: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Արտադրողի տվյալներ:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">պատահական AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">կամրջված AP համաժամանակություն</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP համաժամանակություն</string>

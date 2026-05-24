@@ -66,7 +66,8 @@
     <item quantity="many">%1$s klientov pripojených</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nPodporované kanály:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nKód krajiny ovládača: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Kód krajiny ovládača: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Údaje dodávateľa:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">náhodná MAC adresa AP</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">súbežnosť premosteného AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">súbežnosť STA + AP</string>

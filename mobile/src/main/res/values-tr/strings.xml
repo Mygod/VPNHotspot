@@ -63,7 +63,8 @@
     <item quantity="other">%1$s istemci bağlı</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nDesteklenen kanallar:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nSürücü ülke kodu: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Sürücü ülke kodu: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Üretici verileri:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">rastgele AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">köprülenmiş AP eşzamanlılığı</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP eşzamanlılığı</string>

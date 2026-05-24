@@ -62,7 +62,8 @@
     <item quantity="other">%1$s clients verbonden</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nOndersteunde kanalen:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nLandcode van driver: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Landcode van driver: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Leveranciersgegevens:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">willekeurige AP-MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">gelijktijdigheid van bridged AP</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">gelijktijdigheid van STA + AP</string>

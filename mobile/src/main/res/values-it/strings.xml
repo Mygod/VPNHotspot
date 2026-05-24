@@ -73,7 +73,8 @@
     <item quantity="many">%1$s client connessi</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nCanali supportati:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nCodice paese del driver: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Codice paese del driver: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Dati fornitore:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC AP casuale</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">concorrenza AP con bridge</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">concorrenza STA + AP</string>

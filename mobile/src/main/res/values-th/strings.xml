@@ -61,7 +61,8 @@
     <item quantity="other">%1$s ไคลเอนต์เชื่อมต่อแล้ว</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nช่องที่รองรับ:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nรหัสประเทศของไดรเวอร์: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">รหัสประเทศของไดรเวอร์: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">ข้อมูลผู้ผลิต:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">MAC ของ AP แบบสุ่ม</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">การทำงานพร้อมกันของ AP แบบบริดจ์</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">การทำงานพร้อมกันของ STA + AP</string>

@@ -63,7 +63,8 @@
     <item quantity="other">%1$s bezero konektatuta</item>
   </plurals>
   <string name="tethering_manage_wifi_supported_channels">\nOnartutako kanalak:%1$s</string>
-  <string name="tethering_manage_wifi_country_code">\nGidariaren herrialde-kodea: %1$s</string>
+  <string name="tethering_manage_wifi_country_code">Gidariaren herrialde-kodea: %1$s</string>
+  <string name="tethering_manage_wifi_vendor_data">Fabrikatzaile-datuak:\n%1$s</string>
   <string name="tethering_manage_wifi_feature_ap_mac_randomization">ausazko AP MAC</string>
   <string name="tethering_manage_wifi_feature_bridged_ap_concurrency">zubitutako AP konkurrentzia</string>
   <string name="tethering_manage_wifi_feature_sta_ap_concurrency">STA + AP konkurrentzia</string>
