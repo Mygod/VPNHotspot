@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.MacAddress
 import android.net.TetheringManager
+import android.net.wifi.OuiKeyedData
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApInfo
 import android.net.wifi.WifiClient
@@ -84,6 +85,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
 import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
@@ -121,11 +123,11 @@ fun TetheringScreen(
     val linkStyles = rememberNetworkAddressLinkStyles()
     val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf<String?>(null) }
+        ?: remember { mutableStateOf(null) }
     val repeaterStatus by (repeaterBinder?.status)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf<RepeaterService.Status?>(null) }
+        ?: remember { mutableStateOf(null) }
     val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf<WifiP2pGroup?>(null) }
+        ?: remember { mutableStateOf(null) }
     val staticIpActive by StaticIpSetter.active.collectAsStateWithLifecycle()
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
@@ -937,29 +939,39 @@ private fun repeaterSummary(
     ifaceLookup: Map<String, NetworkInterface>,
     linkStyles: TextLinkStyles,
 ): AnnotatedString? {
-    val addresses = group?.let { p2pGroup ->
+    group ?: return null
+    val summary = buildAnnotatedString {
+        val frequency = group.frequency
+        if (frequency != 0) append(context.getString(
+            R.string.repeater_frequency,
+            NumberFormat.getIntegerInstance(context.resources.configuration.locales[0]).format(frequency.toLong()),
+        ))
         networkInterfaceAddressesText(
-            ifaceLookup[p2pGroup.`interface`],
+            ifaceLookup[group.`interface`],
             linkStyles,
             macOverride = if (Build.VERSION.SDK_INT >= 30) try {
-                (wifiP2pGroupInterfaceAddress[p2pGroup] as ByteArray?)?.let(MacAddress::fromBytes)
+                (wifiP2pGroupInterfaceAddress[group] as ByteArray?)?.let(MacAddress::fromBytes)
             } catch (e: NoSuchFieldException) {
                 if (Build.VERSION.SDK_INT >= 34) Timber.w(e)
                 null
             } else null,
-        )
-    }
-    val frequency = group?.frequency
-    return if (frequency == null || frequency == 0) addresses else buildAnnotatedString {
-        append(context.getString(
-            R.string.repeater_frequency,
-            NumberFormat.getIntegerInstance(context.resources.configuration.locales[0]).format(frequency.toLong()),
-        ))
-        if (addresses?.text?.isNotEmpty() == true) {
-            append('\n')
-            append(addresses)
+        ).let { addresses ->
+            if (addresses.text.isNotEmpty()) {
+                if (length > 0) append('\n')
+                append(addresses)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 35) {
+            @Suppress("UNCHECKED_CAST")
+            val data = VendorData.serialize(getWifiP2pGroupVendorData(group) as List<OuiKeyedData>)
+            if (data.isNotEmpty()) {
+                if (length > 0) append('\n')
+                append(context.getString(R.string.tethering_manage_wifi_vendor_data, data))
+            }
         }
     }
+    return if (summary.text.isEmpty()) null else summary
 }
 
 private val wifiP2pGroupInterfaceAddress by lazy { WifiP2pGroup::class.java.getDeclaredField("interfaceAddress") }
+private val getWifiP2pGroupVendorData by lazy { WifiP2pGroup::class.java.getDeclaredMethod("getVendorData") }
