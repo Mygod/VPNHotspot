@@ -1,11 +1,11 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.content.Context
+import android.net.wifi.OuiKeyedData
 import android.os.PersistableBundle
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.net.wifi.OuiKeyedData
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -41,7 +41,7 @@ object VendorData {
                     val data = ByteArrayInputStream(xml.toString().toByteArray(StandardCharsets.UTF_8)).use {
                         PersistableBundle.readFromStream(it)
                     }
-                    result += OuiKeyedData(oui, data)
+                    result += OuiKeyedData.Builder(oui, data).build()
                     ++index
                     break
                 } catch (e: IOException) {

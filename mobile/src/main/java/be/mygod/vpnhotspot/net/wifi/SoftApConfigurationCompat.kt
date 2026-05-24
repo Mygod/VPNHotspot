@@ -3,8 +3,10 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.net.MacAddress
+import android.net.wifi.OuiKeyedData
 import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.SoftApInfo
 import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
@@ -63,7 +65,7 @@ data class SoftApConfigurationCompat(
     @TargetApi(33)
     var allowedAcsChannels: Map<Int, Set<Int>> = emptyMap(),
     @TargetApi(33)
-    var maxChannelBandwidth: Int = CHANNEL_WIDTH_AUTO,
+    var maxChannelBandwidth: Int = SoftApInfo.CHANNEL_WIDTH_AUTO,
     @RequiresApi(35)
     var vendorData: List<OuiKeyedData> = emptyList(),
     @RequiresApi(36)
@@ -100,11 +102,6 @@ data class SoftApConfigurationCompat(
         const val RANDOMIZATION_PERSISTENT = 1
         @TargetApi(33)
         const val RANDOMIZATION_NON_PERSISTENT = 2
-
-        @TargetApi(33)
-        const val CHANNEL_WIDTH_AUTO = -1
-        @TargetApi(30)
-        const val CHANNEL_WIDTH_INVALID = 0
 
         fun isLegacyEitherBand(band: Int) = band and BAND_LEGACY == BAND_LEGACY
 
@@ -452,7 +449,7 @@ data class SoftApConfigurationCompat(
             }.filterNotNull().toMap()
             it.maxChannelBandwidth = getMaxChannelBandwidth(this) as Int
             if (Build.VERSION.SDK_INT < 35) return@also
-            it.vendorData = (getVendorData(this) as List<Parcelable>).map(::OuiKeyedData)
+            it.vendorData = getVendorData(this) as List<OuiKeyedData>
             if (Build.VERSION.SDK_INT >= 36) it.isClientIsolationEnabled = isClientIsolationEnabled(this) as Boolean
         }
 
@@ -611,7 +608,7 @@ data class SoftApConfigurationCompat(
                 }
                 setMaxChannelBandwidth(builder, maxChannelBandwidth)
                 if (Build.VERSION.SDK_INT >= 35) {
-                    setVendorData(builder, vendorData.map { it.inner })
+                    setVendorData(builder, vendorData)
                     if (Build.VERSION.SDK_INT >= 36) setClientIsolationEnabled(builder, isClientIsolationEnabled)
                 }
             }

@@ -1,55 +1,18 @@
 package be.mygod.vpnhotspot.net.wifi
 
-import android.annotation.TargetApi
-import android.net.MacAddress
-import android.os.Build
-import android.os.Parcelable
+import android.net.wifi.SoftApInfo
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.UnblockCentral
 import timber.log.Timber
 
-@JvmInline
 @RequiresApi(30)
-value class SoftApInfo(val inner: Parcelable) {
-    companion object {
-        val clazz by lazy { Class.forName("android.net.wifi.SoftApInfo") }
-        private val getFrequency by lazy { clazz.getDeclaredMethod("getFrequency") }
-        private val getBandwidth by lazy { clazz.getDeclaredMethod("getBandwidth") }
-        @get:RequiresApi(31)
-        private val getBssid by lazy { clazz.getDeclaredMethod("getBssid") }
-        @get:RequiresApi(31)
-        private val getWifiStandard by lazy { clazz.getDeclaredMethod("getWifiStandard") }
-        @get:RequiresApi(31)
-        private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
-        @get:RequiresApi(31)
-        private val getAutoShutdownTimeoutMillis by lazy { clazz.getDeclaredMethod("getAutoShutdownTimeoutMillis") }
-        @get:RequiresApi(35)
-        val getVendorData by lazy { clazz.getDeclaredMethod("getVendorData") }
-        val getMldAddress by lazy { clazz.getDeclaredMethod("getMldAddress") }
+val softApChannelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { SoftApInfo::class.java }
 
-        val channelWidthLookup = ConstantLookup("CHANNEL_WIDTH_") { clazz }
-    }
-
-    val frequency get() = getFrequency(inner) as Int
-    val bandwidth get() = getBandwidth(inner) as Int
-    @get:RequiresApi(31)
-    val bssid get() = getBssid(inner) as MacAddress?
-    @get:RequiresApi(31)
-    val wifiStandard get() = getWifiStandard(inner) as Int
-    @get:RequiresApi(31)
-    val apInstanceIdentifier get() = try {
-        getApInstanceIdentifier(inner) as? String
-    } catch (e: ReflectiveOperationException) {
-        Timber.w(e)
-        null
-    }
-    @get:RequiresApi(31)
-    val autoShutdownTimeoutMillis get() = getAutoShutdownTimeoutMillis(inner) as Long
-    val mldAddress get() = try {
-        getMldAddress(inner) as MacAddress?
-    } catch (e: NoSuchMethodException) {
-        if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
-        null
-    }
+@get:RequiresApi(31)
+val SoftApInfo.apInstanceIdentifierOrNull: String? get() = try {
+    UnblockCentral.getApInstanceIdentifier(this)
+} catch (e: NoSuchMethodError) {
+    Timber.w(e)
+    null
 }

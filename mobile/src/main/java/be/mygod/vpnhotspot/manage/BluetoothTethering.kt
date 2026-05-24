@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.manage
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothPan
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -15,7 +16,6 @@ import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
-import java.lang.reflect.InvocationTargetException
 
 class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter, val stateListener: () -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
@@ -24,10 +24,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
          * PAN Profile
          */
         private const val PAN = 5
-        private val clazz by lazy { Class.forName("android.bluetooth.BluetoothPan") }
-        private val isTetheringOn by lazy { clazz.getDeclaredMethod("isTetheringOn") }
-
-        private val BluetoothProfile.isTetheringOn get() = isTetheringOn(this) as Boolean
 
         private fun registerBluetoothStateListener(receiver: BroadcastReceiver) =
                 app.registerReceiver(receiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
@@ -51,7 +47,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
 
     private var proxyCreated = false
     private var connected = false
-    private var pan: BluetoothProfile? = null
+    private var pan: BluetoothPan? = null
     private var stoppedByUser = false
     var activeFailureCause: Throwable? = null
     /**
@@ -63,10 +59,9 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         activeFailureCause = null
         val on = adapter.state == BluetoothAdapter.STATE_ON && try {
             pan.isTetheringOn
-        } catch (e: InvocationTargetException) {
-            activeFailureCause = e.cause ?: e
-            if (e.cause is SecurityException && Build.VERSION.SDK_INT >= 30) Timber.d(e.readableMessage)
-            else Timber.w(e)
+        } catch (e: SecurityException) {
+            activeFailureCause = e
+            if (Build.VERSION.SDK_INT >= 30) Timber.d(e.readableMessage) else Timber.w(e)
             return null
         }
         return if (stoppedByUser) {
@@ -97,7 +92,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         stoppedByUser = false
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-        pan = proxy
+        pan = proxy as BluetoothPan
         connected = true
         stateListener()
     }

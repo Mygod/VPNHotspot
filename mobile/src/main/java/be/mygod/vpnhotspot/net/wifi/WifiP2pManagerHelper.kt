@@ -5,17 +5,14 @@ import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pGroup
+import android.net.wifi.p2p.WifiP2pGroupList
 import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
+import android.net.wifi.p2p.`WifiP2pManager$PersistentGroupInfoListener`
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
-import be.mygod.vpnhotspot.util.callSuper
-import be.mygod.vpnhotspot.util.matches
 import kotlinx.coroutines.CompletableDeferred
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
 
 object WifiP2pManagerHelper {
     private class ResultListener : WifiP2pManager.ActionListener {
@@ -107,14 +104,9 @@ object WifiP2pManagerHelper {
         return result.future.await()
     }
 
-    private val interfacePersistentGroupInfoListener by lazy {
-        Class.forName("android.net.wifi.p2p.WifiP2pManager\$PersistentGroupInfoListener")
-    }
-    private val classWifiP2pGroupList by lazy { Class.forName("android.net.wifi.p2p.WifiP2pGroupList") }
-    private val getGroupList by lazy { classWifiP2pGroupList.getDeclaredMethod("getGroupList") }
     private val requestPersistentGroupInfo by lazy {
         WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
-                WifiP2pManager.Channel::class.java, interfacePersistentGroupInfoListener)
+            WifiP2pManager.Channel::class.java, `WifiP2pManager$PersistentGroupInfoListener`::class.java)
     }
     /**
      * Request a list of all the persistent p2p groups stored in system.
@@ -125,16 +117,11 @@ object WifiP2pManagerHelper {
      */
     suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel): Collection<WifiP2pGroup> {
         val result = CompletableDeferred<Collection<WifiP2pGroup>>()
-        requestPersistentGroupInfo(this, c, Proxy.newProxyInstance(interfacePersistentGroupInfoListener.classLoader,
-                arrayOf(interfacePersistentGroupInfoListener), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?): Any? = when {
-                method.matches("onPersistentGroupInfoAvailable", classWifiP2pGroupList) -> {
-                    @Suppress("UNCHECKED_CAST")
-                    result.complete(getGroupList(args!![0]) as Collection<WifiP2pGroup>)
-                }
-                else -> callSuper(interfacePersistentGroupInfoListener, proxy, method, args)
+        requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
+            override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
+                result.complete(groups.groupList)
             }
-        }))
+        })
         return result.await()
     }
 

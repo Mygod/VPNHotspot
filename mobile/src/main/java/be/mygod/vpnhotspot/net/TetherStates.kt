@@ -5,9 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.Network
+import android.net.TetheredClient
 import android.net.TetheringManager
 import android.os.Build
-import android.os.Parcelable
 import androidx.collection.MutableScatterMap
 import androidx.annotation.MainThread
 import androidx.annotation.RequiresApi
@@ -153,7 +153,7 @@ data class TetherStates(
             scheduleDispatch()
         }
 
-        override fun onClientsChanged(clients: Collection<Parcelable>) = callback.onClientsChanged(clients)
+        override fun onClientsChanged(clients: Collection<TetheredClient>) = callback.onClientsChanged(clients)
         override fun onOffloadStatusChanged(status: Int) = callback.onOffloadStatusChanged(status)
 
         @MainThread

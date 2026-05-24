@@ -19,9 +19,9 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
+import be.mygod.vpnhotspot.net.wifi.softApChannelWidthLookup
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -100,7 +100,7 @@ class ApConfigurationState(
     }
     private val channelOptions = currentChannelOptions(p2pMode)
     val bandwidthEntries = if (Build.VERSION.SDK_INT >= 33) {
-        SoftApInfo.channelWidthLookup.lookup.let { lookup ->
+        softApChannelWidthLookup.lookup.let { lookup ->
             List(lookup.size()) {
                 val width = lookup.keyAt(it)
                 BandWidth(width, lookup.valueAt(it).substring(14))

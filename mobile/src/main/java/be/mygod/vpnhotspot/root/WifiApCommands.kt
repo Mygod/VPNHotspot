@@ -1,7 +1,11 @@
 package be.mygod.vpnhotspot.root
 
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.SoftApCapability
+import android.net.wifi.SoftApInfo
 import android.net.wifi.WifiManager
+import android.net.wifi.WifiClient
+import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
@@ -24,45 +28,53 @@ import timber.log.Timber
 
 object WifiApCommands {
     sealed class SoftApCallbackParcel : Parcelable {
-        abstract fun dispatch(callback: WifiApManager.SoftApCallbackCompat)
+        abstract fun dispatch(callback: `WifiManager$SoftApCallback`)
 
         @Parcelize
         data class OnStateChanged(val state: Int, val failureReason: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
                     callback.onStateChanged(state, failureReason)
         }
         @Parcelize
         data class OnNumClientsChanged(val numClients: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onNumClientsChanged(numClients)
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onNumClientsChanged(numClients)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnConnectedClientsChanged(val clients: List<Parcelable>) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onConnectedClientsChanged(clients)
+        data class OnConnectedClientsChanged(val clients: List<WifiClient>) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onConnectedClientsChanged(clients)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnInfoChanged(val info: List<Parcelable>) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) = callback.onInfoChanged(info)
+        data class OnInfoChanged(val info: SoftApInfo) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onInfoChanged(info)
+        }
+        @Parcelize
+        @RequiresApi(31)
+        data class OnInfoListChanged(val infos: List<SoftApInfo>) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onInfoChanged(infos)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnCapabilityChanged(val capability: Parcelable) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
-                    callback.onCapabilityChanged(capability)
+        data class OnCapabilityChanged(val capability: SoftApCapability) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onCapabilityChanged(capability)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnBlockedClientConnecting(val client: Parcelable, val blockedReason: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
+        data class OnBlockedClientConnecting(
+            val client: WifiClient,
+            val blockedReason: Int,
+        ) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
                 callback.onBlockedClientConnecting(client, blockedReason)
         }
         @Parcelize
         @RequiresApi(30)
-        data class OnClientsDisconnected(val info: Parcelable, val clients: List<Parcelable>) : SoftApCallbackParcel() {
-            override fun dispatch(callback: WifiApManager.SoftApCallbackCompat) =
+        data class OnClientsDisconnected(
+            val info: SoftApInfo,
+            val clients: List<WifiClient>,
+        ) : SoftApCallbackParcel() {
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
                 callback.onClientsDisconnected(info, clients)
         }
     }
@@ -70,7 +82,7 @@ object WifiApCommands {
     @Parcelize
     class RegisterSoftApCallback : RootFlow<SoftApCallbackParcel> {
         override fun flow() = callbackFlow {
-            val key = WifiApManager.registerSoftApCallback(object : WifiApManager.SoftApCallbackCompat {
+            val key = WifiApManager.registerSoftApCallback(object : `WifiManager$SoftApCallback` {
                 private fun push(parcel: SoftApCallbackParcel) {
                     trySend(parcel).onFailure {
                         close(it ?: IllegalStateException("Flow buffer rejected Soft AP callback"))
@@ -82,17 +94,20 @@ object WifiApCommands {
                 override fun onNumClientsChanged(numClients: Int) =
                     push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
                 @RequiresApi(30)
-                override fun onConnectedClientsChanged(clients: List<Parcelable>) =
+                override fun onConnectedClientsChanged(clients: List<WifiClient>) =
                     push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
                 @RequiresApi(30)
-                override fun onInfoChanged(info: List<Parcelable>) = push(SoftApCallbackParcel.OnInfoChanged(info))
+                override fun onInfoChanged(info: SoftApInfo) = push(SoftApCallbackParcel.OnInfoChanged(info))
+                @RequiresApi(31)
+                override fun onInfoChanged(info: List<SoftApInfo>) =
+                    push(SoftApCallbackParcel.OnInfoListChanged(info))
                 @RequiresApi(30)
-                override fun onCapabilityChanged(capability: Parcelable) =
+                override fun onCapabilityChanged(capability: SoftApCapability) =
                     push(SoftApCallbackParcel.OnCapabilityChanged(capability))
                 @RequiresApi(30)
-                override fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) =
+                override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) =
                     push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
-                override fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) =
+                override fun onClientsDisconnected(info: SoftApInfo, clients: List<WifiClient>) =
                     push(SoftApCallbackParcel.OnClientsDisconnected(info, clients))
             }) {
                 launch {
@@ -113,12 +128,12 @@ object WifiApCommands {
             var state: SoftApCallbackParcel.OnStateChanged? = null,
             var numClients: SoftApCallbackParcel.OnNumClientsChanged? = null,
             var connectedClients: SoftApCallbackParcel.OnConnectedClientsChanged? = null,
-            var info: SoftApCallbackParcel.OnInfoChanged? = null,
+            var info: SoftApCallbackParcel? = null,
             var capability: SoftApCallbackParcel.OnCapabilityChanged? = null) {
         fun toSequence() = sequenceOf(state, numClients, connectedClients, info, capability)
     }
 
-    private val callbacks = mutableSetOf<WifiApManager.SoftApCallbackCompat>()
+    private val callbacks = mutableSetOf<`WifiManager$SoftApCallback`>()
     private val lastCallback = AutoFiringCallbacks()
     private var rootCallbackJob: Job? = null
     private suspend fun handleFlow(flow: Flow<SoftApCallbackParcel>) = flow.collect { parcel ->
@@ -128,14 +143,16 @@ object WifiApCommands {
             is SoftApCallbackParcel.OnConnectedClientsChanged -> synchronized(callbacks) {
                 lastCallback.connectedClients = parcel
             }
-            is SoftApCallbackParcel.OnInfoChanged -> synchronized(callbacks) { lastCallback.info = parcel }
+            is SoftApCallbackParcel.OnInfoChanged, is SoftApCallbackParcel.OnInfoListChanged -> {
+                synchronized(callbacks) { lastCallback.info = parcel }
+            }
             is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
             // do nothing for one-time events
             is SoftApCallbackParcel.OnBlockedClientConnecting, is SoftApCallbackParcel.OnClientsDisconnected -> { }
         }
         for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
     }
-    fun registerSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
+    fun registerSoftApCallback(callback: `WifiManager$SoftApCallback`) = synchronized(callbacks) {
         val wasEmpty = callbacks.isEmpty()
         callbacks.add(callback)
         if (wasEmpty) {
@@ -151,7 +168,7 @@ object WifiApCommands {
             null
         } else lastCallback
     }?.toSequence()?.forEach { it?.dispatch(callback) }
-    fun unregisterSoftApCallback(callback: WifiApManager.SoftApCallbackCompat) = synchronized(callbacks) {
+    fun unregisterSoftApCallback(callback: `WifiManager$SoftApCallback`) = synchronized(callbacks) {
         if (callbacks.remove(callback) && callbacks.isEmpty()) {
             rootCallbackJob!!.cancel()
             rootCallbackJob = null

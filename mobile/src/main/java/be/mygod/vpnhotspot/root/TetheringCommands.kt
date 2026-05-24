@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root
 
+import android.net.TetheredClient
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootFlow
@@ -17,7 +18,7 @@ object TetheringCommands {
      * This is the only command supported since other callbacks do not require signature permissions.
      */
     @Parcelize
-    data class OnClientsChanged(val clients: List<Parcelable>) : Parcelable {
+    data class OnClientsChanged(val clients: List<TetheredClient>) : Parcelable {
         fun dispatch(callback: TetheringManagerCompat.TetheringEventCallback) = callback.onClientsChanged(clients)
     }
 
@@ -32,7 +33,7 @@ object TetheringCommands {
                     }
                 }
 
-                override fun onClientsChanged(clients: Collection<Parcelable>) =
+                override fun onClientsChanged(clients: Collection<TetheredClient>) =
                     push(OnClientsChanged(clients.toList()))
             }
             TetheringManagerCompat.registerTetheringEventCallback(callback) {

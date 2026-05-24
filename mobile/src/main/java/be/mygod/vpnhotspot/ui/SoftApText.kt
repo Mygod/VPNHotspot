@@ -4,21 +4,24 @@ import android.content.Context
 import android.icu.text.DecimalFormat
 import android.icu.text.DecimalFormatSymbols
 import android.net.TetheringManager
+import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.SoftApInfo
+import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.net.wifi.softApChannelWidthLookup
+import be.mygod.vpnhotspot.util.LongConstantLookup
 
 fun channelBandwidthLabel(
     context: Context,
     width: Int,
-    fallback: String = SoftApInfo.channelWidthLookup(width, true),
+    fallback: String = softApChannelWidthLookup(width, true),
 ) = when (width) {
-    SoftApConfigurationCompat.CHANNEL_WIDTH_AUTO -> context.getString(R.string.wifi_channel_width_auto)
-    SoftApConfigurationCompat.CHANNEL_WIDTH_INVALID -> context.getString(R.string.wifi_channel_width_invalid)
+    SoftApInfo.CHANNEL_WIDTH_AUTO -> context.getString(R.string.wifi_channel_width_auto)
+    SoftApInfo.CHANNEL_WIDTH_INVALID -> context.getString(R.string.wifi_channel_width_invalid)
     1 -> context.getString(R.string.wifi_channel_width_20mhz_no_ht)
     2 -> context.getString(R.string.wifi_channel_width_mhz, 20)
     3 -> context.getString(R.string.wifi_channel_width_mhz, 40)
@@ -174,11 +177,9 @@ fun softApClientDisconnectReasonLabel(
     else -> fallback
 }
 
-fun softApFeatureLabel(
-    context: Context,
-    feature: Long,
-    fallback: String = SoftApCapability.featureLookup(feature, true).replace('_', ' '),
-) = when (feature) {
+@get:RequiresApi(30)
+private val softApFeatureLookup by lazy { LongConstantLookup(SoftApCapability::class.java, "SOFTAP_FEATURE_") }
+fun softApFeatureLabel(context: Context, feature: Long) = when (feature) {
     1L shl 0 -> context.getString(R.string.tethering_manage_wifi_feature_acs_offload)
     1L shl 1 -> context.getString(R.string.tethering_manage_wifi_feature_client_force_disconnect)
     1L shl 2 -> context.getString(R.string.tethering_manage_wifi_feature_wpa3_sae)
@@ -204,5 +205,5 @@ fun softApFeatureLabel(
     1L shl 10 -> context.getString(R.string.tethering_manage_wifi_feature_wpa3_owe_transition)
     1L shl 11 -> context.getString(R.string.tethering_manage_wifi_feature_wpa3_owe)
     1L shl 12 -> context.getString(R.string.tethering_manage_wifi_feature_mlo)
-    else -> fallback
+    else -> softApFeatureLookup(feature, true).replace('_', ' ')
 }

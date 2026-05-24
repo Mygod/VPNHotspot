@@ -1,30 +1,14 @@
 package be.mygod.vpnhotspot.net.wifi
 
-import android.annotation.TargetApi
-import android.net.MacAddress
-import android.os.Parcelable
+import android.net.wifi.WifiClient
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.util.UnblockCentral
 import timber.log.Timber
 
-@JvmInline
-@RequiresApi(30)
-value class WifiClient(val inner: Parcelable) {
-    companion object {
-        val clazz by lazy { Class.forName("android.net.wifi.WifiClient") }
-        private val getMacAddress by lazy { clazz.getDeclaredMethod("getMacAddress") }
-        @get:RequiresApi(31)
-        private val getApInstanceIdentifier by lazy @TargetApi(31) { UnblockCentral.getApInstanceIdentifier(clazz) }
-        private val getDisconnectReason by lazy { clazz.getDeclaredMethod("getDisconnectReason") }
-    }
-
-    val macAddress get() = getMacAddress(inner) as MacAddress
-    @get:RequiresApi(31)
-    val apInstanceIdentifier get() = try {
-        getApInstanceIdentifier(inner) as? String
-    } catch (e: ReflectiveOperationException) {
-        Timber.w(e)
-        null
-    }
-    val disconnectReason get() = getDisconnectReason(inner) as Int
+@get:RequiresApi(31)
+val WifiClient.apInstanceIdentifierOrNull: String? get() = try {
+    UnblockCentral.getApInstanceIdentifier(this)
+} catch (e: NoSuchMethodError) {
+    Timber.w(e)
+    null
 }

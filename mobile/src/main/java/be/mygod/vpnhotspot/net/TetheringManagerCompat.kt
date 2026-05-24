@@ -7,14 +7,15 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.IIntResultListener
+import android.net.ITetheringConnector
 import android.net.Network
+import android.net.TetheredClient
 import android.net.TetheringInterface
 import android.net.TetheringManager
 import android.net.`ConnectivityManager$OnStartTetheringCallback`
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
-import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import androidx.core.os.ExecutorCompat
 import be.mygod.vpnhotspot.App.Companion.app
@@ -143,12 +144,9 @@ object TetheringManagerCompat {
         }
     }.first()
 
-    private val classOnStartTetheringCallback by lazy {
-        Class.forName("android.net.ConnectivityManager\$OnStartTetheringCallback")
-    }
     private val startTethering by lazy {
-        ConnectivityManager::class.java.getDeclaredMethod("startTethering",
-                Int::class.java, Boolean::class.java, classOnStartTetheringCallback, Handler::class.java)
+        ConnectivityManager::class.java.getDeclaredMethod("startTethering", Int::class.java, Boolean::class.java,
+            `ConnectivityManager$OnStartTetheringCallback`::class.java, Handler::class.java)
     }
     private val stopTethering by lazy {
         ConnectivityManager::class.java.getDeclaredMethod("stopTethering", Int::class.java)
@@ -156,6 +154,7 @@ object TetheringManagerCompat {
     private val getLastTetherError by lazy @SuppressLint("SoonBlockedPrivateApi") {
         ConnectivityManager::class.java.getDeclaredMethod("getLastTetherError", String::class.java)
     }
+    private var stopTetheringHasAttributionTag = true
 
 //    @get:RequiresApi(30)
 //    private val setStaticIpv4Addresses by lazy {
@@ -294,11 +293,10 @@ object TetheringManagerCompat {
     fun stopTethering(type: Int, callback: StopTetheringCallback, context: Context) {
         val reference = WeakReference(callback)
         val contextRef = WeakReference(context)
-        UnblockCentral.TetheringManager_getConnector(Services.tethering, Proxy.newProxyInstance(
-            UnblockCentral.TetheringManager_ConnectorConsumer.classLoader,
-            arrayOf(UnblockCentral.TetheringManager_ConnectorConsumer), object : InvocationHandler {
+        val handler = object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
-                method.matches("onConnectorAvailable", UnblockCentral.ITetheringConnector) -> {
+                method.matches("onConnectorAvailable", ITetheringConnector::class.java) -> {
+                    val connector = args!![0] as ITetheringConnector
                     contextRef.get()?.let { context ->
                         val resultListener = object : IIntResultListener.Stub() {
                             override fun onResult(resultCode: Int) {
@@ -308,16 +306,23 @@ object TetheringManagerCompat {
                                 } else callback?.onStopTetheringFailed(resultCode)
                             }
                         }
-                        val (method, isNew) = UnblockCentral.ITetheringConnector_stopTethering
-                        if (isNew) {
-                            method(args!![0], type, context.opPackageName, context.attributionTag,
+                        if (stopTetheringHasAttributionTag) try {
+                            connector.stopTethering(type, context.opPackageName, context.attributionTag,
                                 resultListener)
-                        } else method(args!![0], type, context.opPackageName, resultListener)
+                            return@let
+                        } catch (e: NoSuchMethodError) {
+                            if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+                            stopTetheringHasAttributionTag = false
+                        }
+                        connector.stopTethering(type, context.opPackageName, resultListener)
                     }
                 }
-                else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer::class.java, proxy, method, args)
+                else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer, proxy, method, args)
             }
-        }))
+        }
+        UnblockCentral.TetheringManager_getConnector(Services.tethering, Proxy.newProxyInstance(
+            UnblockCentral.TetheringManager_ConnectorConsumer.classLoader,
+            arrayOf(UnblockCentral.TetheringManager_ConnectorConsumer), handler))
     }
     private fun stopTetheringRoot(type: Int, callback: StopTetheringCallback,
                                   suppressed: Exception? = null) = GlobalScope.launch(Dispatchers.Unconfined) {
@@ -481,7 +486,7 @@ object TetheringManagerCompat {
          * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
          * @param clients The new set of tethered clients; the collection is not ordered.
          */
-        fun onClientsChanged(clients: Collection<Parcelable>) {
+        fun onClientsChanged(clients: Collection<TetheredClient>) {
             if (clients.isNotEmpty()) Timber.i("onClientsChanged: ${clients.joinToString()}")
         }
 
@@ -531,7 +536,7 @@ object TetheringManagerCompat {
                             method.matches("onTetheringSupported", Boolean::class.java) -> {
                                 callback?.onTetheringSupported(args!![0] as Boolean)
                             }
-                            method.matches1<java.util.Set<*>>("onSupportedTetheringTypes") -> {
+                            method.matches1<Set<*>>("onSupportedTetheringTypes") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onSupportedTetheringTypes(args!![0] as Set<Int?>)
                             }
@@ -543,25 +548,25 @@ object TetheringManagerCompat {
                                     "android.net.TetheringManager\$TetheringInterfaceRegexps" -> {
                                 callback?.onTetherableInterfaceRegexpsChanged(args!!.single())
                             }
-                            method.matches1<java.util.List<*>>("onTetherableInterfacesChanged") -> {
+                            method.matches1<List<*>>("onTetherableInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetherableInterfacesChanged(args!![0] as List<String?>)
                             }
-                            method.matches1<java.util.Set<*>>("onTetherableInterfacesChanged") -> {
+                            method.matches1<Set<*>>("onTetherableInterfacesChanged") -> {
                                 callback?.onTetherableInterfacesChanged(toInterfacesCompat(args))
                             }
-                            method.matches1<java.util.List<*>>("onTetheredInterfacesChanged") -> {
+                            method.matches1<List<*>>("onTetheredInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onTetheredInterfacesChanged(args!![0] as List<String?>)
                             }
-                            method.matches1<java.util.Set<*>>("onTetheredInterfacesChanged") -> {
+                            method.matches1<Set<*>>("onTetheredInterfacesChanged") -> {
                                 callback?.onTetheredInterfacesChanged(toInterfacesCompat(args))
                             }
-                            method.matches1<java.util.List<*>>("onLocalOnlyInterfacesChanged") -> {
+                            method.matches1<List<*>>("onLocalOnlyInterfacesChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
                                 callback?.onLocalOnlyInterfacesChanged(args!![0] as List<String?>)
                             }
-                            method.matches1<java.util.Set<*>>("onLocalOnlyInterfacesChanged") -> {
+                            method.matches1<Set<*>>("onLocalOnlyInterfacesChanged") -> {
                                 callback?.onLocalOnlyInterfacesChanged(toInterfacesCompat(args))
                             }
                             // workaround for API 30 which might be missing this class
@@ -573,9 +578,9 @@ object TetheringManagerCompat {
                             method.matches("onError", String::class.java, Integer.TYPE) -> {
                                 callback?.onError(args!![0] as String, args[1] as Int)
                             }
-                            method.matches1<java.util.Collection<*>>("onClientsChanged") -> {
+                            method.matches1<Collection<*>>("onClientsChanged") -> {
                                 @Suppress("UNCHECKED_CAST")
-                                callback?.onClientsChanged(args!![0] as Collection<Parcelable>)
+                                callback?.onClientsChanged(args!![0] as Collection<TetheredClient>)
                             }
                             method.matches("onOffloadStatusChanged", Integer.TYPE) -> {
                                 callback?.onOffloadStatusChanged(args!![0] as Int)

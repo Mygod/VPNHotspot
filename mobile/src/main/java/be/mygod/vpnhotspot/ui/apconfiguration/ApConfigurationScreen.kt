@@ -1,10 +1,11 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.content.Context
+import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
-import android.os.Parcelable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -37,7 +38,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
-import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -51,6 +51,7 @@ import be.mygod.vpnhotspot.ui.softApBandLabel
 import be.mygod.vpnhotspot.ui.softApFeatureLabel
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import kotlinx.coroutines.launch
@@ -72,7 +73,7 @@ fun ApConfigurationScreen(
         600_000L
     } else TetherTimeoutMonitor.defaultTimeoutBridged.toLong()
     val lifecycleOwner = LocalLifecycleOwner.current
-    val softApCapability by produceState<Parcelable?>(
+    val softApCapability by produceState<SoftApCapability?>(
         null,
         lifecycleOwner,
         state.p2pMode,
@@ -80,8 +81,8 @@ fun ApConfigurationScreen(
         inspectionMode,
     ) {
         if (state.p2pMode || state.readOnly || Build.VERSION.SDK_INT < 30 || inspectionMode) return@produceState
-        val callback = object : WifiApManager.SoftApCallbackCompat {
-            override fun onCapabilityChanged(capability: Parcelable) {
+        val callback = object : `WifiManager$SoftApCallback` {
+            override fun onCapabilityChanged(capability: SoftApCapability) {
                 value = capability
             }
         }
@@ -311,8 +312,8 @@ fun ApConfigurationScreen(
                     }
                 }
             }
-            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) softApCapability?.let { parcel ->
-                softApSupportedChannels(context, SoftApCapability(parcel))?.let { text ->
+            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) softApCapability?.let {
+                softApSupportedChannels(context, it)?.let { text ->
                     contentItem("supported_channels") { StaticApInfoText(text) }
                 }
             }
@@ -494,7 +495,7 @@ fun ApConfigurationScreen(
             val staticInfo = if (state.p2pMode) {
                 repeaterSupportedFeatures(context)
             } else {
-                softApCapability?.let { softApAdvancedInfo(context, SoftApCapability(it)) }
+                softApCapability?.let { softApAdvancedInfo(context, it) }
             }
             staticInfo?.let { contentItem("advanced_info") { StaticApInfoText(it) } }
         }
@@ -540,7 +541,12 @@ private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): 
     val lines = mutableListOf(
         context.getString(R.string.repeater_features) + softApSupportedFeatures(context, capability),
     )
-    if (Build.VERSION.SDK_INT >= 31) capability.countryCode?.let { countryCode ->
+    if (Build.VERSION.SDK_INT >= 31) try {
+        UnblockCentral.getCountryCode(capability)
+    } catch (e: NoSuchMethodError) {
+        if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
+        null
+    }?.let { countryCode ->
         val label = countryCode.toRegionalIndicatorFlagOrNull()?.let { flag ->
             "${countryCode.uppercase(Locale.US)} $flag"
         } ?: countryCode
@@ -550,7 +556,12 @@ private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): 
 }
 
 private fun softApSupportedFeatures(context: Context, capability: SoftApCapability): String {
-    var features = capability.supportedFeatures
+    var features = 0L
+    var probe = 1L
+    while (probe != 0L) {
+        if (capability.areFeaturesSupported(probe)) features = features or probe
+        probe += probe
+    }
     if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
         SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
         SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,

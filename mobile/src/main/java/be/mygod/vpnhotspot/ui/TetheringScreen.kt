@@ -8,9 +8,12 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.net.MacAddress
 import android.net.TetheringManager
+import android.net.wifi.SoftApCapability
+import android.net.wifi.SoftApInfo
+import android.net.wifi.WifiClient
+import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
-import android.os.Parcelable
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -22,13 +25,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
@@ -50,7 +51,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLinkStyles
@@ -58,9 +58,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import androidx.core.net.toUri
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
@@ -79,11 +79,10 @@ import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApCapability
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
-import be.mygod.vpnhotspot.net.wifi.SoftApInfo
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
+import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
@@ -723,8 +722,8 @@ private fun rememberWifiSummary(
     return produceState(baseError, context, lifecycleOwner, locale, baseError, linkStyles) {
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
-        var wifiInfo = emptyList<Parcelable>()
-        var wifiCapability: Parcelable? = null
+        var wifiInfo = emptyList<SoftApInfo>()
+        var wifiCapability: SoftApCapability? = null
         fun update() {
             value = wifiSummary(
                 context,
@@ -737,7 +736,7 @@ private fun rememberWifiSummary(
                 linkStyles,
             )
         }
-        val callback = object : WifiApManager.SoftApCallbackCompat {
+        val callback = object : `WifiManager$SoftApCallback` {
             override fun onStateChanged(state: Int, failureReason: Int) {
                 if (!WifiApManager.checkWifiApState(state)) return
                 wifiFailureReason = if (state == WifiApManager.WIFI_AP_STATE_FAILED) failureReason else null
@@ -749,12 +748,23 @@ private fun rememberWifiSummary(
                 update()
             }
 
-            override fun onInfoChanged(info: List<Parcelable>) {
+            override fun onConnectedClientsChanged(clients: List<WifiClient>) {
+                wifiNumClients = clients.size
+                update()
+            }
+
+            override fun onInfoChanged(info: SoftApInfo) {
+                wifiInfo = if (info.frequency == 0 && info.bandwidth ==
+                    SoftApInfo.CHANNEL_WIDTH_INVALID) emptyList() else listOf(info)
+                update()
+            }
+
+            override fun onInfoChanged(info: List<SoftApInfo>) {
                 wifiInfo = info
                 update()
             }
 
-            override fun onCapabilityChanged(capability: Parcelable) {
+            override fun onCapabilityChanged(capability: SoftApCapability) {
                 wifiCapability = capability
                 update()
             }
@@ -790,8 +800,8 @@ private fun wifiSummary(
     locale: Locale,
     failureReason: Int?,
     numClients: Int?,
-    info: List<Parcelable>,
-    capability: Parcelable?,
+    infos: List<SoftApInfo>,
+    capability: SoftApCapability?,
     baseError: AnnotatedString?,
     linkStyles: TextLinkStyles,
 ): AnnotatedString? {
@@ -803,16 +813,16 @@ private fun wifiSummary(
         }
         failureReason?.let { line { append(softApStartFailureLabel(context, it)) } }
         baseError?.takeIf { it.text.isNotEmpty() }?.let { line { append(it) } }
-        for (parcel in info) line {
-            val softApInfo = SoftApInfo(parcel)
-            val frequency = softApInfo.frequency
+        for (info in infos) line {
+            val frequency = info.frequency
             val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
-            val bandwidth = channelBandwidthLabel(context, softApInfo.bandwidth)
+            val bandwidth = channelBandwidthLabel(context, info.bandwidth)
             if (Build.VERSION.SDK_INT >= 31) {
-                val bssid = softApInfo.bssid?.toString()
-                val bssidAp = bssid?.let { softApInfo.apInstanceIdentifier?.let { id -> "$it%$id" } ?: it }
-                    ?: softApInfo.apInstanceIdentifier ?: "?"
-                val timeout = softApInfo.autoShutdownTimeoutMillis
+                val bssid = info.bssid?.toString()
+                val apInstanceIdentifier = info.apInstanceIdentifierOrNull
+                val bssidAp = bssid?.let { apInstanceIdentifier?.let { id -> "$it%$id" } ?: it }
+                    ?: apInstanceIdentifier ?: "?"
+                val timeout = info.autoShutdownTimeoutMillis
                 val line = context.getString(if (timeout == 0L) {
                     R.string.tethering_manage_wifi_info_timeout_disabled
                 } else R.string.tethering_manage_wifi_info_timeout_enabled,
@@ -820,18 +830,17 @@ private fun wifiSummary(
                     integerFormat.format(channel.toLong()),
                     bandwidth,
                     bssidAp,
-                    integerFormat.format(softApInfo.wifiStandard.toLong()),
+                    integerFormat.format(info.wifiStandard.toLong()),
                     formatTimeoutMillis(context, timeout),
                 )
-                val bssidText = bssid
-                if (bssidText == null) {
+                if (bssid == null) {
                     append(line)
                 } else {
-                    val bssidStart = line.indexOf(bssidText)
+                    val bssidStart = line.indexOf(bssid)
                     if (bssidStart < 0) append(line) else {
                         append(line.substring(0, bssidStart))
-                        appendMacAddress(bssidText, linkStyles)
-                        append(line.substring(bssidStart + bssidText.length))
+                        appendMacAddress(bssid, linkStyles)
+                        append(line.substring(bssidStart + bssid.length))
                     }
                 }
             } else append(context.getString(
@@ -840,13 +849,17 @@ private fun wifiSummary(
                     integerFormat.format(channel.toLong()),
                     bandwidth,
                 ))
-            softApInfo.mldAddress?.let {
+            try {
+                info.mldAddress
+            } catch (e: NoSuchMethodError) {
+                if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
+                null
+            }?.let {
                 append(", MLD MAC ")
                 appendMacAddress(it.toString(), linkStyles)
             }
         }
-        capability?.takeIf { Build.VERSION.SDK_INT >= 30 }?.let { parcel ->
-            val capability = SoftApCapability(parcel)
+        capability?.takeIf { Build.VERSION.SDK_INT >= 30 }?.let {
             line { append(context.resources.getQuantityString(
                 R.plurals.tethering_manage_wifi_client_limit,
                 numClients ?: 0,

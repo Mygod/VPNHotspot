@@ -5,25 +5,21 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Resources
+import android.net.wifi.DeauthenticationReasonCode
+import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.SoftApInfo
+import android.net.wifi.WifiClient
 import android.net.wifi.WifiManager
+import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
 import android.os.Handler
-import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.EXTRA_WIFI_AP_STATE
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_CHANGED_ACTION
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLED
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLING
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLED
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLING
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_FAILED
-import be.mygod.vpnhotspot.util.*
+import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.findIdentifier
 import timber.log.Timber
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
 
 object WifiApManager {
@@ -196,154 +192,75 @@ object WifiApManager {
         setWifiApConfiguration(Services.wifi, value) as Boolean
     fun setConfiguration(value: SoftApConfiguration) = setSoftApConfiguration(Services.wifi, value) as Boolean
 
-    interface SoftApCallbackCompat {
-        /**
-         * Called when soft AP state changes.
-         *
-         * @param state         the new AP state. One of [WIFI_AP_STATE_DISABLED], [WIFI_AP_STATE_DISABLING],
-         *   [WIFI_AP_STATE_ENABLED], [WIFI_AP_STATE_ENABLING], [WIFI_AP_STATE_FAILED]
-         * @param failureReason reason when in failed state. One of
-         *                      {@link #SAP_START_FAILURE_GENERAL},
-         *                      {@link #SAP_START_FAILURE_NO_CHANNEL},
-         *                      {@link #SAP_START_FAILURE_UNSUPPORTED_CONFIGURATION}
-         */
-        fun onStateChanged(state: Int, failureReason: Int) { }
-
-        /**
-         * Called when number of connected clients to soft AP changes.
-         *
-         * It is not recommended to use this legacy method on API 30+.
-         *
-         * @param numClients number of connected clients
-         */
-        fun onNumClientsChanged(numClients: Int) { }
-
-        /**
-         * Called when the connected clients to soft AP changes.
-         *
-         * @param clients the currently connected clients
-         */
-        @RequiresApi(30)
-        fun onConnectedClientsChanged(clients: List<Parcelable>) = onNumClientsChanged(clients.size)
-
-        /**
-         * Called when information of softap changes.
-         *
-         * @param info is the softap information. [SoftApInfo]
-         *             At most one will be returned on API 30.
-         */
-        @RequiresApi(30)
-        fun onInfoChanged(info: List<Parcelable>) { }
-
-        /**
-         * Called when capability of softap changes.
-         *
-         * @param capability is the softap capability. [SoftApCapability]
-         */
-        @RequiresApi(30)
-        fun onCapabilityChanged(capability: Parcelable) { }
-
-        /**
-         * Called when client trying to connect but device blocked the client with specific reason.
-         *
-         * Can be used to ask user to update client to allowed list or blocked list
-         * when reason is {@link SAP_CLIENT_BLOCK_REASON_CODE_BLOCKED_BY_USER}, or
-         * indicate the block due to maximum supported client number limitation when reason is
-         * {@link SAP_CLIENT_BLOCK_REASON_CODE_NO_MORE_STAS}.
-         *
-         * @param client the currently blocked client.
-         * @param blockedReason one of blocked reason from [SapClientBlockedReason]
-         */
-        @RequiresApi(30)
-        fun onBlockedClientConnecting(client: Parcelable, blockedReason: Int) { }
-
-        /**
-         * Called when clients disconnect from a soft AP instance.
-         *
-         * @param info The [SoftApInfo] of the AP.
-         * @param clients The clients that have disconnected from the AP instance specified by
-         * `info`.
-         */
-        @RequiresApi(30)
-        fun onClientsDisconnected(info: Parcelable, clients: List<Parcelable>) { }
-    }
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
     @get:RequiresApi(30)
     val clientBlockLookup by lazy { ConstantLookup<WifiManager>("SAP_CLIENT_") }
     @get:RequiresApi(30)
     val deauthenticationReasonLookup by lazy {
-        ConstantLookup("REASON_") { Class.forName("android.net.wifi.DeauthenticationReasonCode") }
+        ConstantLookup("REASON_") { DeauthenticationReasonCode::class.java }
     }
 
-    private val interfaceSoftApCallback by lazy { Class.forName("android.net.wifi.WifiManager\$SoftApCallback") }
     private val registerSoftApCallback by lazy {
-        val parameters = if (Build.VERSION.SDK_INT >= 30) {
-            arrayOf(Executor::class.java, interfaceSoftApCallback)
-        } else arrayOf(interfaceSoftApCallback, Handler::class.java)
-        WifiManager::class.java.getDeclaredMethod("registerSoftApCallback", *parameters)
+        if (Build.VERSION.SDK_INT >= 30) {
+            WifiManager::class.java.getDeclaredMethod("registerSoftApCallback", Executor::class.java,
+                `WifiManager$SoftApCallback`::class.java)
+        } else WifiManager::class.java.getDeclaredMethod("registerSoftApCallback",
+            `WifiManager$SoftApCallback`::class.java, Handler::class.java)
     }
     private val unregisterSoftApCallback by lazy {
-        WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", interfaceSoftApCallback)
+        WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", `WifiManager$SoftApCallback`::class.java)
     }
 
-    fun registerSoftApCallback(callback: SoftApCallbackCompat, executor: Executor): Any {
-        val proxy = Proxy.newProxyInstance(interfaceSoftApCallback.classLoader,
-                arrayOf(interfaceSoftApCallback), object : InvocationHandler {
-            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) =
-                    if (Build.VERSION.SDK_INT < 30 && interfaceSoftApCallback === method.declaringClass) {
-                        executor.execute { invokeActual(proxy, method, args) }
-                        null    // no return value as of API 30
-                    } else invokeActual(proxy, method, args)
-
-            private fun invokeActual(proxy: Any, method: Method, args: Array<out Any?>?): Any? {
-                return when {
-                    method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> {
-                        callback.onStateChanged(args!![0] as Int, args[1] as Int)
-                    }
-                    method.matches("onNumClientsChanged", Integer.TYPE) -> {
-                        if (Build.VERSION.SDK_INT >= 30) Timber.w(Exception("Unexpected onNumClientsChanged"))
-                        callback.onNumClientsChanged(args!![0] as Int)
-                    }
-                    method.matches1<java.util.List<*>>("onConnectedClientsChanged") -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onConnectedClientsChanged"))
-                        @Suppress("UNCHECKED_CAST")
-                        callback.onConnectedClientsChanged(args!![0] as List<Parcelable>)
-                    }
-                    method.matches1<java.util.List<*>>("onInfoChanged") -> @TargetApi(30) {
-                        if (Build.VERSION.SDK_INT < 30) Timber.w(Exception("Unexpected onInfoChanged"))
-                        @Suppress("UNCHECKED_CAST")
-                        val list = args!![0] as List<Parcelable>
-                        if (Build.VERSION.SDK_INT >= 35) for (info in list) (SoftApInfo.getVendorData(info) as List<*>?)
-                            .let { if (!it.isNullOrEmpty()) Timber.w(Exception(it.toString())) }
-                        callback.onInfoChanged(list)
-                    }
-                    Build.VERSION.SDK_INT >= 30 && method.matches("onInfoChanged", SoftApInfo.clazz) -> {
-                        if (Build.VERSION.SDK_INT >= 31) return null    // ignore old version calls
-                        val arg = args!![0]
-                        val info = SoftApInfo(arg as Parcelable)
-                        callback.onInfoChanged(if (info.frequency == 0 && info.bandwidth ==
-                            SoftApConfigurationCompat.CHANNEL_WIDTH_INVALID) emptyList() else listOf(arg))
-                    }
-                    Build.VERSION.SDK_INT >= 30 && method.matches("onCapabilityChanged", SoftApCapability.clazz) -> {
-                        callback.onCapabilityChanged(args!![0] as Parcelable)
-                    }
-                    Build.VERSION.SDK_INT >= 30 && method.matches("onBlockedClientConnecting", WifiClient.clazz,
-                        Int::class.java) -> {
-                        callback.onBlockedClientConnecting(args!![0] as Parcelable, args[1] as Int)
-                    }
-                    Build.VERSION.SDK_INT >= 30 && method.matches("onClientsDisconnected", SoftApInfo.clazz,
-                        List::class.java) -> {
-                        @Suppress("UNCHECKED_CAST")
-                        callback.onClientsDisconnected(args!![0] as Parcelable, args[1] as List<Parcelable>)
-                    }
-                    else -> callSuper(interfaceSoftApCallback, proxy, method, args)
-                }
+    fun registerSoftApCallback(callback: `WifiManager$SoftApCallback`, executor: Executor): Any {
+        val key = if (Build.VERSION.SDK_INT >= 30) object : `WifiManager$SoftApCallback` {
+            override fun onStateChanged(state: Int, failureReason: Int) {
+                callback.onStateChanged(state, failureReason)
             }
-        })
+
+            override fun onNumClientsChanged(numClients: Int) {
+                Timber.w(Exception("Unexpected onNumClientsChanged"))
+                callback.onNumClientsChanged(numClients)
+            }
+
+            override fun onConnectedClientsChanged(clients: MutableList<WifiClient>) {
+                callback.onConnectedClientsChanged(clients)
+            }
+
+            override fun onInfoChanged(infos: MutableList<SoftApInfo>) {
+                if (Build.VERSION.SDK_INT >= 35) for (info in infos) info.vendorData.let {
+                    if (it.isNotEmpty()) Timber.w(Exception(it.toString()))
+                }
+                callback.onInfoChanged(infos)
+            }
+
+            override fun onInfoChanged(info: SoftApInfo) {
+                callback.onInfoChanged(info)
+            }
+
+            override fun onCapabilityChanged(capability: SoftApCapability) {
+                callback.onCapabilityChanged(capability)
+            }
+
+            override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) {
+                callback.onBlockedClientConnecting(client, blockedReason)
+            }
+
+            override fun onClientsDisconnected(info: SoftApInfo, clients: MutableList<WifiClient>) {
+                callback.onClientsDisconnected(info, clients)
+            }
+        } else object : `WifiManager$SoftApCallback` {
+            override fun onStateChanged(state: Int, failureReason: Int) {
+                executor.execute { callback.onStateChanged(state, failureReason) }
+            }
+
+            override fun onNumClientsChanged(numClients: Int) {
+                executor.execute { callback.onNumClientsChanged(numClients) }
+            }
+        }
         if (Build.VERSION.SDK_INT >= 30) {
-            registerSoftApCallback(Services.wifi, executor, proxy)
-        } else registerSoftApCallback(Services.wifi, proxy, null)
-        return proxy
+            registerSoftApCallback(Services.wifi, executor, key)
+        } else registerSoftApCallback(Services.wifi, key, null)
+        return key
     }
     fun unregisterSoftApCallback(key: Any) = unregisterSoftApCallback(Services.wifi, key)
 
