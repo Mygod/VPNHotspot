@@ -16,7 +16,7 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::report;
-use crate::socket::{is_connection_closed, set_nonblocking};
+use crate::socket::{is_connection_closed, is_udp_reply_unreachable, set_nonblocking};
 use vpnhotspotd::shared::dns_counter::DnsCounters;
 use vpnhotspotd::shared::dns_wire;
 use vpnhotspotd::shared::model::{mac_string, ClientDnsPorts, Network, SessionConfig};
@@ -467,11 +467,17 @@ fn spawn_udp_loop(
                                             report::io("dns.counter", e);
                                         }
                                         if let Err(e) = socket.send_to(&response.bytes, source).await {
-                                            report::io_with_details(
-                                                "dns.udp_response",
-                                                e,
-                                                [("source", source.to_string())],
-                                            );
+                                            if is_udp_reply_unreachable(&e) {
+                                                report::stderr!(
+                                                    "dns udp response dropped: source={source}: {e}"
+                                                );
+                                            } else {
+                                                report::io_with_details(
+                                                    "dns.udp_response",
+                                                    e,
+                                                    [("source", source.to_string())],
+                                                );
+                                            }
                                         }
                                     }
                                 }

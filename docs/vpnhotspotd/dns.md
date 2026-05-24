@@ -90,7 +90,9 @@ I/O failures are returned to the connection task.
 
 UDP DNS reads one datagram, clones the config snapshot, and resolves the query
 in a child task. If resolution succeeds, the response is sent back to the
-datagram source. Send failures are reported with source context.
+datagram source. Host- or network-unreachable reply sends are treated as
+downstream reachability churn and logged with source context. Other send
+failures are reported with source context.
 
 The UDP listener intentionally does not serialize all queries through one
 worker. Each query has its own child task tied to the session stop token.

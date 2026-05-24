@@ -7,6 +7,7 @@ use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::UdpSocket as TokioUdpSocket;
 
 use crate::report;
+use crate::socket::is_udp_reply_unreachable;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(super) struct ReplySocketKey {
@@ -290,6 +291,15 @@ pub(super) fn report_send_response_error(
     client: SocketAddrV6,
     destination: SocketAddrV6,
 ) {
+    if let SendResponseError::Retry { initial, error } = &error {
+        if is_udp_reply_unreachable(initial) && is_udp_reply_unreachable(error) {
+            report::stderr!(
+                "{context} dropped: client={client} destination={destination} \
+                 initial_send={initial} retry_send={error}"
+            );
+            return;
+        }
+    }
     let (error, initial, stage) = error.into_report_parts();
     let mut details = vec![
         ("client", client.to_string()),

@@ -249,6 +249,7 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
+    debugImplementation(libs.leakcanary.android)
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))

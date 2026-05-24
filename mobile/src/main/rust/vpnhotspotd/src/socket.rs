@@ -85,6 +85,13 @@ pub(crate) fn is_connection_closed(error: &io::Error) -> bool {
     )
 }
 
+pub(crate) fn is_udp_reply_unreachable(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(libc::EHOSTUNREACH | libc::ENETUNREACH)
+    )
+}
+
 pub(crate) fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     let flags = unsafe { fcntl(fd, F_GETFL) };
     if flags < 0 {

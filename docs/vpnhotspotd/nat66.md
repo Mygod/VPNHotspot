@@ -175,7 +175,10 @@ The reply socket pool separates DNS replies from user UDP associations. User
 associations reserve a reply source while alive so downstream responses can use
 the original destination as their source. DNS keeps retained reply sockets by
 source/mark because DNS requests are short child tasks rather than entries in
-the association table.
+the association table. Host- or network-unreachable downstream reply sends are
+treated as client reachability churn and logged. Reply socket acquisition,
+replacement, and other unexpected send failures are reported as structured
+nonfatals.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a
