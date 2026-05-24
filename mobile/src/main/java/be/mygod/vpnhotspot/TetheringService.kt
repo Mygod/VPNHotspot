@@ -123,18 +123,18 @@ class TetheringService : NetlinkNeighbourMonitoringService(), TetherStates.Callb
                 if (!downstream.started) inactiveIfaces.add(downstream.downstream)
             }
         }
+        monitoredIfaces.also { ifaces ->
+            if (ifaces.isEmpty()) {
+                BootReceiver.delete<TetheringService>()
+            } else BootReceiver.add<TetheringService>(Starter(ArrayList<String>(ifaces.size).apply {
+                ifaces.forEach { iface -> add(iface) }
+            }))
+        }
         if (managedIfaces.isEmpty()) {
             unregisterReceiver()
             ServiceNotification.stopForeground(this)
             stopSelf()
         } else {
-            monitoredIfaces.also { ifaces ->
-                if (ifaces.isEmpty()) {
-                    BootReceiver.delete<TetheringService>()
-                } else BootReceiver.add<TetheringService>(Starter(ArrayList<String>(ifaces.size).apply {
-                    ifaces.forEach { iface -> add(iface) }
-                }))
-            }
             if (!tetherStatesRegistered) {
                 withContext(Dispatchers.Main.immediate) {
                     TetherStates.registerCallback(this@TetheringService)
