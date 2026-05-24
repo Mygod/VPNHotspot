@@ -320,10 +320,10 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     override fun onStart(owner: LifecycleOwner) {
         if (Services.p2p != null) app.bindService(Intent(app, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
         TetherStates.registerCallback(this)
-        if (Build.VERSION.SDK_INT >= 31) WifiApCommands.registerSoftApCallback(this)
+        if (Build.VERSION.SDK_INT >= 30) WifiApCommands.registerSoftApCallback(this)
     }
     override fun onStop(owner: LifecycleOwner) {
-        if (Build.VERSION.SDK_INT >= 31) WifiApCommands.unregisterSoftApCallback(this)
+        if (Build.VERSION.SDK_INT >= 30) WifiApCommands.unregisterSoftApCallback(this)
         TetherStates.unregisterCallback(this)
         if (Services.p2p != null) app.stopAndUnbind(this)
     }
@@ -337,8 +337,9 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         repeater.value = null
     }
 
-    @RequiresApi(31)
+    @RequiresApi(30)
     override fun onConnectedClientsChanged(clients: List<WifiClient>) {
+        if (Build.VERSION.SDK_INT < 31) return
         val wifiAp = MutableScatterMap<Pair<String, MacAddress>, Unit>()
         for (client in clients) {
             client.apInstanceIdentifierOrNull?.let { wifiAp[it to client.macAddress] = Unit }
@@ -350,11 +351,11 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     @RequiresApi(31)
     override fun onInfoChanged(info: List<SoftApInfo>) = populateClients()
 
-    @RequiresApi(31)
+    @RequiresApi(30)
     override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) {
         val macAddress = client.macAddress
         var name = macAddress.toString()
-        client.apInstanceIdentifierOrNull?.let { name += "%$it" }
+        if (Build.VERSION.SDK_INT >= 31) client.apInstanceIdentifierOrNull?.let { name += "%$it" }
         val reason = softApClientBlockReasonLabel(app, blockedReason)
         Timber.i("$name blocked from connecting: $reason ($blockedReason)")
         SmartSnackbar.make(app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason)).apply {
