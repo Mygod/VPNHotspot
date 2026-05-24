@@ -175,7 +175,7 @@ data class StartTethering(private val type: Int,
 
 @Parcelize
 @RequiresApi(30)
-data class StopTethering(private val cacheDir: File, private val type: Int) : RootCommand<ParcelableInt?> {
+data class StopTethering(private val type: Int) : RootCommand<ParcelableInt?> {
     override suspend fun execute(): ParcelableInt? {
         val future = CompletableDeferred<Int?>()
         TetheringManagerCompat.stopTethering(type, object : TetheringManagerCompat.StopTetheringCallback {
@@ -190,7 +190,7 @@ data class StopTethering(private val cacheDir: File, private val type: Int) : Ro
             override fun onException(e: Exception) {
                 future.completeExceptionally(e)
             }
-        }, Services.context, cacheDir)
+        }, Services.context)
         return future.await()?.let { ParcelableInt(it) }
     }
 }
@@ -198,7 +198,7 @@ data class StopTethering(private val cacheDir: File, private val type: Int) : Ro
 @Deprecated("Old API since API 30")
 @Parcelize
 @Suppress("DEPRECATION")
-data class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
+data class StartTetheringLegacy(private val type: Int,
                                 private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
     override suspend fun execute(): ParcelableBoolean {
         val future = CompletableDeferred<Boolean>()
@@ -212,7 +212,7 @@ data class StartTetheringLegacy(private val cacheDir: File, private val type: In
                 future.complete(false)
             }
         }
-        TetheringManagerCompat.startTetheringLegacy(type, showProvisioningUi, callback, cacheDir = cacheDir)
+        TetheringManagerCompat.startTetheringLegacy(type, showProvisioningUi, callback)
         return ParcelableBoolean(future.await())
     }
 }

@@ -225,6 +225,10 @@
 
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>
+        <activity android:name="com.google.android.gms.oss.licenses.OssLicensesMenuActivity"
+                  tools:node="remove"/>
+        <activity android:name="com.google.android.gms.oss.licenses.OssLicensesActivity"
+                  tools:node="remove"/>
 
     </application>
 

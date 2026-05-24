@@ -9,6 +9,8 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.compile.JavaCompile
+import org.gradle.jvm.tasks.Jar
 
 plugins {
     alias(libs.plugins.android.application)
@@ -176,6 +178,20 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
+val compileHiddenApiStubs by tasks.registering(JavaCompile::class) {
+    source("src/hiddenApiStubs/java")
+    classpath = files(androidComponents.sdkComponents.bootClasspath)
+    destinationDirectory.set(layout.buildDirectory.dir("intermediates/hiddenApiStubs/classes"))
+    sourceCompatibility = javaVersion.toString()
+    targetCompatibility = javaVersion.toString()
+    options.release.set(javaVersion)
+}
+val hiddenApiStubsClasses = files(compileHiddenApiStubs.flatMap { it.destinationDirectory })
+    .builtBy(compileHiddenApiStubs)
+val hiddenApiStubsJar by tasks.registering(Jar::class) {
+    from(hiddenApiStubsClasses)
+    archiveFileName.set("hidden-api-stubs.jar")
+}
 wire {
     kotlin {
         enumMode = "sealed_class"
@@ -183,7 +199,8 @@ wire {
     }
 }
 androidComponents.onVariants { variant ->
-    val task = tasks.register<GenerateGitJavaTask>("generate${variant.name.replaceFirstChar(Char::titlecase)}GitJava") {
+    val variantTitle = variant.name.replaceFirstChar(Char::titlecase)
+    val task = tasks.register<GenerateGitJavaTask>("generate${variantTitle}GitJava") {
         includeStatus.set(variant.buildType == "debug")
         outputDir.set(layout.buildDirectory.dir("generated/source/git/${variant.name}"))
         repositoryDir.set(rootProject.layout.projectDirectory)
@@ -191,7 +208,7 @@ androidComponents.onVariants { variant ->
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
     val daemonTask = tasks.register<BuildDaemonNativeLibsTask>(
-        "build${variant.name.replaceFirstChar(Char::titlecase)}DaemonNativeLibs") {
+        "build${variantTitle}DaemonNativeLibs") {
         sourceDir.set(layout.projectDirectory.dir("src/main/rust/vpnhotspotd"))
         protoDir.set(layout.projectDirectory.dir("src/main/proto"))
         cargoProfile.set(if (variant.buildType == "release") "release" else "debug")
@@ -208,6 +225,7 @@ ksp {
 }
 
 dependencies {
+    compileOnly(files(hiddenApiStubsJar))
     ksp(libs.room.compiler)
     implementation(platform(libs.compose.bom))
     implementation("androidx.compose.material3:material3")
@@ -216,7 +234,6 @@ dependencies {
     implementation(libs.activity.compose)
     implementation(libs.browser)
     implementation(libs.core.ktx)
-    implementation(libs.dexmaker)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.hiddenapibypass)
