@@ -53,6 +53,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
@@ -62,6 +63,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.ref.WeakReference
@@ -423,7 +425,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                 val channel = channel ?: return@launch
                 coroutineScope {
                     launch(start = CoroutineStart.UNDISPATCHED) {
-                        if (p2pManager.requestP2pState(channel) == WifiP2pManager.WIFI_P2P_STATE_DISABLED) cleanLocked()
+                        if (p2pManager.requestP2pState(channel) == WifiP2pManager.WIFI_P2P_STATE_DISABLED) clean()
                     }
                     val info = async(start = CoroutineStart.UNDISPATCHED) { p2pManager.requestConnectionInfo(channel) }
                     val group = p2pManager.requestGroupInfo(channel)
@@ -613,7 +615,9 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             timeoutMonitor = null
             val manager = routingManager
             routingManager = null
-            manager?.stop()
+            withContext(NonCancellable) {
+                manager?.stop()
+            }
             if (status.value != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
             if (status.value != Status.DESTROYED) status.value = Status.IDLE
             ServiceNotification.stopForeground(this)
