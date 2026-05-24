@@ -237,7 +237,7 @@ fun TetheringScreen(
             repeaterStatus == RepeaterService.Status.ACTIVE) && WifiP2pManagerHelper.startWps != null
     val showBluetooth = inspectionMode || (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
             bluetoothTethering != null)
-    val bluetoothActive = remember(showBluetooth, bluetoothTethering, bluetoothVersion) {
+    val bluetoothActive = remember(showBluetooth, bluetoothTethering, bluetoothVersion, tetherStates.tethered) {
         if (showBluetooth) bluetoothTethering?.active else null
     }
 

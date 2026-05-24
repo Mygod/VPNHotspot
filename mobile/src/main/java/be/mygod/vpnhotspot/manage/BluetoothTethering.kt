@@ -48,7 +48,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
     private var proxyCreated = false
     private var connected = false
     private var pan: BluetoothPan? = null
-    private var stoppedByUser = false
     var activeFailureCause: Throwable? = null
     /**
      * Based on: https://android.googlesource.com/platform/packages/apps/Settings/+/78d5efd/src/com/android/settings/TetherSettings.java
@@ -57,17 +56,13 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         val pan = pan ?: return null
         if (!connected) return null
         activeFailureCause = null
-        val on = adapter.state == BluetoothAdapter.STATE_ON && try {
+        return adapter.state == BluetoothAdapter.STATE_ON && try {
             pan.isTetheringOn
         } catch (e: SecurityException) {
             activeFailureCause = e
             if (Build.VERSION.SDK_INT >= 30) Timber.d(e.readableMessage) else Timber.w(e)
             return null
         }
-        return if (stoppedByUser) {
-            if (!on) stoppedByUser = false
-            false
-        } else on
     }
 
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
@@ -89,7 +84,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
 
     override fun onServiceDisconnected(profile: Int) {
         connected = false
-        stoppedByUser = false
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
         pan = proxy as BluetoothPan
@@ -121,7 +115,6 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
     }
     fun stop(callback: TetheringManagerCompat.StopTetheringCallback) {
         TetheringManagerCompat.stopTethering(TetheringManagerCompat.TETHERING_BLUETOOTH, callback)
-        stoppedByUser = true
     }
 
     override fun close() {
