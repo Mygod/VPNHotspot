@@ -4,7 +4,8 @@
 [![Releases](https://img.shields.io/github/downloads/Mygod/VPNHotspot/total.svg)](https://github.com/Mygod/VPNHotspot/releases)
 [![Android 10-16.1](https://img.shields.io/badge/Android-10--16.1-3DDC84?logo=android&logoColor=white)](mobile/build.gradle.kts)
 
-[![Get it on Obtainium](https://github.com/ImranR98/Obtainium/raw/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/Mygod/VPNHotspot)
+[![Get it on Obtainium](https://github.com/ImranR98/Obtainium/raw/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/{"id":"be.mygod.vpnhotspot","url":"https://github.com/Mygod/VPNHotspot","author":"","name":"","additionalSettings":"{\"includeZips\":true,\"apkFilterRegEx\":\"zip\"}"})
+([Pre-release channel](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/{"id":"be.mygod.vpnhotspot","url":"https://github.com/Mygod/VPNHotspot","author":"","name":"","additionalSettings":"{\"includePrereleases\":true,\"includeZips\":true,\"apkFilterRegEx\":\"zip\"}"}))
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 
