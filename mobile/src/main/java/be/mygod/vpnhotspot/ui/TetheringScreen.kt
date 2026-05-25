@@ -9,9 +9,6 @@ import android.content.res.Configuration
 import android.net.MacAddress
 import android.net.TetheringManager
 import android.net.wifi.OuiKeyedData
-import android.net.wifi.SoftApCapability
-import android.net.wifi.SoftApInfo
-import android.net.wifi.WifiClient
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
@@ -84,10 +81,8 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
-import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
-import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -726,21 +721,19 @@ private fun rememberWifiSummary(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val locale = LocalConfiguration.current.locales[0]
+    if (Build.VERSION.SDK_INT >= 30) return rememberWifiSummaryApi30(baseError, linkStyles)
     return produceState(baseError, context, lifecycleOwner, locale, baseError, linkStyles) {
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
-        var wifiInfo = emptyList<SoftApInfo>()
-        var wifiCapability: SoftApCapability? = null
         fun update() {
             value = wifiSummary(
                 context,
                 locale,
                 wifiFailureReason,
                 wifiNumClients,
-                wifiInfo,
-                wifiCapability,
+                null,
+                null,
                 baseError,
-                linkStyles,
             )
         }
         val callback = object : `WifiManager$SoftApCallback` {
@@ -752,27 +745,6 @@ private fun rememberWifiSummary(
 
             override fun onNumClientsChanged(numClients: Int) {
                 wifiNumClients = numClients
-                update()
-            }
-
-            override fun onConnectedClientsChanged(clients: List<WifiClient>) {
-                wifiNumClients = clients.size
-                update()
-            }
-
-            override fun onInfoChanged(info: SoftApInfo) {
-                wifiInfo = if (info.frequency == 0 && info.bandwidth ==
-                    SoftApInfo.CHANNEL_WIDTH_INVALID) emptyList() else listOf(info)
-                update()
-            }
-
-            override fun onInfoChanged(info: List<SoftApInfo>) {
-                wifiInfo = info
-                update()
-            }
-
-            override fun onCapabilityChanged(capability: SoftApCapability) {
-                wifiCapability = capability
                 update()
             }
         }
@@ -802,15 +774,14 @@ private fun rememberWifiSummary(
     }
 }
 
-private fun wifiSummary(
+internal fun wifiSummary(
     context: Context,
     locale: Locale,
     failureReason: Int?,
     numClients: Int?,
-    infos: List<SoftApInfo>,
-    capability: SoftApCapability?,
+    info: AnnotatedString?,
+    maxSupportedClients: Int?,
     baseError: AnnotatedString?,
-    linkStyles: TextLinkStyles,
 ): AnnotatedString? {
     val integerFormat = NumberFormat.getIntegerInstance(locale)
     val summary = buildAnnotatedString {
@@ -820,58 +791,13 @@ private fun wifiSummary(
         }
         failureReason?.let { line { append(softApStartFailureLabel(context, it)) } }
         baseError?.takeIf { it.text.isNotEmpty() }?.let { line { append(it) } }
-        for (info in infos) line {
-            val frequency = info.frequency
-            val channel = SoftApConfigurationCompat.frequencyToChannel(frequency)
-            val bandwidth = channelBandwidthLabel(context, info.bandwidth)
-            if (Build.VERSION.SDK_INT >= 31) {
-                val bssid = info.bssid?.toString()
-                val apInstanceIdentifier = info.apInstanceIdentifierOrNull
-                val bssidAp = bssid?.let { apInstanceIdentifier?.let { id -> "$it%$id" } ?: it }
-                    ?: apInstanceIdentifier ?: "?"
-                val timeout = info.autoShutdownTimeoutMillis
-                val line = context.getString(if (timeout == 0L) {
-                    R.string.tethering_manage_wifi_info_timeout_disabled
-                } else R.string.tethering_manage_wifi_info_timeout_enabled,
-                    integerFormat.format(frequency.toLong()),
-                    integerFormat.format(channel.toLong()),
-                    bandwidth,
-                    bssidAp,
-                    integerFormat.format(info.wifiStandard.toLong()),
-                    formatTimeoutMillis(context, timeout),
-                )
-                if (bssid == null) {
-                    append(line)
-                } else {
-                    val bssidStart = line.indexOf(bssid)
-                    if (bssidStart < 0) append(line) else {
-                        append(line.substring(0, bssidStart))
-                        appendMacAddress(bssid, linkStyles)
-                        append(line.substring(bssidStart + bssid.length))
-                    }
-                }
-            } else append(context.getString(
-                    R.string.tethering_manage_wifi_info,
-                    integerFormat.format(frequency.toLong()),
-                    integerFormat.format(channel.toLong()),
-                    bandwidth,
-                ))
-            try {
-                info.mldAddress
-            } catch (e: NoSuchMethodError) {
-                if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
-                null
-            }?.let {
-                append(", MLD MAC ")
-                appendMacAddress(it.toString(), linkStyles)
-            }
-        }
-        capability?.takeIf { Build.VERSION.SDK_INT >= 30 }?.let {
+        info?.takeIf { it.text.isNotEmpty() }?.let { line { append(it) } }
+        maxSupportedClients?.let {
             line { append(context.resources.getQuantityString(
                 R.plurals.tethering_manage_wifi_client_limit,
                 numClients ?: 0,
                 numClients?.let { integerFormat.format(it.toLong()) } ?: "?",
-                integerFormat.format(capability.maxSupportedClients.toLong()),
+                integerFormat.format(it.toLong()),
             )) }
         } ?: numClients?.let {
             line { append(context.resources.getQuantityString(

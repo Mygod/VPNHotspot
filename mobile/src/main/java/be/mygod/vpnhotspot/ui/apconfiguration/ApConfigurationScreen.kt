@@ -1,10 +1,7 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.content.Context
-import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
-import android.net.wifi.SoftApInfo
-import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,7 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -33,31 +30,19 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.VendorElements
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.SettingsList
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.channelBandwidthLabel
 import be.mygod.vpnhotspot.ui.preferenceGroup
 import be.mygod.vpnhotspot.ui.showLongSnackbar
-import be.mygod.vpnhotspot.ui.softApBandLabel
-import be.mygod.vpnhotspot.ui.softApFeatureLabel
-import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.readableMessage
-import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.util.Locale
 
 @Composable
 fun ApConfigurationScreen(
@@ -73,59 +58,10 @@ fun ApConfigurationScreen(
     val defaultBridgedTimeout = if (inspectionMode || Build.VERSION.SDK_INT < 31) {
         600_000L
     } else TetherTimeoutMonitor.defaultTimeoutBridged.toLong()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var softApVendorData by rememberSaveable(
-        lifecycleOwner,
-        state.p2pMode,
-        inspectionMode,
-    ) { mutableStateOf("") }
-    val softApCapability by produceState<SoftApCapability?>(
-        null,
-        lifecycleOwner,
-        state.p2pMode,
-        inspectionMode,
-    ) {
-        softApVendorData = ""
-        if (state.p2pMode || Build.VERSION.SDK_INT < 30 || inspectionMode) return@produceState
-        fun updateVendorData(infos: List<SoftApInfo>) {
-            if (Build.VERSION.SDK_INT >= 35) softApVendorData = VendorData.serialize(infos.flatMap { it.vendorData })
-        }
-        val callback = object : `WifiManager$SoftApCallback` {
-            override fun onInfoChanged(info: SoftApInfo) {
-                updateVendorData(listOf(info))
-            }
-
-            override fun onInfoChanged(info: List<SoftApInfo>) {
-                updateVendorData(info)
-            }
-
-            override fun onCapabilityChanged(capability: SoftApCapability) {
-                value = capability
-            }
-        }
-        var registered = false
-        fun register() {
-            if (!registered) {
-                WifiApCommands.registerSoftApCallback(callback)
-                registered = true
-            }
-        }
-        fun unregister() {
-            if (registered) {
-                WifiApCommands.unregisterSoftApCallback(callback)
-                registered = false
-            }
-        }
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) = register()
-            override fun onStop(owner: LifecycleOwner) = unregister()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
-        awaitDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            unregister()
-        }
+    val softApRuntimeInfo by if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 && !inspectionMode) {
+        rememberSoftApRuntimeInfo()
+    } else {
+        remember { mutableStateOf(null) }
     }
     val navigationBarPadding = WindowInsets.navigationBars.asPaddingValues()
     SettingsList(
@@ -329,8 +265,8 @@ fun ApConfigurationScreen(
                     }
                 }
             }
-            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) softApCapability?.let {
-                softApSupportedChannels(context, it)?.let { text ->
+            if (!state.p2pMode && Build.VERSION.SDK_INT >= 31) {
+                softApRuntimeInfo?.supportedChannels?.let { text ->
                     contentItem("supported_channels") { StaticApInfoText(text) }
                 }
             }
@@ -512,7 +448,7 @@ fun ApConfigurationScreen(
             val staticInfo = if (state.p2pMode) {
                 repeaterSupportedFeatures(context)
             } else {
-                softApCapability?.let { softApAdvancedInfo(context, it, softApVendorData) }
+                softApRuntimeInfo?.advancedInfo
             }
             staticInfo?.let { contentItem("advanced_info") { StaticApInfoText(it) } }
         }
@@ -554,75 +490,4 @@ private fun repeaterSupportedFeatures(context: Context): String? {
     return if (labels.isEmpty()) null else context.getString(R.string.repeater_features) + labels.joinAsBullets()
 }
 
-private fun softApAdvancedInfo(context: Context, capability: SoftApCapability, vendorData: String): String {
-    val lines = mutableListOf(
-        context.getString(R.string.repeater_features) + softApSupportedFeatures(context, capability),
-    )
-    if (Build.VERSION.SDK_INT >= 31) try {
-        UnblockCentral.getCountryCode(capability)
-    } catch (e: NoSuchMethodError) {
-        if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
-        null
-    }?.let { countryCode ->
-        val label = countryCode.toRegionalIndicatorFlagOrNull()?.let { flag ->
-            "${countryCode.uppercase(Locale.US)} $flag"
-        } ?: countryCode
-        lines += context.getString(R.string.tethering_manage_wifi_country_code, label)
-    }
-    if (vendorData.isNotEmpty()) lines += context.getString(R.string.tethering_manage_wifi_vendor_data, vendorData)
-    return lines.joinToString("\n")
-}
-
-private fun softApSupportedFeatures(context: Context, capability: SoftApCapability): String {
-    var features = 0L
-    var probe = 1L
-    while (probe != 0L) {
-        if (capability.areFeaturesSupported(probe)) features = features or probe
-        probe += probe
-    }
-    if (Build.VERSION.SDK_INT >= 31) for ((flag, band) in arrayOf(
-        SoftApCapability.SOFTAP_FEATURE_BAND_24G_SUPPORTED to SoftApConfiguration.BAND_2GHZ,
-        SoftApCapability.SOFTAP_FEATURE_BAND_5G_SUPPORTED to SoftApConfiguration.BAND_5GHZ,
-        SoftApCapability.SOFTAP_FEATURE_BAND_6G_SUPPORTED to SoftApConfiguration.BAND_6GHZ,
-        SoftApCapability.SOFTAP_FEATURE_BAND_60G_SUPPORTED to SoftApConfiguration.BAND_60GHZ,
-    )) {
-        if (capability.getSupportedChannelList(band).isNotEmpty()) features = features and flag.inv()
-    }
-    return sequence {
-        if (WifiApManager.isApMacRandomizationSupported) yield(context.getString(
-            R.string.tethering_manage_wifi_feature_ap_mac_randomization))
-        if (Services.wifi.isStaApConcurrencySupported) yield(context.getString(
-            R.string.tethering_manage_wifi_feature_sta_ap_concurrency))
-        if (Build.VERSION.SDK_INT >= 31) {
-            if (Services.wifi.isBridgedApConcurrencySupported) yield(context.getString(
-                R.string.tethering_manage_wifi_feature_bridged_ap_concurrency))
-            if (Services.wifi.isStaBridgedApConcurrencySupported) yield(context.getString(
-                R.string.tethering_manage_wifi_feature_sta_bridged_ap_concurrency))
-        }
-        while (features != 0L) {
-            val bit = features.takeLowestOneBit()
-            yield(softApFeatureLabel(context, bit))
-            features = features and bit.inv()
-        }
-    }.toList().ifEmpty {
-        listOf(context.getString(R.string.tethering_manage_wifi_no_features))
-    }.joinAsBullets()
-}
-
-private fun softApSupportedChannels(context: Context, capability: SoftApCapability): String? {
-    if (Build.VERSION.SDK_INT < 31) return null
-    val channels = buildList {
-        for (band in SoftApConfigurationCompat.BAND_TYPES) {
-            val list = capability.getSupportedChannelList(band)
-            if (list.isNotEmpty()) {
-                add("${softApBandLabel(context, band)} (${RangeInput.toString(list)})")
-            }
-        }
-    }
-    return if (channels.isEmpty()) null else context.getString(
-        R.string.tethering_manage_wifi_supported_channels,
-        channels.joinAsBullets(),
-    ).trimStart()
-}
-
-private fun Iterable<String>.joinAsBullets() = joinToString(separator = "\n• ", prefix = "\n• ")
+internal fun Iterable<String>.joinAsBullets() = joinToString(separator = "\n• ", prefix = "\n• ")
