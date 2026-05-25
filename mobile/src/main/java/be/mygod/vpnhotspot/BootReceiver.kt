@@ -34,12 +34,12 @@ class BootReceiver : BroadcastReceiver() {
             set(value) = app.packageManager.setComponentEnabledSetting(componentName,
                     if (value) PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                     else PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
-        private val userEnabled get() = app.pref.getBoolean(KEY, false)
+        private suspend fun isUserEnabled() = withContext(Dispatchers.IO) { app.pref.getBoolean(KEY, false) }
         suspend fun onUserSettingUpdated(shouldStart: Boolean) = configMutex.withLock {
             enabled = shouldStart && loadConfigLocked()?.startables?.isEmpty() == false
         }
-        private fun onConfigUpdated(isNotEmpty: Boolean) {
-            enabled = isNotEmpty && userEnabled
+        private suspend fun onConfigUpdated(isNotEmpty: Boolean) {
+            enabled = isNotEmpty && isUserEnabled()
         }
 
         private const val FILENAME = "bootconfig"
@@ -100,7 +100,7 @@ class BootReceiver : BroadcastReceiver() {
             started = true
         }
         suspend fun startIfEnabled() {
-            if (!started && userEnabled) startIfNecessary()
+            if (!started && isUserEnabled()) startIfNecessary()
         }
     }
 
@@ -118,7 +118,7 @@ class BootReceiver : BroadcastReceiver() {
                 val pending = goAsync()
                 GlobalScope.launch(Dispatchers.Main.immediate) {
                     try {
-                        if (userEnabled) startIfNecessary() else enabled = false
+                        if (isUserEnabled()) startIfNecessary() else enabled = false
                     } finally {
                         pending.finish()
                     }
