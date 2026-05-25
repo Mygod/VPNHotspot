@@ -12,6 +12,7 @@ import android.content.pm.ProviderInfo
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.os.StrictMode
 import android.os.ext.SdkExtensions
 import android.provider.Settings
 import android.system.Os
@@ -25,6 +26,7 @@ import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -103,6 +105,12 @@ class App : Application() {
                 }
             }
         })
+        StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().apply {
+            if (BuildConfig.DEBUG) detectAll() else detectNetwork()
+        }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode thread policy violation") }.build())
+        StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().apply {
+            if (BuildConfig.DEBUG) detectAll() else detectFileUriExposure()
+        }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode VM policy violation") }.build())
         ServiceNotification.updateNotificationChannels()
     }
 
