@@ -12,7 +12,8 @@ object DaemonAbi {
     ) {
         val rootAbi = rootAbi(machine, is64Bit) ?: return
         val daemonAbi = daemonAbi(daemonPath) ?: return
-        if (daemonAbi != rootAbi) throw IOException("Please install the $rootAbi APK variant instead of $daemonAbi.")
+        if (daemonAbi != rootAbi) throw IOException("Wrong APK variant installed. Install the $rootAbi APK instead of ${
+            daemonAbi}.")
     }
 
     fun daemonAbi(path: String): String? =

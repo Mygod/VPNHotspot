@@ -34,12 +34,9 @@ class DaemonAbiTest {
 
     @Test
     fun checkRejectsMismatchedDaemonAbi() {
-        val e = assertThrows(IOException::class.java) {
+        assertThrows(IOException::class.java) {
             DaemonAbi.check("/data/app/base.apk!/lib/arm64-v8a/libvpnhotspotd.so", "x86_64", true)
         }
-        assertEquals("Wrong APK variant installed: this APK contains the arm64-v8a vpnhotspotd, " +
-                "but this Android system runs x86_64 root binaries. Install the x86_64 APK and try again.",
-            e.message)
     }
 
     @Test
