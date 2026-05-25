@@ -347,6 +347,7 @@ fn spawn_tcp_loop(
     spawn(async move {
         loop {
             select! {
+                biased;
                 _ = stop.cancelled() => break,
                 accepted = listener.accept() => match accepted {
                     Ok((socket, _)) => {
@@ -355,6 +356,7 @@ fn spawn_tcp_loop(
                         let connection_stop = stop.child_token();
                         spawn(async move {
                             select! {
+                                biased;
                                 _ = connection_stop.cancelled() => {}
                                 result = async {
                                     let snapshot = config.lock().await.clone();
@@ -444,6 +446,7 @@ fn spawn_udp_loop(
         let mut buffer = [0u8; 65535];
         loop {
             select! {
+                biased;
                 _ = stop.cancelled() => break,
                 received = socket.recv_from(&mut buffer) => match received {
                     Ok((size, source)) => {
@@ -454,6 +457,7 @@ fn spawn_udp_loop(
                         let counters = counters.clone();
                         spawn(async move {
                             select! {
+                                biased;
                                 _ = query_stop.cancelled() => {}
                                 response = resolve_or_error(&snapshot, &query) => {
                                     if let Some(response) = response {

@@ -207,8 +207,8 @@ impl Session {
 
     pub(crate) async fn stop(self, withdraw_cleanup: bool) {
         let snapshot = self.config.lock().await.clone();
-        self.routing.stop().await;
         self.stop.cancel();
+        self.routing.stop().await;
         if let Some(nat66) = self.nat66 {
             nat66.stop(&snapshot, withdraw_cleanup).await;
         }

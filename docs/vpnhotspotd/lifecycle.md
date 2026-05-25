@@ -174,8 +174,11 @@ probe by themselves.
 
 ## Shutdown And Clean
 
-Normal session stop removes routing first, cancels the session stop token, then
-stops NAT66. NAT66 may withdraw router-advertised prefixes during stop.
+Normal session stop cancels the session stop token first so DNS and NAT66
+listeners normally choose shutdown over reporting teardown-time socket errors.
+Shutdown does not wait for listener or per-packet tasks to drain before removing
+routing state. It then stops NAT66, which may withdraw router-advertised
+prefixes during stop.
 
 When the control connection closes, the daemon cancels active calls, waits for
 call tasks, stops the neighbour monitor, stops all sessions without extra

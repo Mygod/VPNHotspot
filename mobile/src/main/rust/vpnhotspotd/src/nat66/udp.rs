@@ -123,6 +123,7 @@ pub(crate) fn spawn_loop(
                 .min();
 
             select! {
+                biased;
                 _ = stop.cancelled() => break,
                 _ = sleep_until_deadline(next_expiry) => {}
                 event = association_event_rx.recv() => match event {
@@ -171,6 +172,7 @@ pub(crate) fn spawn_loop(
                                     spawn(async move {
                                         let mut reply_socket = Some(reply_socket);
                                         select! {
+                                            biased;
                                             _ = query_stop.cancelled() => {}
                                             response = resolve_or_error_counted(&snapshot, &query, &dns, mac) => {
                                                 if let Some(response) = response {
@@ -471,6 +473,7 @@ impl AssociationTask {
         let mut buffer = [0u8; 65535];
         loop {
             select! {
+                biased;
                 _ = self.stop.cancelled() => break,
                 result = self.socket.recv(&mut buffer) => match result {
                     Ok(size) => {

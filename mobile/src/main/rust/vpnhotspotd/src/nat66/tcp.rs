@@ -32,6 +32,7 @@ pub(crate) fn spawn_loop(
     spawn(async move {
         loop {
             select! {
+                biased;
                 _ = stop.cancelled() => break,
                 accepted = listener.accept() => {
                     match accepted {
@@ -42,6 +43,7 @@ pub(crate) fn spawn_loop(
                             let connection_stop = stop.child_token();
                             spawn(async move {
                                 select! {
+                                    biased;
                                     _ = connection_stop.cancelled() => {}
                                     result = handle_connection(socket, client, config, counters, dns, mac) => if let Err(e) = result {
                                         if is_connection_closed(&e) {
