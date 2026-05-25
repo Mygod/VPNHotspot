@@ -77,18 +77,16 @@ fun ApConfigurationScreen(
     var softApVendorData by rememberSaveable(
         lifecycleOwner,
         state.p2pMode,
-        state.readOnly,
         inspectionMode,
     ) { mutableStateOf("") }
     val softApCapability by produceState<SoftApCapability?>(
         null,
         lifecycleOwner,
         state.p2pMode,
-        state.readOnly,
         inspectionMode,
     ) {
         softApVendorData = ""
-        if (state.p2pMode || state.readOnly || Build.VERSION.SDK_INT < 30 || inspectionMode) return@produceState
+        if (state.p2pMode || Build.VERSION.SDK_INT < 30 || inspectionMode) return@produceState
         fun updateVendorData(infos: List<SoftApInfo>) {
             if (Build.VERSION.SDK_INT >= 35) softApVendorData = VendorData.serialize(infos.flatMap { it.vendorData })
         }
