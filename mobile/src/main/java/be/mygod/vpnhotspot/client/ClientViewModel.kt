@@ -230,8 +230,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 clients[null to mac] = it
             }
             for (info in tetheringClient.addresses) bestClient.ip.compute(info.address!!.address) { _, oldInfo ->
-                oldInfo?.apply { info.state = state }
-                info
+                info.copy(state = oldInfo?.state ?: NeighbourState.NEIGHBOUR_STATE_UNSET)
             }
         }
         val result = ArrayList<Client>(clients.size)
