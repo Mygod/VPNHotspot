@@ -63,6 +63,7 @@ object DaemonController {
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private val stdoutLog = DaemonLog("stdout") { Timber.tag(BINARY_NAME).i(it) }
     private val stderrLog = DaemonLog("stderr") { Timber.tag(BINARY_NAME).e(it) }
+    private var daemonCommandAbiChecked = false
 
     /**
      * Android 10 bionic supports direct linker execution of uncompressed, page-aligned zip entries:
@@ -137,6 +138,11 @@ object DaemonController {
     private suspend fun ensureDaemonLocked() {
         if (socket != null) return
         Timber.d("Starting $BINARY_NAME")
+        val command = daemonCommand
+        if (!daemonCommandAbiChecked) {
+            DaemonAbi.check(command[1])
+            daemonCommandAbiChecked = true
+        }
         daemonStdioClosing = false
         daemonStdioEofReported = false
         val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"
@@ -148,7 +154,7 @@ object DaemonController {
             ALocalServerSocket(LocalServerSocket(socketName), Services.mainHandler).use { serverSocket ->
                 RootManager.use { server ->
                     try {
-                        server.execute(RunDaemon(daemonCommand, socketName, stdout!!, stderr!!))
+                        server.execute(RunDaemon(command, socketName, stdout!!, stderr!!))
                     } finally {
                         try {
                             stdout?.close()
