@@ -49,6 +49,7 @@ import kotlin.time.Duration.Companion.seconds
 
 object DaemonController {
     private const val BINARY_NAME = "vpnhotspotd"
+    private val binaryFrameClassName get() = "${app.packageName}.$BINARY_NAME"
 
     private val lock = Mutex()
     private var socket: ALocalSocket? = null
@@ -316,7 +317,7 @@ object DaemonController {
                             val frame = envelope.error
                             val id = frame.call_id.readCallId()
                             val report = frame.report ?: throw IOException("Missing daemon error report")
-                            val exception = DaemonException(report, id)
+                            val exception = DaemonException(report, id, daemonClassName = binaryFrameClassName)
                             val call = lock.withLock {
                                 val call = calls.remove(id)
                                 if (call == null) Timber.w("Unexpected $BINARY_NAME error for call $id")
@@ -335,6 +336,7 @@ object DaemonController {
                             val traced = DaemonException(
                                 report,
                                 frame.call_id?.readCallId(),
+                                daemonClassName = binaryFrameClassName,
                             ).withCurrentTrace()
                             Timber.tag(BINARY_NAME).w(traced)
                             SmartSnackbar.make(traced).show()

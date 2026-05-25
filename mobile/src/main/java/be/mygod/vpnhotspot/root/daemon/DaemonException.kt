@@ -8,7 +8,8 @@ import java.io.IOException
 class DaemonException(
     val report: DaemonErrorReport,
     private val callId: Long? = null,
-    cause: Throwable = ReportException(report),
+    private val daemonClassName: String = "vpnhotspotd",
+    cause: Throwable = ReportException(report, daemonClassName),
 ) : RemoteException(report.toExceptionMessage()), CrashlyticsKeyProvider {
     companion object {
         private val INVALID_CRASHLYTICS_KEY_CHAR = Regex("[^A-Za-z0-9_.-]")
@@ -28,9 +29,10 @@ class DaemonException(
         }
     }
 
-    private class ReportException(report: DaemonErrorReport) : IOException(report.toExceptionMessage()) {
+    private class ReportException(report: DaemonErrorReport, daemonClassName: String) :
+        IOException(report.toExceptionMessage()) {
         init {
-            stackTrace = arrayOf(StackTraceElement("vpnhotspotd", report.context, report.file_, report.line))
+            stackTrace = arrayOf(StackTraceElement(daemonClassName, report.context, report.file_, report.line))
         }
     }
 
@@ -38,7 +40,7 @@ class DaemonException(
         initCause(cause)
     }
 
-    fun withCurrentTrace() = DaemonException(report, callId, this)
+    fun withCurrentTrace() = DaemonException(report, callId, daemonClassName, cause = this)
 
     override val crashlyticsKeys get() = CustomKeysAndValues.Builder().apply {
         for (detail in report.details) putString("daemon.${sanitizeCrashlyticsKey(detail.key)}", detail.value_)

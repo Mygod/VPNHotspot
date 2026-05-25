@@ -40,6 +40,14 @@ class DaemonExceptionTest {
                 "[TimedOut at routing.rs:123:45, pid=2345]")
     }
 
+    @Test
+    fun daemonExceptionUsesQualifiedDaemonClassName() {
+        val e = DaemonException(daemonErrorReport(), daemonClassName = "be.mygod.vpnhotspot.vpnhotspotd")
+
+        assertDaemonReportCause(e, "routing.command: Device or resource busy (errno=16) " +
+                "[ResourceBusy at routing.rs:123:45, pid=2345]", "be.mygod.vpnhotspot.vpnhotspotd")
+    }
+
     private fun daemonErrorReport(
         message: String = "Device or resource busy",
         errno: Int? = 16,
@@ -56,11 +64,15 @@ class DaemonExceptionTest {
         details = listOf(ErrorDetail("command", "iptables-restore")),
     )
 
-    private fun assertDaemonReportCause(e: DaemonException, message: String) {
+    private fun assertDaemonReportCause(
+        e: DaemonException,
+        message: String,
+        className: String = "vpnhotspotd",
+    ) {
         assertNotNull(e.cause)
         assertEquals(message, e.cause!!.message)
         val frame = e.cause!!.stackTrace.single()
-        assertEquals("vpnhotspotd", frame.className)
+        assertEquals(className, frame.className)
         assertEquals("routing.command", frame.methodName)
         assertEquals("routing.rs", frame.fileName)
         assertEquals(123, frame.lineNumber)
