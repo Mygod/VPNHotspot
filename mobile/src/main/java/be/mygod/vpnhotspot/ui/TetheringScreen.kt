@@ -108,26 +108,24 @@ data class TetheringServiceState(
 @Composable
 fun TetheringScreen(
     snackbarHostState: SnackbarHostState,
-    repeaterBinder: RepeaterService.Binder?,
-    localOnlyBinder: LocalOnlyHotspotService.Binder?,
+    repeaterStatus: RepeaterService.Status?,
+    repeaterGroup: WifiP2pGroup?,
+    localOnlyIface: String?,
     tetherStates: TetherStates,
     tetheringServiceState: TetheringServiceState,
     interfaceRefreshVersion: Int = 0,
     onConfigureRepeater: () -> Unit,
     onConfigureTemporaryHotspot: (() -> Unit)?,
     onConfigureAp: () -> Unit,
+    onStopRepeater: () -> Unit,
+    onStopTemporaryHotspot: () -> Unit,
+    onStartRepeaterWps: (String?) -> Unit,
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
     val scope = rememberCoroutineScope()
     val linkStyles = rememberNetworkAddressLinkStyles()
     val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
-    val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf(null) }
-    val repeaterStatus by (repeaterBinder?.status)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf(null) }
-    val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null)
-        ?: remember { mutableStateOf(null) }
     val staticIpActive by StaticIpSetter.active.collectAsStateWithLifecycle()
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
@@ -251,7 +249,7 @@ fun TetheringScreen(
                         RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
                             Manifest.permission.NEARBY_WIFI_DEVICES
                         } else Manifest.permission.ACCESS_FINE_LOCATION)
-                        RepeaterService.Status.ACTIVE -> repeaterBinder?.shutdown()
+                        RepeaterService.Status.ACTIVE -> onStopRepeater()
                         else -> { }
                     }
                 }
@@ -271,7 +269,7 @@ fun TetheringScreen(
                         modifier = Modifier.padding(start = 48.dp),
                         icon = R.drawable.ic_wifi_protected_setup,
                         title = stringResource(R.string.repeater_wps),
-                        onClick = { if (repeaterBinder?.active == true) wpsDialog = true },
+                        onClick = { if (active) wpsDialog = true },
                     )
                 }
             }
@@ -281,7 +279,7 @@ fun TetheringScreen(
                         startLocalOnly(if (Build.VERSION.SDK_INT >= 33) {
                             Manifest.permission.NEARBY_WIFI_DEVICES
                         } else Manifest.permission.ACCESS_FINE_LOCATION)
-                    } else localOnlyBinder?.stop()
+                    } else onStopTemporaryHotspot()
                 }
                 TetheringRow(
                     icon = R.drawable.ic_android_wifi_3_bar_plus,
@@ -491,7 +489,7 @@ fun TetheringScreen(
             },
             confirmButton = {
                 DialogConfirmButton(onClick = {
-                    repeaterBinder?.startWps(wpsPin.text)
+                    onStartRepeaterWps(wpsPin.text)
                     wpsDialog = false
                 }) {
                     Text(stringResource(android.R.string.ok))
@@ -499,7 +497,7 @@ fun TetheringScreen(
             },
             dismissButton = {
                 DialogNeutralButton(onClick = {
-                    repeaterBinder?.startWps(null)
+                    onStartRepeaterWps(null)
                     wpsDialog = false
                 }) {
                     Text(stringResource(R.string.repeater_wps_dialog_pbc))
@@ -640,13 +638,17 @@ private fun TetheringPreview() {
     VpnHotspotPreviewSurface {
         TetheringScreen(
             snackbarHostState = remember { SnackbarHostState() },
-            repeaterBinder = null,
-            localOnlyBinder = null,
+            repeaterStatus = null,
+            repeaterGroup = null,
+            localOnlyIface = null,
             tetherStates = TetherStates(),
             tetheringServiceState = TetheringServiceState(),
             onConfigureRepeater = {},
             onConfigureTemporaryHotspot = null,
             onConfigureAp = {},
+            onStopRepeater = {},
+            onStopTemporaryHotspot = {},
+            onStartRepeaterWps = {},
         )
     }
 }

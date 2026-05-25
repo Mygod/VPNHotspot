@@ -146,18 +146,21 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     }
     val bindRepeaterService = tetheringDestinationVisible ||
             savedApSession?.target == ApConfigurationTarget.Repeater
-    val repeaterBinder by rememberServiceBinder<RepeaterService.Binder>(
+    val repeaterBinderState = rememberServiceBinder<RepeaterService.Binder>(
         bindRepeaterService,
         RepeaterService::class.java,
     )
-    val localOnlyBinder by rememberServiceBinder<LocalOnlyHotspotService.Binder>(
+    val repeaterBinder by repeaterBinderState
+    val localOnlyBinderState = rememberServiceBinder<LocalOnlyHotspotService.Binder>(
         tetheringDestinationVisible,
         LocalOnlyHotspotService::class.java,
     )
-    val tetheringBinder by rememberServiceBinder<TetheringService.Binder>(
+    val localOnlyBinder by localOnlyBinderState
+    val tetheringBinderState = rememberServiceBinder<TetheringService.Binder>(
         tetheringDestinationVisible,
         TetheringService::class.java,
     )
+    val tetheringBinder by tetheringBinderState
     val validClientCount by clientViewModel.validClientCount.collectAsStateWithLifecycle()
     val tetherStates by clientViewModel.tetherStates.collectAsStateWithLifecycle()
     val tetheringServiceState = run {
@@ -185,7 +188,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             val repeaterMaster = apSessionHolder.repeaterMaster
             { config: SoftApConfigurationCompat ->
                 applyRepeaterApConfiguration(
-                    repeaterBinder,
+                    repeaterBinderState.value,
                     config,
                     snackbarHostState,
                     repeaterMaster,
@@ -228,6 +231,12 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
         ) {
             composable(RootDestination.Tethering.route) {
                 var tetheringInterfaceRefreshVersion by remember { mutableIntStateOf(0) }
+                val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
+                val repeaterStatus by (repeaterBinder?.status)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
+                val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
                 RootDestinationScaffold(
                     title = R.string.app_name,
                     selectedDestination = RootDestination.Tethering,
@@ -239,8 +248,9 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                 ) {
                     TetheringScreen(
                         snackbarHostState,
-                        repeaterBinder,
-                        localOnlyBinder,
+                        repeaterStatus,
+                        repeaterGroup,
+                        localOnlyIface,
                         tetherStates,
                         tetheringServiceState,
                         interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
@@ -249,7 +259,10 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                                 apConfigurationLoading = true
                                 scope.launch {
                                     try {
-                                        loadRepeaterApConfiguration(repeaterBinder, snackbarHostState)?.let { session ->
+                                        loadRepeaterApConfiguration(
+                                            repeaterBinderState.value,
+                                            snackbarHostState,
+                                        )?.let { session ->
                                             apSessionHolder.repeaterMaster = session.repeaterMaster
                                             savedApSession = session
                                             navController.navigate(AppDestination.RepeaterConfiguration.route)
@@ -287,6 +300,9 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                                 }
                             }
                         },
+                        onStopRepeater = { repeaterBinderState.value?.shutdown() },
+                        onStopTemporaryHotspot = { localOnlyBinderState.value?.stop() },
+                        onStartRepeaterWps = { repeaterBinderState.value?.startWps(it) },
                     )
                 }
             }
