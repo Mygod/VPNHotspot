@@ -126,3 +126,4 @@ These additional reflected whitelisted/system API are listed below:
 * `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->setWifiP2pChannels(Landroid/net/wifi/p2p/WifiP2pManager$Channel;IILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`
 * `Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 30) `Landroid/provider/Settings;->ACTION_TETHER_SETTINGS:Ljava/lang/String;,sdk,system-api,test-api`

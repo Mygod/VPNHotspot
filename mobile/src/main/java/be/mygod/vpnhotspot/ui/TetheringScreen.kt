@@ -77,6 +77,7 @@ import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.manage.BluetoothTethering
 import be.mygod.vpnhotspot.manage.ManageBar
 import be.mygod.vpnhotspot.net.MacAddressCompat
+import be.mygod.vpnhotspot.net.TetherOffloadManager
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
@@ -141,7 +142,9 @@ fun TetheringScreen(
     var wpsPin by rememberTextFieldValueAtEnd("", wpsDialog)
     val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
-    val manageOffloadEnabled = if (inspectionMode) false else remember(manageBarVersion) { ManageBar.offloadEnabled }
+    val manageOffloadEnabled = if (inspectionMode) false else remember(manageBarVersion) {
+        TetherOffloadManager.enabled
+    }
     val ifaceLookup = remember(
         tetherStates,
         tetheringServiceState,

@@ -153,7 +153,7 @@ Nonexported system resources:
 
 Other:
 
-* Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
+* (prior to API 30) Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` and `NFQUEUE` targets and
   transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
   and assumes queued downstream packets expose six-byte source hardware-address
