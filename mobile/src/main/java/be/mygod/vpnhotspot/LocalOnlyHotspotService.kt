@@ -53,17 +53,24 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         }
     }
 
-    inner class Binder : android.os.Binder() {
-        val iface = this@LocalOnlyHotspotService.iface.asStateFlow()
-        val configuration = this@LocalOnlyHotspotService.configuration.asStateFlow()
+    class Binder(owner: LocalOnlyHotspotService) : android.os.Binder() {
+        @Volatile
+        private var service: LocalOnlyHotspotService? = owner
+        val iface = owner.iface.asStateFlow()
+        val configuration = owner.configuration.asStateFlow()
+
+        fun detach() {
+            service = null
+        }
 
         fun stop(shouldDisable: Boolean = true, exit: Boolean = false) {
+            val service = service ?: return
             when (iface.value) {
                 null -> if (!exit) return  // stopped
                 "" -> WifiApManager.cancelLocalOnlyHotspotRequest()
             }
-            reservation?.close()
-            stopService(shouldDisable, exit)
+            service.reservation?.close()
+            service.stopService(shouldDisable, exit)
         }
     }
 
@@ -132,7 +139,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     private fun refreshConfiguration() {
         configuration.value = if (iface.value == null) null else reservation?.configuration
     }
-    private val binder = Binder()
+    private val binder = Binder(this)
     private fun lohCallback(generation: Int) = object : WifiManager.LocalOnlyHotspotCallback() {
         override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
             if (reservation == null) onFailed(-2) else {
@@ -336,6 +343,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
 
     override fun onDestroy() {
         binder.stop(false, true)
+        binder.detach()
         super.onDestroy()
     }
 

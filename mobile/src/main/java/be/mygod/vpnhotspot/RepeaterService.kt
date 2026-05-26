@@ -175,14 +175,24 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         IDLE, STARTING, ACTIVE, STOPPING, DESTROYED
     }
 
-    inner class Binder : android.os.Binder() {
+    class Binder(owner: RepeaterService) : android.os.Binder() {
+        @Volatile
+        private var service: RepeaterService? = owner
         val active get() = status.value == Status.ACTIVE
-        val status = this@RepeaterService.status.asStateFlow()
-        val group = this@RepeaterService.group.asStateFlow()
-        fun clearGroup() = updateGroup(null)
+        val status = owner.status.asStateFlow()
+        val group = owner.group.asStateFlow()
+
+        fun detach() {
+            service = null
+        }
+
+        fun clearGroup() {
+            service?.updateGroup(null)
+        }
 
         suspend fun obtainDeviceAddress(): MacAddress? {
-            return p2pManager.requestDeviceAddress(channel ?: return null) ?: try {
+            val service = service ?: return null
+            return service.p2pManager.requestDeviceAddress(service.channel ?: return null) ?: try {
                 RootManager.use { it.execute(RepeaterCommands.RequestDeviceAddress()) }
             } catch (e: Exception) {
                 Timber.d(e)
@@ -192,8 +202,9 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
 
         @SuppressLint("NewApi") // networkId is available since Android 4.2
         suspend fun fetchPersistentGroup() {
+            val service = service ?: return
             val ownerAddress = obtainDeviceAddress() ?: return
-            val channel = channel ?: return
+            val channel = service.channel ?: return
             fun Collection<WifiP2pGroup>.filterUselessGroups(): List<WifiP2pGroup> {
                 if (isNotEmpty()) persistentSupported = true
                 val ownedGroups = filter {
@@ -209,18 +220,18 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                 }
                 val main = ownedGroups.minByOrNull { it.networkId }
                 // do not replace current group if it's better
-                if (this@RepeaterService.group.value?.passphrase == null) updateGroup(main)
+                if (service.group.value?.passphrase == null) service.updateGroup(main)
                 return if (main != null) ownedGroups.filter { it.networkId != main.networkId } else emptyList()
             }
             fun Int?.print(group: WifiP2pGroup) {
                 if (this == null) Timber.i("Removed redundant owned group: $group")
-                else SmartSnackbar.make(formatReason(R.string.repeater_clean_pog_failure, this)).show()
+                else SmartSnackbar.make(service.formatReason(R.string.repeater_clean_pog_failure, this)).show()
             }
             // we only get empty list on permission denial. Is there a better permission check?
-            if (Build.VERSION.SDK_INT < 30 || checkSelfPermission("android.permission.READ_WIFI_CREDENTIAL") ==
+            if (Build.VERSION.SDK_INT < 30 || service.checkSelfPermission("android.permission.READ_WIFI_CREDENTIAL") ==
                     PackageManager.PERMISSION_GRANTED) try {
-                for (group in p2pManager.requestPersistentGroupInfo(channel).filterUselessGroups()) {
-                    p2pManager.deletePersistentGroup(channel, group.networkId).print(group)
+                for (group in service.p2pManager.requestPersistentGroupInfo(channel).filterUselessGroups()) {
+                    service.p2pManager.deletePersistentGroup(channel, group.networkId).print(group)
                 }
                 return
             } catch (e: ReflectiveOperationException) {
@@ -228,7 +239,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             }
             try {
                 RootManager.use { server ->
-                    if (deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
+                    if (service.deinitPending.getAndSet(false)) server.execute(RepeaterCommands.Deinit())
                     @Suppress("UNCHECKED_CAST")
                     val groups = server.execute(RepeaterCommands.RequestPersistentGroupInfo())
                             .value as List<WifiP2pGroup>
@@ -243,9 +254,10 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         }
 
         fun startWps(pin: String? = null) {
-            val channel = channel
+            val service = service ?: return
+            val channel = service.channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else if (active) p2pManager.startWps(channel, WpsInfo().apply {
+            else if (active) service.p2pManager.startWps(channel, WpsInfo().apply {
                 setup = if (pin == null) WpsInfo.PBC else {
                     this.pin = pin
                     WpsInfo.KEYPAD
@@ -255,12 +267,13 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
                         if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad)
                         .shortToast().show()
                 override fun onFailure(reason: Int) = SmartSnackbar.make(
-                        formatReason(R.string.repeater_wps_failure, reason)).show()
+                        service.formatReason(R.string.repeater_wps_failure, reason)).show()
             })
         }
 
         fun shutdown() {
-            if (active) removeGroup()
+            val service = service ?: return
+            if (service.status.value == Status.ACTIVE) service.removeGroup()
         }
     }
 
@@ -275,7 +288,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private var channel: WifiP2pManager.Channel? = null
     private val status = MutableStateFlow(Status.IDLE)
     private val group = MutableStateFlow<WifiP2pGroup?>(null)
-    private val binder = Binder()
+    private val binder = Binder(this)
     private var timeoutMonitor: TetherTimeoutMonitor? = null
     private var receiverRegistered = false
     private val receiver = broadcastReceiver { _, intent ->
@@ -627,6 +640,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
 
     override fun onDestroy() {
         if (status.value != Status.IDLE) binder.shutdown()
+        binder.detach()
         launch {    // force clean to prevent leakage
             cleanLocked(false)
             cancel()
