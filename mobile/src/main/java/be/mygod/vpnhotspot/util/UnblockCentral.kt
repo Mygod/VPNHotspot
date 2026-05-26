@@ -31,13 +31,13 @@ object UnblockCentral {
     }
 
     @RequiresApi(31)
-    fun getCountryCode(capability: SoftApCapability) = init.let { UnblockCentralLinking.getCountryCode(capability) }
+    fun getCountryCode(capability: SoftApCapability) = init.let { capability.countryCode }
 
     @RequiresApi(31)
-    fun getApInstanceIdentifier(info: SoftApInfo) = init.let { UnblockCentralLinking.getApInstanceIdentifier(info) }
+    fun getApInstanceIdentifier(info: SoftApInfo) = init.let { info.apInstanceIdentifier }
 
     @RequiresApi(31)
-    fun getApInstanceIdentifier(client: WifiClient) = init.let { UnblockCentralLinking.getApInstanceIdentifier(client) }
+    fun getApInstanceIdentifier(client: WifiClient) = init.let { client.apInstanceIdentifier }
 
     @get:RequiresApi(31)
     val SoftApConfiguration_BAND_TYPES get() = init.let {
@@ -54,6 +54,11 @@ object UnblockCentral {
         TileService::class.java.getDeclaredField("mToken").apply { isAccessible = true }
     }
 
+    object SoftApCallback {
+        val onNumClientsChanged get() = init
+        val onStateChanged get() = init
+    }
+
     @get:RequiresApi(30)
     val TetheringManager_ConnectorConsumer by lazy { Class.forName("android.net.TetheringManager\$ConnectorConsumer") }
     @get:RequiresApi(30)
@@ -63,15 +68,4 @@ object UnblockCentral {
             isAccessible = true
         }
     }
-}
-
-internal object UnblockCentralLinking {
-    @RequiresApi(31)
-    fun getCountryCode(capability: SoftApCapability) = capability.countryCode
-
-    @RequiresApi(31)
-    fun getApInstanceIdentifier(info: SoftApInfo) = info.apInstanceIdentifier
-
-    @RequiresApi(31)
-    fun getApInstanceIdentifier(client: WifiClient) = client.apInstanceIdentifier
 }

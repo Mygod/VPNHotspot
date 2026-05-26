@@ -6,12 +6,14 @@ import android.net.wifi.SoftApInfo
 import android.net.wifi.WifiManager
 import android.net.wifi.WifiClient
 import android.net.wifi.`WifiManager$SoftApCallback`
+import android.os.Build
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.GlobalScope
@@ -32,12 +34,17 @@ object WifiApCommands {
 
         @Parcelize
         data class OnStateChanged(val state: Int, val failureReason: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
-                    callback.onStateChanged(state, failureReason)
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) {
+                if (Build.VERSION.SDK_INT == 29) UnblockCentral.SoftApCallback.onStateChanged
+                callback.onStateChanged(state, failureReason)
+            }
         }
         @Parcelize
         data class OnNumClientsChanged(val numClients: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onNumClientsChanged(numClients)
+            override fun dispatch(callback: `WifiManager$SoftApCallback`) {
+                if (Build.VERSION.SDK_INT == 29) UnblockCentral.SoftApCallback.onNumClientsChanged
+                callback.onNumClientsChanged(numClients)
+            }
         }
         @Parcelize
         @RequiresApi(30)
