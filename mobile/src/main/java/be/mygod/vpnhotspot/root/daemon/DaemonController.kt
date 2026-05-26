@@ -12,6 +12,7 @@ import be.mygod.librootkotlinx.net.ALocalServerSocket
 import be.mygod.librootkotlinx.net.ALocalSocket
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.io.drainLines
+import be.mygod.vpnhotspot.io.isEBADF
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -497,6 +498,8 @@ object DaemonController {
                         }
                     } catch (e: ErrnoException) {
                         if (e.errno != OsConstants.EBADF) Timber.w(e)
+                    } catch (e: IOException) {
+                        if (!e.isEBADF) Timber.w(e)
                     }
                 }
                 return writeEnd!!.also { writeEnd = null }
@@ -516,6 +519,8 @@ object DaemonController {
                     it.drain()
                 } catch (e: ErrnoException) {
                     if (e.errno != OsConstants.EBADF) Timber.w(e)
+                } catch (e: IOException) {
+                    if (!e.isEBADF) Timber.w(e)
                 }
             }
             job?.cancelAndJoin()
@@ -525,6 +530,8 @@ object DaemonController {
                     it.drainLines(line, flushPartial = true, block = log)
                 } catch (e: ErrnoException) {
                     if (e.errno != OsConstants.EBADF) Timber.w(e)
+                } catch (e: IOException) {
+                    if (!e.isEBADF) Timber.w(e)
                 } finally {
                     it.cancel(null)
                 }

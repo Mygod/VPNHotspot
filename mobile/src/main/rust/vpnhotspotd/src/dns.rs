@@ -524,7 +524,12 @@ async fn resolve_or_error(config: &SessionConfig, query: &[u8]) -> Option<DnsRes
             received_from_resolver: true,
         }),
         Err(e) => {
-            report::stderr!("dns resolve failed: {e}");
+            if !matches!(
+                e.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::NotConnected
+            ) {
+                report::stderr!("dns resolve failed: {e}");
+            }
             dns_wire::servfail_response(query).map(|response| DnsResponse {
                 bytes: response,
                 sent_to_resolver,

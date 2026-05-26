@@ -104,9 +104,12 @@ Resolver failure normally returns a SERVFAIL response when the query can be
 parsed enough to build one. If a SERVFAIL response cannot be generated, the
 query is dropped.
 
-Per-query resolver failures are logged but do not stop the DNS runtime. Listener
-setup failures do not stop the session. Routing omits the missing DNS redirect,
-so normal IP traffic and manually configured downstream DNS can still work.
+Unexpected per-query resolver failures are logged but do not stop the DNS
+runtime. Routine resolver unavailability, such as no selected upstream network
+or an Android resolver timeout, returns SERVFAIL when possible without emitting
+one stderr log per query. Listener setup failures do not stop the session.
+Routing omits the missing DNS redirect, so normal IP traffic and manually
+configured downstream DNS can still work.
 
 Per-MAC listener setup and routing failures remove only that MAC/protocol DNS
 capability. If a listener was staged but routing did not commit the matching
