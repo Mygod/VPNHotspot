@@ -64,7 +64,6 @@ fun Long.toPluralInt() = when (this) {
 
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
-inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
 
 inline fun <T> useParcel(block: (Parcel) -> T): T {
     val parcel = Parcel.obtain()
