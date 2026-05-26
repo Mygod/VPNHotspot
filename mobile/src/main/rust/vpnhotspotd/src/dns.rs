@@ -371,7 +371,22 @@ fn spawn_tcp_loop(
                             }
                         });
                     }
-                    Err(e) => report::io("dns.tcp_accept", e),
+                    Err(e) => {
+                        if stop.is_cancelled() {
+                            break;
+                        }
+                        if matches!(
+                            e.kind(),
+                            io::ErrorKind::Interrupted | io::ErrorKind::ConnectionAborted
+                        ) {
+                            continue;
+                        }
+                        report::io_with_details(
+                            "dns.tcp_accept",
+                            e,
+                            [("mac", mac_string(&mac))],
+                        );
+                    }
                 }
             }
         }

@@ -86,7 +86,8 @@ Unexpected background failures should become structured nonfatal reports.
 Cancellation is not an error by itself. If a call is cancelled and the failing
 operation returns `Interrupted`, the call task should finish without sending a
 terminal error. Background tasks tied to a stop token should exit quietly when
-that token is cancelled.
+that token is cancelled. DNS TCP accept also re-checks its stop token before
+reporting accept errors and retries transient active-listener errors.
 
 If cancellation exposes an unexpected cleanup or channel failure, report that
 failure only when it affects daemon-owned state or indicates a broken invariant.

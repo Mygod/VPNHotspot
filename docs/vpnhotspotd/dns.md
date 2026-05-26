@@ -114,4 +114,6 @@ configured downstream DNS can still work.
 Per-MAC listener setup and routing failures remove only that MAC/protocol DNS
 capability. If a listener was staged but routing did not commit the matching
 MAC redirect and direct-port guard, the staged listener is cancelled before the
-session publishes committed capabilities.
+session publishes committed capabilities. A TCP listener accept failure after
+cancellation is treated as teardown; transient active-listener accept failures
+are retried.
