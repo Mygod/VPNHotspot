@@ -11,7 +11,7 @@ use nix::sys::socket::{
 };
 use tokio::net::UdpSocket as TokioUdpSocket;
 
-use crate::report;
+use crate::{report, socket::is_kernel_icmp_error};
 
 pub(super) enum UdpForwardResult {
     Sent,
@@ -119,7 +119,7 @@ pub(super) fn forward_udp_datagram(
                     return UdpForwardResult::Failed;
                 }
             },
-            Err(e) if icmp_errors_registered && is_udp_icmp_error(&e) => {
+            Err(e) if icmp_errors_registered && is_kernel_icmp_error(&e) => {
                 return UdpForwardResult::Dropped;
             }
             Err(e) => {
@@ -135,21 +135,6 @@ pub(super) fn forward_udp_datagram(
             }
         }
     }
-}
-
-pub(super) fn is_udp_icmp_error(error: &io::Error) -> bool {
-    matches!(
-        error.raw_os_error(),
-        Some(
-            libc::EACCES
-                | libc::ECONNREFUSED
-                | libc::EHOSTUNREACH
-                | libc::EMSGSIZE
-                | libc::ENETUNREACH
-                | libc::EPROTO
-                | libc::ETIMEDOUT
-        )
-    )
 }
 
 fn send_udp_payload(socket: &TokioUdpSocket, payload: &[u8]) -> io::Result<()> {

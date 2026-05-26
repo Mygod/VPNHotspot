@@ -237,7 +237,9 @@ Exceeded, and Parameter Problem. Generated downstream ICMP errors preserve the
 upstream offender source when that source is meaningful on the downstream link;
 link-local upstream offenders are rewritten to the NAT66 gateway. Error quotes
 are capped so the complete generated IPv6 packet stays within the IPv6 minimum
-MTU. Unmapped remote ICMP errors are not guessed into downstream errors.
+MTU. Expected kernel socket errors from remote ICMP delivery are consumed after
+error-queue processing when no daemon-owned quote can be mapped. Unmapped remote
+ICMP errors are not guessed into downstream errors.
 
 ICMPv6 counters count one sent unit per daemon-owned upstream Echo Request and
 one received unit per upstream Echo Reply or upstream ICMPv6 error translated

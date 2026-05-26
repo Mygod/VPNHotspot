@@ -92,6 +92,21 @@ pub(crate) fn is_udp_reply_unreachable(error: &io::Error) -> bool {
     )
 }
 
+pub(crate) fn is_kernel_icmp_error(error: &io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(
+            libc::EACCES
+                | libc::ECONNREFUSED
+                | libc::EHOSTUNREACH
+                | libc::EMSGSIZE
+                | libc::ENETUNREACH
+                | libc::EPROTO
+                | libc::ETIMEDOUT
+        )
+    )
+}
+
 pub(crate) fn set_nonblocking(fd: RawFd) -> io::Result<()> {
     let flags = unsafe { fcntl(fd, F_GETFL) };
     if flags < 0 {

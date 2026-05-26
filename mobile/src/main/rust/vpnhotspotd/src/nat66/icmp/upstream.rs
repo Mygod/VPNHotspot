@@ -18,7 +18,7 @@ use super::raw_socket::{
     recv_error_queue, recv_raw_icmp_packet, send_downstream_icmp, ReceivedIcmpPacket,
 };
 use super::state::{EchoState, UpstreamActivity, UpstreamPrune};
-use crate::report;
+use crate::{report, socket::is_kernel_icmp_error};
 use vpnhotspotd::shared::icmp_nat::{downstream_icmp_error_source, EchoEntry};
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_reply_with_checksum, build_echo_request_with_checksum, build_icmp_error_packet,
@@ -107,6 +107,7 @@ pub(super) fn spawn_loop(
                         break;
                     }
                     Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(e) if is_kernel_icmp_error(&e) => continue,
                     Err(e) => {
                         report::io_with_details(
                             "nat66.icmp_upstream_recv",
