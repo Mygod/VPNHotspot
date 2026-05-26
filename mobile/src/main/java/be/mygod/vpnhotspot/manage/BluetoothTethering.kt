@@ -17,7 +17,7 @@ import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import timber.log.Timber
 
-class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter, val stateListener: () -> Unit) :
+class BluetoothTethering(private val adapter: BluetoothAdapter, val stateListener: () -> Unit) :
         BluetoothProfile.ServiceListener, AutoCloseable {
     companion object : BroadcastReceiver() {
         /**
@@ -47,6 +47,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
 
     private var proxyCreated = false
     private var connected = false
+    private var closed = false
     private var pan: BluetoothPan? = null
     var activeFailureCause: Throwable? = null
     /**
@@ -67,10 +68,11 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
 
     private val receiver = broadcastReceiver { _, _ -> stateListener() }
 
-    fun ensureInit(context: Context) {
+    fun ensureInit() {
+        if (closed) return
         activeFailureCause = null
         if (!proxyCreated) try {
-            if (adapter.getProfileProxy(context, this, PAN)) proxyCreated = true
+            if (adapter.getProfileProxy(app, this, PAN)) proxyCreated = true
             else activeFailureCause = Exception("getProfileProxy failed")
         } catch (e: SecurityException) {
             if (Build.VERSION.SDK_INT >= 31) Timber.d(e.readableMessage) else Timber.w(e)
@@ -78,7 +80,7 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         }
     }
     init {
-        ensureInit(context)
+        ensureInit()
         registerBluetoothStateListener(receiver)
     }
 
@@ -86,6 +88,10 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
         connected = false
     }
     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
+        if (closed) {
+            adapter.closeProfileProxy(PAN, proxy)
+            return
+        }
         pan = proxy as BluetoothPan
         connected = true
         stateListener()
@@ -118,7 +124,10 @@ class BluetoothTethering(context: Context, private val adapter: BluetoothAdapter
     }
 
     override fun close() {
+        closed = true
         app.unregisterReceiver(receiver)
-        adapter.closeProfileProxy(PAN, pan)
+        pan?.let { adapter.closeProfileProxy(PAN, it) }
+        pan = null
+        connected = false
     }
 }

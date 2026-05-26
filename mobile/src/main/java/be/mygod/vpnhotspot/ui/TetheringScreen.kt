@@ -167,12 +167,12 @@ fun TetheringScreen(
         context.getSystemService<BluetoothManager>()?.adapter
     }
     val bluetoothTethering = remember(bluetoothAdapter) {
-        bluetoothAdapter?.let { BluetoothTethering(context, it) { bluetoothVersion++ } }
+        bluetoothAdapter?.let { BluetoothTethering(it) { bluetoothVersion++ } }
     }
     val requestBluetooth = if (inspectionMode) null else {
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
-                bluetoothTethering?.ensureInit(context)
+                bluetoothTethering?.ensureInit()
                 bluetoothVersion++
             }
         }
@@ -187,7 +187,7 @@ fun TetheringScreen(
             if (bluetoothTethering == null || Build.VERSION.SDK_INT < 31) return
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
                 PackageManager.PERMISSION_GRANTED) {
-                bluetoothTethering.ensureInit(context)
+                bluetoothTethering.ensureInit()
                 bluetoothVersion++
             } else requestBluetooth?.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }

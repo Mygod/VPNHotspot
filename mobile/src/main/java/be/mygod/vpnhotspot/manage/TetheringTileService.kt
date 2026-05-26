@@ -188,7 +188,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
 
         override fun onStartListening() {
             tethering = getSystemService<BluetoothManager>()?.adapter?.let {
-                BluetoothTethering(this, it) { updateTile() }
+                BluetoothTethering(it) { updateTile() }
             }
             super.onStartListening()
         }
