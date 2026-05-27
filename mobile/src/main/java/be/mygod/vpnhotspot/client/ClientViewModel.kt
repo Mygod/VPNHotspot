@@ -65,7 +65,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.net.Inet4Address
 
 class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, `WifiManager$SoftApCallback`,
     TetherStates.Callback {
@@ -88,13 +87,8 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var netlinkSnapshot = NetlinkNeighbour.Snapshot(emptyList(), persistentMapOf())
     private var tetheringClients = MutableScatterMap<MacAddress, TetheredClientInfo>()
     private val clientsState = MutableStateFlow<List<Client>>(emptyList())
-    val validClientCount = clientsState.map { clients ->
-        clients.count {
-            it.ip.any { (ip, info) ->
-                ip is Inet4Address && info.state == NeighbourState.NEIGHBOUR_STATE_VALID
-            }
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+    val validClientCount = clientsState.map { clients -> clients.count { it.confirmed } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     private val trafficRates = MutableStateFlow<Map<Pair<String?, MacAddress>, TrafficRate>>(emptyMap())
     @OptIn(ExperimentalCoroutinesApi::class)
     val clientRows = clientsState.flatMapLatest { clients ->
@@ -191,6 +185,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
             for (client in p2p) {
                 val addr = MacAddress.fromString(client.deviceAddress!!)
                 getClient(addr, p2pInterface, TetherType.WIFI_P2P).apply {
+                    confirmed = true
                     addSource(p2pInterface)
                     // WiFi mainline module might be backported to API 30
                     if (Build.VERSION.SDK_INT >= 30) try {
@@ -203,7 +198,10 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
             }
         }
         wifiAp.forEach { client, _ ->
-            getClient(client.second, client.first, TetherType.WIFI).addSource(client.first)
+            getClient(client.second, client.first, TetherType.WIFI).apply {
+                confirmed = true
+                addSource(client.first)
+            }
         }
         for (neighbour in netlinkSnapshot.neighbours) {
             val lladdr = neighbour.lladdr ?: continue
@@ -214,6 +212,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 client = getClient(lladdr, neighbour.dev)
             }
             client.addSource(neighbour.dev)
+            if (neighbour.state == NeighbourState.NEIGHBOUR_STATE_VALID) client.confirmed = true
             client.ip.compute(neighbour.ip) { _, info ->
                 info?.apply { state = neighbour.state } ?: ClientAddressInfo(neighbour.state)
             }

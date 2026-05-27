@@ -18,6 +18,7 @@ class Client(val mac: MacAddress, iface: String? = null, val type: TetherType = 
     val ip = TreeMap<InetAddress, ClientAddressInfo>(InetAddressComparator)
     val ifaces = LinkedHashSet<String>().also { iface?.let(it::add) }
     val iface get() = ifaces.firstOrNull()
+    var confirmed = false
     val macString by lazy { mac.toString() }
 
     val icon get() = type.icon
@@ -35,8 +36,9 @@ class Client(val mac: MacAddress, iface: String? = null, val type: TetherType = 
         if (type != other.type) return false
         if (ip != other.ip) return false
         if (ifaces != other.ifaces) return false
+        if (confirmed != other.confirmed) return false
 
         return true
     }
-    override fun hashCode() = Objects.hash(mac, type, ip, ifaces)
+    override fun hashCode() = Objects.hash(mac, type, ip, ifaces, confirmed)
 }

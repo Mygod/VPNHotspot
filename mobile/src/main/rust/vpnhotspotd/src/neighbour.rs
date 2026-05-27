@@ -258,11 +258,12 @@ fn neighbour_from_message(
         let state = message.header.state;
         if has_state(state, NetlinkNeighbourState::Reachable)
             || has_state(state, NetlinkNeighbourState::Delay)
-            || has_state(state, NetlinkNeighbourState::Stale)
             || has_state(state, NetlinkNeighbourState::Probe)
             || has_state(state, NetlinkNeighbourState::Permanent)
         {
             NeighbourState::Valid
+        } else if has_state(state, NetlinkNeighbourState::Stale) {
+            NeighbourState::Cached
         } else if has_state(state, NetlinkNeighbourState::Failed) {
             NeighbourState::Failed
         } else if has_state(state, NetlinkNeighbourState::Incomplete) {

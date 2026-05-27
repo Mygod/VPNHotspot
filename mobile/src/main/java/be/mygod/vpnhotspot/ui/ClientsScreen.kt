@@ -170,6 +170,7 @@ private fun ClientRow(
     val neighbourStateIncomplete = stringResource(R.string.connected_state_incomplete)
     val neighbourStateValid = stringResource(R.string.connected_state_valid)
     val neighbourStateFailed = stringResource(R.string.connected_state_failed)
+    val neighbourStateCached = stringResource(R.string.connected_state_cached)
     val nickname = record.nickname
     LaunchedEffect(client.mac, record) {
         if (record.nickname.isEmpty() && record.macLookupPending) onPendingMacLookup()
@@ -198,6 +199,7 @@ private fun ClientRow(
                     NeighbourState.NEIGHBOUR_STATE_INCOMPLETE -> neighbourStateIncomplete
                     NeighbourState.NEIGHBOUR_STATE_VALID -> neighbourStateValid
                     NeighbourState.NEIGHBOUR_STATE_FAILED -> neighbourStateFailed
+                    NeighbourState.NEIGHBOUR_STATE_CACHED -> neighbourStateCached
                     is NeighbourState.Unrecognized -> error("Invalid neighbour state ${info.state.value}")
                 })
                 if (info.address != null) {

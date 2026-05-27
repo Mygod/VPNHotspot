@@ -200,6 +200,7 @@ enum NeighbourState {
   NEIGHBOUR_STATE_INCOMPLETE = 1;
   NEIGHBOUR_STATE_VALID = 2;
   NEIGHBOUR_STATE_FAILED = 3;
+  NEIGHBOUR_STATE_CACHED = 4;
 }
 
 message DaemonErrorReport {

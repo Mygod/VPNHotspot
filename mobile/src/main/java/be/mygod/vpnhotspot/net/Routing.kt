@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.Ipv6NatConfig
 import be.mygod.vpnhotspot.root.daemon.Ipv6Prefix
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.root.daemon.SessionConfig
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
@@ -188,8 +189,12 @@ class Routing(private val caller: Any, private val downstream: String) {
                         val clientsChanged = if (clientPolicyChanged) {
                             val candidateClients = MutableScatterMap<Inet4Address, MacAddress>(neighbours.size)
                             val candidateAllowedMacs = MutableScatterSet<MacAddress>()
-                            for (neighbour in neighbours) {
-                                val lladdr = neighbour.validClientMac ?: continue
+                            neighbours@ for (neighbour in neighbours) {
+                                val lladdr = when (neighbour.state) {
+                                    NeighbourState.NEIGHBOUR_STATE_VALID,
+                                    NeighbourState.NEIGHBOUR_STATE_CACHED -> neighbour.lladdr ?: continue@neighbours
+                                    else -> continue@neighbours
+                                }
                                 if (neighbour.dev != downstream || lladdr in blockedMacs) continue
                                 candidateAllowedMacs.add(lladdr)
                                 if (neighbour.ip is Inet4Address) candidateClients[neighbour.ip] = lladdr

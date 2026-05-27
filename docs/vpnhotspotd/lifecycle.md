@@ -208,6 +208,9 @@ normal routing cleanup or deterministic Clean reconstruction.
 The daemon allows one neighbour monitor at a time. Starting a monitor registers
 single-consumer netlink neighbour and link event slots, sends an initial dump
 with bridge topology, then streams deltas until the event call is cancelled.
+NUD stale entries are reported as cached instead of active, preserving the
+kernel's MAC/IP cache for callers that can use it while letting UI counters and
+timeout decisions ignore fully stale-only clients.
 
 Stopping the monitor drops both netlink registrations and waits for the monitor
 task. Link events trigger bridge topology snapshots only when the topology
