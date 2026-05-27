@@ -195,7 +195,11 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     }
     val apState = savedApSession?.let { session ->
         rememberSaveable(session, saver = ApConfigurationState.Saver) {
-            ApConfigurationState(session.initial, session.readOnly, session.target == ApConfigurationTarget.Repeater)
+            ApConfigurationState(
+                session.initial,
+                session.readOnly,
+                session.target,
+            )
         }
     }
     LaunchedEffect(rootDestination, appDestinationVisible) {

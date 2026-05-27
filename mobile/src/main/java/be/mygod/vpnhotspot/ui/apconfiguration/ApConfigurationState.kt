@@ -33,7 +33,7 @@ import timber.log.Timber
 class ApConfigurationState(
     initial: SoftApConfigurationCompat,
     val readOnly: Boolean,
-    val p2pMode: Boolean,
+    val target: ApConfigurationTarget,
 ) {
     companion object {
         val Saver = Saver<ApConfigurationState, Parcelable>(
@@ -42,7 +42,11 @@ class ApConfigurationState(
         )
     }
 
-    private constructor(saved: SavedApConfigurationState) : this(saved.base, saved.readOnly, saved.p2pMode) {
+    private constructor(saved: SavedApConfigurationState) : this(
+        saved.base,
+        saved.readOnly,
+        saved.target,
+    ) {
         originalUnderlying = saved.originalUnderlying
         hexSsid = saved.hexSsid
         ssid = saved.ssid
@@ -79,6 +83,7 @@ class ApConfigurationState(
 
     private var base = initial
     private var originalUnderlying = initial.underlying
+    val p2pMode get() = target == ApConfigurationTarget.Repeater
     private val ssidHexToggleable = if (p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
     val securityEntries = when {
@@ -452,7 +457,7 @@ class ApConfigurationState(
         base = base,
         originalUnderlying = originalUnderlying,
         readOnly = readOnly,
-        p2pMode = p2pMode,
+        target = target,
         hexSsid = hexSsid,
         ssid = ssid,
         securityType = securityType,
@@ -492,7 +497,7 @@ private data class SavedApConfigurationState(
     val base: SoftApConfigurationCompat,
     val originalUnderlying: Parcelable?,
     val readOnly: Boolean,
-    val p2pMode: Boolean,
+    val target: ApConfigurationTarget,
     val hexSsid: Boolean,
     val ssid: String,
     val securityType: Int,

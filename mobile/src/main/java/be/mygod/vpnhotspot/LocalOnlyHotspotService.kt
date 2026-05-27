@@ -8,9 +8,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
-import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -152,7 +150,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         override fun onFailed(reason: Int) = onFrameworkFailed(reason, generation)
     }
     private suspend fun onFrameworkStarted(reservation: Reservation) {
-        val configuration = reservation.configuration
         if (reservation.generation != lifecycleGeneration.get()) {
             if (this@LocalOnlyHotspotService.reservation === reservation) {
                 this@LocalOnlyHotspotService.reservation = null
@@ -183,11 +180,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
             }
             if (iface.value != "") return@withLock
             unregisterStateReceiver()
-            if (Build.VERSION.SDK_INT < 30 && configuration!!.isAutoShutdownEnabled) {
-                timeoutMonitor = TetherTimeoutMonitor(configuration.shutdownTimeoutMillis, coroutineContext) {
-                    reservation.close()
-                }
-            }
             waitingForIface = true
             withContext(Dispatchers.Main.immediate) {
                 TetherStates.registerCallback(this@LocalOnlyHotspotService)
@@ -252,7 +244,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     override val coroutineContext = dispatcher + Job()
     private val routingMutex = Mutex()
     private var routingManager: RoutingManager? = null
-    private var timeoutMonitor: TetherTimeoutMonitor? = null
     private val lifecycleGeneration = AtomicInteger()
     private var waitingForIface = false
     override val activeIfaces get() = iface.value.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
@@ -335,12 +326,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         }
     }
 
-    override fun onNetlinkNeighboursChanged(neighbours: Collection<NetlinkNeighbour>) {
-        super.onNetlinkNeighboursChanged(neighbours)
-        val ifaces = activeIfaces
-        timeoutMonitor?.onClientsChanged(neighbours.none { it.dev in ifaces && it.activeClientMac != null })
-    }
-
     override fun onDestroy() {
         binder.stop(false, true)
         binder.detach()
@@ -359,8 +344,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
                     TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
                 }
                 stopNetlinkNeighbours()
-                timeoutMonitor?.close()
-                timeoutMonitor = null
                 val manager = routingManager
                 manager?.stop()
                 if (routingManager === manager) routingManager = null

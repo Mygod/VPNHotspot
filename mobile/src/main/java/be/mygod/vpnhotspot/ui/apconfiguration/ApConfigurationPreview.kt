@@ -31,7 +31,7 @@ private fun ApConfigurationPreview() {
                         securityType = SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
                     ),
                     readOnly = false,
-                    p2pMode = false,
+                    target = ApConfigurationTarget.System,
                 )
             },
             snackbarHostState = remember { SnackbarHostState() },

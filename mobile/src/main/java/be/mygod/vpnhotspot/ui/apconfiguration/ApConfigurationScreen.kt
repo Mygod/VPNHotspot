@@ -100,48 +100,50 @@ fun ApConfigurationScreen(
                 )
             }
             if (state.passwordEnabled) row("password") { PasswordApRow(state) }
-            if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
-                row(R.string.wifi_hotspot_auto_off) {
-                    TextSwitchApRow(
-                        icon = R.drawable.ic_timer,
-                        title = R.string.wifi_hotspot_auto_off,
-                        valueTitle = R.string.wifi_hotspot_timeout,
-                        checked = state.autoShutdown,
-                        value = state.timeout,
-                        summary = annotatedStringResource(
-                            R.string.wifi_hotspot_auto_off_help,
-                            timeoutSummary(context, state.timeout, defaultTimeout),
-                        ),
-                        description = annotatedStringResource(
-                            R.string.wifi_hotspot_timeout_help,
-                            formatTimeoutMillis(context, defaultTimeout),
-                        ),
-                        keyboardType = KeyboardType.Number,
-                        maxLength = 19,
-                        placeholder = defaultTimeout.toString(),
-                        suffix = stringResource(R.string.wifi_hotspot_timeout_milliseconds),
-                        validator = { value ->
-                            validateOptionalLong(value) { timeout ->
-                                if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
-                                    SoftApConfigurationCompat.testPlatformTimeoutValidity(timeout)
+            if (state.target != ApConfigurationTarget.Temporary || Build.VERSION.SDK_INT >= 30) {
+                if (state.p2pMode || Build.VERSION.SDK_INT >= 30) {
+                    row(R.string.wifi_hotspot_auto_off) {
+                        TextSwitchApRow(
+                            icon = R.drawable.ic_timer,
+                            title = R.string.wifi_hotspot_auto_off,
+                            valueTitle = R.string.wifi_hotspot_timeout,
+                            checked = state.autoShutdown,
+                            value = state.timeout,
+                            summary = annotatedStringResource(
+                                R.string.wifi_hotspot_auto_off_help,
+                                timeoutSummary(context, state.timeout, defaultTimeout),
+                            ),
+                            description = annotatedStringResource(
+                                R.string.wifi_hotspot_timeout_help,
+                                formatTimeoutMillis(context, defaultTimeout),
+                            ),
+                            keyboardType = KeyboardType.Number,
+                            maxLength = 19,
+                            placeholder = defaultTimeout.toString(),
+                            suffix = stringResource(R.string.wifi_hotspot_timeout_milliseconds),
+                            validator = { value ->
+                                validateOptionalLong(value) { timeout ->
+                                    if (!state.p2pMode && Build.VERSION.SDK_INT >= 30) {
+                                        SoftApConfigurationCompat.testPlatformTimeoutValidity(timeout)
+                                    }
                                 }
-                            }
-                        },
-                        onCheckedChange = { state.autoShutdown = it },
-                    ) { state.timeout = it }
-                }
-            } else {
-                row(R.string.wifi_hotspot_auto_off) {
-                    SwitchApRow(
-                        icon = R.drawable.ic_timer,
-                        title = R.string.wifi_hotspot_auto_off,
-                        checked = state.autoShutdown,
-                        summary = annotatedStringResource(
-                            R.string.wifi_hotspot_auto_off_help,
-                            timeoutSummary(context, state.timeout, defaultTimeout),
-                        ),
-                    ) {
-                        state.autoShutdown = it
+                            },
+                            onCheckedChange = { state.autoShutdown = it },
+                        ) { state.timeout = it }
+                    }
+                } else {
+                    row(R.string.wifi_hotspot_auto_off) {
+                        SwitchApRow(
+                            icon = R.drawable.ic_timer,
+                            title = R.string.wifi_hotspot_auto_off,
+                            checked = state.autoShutdown,
+                            summary = annotatedStringResource(
+                                R.string.wifi_hotspot_auto_off_help,
+                                timeoutSummary(context, state.timeout, defaultTimeout),
+                            ),
+                        ) {
+                            state.autoShutdown = it
+                        }
                     }
                 }
             }
