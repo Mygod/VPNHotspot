@@ -15,7 +15,7 @@ use crate::shared::model::{
 };
 use crate::shared::proto::daemon::{self, DaemonErrorReport, MasqueradeMode};
 
-const MAX_ERROR_DETAILS: usize = 32;
+pub(crate) const MAX_ERROR_DETAILS: usize = 32;
 const MAX_ERROR_FIELD_BYTES: usize = 4096;
 
 #[track_caller]

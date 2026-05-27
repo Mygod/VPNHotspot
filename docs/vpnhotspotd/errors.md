@@ -70,6 +70,21 @@ Tie the report to a call ID when the failure belongs to a specific active call.
 Use process-level nonfatal reports only for daemon-global background failures or
 when no meaningful call owns the failure.
 
+Nonfatal reports are coalesced before they are sent to Kotlin. The first report
+for a category is emitted immediately. Further reports with the same context,
+kind, errno, and Rust source file/line are suppressed for the current
+one-second window; when the window closes, the daemon emits the last suppressed
+report with `coalesced.suppressed_count` and `coalesced.window_ms` details. If
+reports continue, subsequent windows keep emitting at most one summary per
+second instead of reopening with another immediate report. If a category goes
+quiet for a full window, the pending batch closes and the next report is again
+emitted immediately. Daemon shutdown flushes pending summaries before the
+control writer is closed, but nonfatal control-frame delivery is best-effort
+during controller disconnect or idle shutdown. If an emitted nonfatal cannot be
+written to the control socket, the daemon writes the report to stderr, which
+falls back to logcat if the app-side stderr pipe is already closed. Terminal
+error frames are not coalesced.
+
 ## Logs
 
 `report::stdout!` and `report::stderr!` write to stdio, falling back to logcat

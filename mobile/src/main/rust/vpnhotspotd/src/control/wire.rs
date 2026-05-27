@@ -7,24 +7,28 @@ use libc::EINPROGRESS;
 use socket2::{Domain, SockAddr, Socket, Type};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::mpsc::unbounded_channel;
 use tokio::task::JoinHandle;
 
-use crate::report;
+use crate::report::{ControllerMessage, ControllerSender};
 use crate::socket::await_connect;
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
 const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
-pub(super) fn spawn_writer<W>(mut writer: W) -> (UnboundedSender<Vec<u8>>, JoinHandle<()>)
+pub(super) fn spawn_writer<W>(mut writer: W) -> (ControllerSender, JoinHandle<()>)
 where
     W: AsyncWrite + Unpin + Send + 'static,
 {
-    let (sender, mut receiver) = unbounded_channel::<Vec<u8>>();
+    let (sender, mut receiver) = unbounded_channel::<ControllerMessage>();
     let task = tokio::spawn(async move {
-        while let Some(packet) = receiver.recv().await {
-            if let Err(e) = send_packet(&mut writer, &packet).await {
-                report::stderr!("controller send failed: {e}");
+        while let Some(message) = receiver.recv().await {
+            if let Err(e) = send_packet(&mut writer, message.packet()).await {
+                message.log_send_failure(e);
+                receiver.close();
+                while let Some(message) = receiver.recv().await {
+                    message.log_drop_after_disconnect();
+                }
                 break;
             }
         }

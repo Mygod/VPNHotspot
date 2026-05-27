@@ -7,6 +7,7 @@ pub mod ipsec;
 pub mod ipv4_forward_counter;
 pub mod model;
 pub mod nat66_counter;
+pub mod nonfatal;
 pub mod proto;
 pub mod protocol;
 pub mod ra_wire;
