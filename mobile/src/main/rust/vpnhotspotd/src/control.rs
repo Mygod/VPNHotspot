@@ -160,6 +160,8 @@ struct State {
 struct SessionState {
     id: u64,
     downstream: String,
+    cancel: CancellationToken,
+    teardown_complete: CancellationToken,
     cleaning: AtomicBool,
     control: Mutex<Option<SessionControl>>,
 }
@@ -412,15 +414,34 @@ async fn start_session(
     let slot = Arc::new(SessionState {
         id,
         downstream: downstream.clone(),
+        cancel: cancel.clone(),
+        teardown_complete: CancellationToken::new(),
         cleaning: AtomicBool::new(false),
         control: Mutex::new(None),
     });
-    {
-        let mut sessions = state.sessions.lock().await;
-        if sessions
-            .values()
-            .any(|session| session.downstream == downstream)
-        {
+    loop {
+        let existing = {
+            let mut sessions = state.sessions.lock().await;
+            if let Some(existing) = sessions
+                .values()
+                .find(|session| session.downstream == downstream)
+                .cloned()
+            {
+                existing
+            } else {
+                sessions.insert(id, slot.clone());
+                break;
+            }
+        };
+        if existing.cancel.is_cancelled() {
+            select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    return Err(io::Error::new(io::ErrorKind::Interrupted, "start session cancelled"));
+                }
+                _ = existing.teardown_complete.cancelled() => {}
+            }
+        } else {
             return Err(
                 io::Error::new(io::ErrorKind::AlreadyExists, "session already exists")
                     .with_report_context_details(
@@ -429,7 +450,6 @@ async fn start_session(
                     ),
             );
         }
-        sessions.insert(id, slot.clone());
     }
     let netlink = match state
         .netlink()
@@ -565,6 +585,7 @@ async fn remove_session_slot(state: &State, slot: &Arc<SessionState>) {
         drop(sessions);
         state.ipsec.lock().await.remove_session(slot.id);
     }
+    slot.teardown_complete.cancel();
 }
 
 async fn start_neighbour_monitor(

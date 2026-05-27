@@ -77,10 +77,14 @@ client connection and it is not an upstream network.
 ## Session Startup
 
 `StartSessionCommand` reserves a session slot before doing setup. The daemon
-rejects a second active session for the same downstream interface. If IPv6 NAT
-is requested, the process-wide IPv6 NAT firewall base chains are attempted
-before the session runtime starts. Failure there is reported as a structured
-nonfatal tied to the start call and IPv6 NAT is disabled for that session start.
+rejects a second active session for the same downstream interface. If an existing
+session for that downstream has already been cancelled and is tearing down, the
+new start waits for the old session to finish teardown and remove its daemon
+slot, then retries insertion. If the new start is cancelled while waiting, it
+exits without starting a session. If IPv6 NAT is requested, the process-wide
+IPv6 NAT firewall base chains are attempted before the session runtime starts.
+Failure there is reported as a structured nonfatal tied to the start call and
+IPv6 NAT is disabled for that session start.
 
 [`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
 constructs the session in this order:
@@ -114,8 +118,9 @@ After the session is installed, Rust publishes a session-control handle and
 sends an event ACK. Read, replace, and stop operations enqueue commands through
 that handle; the start-session task owns the session runtime and processes those
 commands in order. When cancelled normally, it removes the control handle from
-the slot, drains already queued commands, removes the session from daemon state,
-and stops the session runtimes.
+the slot, drains already queued commands, stops the session runtimes, removes the
+session from daemon state, and releases any same-downstream start waiting behind
+that teardown.
 
 After the ACK, the daemon updates a process-wide aggregate of upstream interface
 names across all active sessions. On Android 12+, if an interface name enters

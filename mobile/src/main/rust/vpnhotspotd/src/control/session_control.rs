@@ -107,6 +107,9 @@ pub(super) async fn run_session(
     if remove_slot_on_exit {
         remove_session_slot(state, &slot).await;
     }
+    // Clean drains slots before sending Stop, so the session owner releases waiters
+    // after teardown.
+    slot.teardown_complete.cancel();
 }
 
 impl SessionControl {
