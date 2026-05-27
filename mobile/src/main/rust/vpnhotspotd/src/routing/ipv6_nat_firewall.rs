@@ -179,7 +179,6 @@ impl Ipv6NatFirewall {
                     "-m".into(),
                     "socket".into(),
                     "--transparent".into(),
-                    "--nowildcard".into(),
                     "-j".into(),
                     "ACCEPT".into(),
                 ],

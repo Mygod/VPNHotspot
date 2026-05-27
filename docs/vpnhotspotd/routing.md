@@ -343,7 +343,7 @@ least one TCP or UDP runtime capability.
 External mutations:
 
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -j REJECT`
-- `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -m socket --transparent --nowildcard -j ACCEPT`
+- `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -m socket --transparent -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -p icmpv6 -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_forward -o <downstream> -j REJECT`
 - `ip6tables -t filter -I vpnhotspot_v6_forward -i <downstream> -j REJECT`
