@@ -14,11 +14,27 @@ import android.net.wifi.WifiManager
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
 import android.os.Handler
+import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.EXTRA_WIFI_AP_STATE
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_CHANGED_ACTION
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLED
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_DISABLING
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLED
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_ENABLING
+import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_FAILED
 import be.mygod.vpnhotspot.util.ConstantLookup
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.findIdentifier
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.util.concurrent.Executor
 
@@ -261,15 +277,61 @@ object WifiApManager {
     }
     fun unregisterSoftApCallback(key: Any) = unregisterSoftApCallback(Services.wifi, key)
 
+    sealed class LocalOnlyHotspotEvent : Parcelable {
+        @Parcelize
+        data class Started(val config: SoftApConfigurationCompat?) : LocalOnlyHotspotEvent()
+        @Parcelize
+        class Stopped : LocalOnlyHotspotEvent() {
+            override fun equals(other: Any?) = other is Stopped
+            override fun hashCode() = javaClass.hashCode()
+        }
+        @Parcelize
+        data class Failed(val reason: Int) : LocalOnlyHotspotEvent()
+    }
+    private fun localOnlyHotspotFlow(
+        nullReservationReason: Int,
+        start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
+    ) = callbackFlow {
+        var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+        // WifiManager's LOHS proxy keeps mCallback strongly until request cleanup, so keep this callback flow-local.
+        fun push(event: LocalOnlyHotspotEvent) = trySend(event).onFailure {
+            close(it ?: IllegalStateException("Flow buffer rejected local-only hotspot callback"))
+        }.isSuccess
+        fun finish(event: LocalOnlyHotspotEvent) {
+            if (push(event)) close()
+        }
+        start(object : WifiManager.LocalOnlyHotspotCallback() {
+            override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
+                if (startedReservation == null) return finish(LocalOnlyHotspotEvent.Failed(nullReservationReason))
+                reservation = startedReservation
+                val config = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+                    startedReservation.wifiConfiguration?.toCompat()
+                } else startedReservation.softApConfiguration.toCompat()
+                push(LocalOnlyHotspotEvent.Started(config))
+            }
+            override fun onStopped() = finish(LocalOnlyHotspotEvent.Stopped())
+            override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
+        })
+        awaitClose {
+            reservation?.close() ?: cancelLocalOnlyHotspotRequest()
+            reservation = null
+        }
+    }.buffer(Channel.UNLIMITED)
+
     @get:RequiresApi(30)
     private val startLocalOnlyHotspot by lazy @TargetApi(30) {
         WifiManager::class.java.getDeclaredMethod("startLocalOnlyHotspot", SoftApConfiguration::class.java,
             Executor::class.java, WifiManager.LocalOnlyHotspotCallback::class.java)
     }
     @RequiresApi(30)
-    fun startLocalOnlyHotspot(config: SoftApConfiguration, callback: WifiManager.LocalOnlyHotspotCallback?,
-                              executor: Executor? = null) =
-        startLocalOnlyHotspot(Services.wifi, config, executor, callback)
+    fun startLocalOnlyHotspotFlow(config: SoftApConfiguration, executor: Executor? = InPlaceExecutor) =
+        localOnlyHotspotFlow(-3) { startLocalOnlyHotspot(Services.wifi, config, executor, it) }
+    fun startLocalOnlyHotspotFlow(handler: Handler? = null) =
+        localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspot(it, handler) }
+    @RequiresApi(33)
+    fun startLocalOnlyHotspotWithConfigurationFlow(config: SoftApConfiguration,
+                                                   executor: Executor = InPlaceExecutor) =
+        localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspotWithConfiguration(config, executor, it) }
 
     private val cancelLocalOnlyHotspotRequest by lazy {
         WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")

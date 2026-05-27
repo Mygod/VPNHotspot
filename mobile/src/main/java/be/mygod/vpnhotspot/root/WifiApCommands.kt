@@ -1,9 +1,8 @@
 package be.mygod.vpnhotspot.root
 
-import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApCapability
+import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
-import android.net.wifi.WifiManager
 import android.net.wifi.WifiClient
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
@@ -210,47 +209,7 @@ object WifiApCommands {
 
     @Parcelize
     @RequiresApi(30)
-    class StartLocalOnlyHotspot : RootFlow<LocalOnlyHotspotCallbacks> {
-        override fun flow() = callbackFlow {
-            var lohr: WifiManager.LocalOnlyHotspotReservation? = null
-            var completed = false
-            WifiApManager.startLocalOnlyHotspot(WifiApManager.configuration, object :
-                WifiManager.LocalOnlyHotspotCallback() {
-                private fun push(parcel: LocalOnlyHotspotCallbacks) {
-                    trySend(parcel).onFailure {
-                        close(it ?: IllegalStateException("Flow buffer rejected local-only hotspot callback"))
-                    }
-                }
-                override fun onStarted(reservation: WifiManager.LocalOnlyHotspotReservation?) {
-                    if (reservation == null) onFailed(-3) else {
-                        require(lohr == null)
-                        lohr = reservation
-                        push(LocalOnlyHotspotCallbacks.OnStarted(reservation.softApConfiguration))
-                    }
-                }
-                override fun onStopped() {
-                    push(LocalOnlyHotspotCallbacks.OnStopped())
-                    completed = true
-                    close()
-                }
-                override fun onFailed(reason: Int) {
-                    push(LocalOnlyHotspotCallbacks.OnFailed(reason))
-                    completed = true
-                    close()
-                }
-            }) {
-                launch {
-                    try {
-                        it.run()
-                    } catch (e: Throwable) {
-                        close(e)
-                    }
-                }
-            }
-            awaitClose {
-                if (!completed) WifiApManager.cancelLocalOnlyHotspotRequest()
-                lohr?.close()
-            }
-        }.buffer(Channel.UNLIMITED)
+    class StartLocalOnlyHotspot : RootFlow<WifiApManager.LocalOnlyHotspotEvent> {
+        override fun flow() = WifiApManager.startLocalOnlyHotspotFlow(WifiApManager.configuration)
     }
 }
