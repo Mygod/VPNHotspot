@@ -65,7 +65,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
-import java.net.Inet4Address
 
 class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, `WifiManager$SoftApCallback`,
     TetherStates.Callback {
@@ -89,11 +88,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private var tetheringClients = MutableScatterMap<MacAddress, TetheredClientInfo>()
     private val clientsState = MutableStateFlow<List<Client>>(emptyList())
     val validClientCount = clientsState.map { clients ->
-        clients.count {
-            it.ip.any { (ip, info) ->
-                ip is Inet4Address && info.state == NeighbourState.NEIGHBOUR_STATE_VALID
-            }
-        }
+        clients.count { it.ip.any { (_, info) -> info.state == NeighbourState.NEIGHBOUR_STATE_VALID } }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
     private val trafficRates = MutableStateFlow<Map<Pair<String?, MacAddress>, TrafficRate>>(emptyMap())
     @OptIn(ExperimentalCoroutinesApi::class)
