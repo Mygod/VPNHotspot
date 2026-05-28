@@ -32,11 +32,9 @@ addresses in neighbour state.
 ## Client Identity
 
 `ClientConfig` entries are keyed by MAC and may have an empty IPv4 list. A
-client can be admitted for DNS and NAT66 from an active or cached ARP/NDP
-neighbour that has a six-byte link-layer address; an IPv4 address is not
-required for IPv6 NAT66 proxying or accounting. Cached neighbours preserve
-kernel MAC knowledge for admission, but Kotlin surfaces them separately from
-active neighbours so stale-only clients do not have to count as connected.
+client can be admitted for DNS and NAT66 from a valid ARP or NDP neighbour that
+has a six-byte link-layer address; an IPv4 address is not required for IPv6
+NAT66 proxying or accounting.
 
 IPv4 forwarding still uses real client IPv4 addresses as hidden kernel counter
 leaves. A committed `(MAC, IPv4)` pair is required for sent-direction IPv4
@@ -98,10 +96,9 @@ source to the existing persistence shape:
 The structured counter source is the stable active-recorder key. The persisted
 `upstream` marker is only the current no-migration storage representation.
 Routing keeps the recorder's active client set in sync with allowed MACs, while
-IPv4 neighbour entries only add or remove IPv4 forwarding rows. A client whose
-IPv4 neighbour fails or is deleted therefore loses IPv4 forwarding until ARP
-returns, but a cached IPv4 neighbour can continue to provide the MAC/IP pair and
-does not stop DNS or NAT66 polling while the MAC is still allowed.
+IPv4 neighbour entries only add or remove IPv4 forwarding rows. A client losing
+its IPv4 neighbour therefore loses IPv4 forwarding until ARP returns, but does
+not stop DNS or NAT66 polling while the MAC is still allowed.
 When duplicate IPv4 forwarding counter rules exist after interrupted cleanup,
 the daemon keeps the first matching iptables rule per direction because that is
 the rule whose counters the kernel updates.

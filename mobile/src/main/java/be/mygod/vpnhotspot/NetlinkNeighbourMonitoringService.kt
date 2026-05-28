@@ -31,7 +31,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     protected open fun updateNotification() {
         val sizeLookup = neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
             neighbours
-                    .mapNotNull { it.activeClientMac }
+                    .mapNotNull { it.validClientMac }
                     .distinct()
                     .size
         }

@@ -206,7 +206,6 @@
     <string name="connected_state_incomplete">" (connecting)"</string>
     <string name="connected_state_valid">" (reachable)"</string>
     <string name="connected_state_failed">" (lost)"</string>
-    <string name="connected_state_cached">" (cached)"</string>
 
     <string name="clients_empty">No clients connected</string>
     <string name="clients_popup_nickname">Nickname…</string>

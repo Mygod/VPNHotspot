@@ -31,7 +31,7 @@ data class NetlinkNeighbour(val proto: Neighbour) {
         if (it.size != 6) throw IOException("Invalid neighbour link-layer address length ${it.size}")
     }?.let(MacAddress::fromBytes)
     inline val state get() = proto.state
-    val activeClientMac get() = if (state == NeighbourState.NEIGHBOUR_STATE_VALID) lladdr else null
+    val validClientMac get() = if (state == NeighbourState.NEIGHBOUR_STATE_VALID) lladdr else null
 
     init {
         if (state is NeighbourState.Unrecognized) throw IOException("Invalid neighbour state ${state.value}")
