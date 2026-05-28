@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Resources
+import android.net.wifi.ISoftApCallback
+import android.net.wifi.IWifiManager
 import android.net.wifi.DeauthenticationReasonCode
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
@@ -15,6 +17,7 @@ import android.net.wifi.WifiManager
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
 import android.os.Handler
+import android.os.IBinder
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -29,14 +32,20 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager.WIFI_AP_STATE_FAILED
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.findIdentifier
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.onFailure
+import kotlinx.coroutines.channels.ProducerScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
+import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.Executor
 
 object WifiApManager {
@@ -217,6 +226,83 @@ object WifiApManager {
         ConstantLookup("REASON_") { DeauthenticationReasonCode::class.java }
     }
 
+    class SoftApCallbackUnavailableException(
+        cause: Throwable? = null,
+    ) : RuntimeException("Soft AP callback is unavailable", cause)
+    private enum class SoftApCallbackCapability { Unknown, Available, Unavailable }
+    private var directSoftApCallbackCapability = SoftApCallbackCapability.Unknown
+
+    class FrameworkCallbackScope<T>(private val name: String, private val scope: ProducerScope<T>) {
+        fun push(event: T) = scope.trySend(event).onFailure {
+            scope.close(it ?: IllegalStateException("Flow buffer rejected $name"))
+        }.isSuccess
+        fun finish(event: T) {
+            if (push(event)) scope.close()
+        }
+    }
+    fun <T> frameworkCallbackFlow(
+        name: String,
+        register: suspend FrameworkCallbackScope<T>.() -> (suspend () -> Unit),
+    ): Flow<T> = channelFlow {
+        val callbackScope = FrameworkCallbackScope(name, this)
+        var unregister: (suspend () -> Unit)? = null
+        try {
+            unregister = callbackScope.register()
+            awaitClose()
+        } finally {
+            withContext(NonCancellable) { unregister?.invoke() }
+        }
+    }.buffer(Channel.UNLIMITED)
+
+    sealed class Event : Parcelable {
+        @Parcelize
+        data class OnStateChanged(val state: Int, val failureReason: Int) : Event()
+        @Parcelize
+        data class OnNumClientsChanged(val numClients: Int) : Event()
+        @Parcelize
+        @RequiresApi(30)
+        data class OnConnectedClientsChanged(val clients: List<WifiClient>) : Event()
+        @Parcelize
+        @RequiresApi(30)
+        data class OnInfoChanged(val info: List<SoftApInfo>) : Event()
+        @Parcelize
+        @RequiresApi(30)
+        data class OnCapabilityChanged(val capability: SoftApCapability) : Event()
+        @Parcelize
+        @RequiresApi(30)
+        data class OnBlockedClientConnecting(val client: WifiClient, val blockedReason: Int) : Event()
+        @Parcelize
+        @RequiresApi(30)
+        data class OnClientsDisconnected(val info: SoftApInfo, val clients: List<WifiClient>) : Event()
+    }
+
+    @RequiresApi(30)
+    fun softApCallback(push: (Event) -> Boolean) = object : `WifiManager$SoftApCallback` {
+        override fun onStateChanged(state: Int, failureReason: Int) {
+            push(Event.OnStateChanged(state, failureReason))
+        }
+        override fun onConnectedClientsChanged(clients: List<WifiClient>) {
+            push(Event.OnConnectedClientsChanged(clients))
+        }
+        override fun onInfoChanged(info: SoftApInfo) {
+            push(Event.OnInfoChanged(if (info.frequency == 0 && info.bandwidth == SoftApInfo.CHANNEL_WIDTH_INVALID) {
+                emptyList()
+            } else listOf(info)))
+        }
+        override fun onInfoChanged(info: List<SoftApInfo>) {
+            push(Event.OnInfoChanged(info))
+        }
+        override fun onCapabilityChanged(capability: SoftApCapability) {
+            push(Event.OnCapabilityChanged(capability))
+        }
+        override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) {
+            push(Event.OnBlockedClientConnecting(client, blockedReason))
+        }
+        override fun onClientsDisconnected(info: SoftApInfo, clients: List<WifiClient>) {
+            push(Event.OnClientsDisconnected(info, clients))
+        }
+    }
+
     private val registerSoftApCallback by lazy {
         if (Build.VERSION.SDK_INT >= 30) {
             WifiManager::class.java.getDeclaredMethod("registerSoftApCallback", Executor::class.java,
@@ -227,56 +313,62 @@ object WifiApManager {
     private val unregisterSoftApCallback by lazy {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", `WifiManager$SoftApCallback`::class.java)
     }
-
-    fun registerSoftApCallback(callback: `WifiManager$SoftApCallback`, executor: Executor): Any {
-        val key = if (Build.VERSION.SDK_INT >= 30) object : `WifiManager$SoftApCallback` {
+    val softApCallbackFlow = frameworkCallbackFlow("Soft AP callback") {
+        if (directSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
+            throw SoftApCallbackUnavailableException()
+        }
+        val callback = if (Build.VERSION.SDK_INT < 30) object : `WifiManager$SoftApCallback` {
             override fun onStateChanged(state: Int, failureReason: Int) {
-                callback.onStateChanged(state, failureReason)
+                push(Event.OnStateChanged(state, failureReason))
             }
-
             override fun onNumClientsChanged(numClients: Int) {
-                Timber.w(Exception("Unexpected onNumClientsChanged"))
-                callback.onNumClientsChanged(numClients)
+                push(Event.OnNumClientsChanged(numClients))
             }
-
-            override fun onConnectedClientsChanged(clients: MutableList<WifiClient>) {
-                callback.onConnectedClientsChanged(clients)
+        } else softApCallback(::push)
+        try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                registerSoftApCallback(Services.wifi, InPlaceExecutor, callback)
+            } else registerSoftApCallback(Services.wifi, callback, null)
+            directSoftApCallbackCapability = SoftApCallbackCapability.Available
+        } catch (e: Throwable) {
+            when (e) {
+                is InvocationTargetException -> when (val target = e.targetException) {
+                    is SecurityException, is LinkageError -> target
+                    else -> null
+                }
+                is SecurityException, is ReflectiveOperationException, is LinkageError -> e
+                else -> null
+            }?.let {
+                directSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw SoftApCallbackUnavailableException(it)
             }
-
-            override fun onInfoChanged(infos: MutableList<SoftApInfo>) {
-                callback.onInfoChanged(infos)
-            }
-
-            override fun onInfoChanged(info: SoftApInfo) {
-                callback.onInfoChanged(info)
-            }
-
-            override fun onCapabilityChanged(capability: SoftApCapability) {
-                callback.onCapabilityChanged(capability)
-            }
-
-            override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) {
-                callback.onBlockedClientConnecting(client, blockedReason)
-            }
-
-            override fun onClientsDisconnected(info: SoftApInfo, clients: MutableList<WifiClient>) {
-                callback.onClientsDisconnected(info, clients)
-            }
-        } else object : `WifiManager$SoftApCallback` {
-            override fun onStateChanged(state: Int, failureReason: Int) {
-                executor.execute { callback.onStateChanged(state, failureReason) }
-            }
-
-            override fun onNumClientsChanged(numClients: Int) {
-                executor.execute { callback.onNumClientsChanged(numClients) }
+            throw e
+        }
+        return@frameworkCallbackFlow {
+            try {
+                unregisterSoftApCallback(Services.wifi, callback)
+            } catch (e: Exception) {
+                Timber.w(e)
             }
         }
-        if (Build.VERSION.SDK_INT >= 30) {
-            registerSoftApCallback(Services.wifi, executor, key)
-        } else registerSoftApCallback(Services.wifi, key, null)
-        return key
     }
-    fun unregisterSoftApCallback(key: Any) = unregisterSoftApCallback(Services.wifi, key)
+
+    @RequiresApi(31)
+    fun newSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`) =
+        UnblockCentral.WifiManager_SoftApCallbackProxy.let { (constructor, legacy) ->
+            if (legacy) constructor.newInstance(Services.wifi, InPlaceExecutor, callback)
+            // IFACE_IP_MODE_TETHERED: https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#805
+            else constructor.newInstance(Services.wifi, InPlaceExecutor, callback, 1)
+        } as IBinder
+
+    @get:RequiresApi(31)
+    private val iWifiManager by lazy { UnblockCentral.WifiManager_mService.get(Services.wifi) as IWifiManager }
+    @RequiresApi(31)
+    fun registerSoftApCallbackBinder(callback: IBinder) =
+        iWifiManager.registerSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
+    @RequiresApi(31)
+    fun unregisterSoftApCallbackBinder(callback: IBinder) =
+        iWifiManager.unregisterSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
 
     sealed class LocalOnlyHotspotEvent : Parcelable {
         @Parcelize
@@ -289,18 +381,19 @@ object WifiApManager {
         @Parcelize
         data class Failed(val reason: Int) : LocalOnlyHotspotEvent()
     }
+
+    /**
+     * This is the only way to unregister requests besides app exiting.
+     * Therefore, we are happy with crashing the app if reflection fails.
+     */
+    private val cancelLocalOnlyHotspotRequest by lazy {
+        WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
+    }
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
         start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
-    ) = callbackFlow {
+    ) = frameworkCallbackFlow("local-only hotspot callback") {
         var reservation: WifiManager.LocalOnlyHotspotReservation? = null
-        // WifiManager's LOHS proxy keeps mCallback strongly until request cleanup, so keep this callback flow-local.
-        fun push(event: LocalOnlyHotspotEvent) = trySend(event).onFailure {
-            close(it ?: IllegalStateException("Flow buffer rejected local-only hotspot callback"))
-        }.isSuccess
-        fun finish(event: LocalOnlyHotspotEvent) {
-            if (push(event)) close()
-        }
         start(object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
                 if (startedReservation == null) return finish(LocalOnlyHotspotEvent.Failed(nullReservationReason))
@@ -313,11 +406,11 @@ object WifiApManager {
             override fun onStopped() = finish(LocalOnlyHotspotEvent.Stopped())
             override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
         })
-        awaitClose {
-            reservation?.close() ?: cancelLocalOnlyHotspotRequest()
+        return@frameworkCallbackFlow {
+            reservation?.close() ?: cancelLocalOnlyHotspotRequest(Services.wifi)
             reservation = null
         }
-    }.buffer(Channel.UNLIMITED)
+    }
 
     @get:RequiresApi(30)
     private val startLocalOnlyHotspot by lazy @TargetApi(30) {
@@ -335,13 +428,4 @@ object WifiApManager {
     fun startLocalOnlyHotspotWithConfigurationFlow(config: SoftApConfiguration,
                                                    executor: Executor = InPlaceExecutor) =
         localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspotWithConfiguration(config, executor, it) }
-
-    private val cancelLocalOnlyHotspotRequest by lazy {
-        WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
-    }
-    /**
-     * This is the only way to unregister requests besides app exiting.
-     * Therefore, we are happy with crashing the app if reflection fails.
-     */
-    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
 }

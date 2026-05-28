@@ -4,17 +4,15 @@ import android.content.Context
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
-import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -25,6 +23,7 @@ import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
+import kotlinx.coroutines.flow.catch
 import timber.log.Timber
 import java.util.Locale
 
@@ -55,42 +54,17 @@ internal fun rememberSoftApRuntimeInfo(): State<SoftApRuntimeInfo?> {
                 update()
             }
         }
-        val callback = object : `WifiManager$SoftApCallback` {
-            override fun onInfoChanged(info: SoftApInfo) {
-                updateVendorData(listOf(info))
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
+                when (event) {
+                    is WifiApManager.Event.OnInfoChanged -> updateVendorData(event.info)
+                    is WifiApManager.Event.OnCapabilityChanged -> {
+                        currentCapability = event.capability
+                        update()
+                    }
+                    else -> { }
+                }
             }
-
-            override fun onInfoChanged(info: List<SoftApInfo>) {
-                updateVendorData(info)
-            }
-
-            override fun onCapabilityChanged(capability: SoftApCapability) {
-                currentCapability = capability
-                update()
-            }
-        }
-        var registered = false
-        fun register() {
-            if (!registered) {
-                WifiApCommands.registerSoftApCallback(callback)
-                registered = true
-            }
-        }
-        fun unregister() {
-            if (registered) {
-                WifiApCommands.unregisterSoftApCallback(callback)
-                registered = false
-            }
-        }
-        val observer = object : DefaultLifecycleObserver {
-            override fun onStart(owner: LifecycleOwner) = register()
-            override fun onStop(owner: LifecycleOwner) = unregister()
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) register()
-        awaitDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-            unregister()
         }
     }
 }

@@ -1,183 +1,201 @@
 package be.mygod.vpnhotspot.root
 
-import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
-import android.net.wifi.SoftApInfo
-import android.net.wifi.WifiClient
-import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
-import android.os.Parcelable
+import android.os.IBinder
 import androidx.annotation.RequiresApi
+import androidx.collection.mutableScatterMapOf
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
+import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.util.UnblockCentral
-import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.onFailure
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 
 object WifiApCommands {
-    sealed class SoftApCallbackParcel : Parcelable {
-        abstract fun dispatch(callback: `WifiManager$SoftApCallback`)
+    private enum class SoftApCallbackCapability { Unknown, Available, Unavailable }
+    private var binderSoftApCallbackCapability = SoftApCallbackCapability.Unknown
+    private data class AutoFiringCallbacks(
+        var state: WifiApManager.Event.OnStateChanged? = null,
+        var numClients: WifiApManager.Event.OnNumClientsChanged? = null,
+        var connectedClients: WifiApManager.Event.OnConnectedClientsChanged? = null,
+        var info: WifiApManager.Event.OnInfoChanged? = null,
+        var capability: WifiApManager.Event.OnCapabilityChanged? = null,
+    ) {
+        fun update(event: WifiApManager.Event) {
+            when (event) {
+                is WifiApManager.Event.OnStateChanged -> state = event
+                is WifiApManager.Event.OnNumClientsChanged -> numClients = event
+                is WifiApManager.Event.OnConnectedClientsChanged -> connectedClients = event
+                is WifiApManager.Event.OnInfoChanged -> info = event
+                is WifiApManager.Event.OnCapabilityChanged -> capability = event
+                is WifiApManager.Event.OnBlockedClientConnecting,
+                is WifiApManager.Event.OnClientsDisconnected -> { }
+            }
+        }
 
-        @Parcelize
-        data class OnStateChanged(val state: Int, val failureReason: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) {
-                if (Build.VERSION.SDK_INT == 29) UnblockCentral.SoftApCallback.onStateChanged
-                callback.onStateChanged(state, failureReason)
+        fun sendTo(subscriber: SendChannel<WifiApManager.Event>) {
+            state?.let { subscriber.trySend(it) }
+            numClients?.let { subscriber.trySend(it) }
+            connectedClients?.let { subscriber.trySend(it) }
+            info?.let { subscriber.trySend(it) }
+            capability?.let { subscriber.trySend(it) }
+        }
+    }
+    private val softApCallbackScope = CoroutineScope(SupervisorJob())
+    private val softApCallbackLock = Any()
+    private val softApCallbackSubscribers = mutableScatterMapOf<SendChannel<WifiApManager.Event>, Boolean>()
+    private val lastSoftApCallback = AutoFiringCallbacks()
+    private var softApCallbackJob: Job? = null
+
+    fun softApCallbackFlow(expensive: Boolean = false) = callbackFlow {
+        var jobToStart: Job? = null
+        synchronized(softApCallbackLock) {
+            if (softApCallbackJob == null) {
+                softApCallbackSubscribers[this] = expensive
+                val job = softApCallbackScope.launch(start = CoroutineStart.LAZY) {
+                    try {
+                        collectSoftApCallbackTiers()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        synchronized(softApCallbackLock) { softApCallbackSubscribers.forEachKey { it.close(e) } }
+                    } finally {
+                        val currentJob = currentCoroutineContext()[Job]
+                        synchronized(softApCallbackLock) {
+                            if (softApCallbackJob === currentJob) softApCallbackJob = null
+                        }
+                    }
+                }
+                softApCallbackJob = job
+                jobToStart = job
+            } else {
+                softApCallbackSubscribers[this] = expensive
+                lastSoftApCallback.sendTo(this)
             }
         }
-        @Parcelize
-        data class OnNumClientsChanged(val numClients: Int) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) {
-                if (Build.VERSION.SDK_INT == 29) UnblockCentral.SoftApCallback.onNumClientsChanged
-                callback.onNumClientsChanged(numClients)
+        jobToStart?.start()
+        awaitClose {
+            synchronized(softApCallbackLock) {
+                softApCallbackSubscribers.remove(this)
+                if (softApCallbackSubscribers.isEmpty()) {
+                    softApCallbackJob?.cancel()
+                    softApCallbackJob = null
+                }
             }
         }
-        @Parcelize
-        @RequiresApi(30)
-        data class OnConnectedClientsChanged(val clients: List<WifiClient>) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onConnectedClientsChanged(clients)
+    }.buffer(Channel.UNLIMITED)
+
+    @Parcelize
+    class SoftApCallbackFlow : RootFlow<WifiApManager.Event> {
+        override fun flow() = WifiApManager.softApCallbackFlow
+    }
+    private suspend fun collectSoftApCallbackTiers(flow: Flow<WifiApManager.Event>) = try {
+        flow.collect { event ->
+            synchronized(softApCallbackLock) {
+                lastSoftApCallback.update(event)
+                softApCallbackSubscribers.removeIf { subscriber, _ -> subscriber.trySend(event).isFailure }
+                if (softApCallbackSubscribers.isEmpty()) {
+                    softApCallbackJob?.cancel()
+                    softApCallbackJob = null
+                }
+            }
         }
-        @Parcelize
-        @RequiresApi(30)
-        data class OnInfoChanged(val info: SoftApInfo) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onInfoChanged(info)
+        null
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: WifiApManager.SoftApCallbackUnavailableException) {
+        e
+    } catch (e: Exception) {
+        Timber.w(e)
+        WifiApManager.SoftApCallbackUnavailableException(e)
+    }
+    private suspend fun collectSoftApCallbackTiers() {
+        var failure = collectSoftApCallbackTiers(WifiApManager.softApCallbackFlow) ?: return
+        if (Build.VERSION.SDK_INT >= 31) {
+            failure = (collectSoftApCallbackTiers(softApCallbackBinderFlow) ?: return).apply {
+                addSuppressed(failure)
+            }
         }
-        @Parcelize
-        @RequiresApi(31)
-        data class OnInfoListChanged(val infos: List<SoftApInfo>) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onInfoChanged(infos)
+        if (synchronized(softApCallbackLock) { softApCallbackSubscribers.any { _, expensive -> expensive } }) {
+            failure = (collectSoftApCallbackTiers(flow {
+                RootManager.use { emitAll(it.flow(SoftApCallbackFlow())) }
+            }) ?: return).apply { addSuppressed(failure) }
         }
-        @Parcelize
-        @RequiresApi(30)
-        data class OnCapabilityChanged(val capability: SoftApCapability) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) = callback.onCapabilityChanged(capability)
-        }
-        @Parcelize
-        @RequiresApi(30)
-        data class OnBlockedClientConnecting(
-            val client: WifiClient,
-            val blockedReason: Int,
-        ) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
-                callback.onBlockedClientConnecting(client, blockedReason)
-        }
-        @Parcelize
-        @RequiresApi(30)
-        data class OnClientsDisconnected(
-            val info: SoftApInfo,
-            val clients: List<WifiClient>,
-        ) : SoftApCallbackParcel() {
-            override fun dispatch(callback: `WifiManager$SoftApCallback`) =
-                callback.onClientsDisconnected(info, clients)
-        }
+        throw failure
     }
 
     @Parcelize
-    class RegisterSoftApCallback : RootFlow<SoftApCallbackParcel> {
-        override fun flow() = callbackFlow {
-            val key = WifiApManager.registerSoftApCallback(object : `WifiManager$SoftApCallback` {
-                private fun push(parcel: SoftApCallbackParcel) {
-                    trySend(parcel).onFailure {
-                        close(it ?: IllegalStateException("Flow buffer rejected Soft AP callback"))
-                    }
-                }
-
-                override fun onStateChanged(state: Int, failureReason: Int) =
-                    push(SoftApCallbackParcel.OnStateChanged(state, failureReason))
-                override fun onNumClientsChanged(numClients: Int) =
-                    push(SoftApCallbackParcel.OnNumClientsChanged(numClients))
-                @RequiresApi(30)
-                override fun onConnectedClientsChanged(clients: List<WifiClient>) =
-                    push(SoftApCallbackParcel.OnConnectedClientsChanged(clients))
-                @RequiresApi(30)
-                override fun onInfoChanged(info: SoftApInfo) = push(SoftApCallbackParcel.OnInfoChanged(info))
-                @RequiresApi(31)
-                override fun onInfoChanged(info: List<SoftApInfo>) =
-                    push(SoftApCallbackParcel.OnInfoListChanged(info))
-                @RequiresApi(30)
-                override fun onCapabilityChanged(capability: SoftApCapability) =
-                    push(SoftApCallbackParcel.OnCapabilityChanged(capability))
-                @RequiresApi(30)
-                override fun onBlockedClientConnecting(client: WifiClient, blockedReason: Int) =
-                    push(SoftApCallbackParcel.OnBlockedClientConnecting(client, blockedReason))
-                override fun onClientsDisconnected(info: SoftApInfo, clients: List<WifiClient>) =
-                    push(SoftApCallbackParcel.OnClientsDisconnected(info, clients))
-            }) {
-                launch {
-                    try {
-                        it.run()
-                    } catch (e: Throwable) {
-                        close(e)
-                    }
-                }
-            }
-            awaitClose {
-                WifiApManager.unregisterSoftApCallback(key)
-            }
-        }.buffer(Channel.UNLIMITED)
+    @RequiresApi(31)
+    data class RegisterSoftApCallbackBinder(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.registerSoftApCallbackBinder(callback) }
     }
-
-    private data class AutoFiringCallbacks(
-            var state: SoftApCallbackParcel.OnStateChanged? = null,
-            var numClients: SoftApCallbackParcel.OnNumClientsChanged? = null,
-            var connectedClients: SoftApCallbackParcel.OnConnectedClientsChanged? = null,
-            var info: SoftApCallbackParcel? = null,
-            var capability: SoftApCallbackParcel.OnCapabilityChanged? = null) {
-        fun toSequence() = sequenceOf(state, numClients, connectedClients, info, capability)
+    @Parcelize
+    @RequiresApi(31)
+    data class UnregisterSoftApCallbackBinder(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.unregisterSoftApCallbackBinder(callback) }
     }
-
-    private val callbacks = mutableSetOf<`WifiManager$SoftApCallback`>()
-    private val lastCallback = AutoFiringCallbacks()
-    private var rootCallbackJob: Job? = null
-    private suspend fun handleFlow(flow: Flow<SoftApCallbackParcel>) = flow.collect { parcel ->
-        when (parcel) {
-            is SoftApCallbackParcel.OnStateChanged -> synchronized(callbacks) { lastCallback.state = parcel }
-            is SoftApCallbackParcel.OnNumClientsChanged -> synchronized(callbacks) { lastCallback.numClients = parcel }
-            is SoftApCallbackParcel.OnConnectedClientsChanged -> synchronized(callbacks) {
-                lastCallback.connectedClients = parcel
-            }
-            is SoftApCallbackParcel.OnInfoChanged, is SoftApCallbackParcel.OnInfoListChanged -> {
-                synchronized(callbacks) { lastCallback.info = parcel }
-            }
-            is SoftApCallbackParcel.OnCapabilityChanged -> synchronized(callbacks) { lastCallback.capability = parcel }
-            // do nothing for one-time events
-            is SoftApCallbackParcel.OnBlockedClientConnecting, is SoftApCallbackParcel.OnClientsDisconnected -> { }
+    @RequiresApi(31)
+    private val softApCallbackBinderFlow = WifiApManager.frameworkCallbackFlow("Soft AP binder callback") {
+        if (binderSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
+            throw WifiApManager.SoftApCallbackUnavailableException()
         }
-        for (callback in synchronized(callbacks) { callbacks.toList() }) parcel.dispatch(callback)
-    }
-    fun registerSoftApCallback(callback: `WifiManager$SoftApCallback`) = synchronized(callbacks) {
-        val wasEmpty = callbacks.isEmpty()
-        callbacks.add(callback)
-        if (wasEmpty) {
-            rootCallbackJob = GlobalScope.launch {
-                try {
-                    RootManager.use { server -> handleFlow(server.flow(RegisterSoftApCallback())) }
-                } catch (_: CancellationException) {
-                } catch (e: Exception) {
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
+        val callback = try {
+            WifiApManager.newSoftApCallbackBinder(WifiApManager.softApCallback(::push))
+        } catch (e: ReflectiveOperationException) {
+            binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+            throw WifiApManager.SoftApCallbackUnavailableException(e)
+        } catch (e: SecurityException) {
+            binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+            throw WifiApManager.SoftApCallbackUnavailableException(e)
+        } catch (e: ClassCastException) {
+            binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+            throw WifiApManager.SoftApCallbackUnavailableException(e)
+        } catch (e: LinkageError) {
+            binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+            throw WifiApManager.SoftApCallbackUnavailableException(e)
+        }
+        var registered = false
+        try {
+            RootManager.use { root ->
+                withContext(NonCancellable) {
+                    root.execute(RegisterSoftApCallbackBinder(callback))
+                    registered = true
                 }
             }
-            null
-        } else lastCallback
-    }?.toSequence()?.forEach { it?.dispatch(callback) }
-    fun unregisterSoftApCallback(callback: `WifiManager$SoftApCallback`) = synchronized(callbacks) {
-        if (callbacks.remove(callback) && callbacks.isEmpty()) {
-            rootCallbackJob!!.cancel()
-            rootCallbackJob = null
+            binderSoftApCallbackCapability = SoftApCallbackCapability.Available
+        } catch (e: CancellationException) {
+            if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+            throw e
+        } catch (e: Exception) {
+            throw WifiApManager.SoftApCallbackUnavailableException(e)
+        }
+        return@frameworkCallbackFlow unregister@{
+            try {
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+            } catch (_: CancellationException) {
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
         }
     }
 

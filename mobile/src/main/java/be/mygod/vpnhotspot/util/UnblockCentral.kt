@@ -7,10 +7,15 @@ import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
 import android.net.wifi.WifiClient
+import android.net.wifi.WifiManager
+import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pConfig
+import android.os.Build
 import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
+import timber.log.Timber
+import java.util.concurrent.Executor
 
 /**
  * The central object for accessing all the useful blocked APIs. Thanks Google!
@@ -54,9 +59,29 @@ object UnblockCentral {
         TileService::class.java.getDeclaredField("mToken").apply { isAccessible = true }
     }
 
-    object SoftApCallback {
-        val onNumClientsChanged get() = init
-        val onStateChanged get() = init
+    @get:RequiresApi(31)
+    val WifiManager_mService by lazy {
+        init
+        WifiManager::class.java.getDeclaredField("mService").apply { isAccessible = true }
+    }
+    @get:RequiresApi(31)
+    val WifiManager_SoftApCallbackProxy by lazy {
+        init
+        val clazz = Class.forName("android.net.wifi.WifiManager\$SoftApCallbackProxy")
+        try {
+            clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType).run {
+                isAccessible = true
+                this to false
+            }
+        } catch (e: NoSuchMethodException) {
+            if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
+            clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                `WifiManager$SoftApCallback`::class.java).run {
+                isAccessible = true
+                this to true
+            }
+        }
     }
 
     @get:RequiresApi(30)

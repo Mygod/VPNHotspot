@@ -24,7 +24,7 @@ object TetheringCommands {
 
     @Parcelize
     @RequiresApi(30)
-    class RegisterTetheringEventCallback : RootFlow<OnClientsChanged> {
+    class TetheringEventCallbackFlow : RootFlow<OnClientsChanged> {
         override fun flow() = callbackFlow {
             val callback = object : TetheringManagerCompat.TetheringEventCallback {
                 private fun push(parcel: OnClientsChanged) {
