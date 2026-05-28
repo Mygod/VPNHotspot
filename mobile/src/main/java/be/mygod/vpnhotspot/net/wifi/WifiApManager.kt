@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net.wifi
 
+import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -326,9 +327,11 @@ object WifiApManager {
     @RequiresApi(30)
     fun startLocalOnlyHotspotFlow(config: SoftApConfiguration, executor: Executor? = InPlaceExecutor) =
         localOnlyHotspotFlow(-3) { startLocalOnlyHotspot(Services.wifi, config, executor, it) }
+    @SuppressLint("MissingPermission")
     fun startLocalOnlyHotspotFlow(handler: Handler? = null) =
         localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspot(it, handler) }
     @RequiresApi(33)
+    @SuppressLint("MissingPermission")
     fun startLocalOnlyHotspotWithConfigurationFlow(config: SoftApConfiguration,
                                                    executor: Executor = InPlaceExecutor) =
         localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspotWithConfiguration(config, executor, it) }
