@@ -10,10 +10,10 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.binderCallbackFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -155,7 +155,7 @@ object WifiApCommands {
         override suspend fun execute() = null.also { WifiApManager.unregisterSoftApCallbackBinder(callback) }
     }
     @RequiresApi(31)
-    private val softApCallbackBinderFlow = WifiApManager.frameworkCallbackFlow("Soft AP binder callback") {
+    private val softApCallbackBinderFlow = binderCallbackFlow("Soft AP binder callback") {
         if (binderSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw WifiApManager.SoftApCallbackUnavailableException()
         }
@@ -189,7 +189,7 @@ object WifiApCommands {
         } catch (e: Exception) {
             throw WifiApManager.SoftApCallbackUnavailableException(e)
         }
-        return@frameworkCallbackFlow unregister@{
+        return@binderCallbackFlow {
             try {
                 if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
             } catch (_: CancellationException) {

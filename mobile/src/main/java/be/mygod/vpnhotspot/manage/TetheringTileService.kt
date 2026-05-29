@@ -22,10 +22,12 @@ import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), TetherStates.Callback {
+sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService() {
     protected val tileOff by lazy { Icon.createWithResource(application, icon) }
     protected val tileOn by lazy { Icon.createWithResource(application, R.drawable.ic_quick_settings_tile_on) }
 
@@ -37,14 +39,6 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
     protected var binder: TetheringService.Binder? = null
     private var listeningJob: Job? = null
     private var serviceJob: Job? = null
-    override fun onTetheredInterfacesChanged(interfaces: List<String?>) {
-        tethered = interfaces.filterNotNull()
-        updateTile()
-        if (tapPending && binder != null) {
-            tapPending = false
-            onClick()
-        }
-    }
 
     protected abstract fun start()
     protected abstract fun stop()
@@ -52,16 +46,24 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService(), Tet
     override fun onStartListening() {
         super.onStartListening()
         bindService(Intent(this, TetheringService::class.java), this, BIND_AUTO_CREATE)
-        TetherStates.registerCallback(this)
-        if (Build.VERSION.SDK_INT >= 30) listeningJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            TetherType.changes.collect { updateTile() }
+        listeningJob = scope.launch {
+            if (Build.VERSION.SDK_INT >= 30) launch(start = CoroutineStart.UNDISPATCHED) {
+                TetherType.changes.collect { updateTile() }
+            }
+            TetherStates.flow.map { it.tethered }.distinctUntilChanged().collect { ifaces ->
+                tethered = ifaces.toList()
+                updateTile()
+                if (tapPending && binder != null) {
+                    tapPending = false
+                    onClick()
+                }
+            }
         }
     }
 
     override fun onStopListening() {
         listeningJob?.cancel()
         listeningJob = null
-        TetherStates.unregisterCallback(this)
         stopAndUnbind(this)
         super.onStopListening()
     }

@@ -8,10 +8,17 @@ import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.TetherType.Companion.changes
 import be.mygod.vpnhotspot.util.findIdentifier
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.regex.Pattern
 
@@ -35,7 +42,7 @@ enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: 
 
     fun isA(other: TetherType) = this == other || other == USB && this == NCM
 
-    companion object : TetheringManagerCompat.TetheringEventCallback {
+    companion object {
         private lateinit var usbRegexs: List<Pattern>
         private lateinit var wifiRegexs: List<Pattern>
         private var wigigRegexs = emptyList<Pattern>()
@@ -45,15 +52,9 @@ enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: 
         private val ethernetRegex: Pattern?
         @RequiresApi(30)
         private var requiresUpdate = false
-        private var ignoreRegexpsOnce = false
 
         @RequiresApi(30)    // unused on lower APIs
-        private val changesState = MutableSharedFlow<Unit>(
-            extraBufferCapacity = 1,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
-        @RequiresApi(30)    // unused on lower APIs
-        val changes = changesState.asSharedFlow()
+        lateinit var changes: SharedFlow<Unit> private set
 
         private fun Pair<String, Resources>.getRegexs(name: String, alternativePackage: String? = null): List<Pattern> {
             val id = second.findIdentifier(name, "array", first, alternativePackage)
@@ -75,8 +76,6 @@ enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: 
             usbRegexs = emptyList()
             wifiRegexs = emptyList()
             bluetoothRegexs = emptyList()
-            ignoreRegexpsOnce = true
-            TetheringManagerCompat.registerTetheringEventCallback(this)
             val info = TetheringManagerCompat.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
                     app.packageManager.getResourcesForApplication(info.applicationInfo)
@@ -88,25 +87,33 @@ enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: 
             ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs", info.packageName)
         }
 
-        @RequiresApi(30)
-        override fun onTetherableInterfaceRegexpsChanged(reg: Any?) = synchronized(this) {
-            if (ignoreRegexpsOnce) {
-                ignoreRegexpsOnce = false
-                return@synchronized
-            }
-            if (requiresUpdate) return@synchronized
-            Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
-            TetheringManagerCompat.unregisterTetheringEventCallback(this)
-            requiresUpdate = true
-            changesState.tryEmit(Unit)
-        }
-
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/32e772f/packages/Tethering/src/com/android/networkstack/tethering/TetheringConfiguration.java#93
          */
         init {
             val system = "android" to Resources.getSystem()
-            if (Build.VERSION.SDK_INT >= 30) requiresUpdate = true else {
+            if (Build.VERSION.SDK_INT >= 30) {
+                requiresUpdate = true
+                val changesState = MutableSharedFlow<Unit>(
+                    extraBufferCapacity = 1,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+                )
+                changes = changesState.asSharedFlow()
+                @OptIn(DelicateCoroutinesApi::class)    // fire and forget global background listener
+                GlobalScope.launch {
+                    TetheringManagerCompat.eventFlow
+                        .filterIsInstance<TetheringManagerCompat.Event.TetherableInterfaceRegexpsChanged>()
+                        .drop(1)
+                        .collect { (reg) ->
+                            synchronized(this@Companion) {      // same monitor as ofInterface/updateRegexs
+                                if (requiresUpdate) return@synchronized
+                                Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
+                                requiresUpdate = true
+                                changesState.tryEmit(Unit)
+                            }
+                        }
+                }
+            } else {
                 usbRegexs = system.getRegexs("config_tether_usb_regexs")
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
@@ -121,8 +128,8 @@ enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: 
         }
 
         /**
-         * The result could change for the same interface since API 30+.
-         * It will be triggered by [TetheringManagerCompat.TetheringEventCallback.onTetherableInterfaceRegexpsChanged].
+         * The result could change for the same interface since API 30+, triggered by a
+         * [TetheringManagerCompat.Event.TetherableInterfaceRegexpsChanged] from [changes].
          *
          * Based on: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#479
          */

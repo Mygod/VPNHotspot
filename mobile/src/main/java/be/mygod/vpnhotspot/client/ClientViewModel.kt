@@ -30,6 +30,7 @@ import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
+import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
@@ -66,7 +67,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver, TetherStates.Callback {
+class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver {
     private data class TetheredClientInfo(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
     data class TrafficRate(val send: Long = 0, val receive: Long = 0)
     data class ClientRowState(val client: Client, val record: ClientRecord, val rate: TrafficRate?)
@@ -74,11 +75,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private val tetherStatesState = MutableStateFlow(TetherStates())
     val tetherStates = tetherStatesState.asStateFlow()
     private var tetheredInterfaces = emptySet<String>()
-    override fun onTetherStatesChanged(states: TetherStates) {
-        tetherStatesState.value = states
-        tetheredInterfaces = states.tethered + states.localOnly
-        populateClients()
-    }
+    private var tetherStatesJob: Job? = null
 
     private val repeater = MutableStateFlow<RepeaterService.Binder?>(null)
     private var p2p: Collection<WifiP2pDevice> = emptyList()
@@ -110,7 +107,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                     launch {
                         try {
                             RootManager.use {
-                                handleClientsChanged(it.flow(TetheringCommands.TetheringEventCallbackFlow()))
+                                handleClientsChanged(it.flow(TetheringCommands.ClientsFlow()))
                             }
                         } catch (_: CancellationException) {
                         } catch (e: Exception) {
@@ -150,7 +147,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     private suspend fun handleClientsChanged(
-        flow: Flow<TetheringCommands.OnClientsChanged>,
+        flow: Flow<TetheringManagerCompat.Event.ClientsChanged>,
     ) = flow.collect { event ->
         val tetheringClients = MutableScatterMap<MacAddress, TetheredClientInfo>()
         for (client in event.clients) {
@@ -385,10 +382,17 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     override fun onStart(owner: LifecycleOwner) {
         if (Services.p2p != null) app.bindService(Intent(app, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
-        TetherStates.registerCallback(this)
+        tetherStatesJob = viewModelScope.launch {
+            TetherStates.flow.collect { states ->
+                tetherStatesState.value = states
+                tetheredInterfaces = states.tethered + states.localOnly
+                populateClients()
+            }
+        }
     }
     override fun onStop(owner: LifecycleOwner) {
-        TetherStates.unregisterCallback(this)
+        tetherStatesJob?.cancel()
+        tetherStatesJob = null
         if (Services.p2p != null) app.stopAndUnbind(this)
     }
 

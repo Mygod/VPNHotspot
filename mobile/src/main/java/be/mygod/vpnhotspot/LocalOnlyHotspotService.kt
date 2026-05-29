@@ -26,16 +26,17 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
 import java.util.concurrent.atomic.AtomicInteger
 
-class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherStates.Callback {
+class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     companion object {
         const val KEY_USE_SYSTEM = "service.tempHotspot.useSystem"
 
@@ -144,10 +145,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
                     }
                     if (iface.value != "") return@withLock
                     unregisterStateReceiver()
-                    waitingForIface = true
-                    withContext(Dispatchers.Main.immediate) {
-                        TetherStates.registerCallback(this@LocalOnlyHotspotService)
-                    }
+                    ifaceWaitJob?.cancel()
+                    ifaceWaitJob = launch { awaitLocalOnlyIface() }
                 }
                 if (closeReservation) reservation.close()
             }
@@ -179,23 +178,22 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
         }
     }
 
-    override fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
-        val interfaceName = interfaces.singleOrNull() ?: return
-        launch {
-            routingMutex.withLock {
-                if (!waitingForIface || iface.value != "") return@withLock
-                waitingForIface = false
-                withContext(Dispatchers.Main.immediate) {
-                    TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
-                }
-                updateIface(interfaceName)
-                BootReceiver.add<LocalOnlyHotspotService>(Starter())
-                check(routingManager == null)
-                val manager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService, interfaceName)
-                routingManager = manager
-                manager.start()
-                if (routingManager === manager && iface.value == interfaceName) startNetlinkNeighbours()
-            }
+    /**
+     * Wait for the local-only hotspot interface to appear (the next states with a single local-only
+     * interface), then take over routing. Replaces the old onLocalOnlyInterfacesChanged callback;
+     * cancelled by [stopService] / a re-entered wait.
+     */
+    private suspend fun awaitLocalOnlyIface() {
+        val interfaceName = TetherStates.flow.mapNotNull { it.localOnly.singleOrNull() }.first()
+        routingMutex.withLock {
+            if (iface.value != "") return
+            updateIface(interfaceName)
+            BootReceiver.add<LocalOnlyHotspotService>(Starter())
+            check(routingManager == null)
+            val manager = RoutingManager.LocalOnly(this@LocalOnlyHotspotService, interfaceName)
+            routingManager = manager
+            manager.start()
+            if (routingManager === manager && iface.value == interfaceName) startNetlinkNeighbours()
         }
     }
 
@@ -208,7 +206,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
     private var routingManager: RoutingManager? = null
     private var localOnlyHotspotJob: Job? = null
     private val lifecycleGeneration = AtomicInteger()
-    private var waitingForIface = false
+    private var ifaceWaitJob: Job? = null
     override val activeIfaces get() = iface.value.let { if (it.isNullOrEmpty()) emptyList() else listOf(it) }
 
     private var lastState: Triple<Int, String?, Int>? = null
@@ -317,10 +315,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService(), TetherState
                 if (!exit && generation != lifecycleGeneration.get()) return@withLock
                 if (shouldDisable) BootReceiver.delete<LocalOnlyHotspotService>()
                 updateIface(null)
-                waitingForIface = false
-                withContext(Dispatchers.Main.immediate) {
-                    TetherStates.unregisterCallback(this@LocalOnlyHotspotService)
-                }
+                ifaceWaitJob?.cancel()
                 stopNetlinkNeighbours()
                 val manager = routingManager
                 manager?.stop()

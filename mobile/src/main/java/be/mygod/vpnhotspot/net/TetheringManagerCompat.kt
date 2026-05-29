@@ -17,6 +17,7 @@ import android.net.`TetheringManager$TetheringInterfaceRegexps`
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.Handler
+import android.os.Parcelable
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
@@ -27,19 +28,20 @@ import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.binderCallbackFlow
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.matches
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CancellationException
-import java.util.concurrent.Executor
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -307,128 +309,43 @@ object TetheringManagerCompat {
     }
 
     /**
-     * Callback for use with [registerTetheringEventCallback] to find out tethering
-     * upstream status.
+     * A tethering change emitted by [eventFlow], mirroring the platform
+     * `TetheringManager.TetheringEventCallback` callbacks. Each subtype carries the same arguments the
+     * corresponding callback would receive; consumers filter for the events they care about. Most
+     * events are also delivered immediately upon (re)registration.
      */
-    interface TetheringEventCallback {
+    sealed class Event {
+        /** Tethering supported status changed. */
+        data class TetheringSupported(val supported: Boolean) : Event()
+        /** The set of supported `@TetheringType` values changed. */
+        data class SupportedTetheringTypes(val supportedTypes: Set<Int?>) : Event()
+        /** Tethering upstream changed; null means there is no upstream. */
+        data class UpstreamChanged(val network: Network?) : Event()
         /**
-         * Called when tethering supported status changed.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         *
-         * Tethering may be disabled via system properties, device configuration, or device
-         * policy restrictions.
-         *
-         * @param supported The new supported status
+         * Tethering interface regular expressions changed. Unlike the platform callback this is also
+         * emitted immediately on registration, so consumers drop the first emission. @hide
          */
-        fun onTetheringSupported(supported: Boolean) {}
-
+        data class TetherableInterfaceRegexpsChanged(val reg: Any?) : Event()
+        /** The list of tetherable (available) interface names changed. */
+        data class TetherableInterfacesChanged(val interfaces: List<String?>) : Event()
+        /** The list of tethered interface names changed. */
+        data class TetheredInterfacesChanged(val interfaces: List<String?>) : Event()
         /**
-         * Called when tethering supported status changed.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         *
-         * Tethering may be disabled via system properties, device configuration, or device
-         * policy restrictions.
-         *
-         * @param supportedTypes a set of @TetheringType which is supported.
+         * The list of active local-only interface names changed. Only delivered by the public callback
+         * on newer Mainline releases; API 30 variants without it fall back to the tether-state broadcast.
          */
-        fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) {
-            val filtered = supportedTypes.filter { it !in 0..5 }
-            if (filtered.isNotEmpty()) Timber.w(Exception(
-                "Unexpected supported tethering types: ${filtered.joinToString()}"))
-        }
-
+        data class LocalOnlyInterfacesChanged(val interfaces: List<String?>) : Event()
+        /** An error (one of `TetheringManager#TETHER_ERROR_*`) occurred configuring [ifName]. */
+        data class ErrorChanged(val ifName: String, val error: Int) : Event()
         /**
-         * Called when tethering upstream changed.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         *
-         * @param network the [Network] of tethering upstream. Null means tethering doesn't
-         * have any upstream.
+         * The set of tethered clients changed (best-effort). Only delivered with one of NETWORK_SETTINGS
+         * / MAINLINE_NETWORK_STACK / NETWORK_STACK, i.e. in practice only over root — hence [Parcelable],
+         * so it can be forwarded straight across the root boundary.
          */
-        fun onUpstreamChanged(network: Network?) {}
-
-        /**
-         * Called when there was a change in tethering interface regular expressions.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         *
-         * CHANGED: This method will NOT be immediately called after registration.
-         *
-         * *@param reg The new regular expressions.
-         * @hide
-         */
-        fun onTetherableInterfaceRegexpsChanged(reg: Any?) {}
-
-        /**
-         * Called when there was a change in the list of tetherable interfaces. Tetherable
-         * interface means this interface is available and can be used for tethering.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         * @param interfaces The list of tetherable interface names.
-         */
-        fun onTetherableInterfacesChanged(interfaces: List<String?>) {}
-
-        /**
-         * Called when there was a change in the list of tethered interfaces.
-         *
-         * This will be called immediately after the callback is registered, and may be called
-         * multiple times later upon changes.
-         * @param interfaces The list of 0 or more String of currently tethered interface names.
-         */
-        fun onTetheredInterfacesChanged(interfaces: List<String?>) {}
-
-        /**
-         * Called when there was a change in the list of local-only interfaces.
-         *
-         * This is only available from the public callback on newer Mainline releases. API 30
-         * runtime variants that still lack this callback should keep using the sticky tether-state
-         * broadcast for local-only membership.
-         *
-         * @param interfaces The list of 0 or more String of active local-only interface names.
-         */
-        fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {}
-
-        /**
-         * Called when an error occurred configuring tethering.
-         *
-         * This will be called immediately after the callback is registered if the latest status
-         * on the interface is an error, and may be called multiple times later upon changes.
-         * @param ifName Name of the interface.
-         * @param error One of `TetheringManager#TETHER_ERROR_*`.
-         */
-        fun onError(ifName: String, error: Int) {}
-
-        /**
-         * Called when the list of tethered clients changes.
-         *
-         * This callback provides best-effort information on connected clients based on state
-         * known to the system, however the list cannot be completely accurate (and should not be
-         * used for security purposes). For example, clients behind a bridge and using static IP
-         * assignments are not visible to the tethering device; or even when using DHCP, such
-         * clients may still be reported by this callback after disconnection as the system cannot
-         * determine if they are still connected.
-         *
-         * Only called if having permission one of NETWORK_SETTINGS, MAINLINE_NETWORK_STACK, NETWORK_STACK.
-         * @param clients The new set of tethered clients; the collection is not ordered.
-         */
-        fun onClientsChanged(clients: Collection<TetheredClient>) {
-            if (clients.isNotEmpty()) Timber.i("onClientsChanged: ${clients.joinToString()}")
-        }
-
-        /**
-         * Called when tethering offload status changes.
-         *
-         * This will be called immediately after the callback is registered.
-         * @param status The offload status.
-         */
-        fun onOffloadStatusChanged(status: Int) {}
+        @Parcelize
+        data class ClientsChanged(val clients: List<TetheredClient>) : Event(), Parcelable
+        /** Tethering offload status changed. */
+        data class OffloadStatusChanged(val status: Int) : Event()
     }
 
     private val tetheringInterfaces = ConcurrentHashMap<String, Int>()
@@ -440,114 +357,63 @@ object TetheringManagerCompat {
     @RequiresApi(30)
     private fun toInterfacesCompat(interfaces: Set<TetheringInterface>) = interfaces.map(this::toInterfaceCompat)
 
-    private val callbackMap = mutableMapOf<TetheringEventCallback, TetheringManager.TetheringEventCallback>()
     /**
-     * Start listening to tethering change events. Any new added callback will receive the last
-     * tethering status right away. If callback is registered,
-     * [TetheringEventCallback.onUpstreamChanged] will immediately be called. If tethering
-     * has no upstream or disabled, the argument of callback will be null. The same callback object
-     * cannot be registered twice.
+     * Tethering change events as a cold [Flow] — one platform callback registration per collector,
+     * replacing the old register/unregisterTetheringEventCallback pair. The registration is bound to
+     * collection and torn down (under NonCancellable) when collection ends, and the platform callback
+     * only references the flow's channel, so the framework retains nothing heavier than that.
      *
-     * Requires TETHER_PRIVILEGED or ACCESS_NETWORK_STATE.
-     *
-     * @param executor the executor on which callback will be invoked.
-     * @param callback the callback to be called when tethering has change events.
+     * Most events are also delivered immediately on registration. Requires TETHER_PRIVILEGED or
+     * ACCESS_NETWORK_STATE; [Event.ClientsChanged] additionally needs signature permissions.
      */
-    @RequiresApi(30)
-    fun registerTetheringEventCallback(callback: TetheringEventCallback, executor: Executor? = null) {
-        val reference = WeakReference(callback)
-        val platformCallback = synchronized(callbackMap) {
-            var computed = false
-            callbackMap.computeIfAbsent(callback) {
-                computed = true
-                @Keep
-                open class LegacyCallback : TetheringManager.TetheringEventCallback {
-                    fun onTetheringSupported(supported: Boolean) {
-                        reference.get()?.onTetheringSupported(supported)
-                    }
-
-                    fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) {
-                        reference.get()?.onSupportedTetheringTypes(supportedTypes)
-                    }
-
-                    fun onUpstreamChanged(network: Network?) {
-                        reference.get()?.onUpstreamChanged(network)
-                    }
-
-                    fun onTetherableInterfaceRegexpsChanged(reg: `TetheringManager$TetheringInterfaceRegexps`) {
-                        reference.get()?.onTetherableInterfaceRegexpsChanged(reg)
-                    }
-
-                    fun onTetherableInterfacesChanged(interfaces: List<String?>) {
-                        reference.get()?.onTetherableInterfacesChanged(interfaces)
-                    }
-
-                    fun onTetheredInterfacesChanged(interfaces: List<String?>) {
-                        reference.get()?.onTetheredInterfacesChanged(interfaces)
-                    }
-
-                    fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) {
-                        reference.get()?.onLocalOnlyInterfacesChanged(interfaces)
-                    }
-
-                    fun onError(ifName: String, error: Int) {
-                        reference.get()?.onError(ifName, error)
-                    }
-
-                    fun onClientsChanged(clients: Collection<TetheredClient>) {
-                        reference.get()?.onClientsChanged(clients)
-                    }
-
-                    fun onOffloadStatusChanged(status: Int) {
-                        reference.get()?.onOffloadStatusChanged(status)
-                    }
-                }
-                try {
-                    @Suppress("UNUSED_VARIABLE", "unused")
-                    val clazz = TetheringInterface::class.java
-                    object : LegacyCallback() {
-                        @Keep
-                        fun onTetherableInterfacesChanged(interfaces: Set<TetheringInterface>) {
-                            reference.get()?.onTetherableInterfacesChanged(toInterfacesCompat(interfaces))
-                        }
-
-                        override fun onTetheredInterfacesChanged(interfaces: Set<TetheringInterface>) {
-                            reference.get()?.onTetheredInterfacesChanged(toInterfacesCompat(interfaces))
-                        }
-
-                        @Keep
-                        fun onLocalOnlyInterfacesChanged(interfaces: Set<TetheringInterface>) {
-                            reference.get()?.onLocalOnlyInterfacesChanged(toInterfacesCompat(interfaces))
-                        }
-
-                        @Keep
-                        fun onError(iface: TetheringInterface, error: Int) {
-                            reference.get()?.onError(toInterfaceCompat(iface), error)
-                        }
-                    }
-                } catch (e: NoClassDefFoundError) {
-                    if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
-                    LegacyCallback()
-                }
-            }.also { if (!computed) return }
+    @get:RequiresApi(30)
+    val eventFlow: Flow<Event> = binderCallbackFlow("tethering event callback") {
+        @Keep
+        open class LegacyCallback : TetheringManager.TetheringEventCallback {
+            fun onTetheringSupported(supported: Boolean) = push(Event.TetheringSupported(supported)).run { }
+            fun onSupportedTetheringTypes(supportedTypes: Set<Int?>) =
+                push(Event.SupportedTetheringTypes(supportedTypes)).run { }
+            fun onUpstreamChanged(network: Network?) = push(Event.UpstreamChanged(network)).run { }
+            fun onTetherableInterfaceRegexpsChanged(reg: `TetheringManager$TetheringInterfaceRegexps`) =
+                push(Event.TetherableInterfaceRegexpsChanged(reg)).run { }
+            fun onTetherableInterfacesChanged(interfaces: List<String?>) =
+                push(Event.TetherableInterfacesChanged(interfaces)).run { }
+            fun onTetheredInterfacesChanged(interfaces: List<String?>) =
+                push(Event.TetheredInterfacesChanged(interfaces)).run { }
+            fun onLocalOnlyInterfacesChanged(interfaces: List<String?>) =
+                push(Event.LocalOnlyInterfacesChanged(interfaces)).run { }
+            fun onError(ifName: String, error: Int) = push(Event.ErrorChanged(ifName, error)).run { }
+            fun onClientsChanged(clients: Collection<TetheredClient>) =
+                push(Event.ClientsChanged(clients.toList())).run { }
+            fun onOffloadStatusChanged(status: Int) = push(Event.OffloadStatusChanged(status)).run { }
         }
-        Services.tethering.registerTetheringEventCallback(executor ?: InPlaceExecutor, platformCallback)
-    }
-    /**
-     * Remove tethering event callback previously registered with
-     * [registerTetheringEventCallback].
-     *
-     * Requires TETHER_PRIVILEGED or ACCESS_NETWORK_STATE.
-     *
-     * @param callback previously registered callback.
-     */
-    @RequiresApi(30)
-    fun unregisterTetheringEventCallback(callback: TetheringEventCallback) {
-        val proxy = synchronized(callbackMap) { callbackMap.remove(callback) } ?: return
-        try {
-            Services.tethering.unregisterTetheringEventCallback(proxy)
-        } catch (e: IllegalStateException) {
-            if (e.cause !is DeadObjectException) throw e
+        val callback = try {
+            @Suppress("UNUSED_VARIABLE", "unused")
+            val clazz = TetheringInterface::class.java
+            object : LegacyCallback() {
+                @Keep
+                fun onTetherableInterfacesChanged(interfaces: Set<TetheringInterface>) =
+                    push(Event.TetherableInterfacesChanged(toInterfacesCompat(interfaces))).run { }
+                override fun onTetheredInterfacesChanged(interfaces: Set<TetheringInterface>) =
+                    push(Event.TetheredInterfacesChanged(toInterfacesCompat(interfaces))).run { }
+                @Keep
+                fun onLocalOnlyInterfacesChanged(interfaces: Set<TetheringInterface>) =
+                    push(Event.LocalOnlyInterfacesChanged(toInterfacesCompat(interfaces))).run { }
+                @Keep
+                fun onError(iface: TetheringInterface, error: Int) =
+                    push(Event.ErrorChanged(toInterfaceCompat(iface), error)).run { }
+            }
+        } catch (e: NoClassDefFoundError) {
+            if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+            LegacyCallback()
+        }
+        Services.tethering.registerTetheringEventCallback(InPlaceExecutor, callback)
+        return@binderCallbackFlow {
+            try {
+                Services.tethering.unregisterTetheringEventCallback(callback)
+            } catch (e: IllegalStateException) {
+                if (e.cause !is DeadObjectException) throw e
+            }
         }
     }
 
@@ -559,7 +425,7 @@ object TetheringManagerCompat {
      * @return error The error code of the last error tethering or untethering the named
      *               interface
      */
-    @Deprecated("Use {@link TetheringEventCallback#onError(String, int)} instead.")
+    @Deprecated("Use TetheringEvent.ErrorChanged from tetheringEventFlow instead.")
     fun getLastTetherError(iface: String): Int = getLastTetherError(Services.connectivity, iface) as Int
 
     val tetherErrorLookup = ConstantLookup("TETHER_ERROR_",

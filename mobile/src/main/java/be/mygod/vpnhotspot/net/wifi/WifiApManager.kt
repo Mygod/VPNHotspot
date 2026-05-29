@@ -34,15 +34,7 @@ import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.findIdentifier
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.ProducerScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.withContext
+import be.mygod.vpnhotspot.util.binderCallbackFlow
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -232,28 +224,6 @@ object WifiApManager {
     private enum class SoftApCallbackCapability { Unknown, Available, Unavailable }
     private var directSoftApCallbackCapability = SoftApCallbackCapability.Unknown
 
-    class FrameworkCallbackScope<T>(private val name: String, private val scope: ProducerScope<T>) {
-        fun push(event: T) = scope.trySend(event).onFailure {
-            scope.close(it ?: IllegalStateException("Flow buffer rejected $name"))
-        }.isSuccess
-        fun finish(event: T) {
-            if (push(event)) scope.close()
-        }
-    }
-    fun <T> frameworkCallbackFlow(
-        name: String,
-        register: suspend FrameworkCallbackScope<T>.() -> (suspend () -> Unit),
-    ): Flow<T> = channelFlow {
-        val callbackScope = FrameworkCallbackScope(name, this)
-        var unregister: (suspend () -> Unit)? = null
-        try {
-            unregister = callbackScope.register()
-            awaitClose()
-        } finally {
-            withContext(NonCancellable) { unregister?.invoke() }
-        }
-    }.buffer(Channel.UNLIMITED)
-
     sealed class Event : Parcelable {
         @Parcelize
         data class OnStateChanged(val state: Int, val failureReason: Int) : Event()
@@ -313,7 +283,7 @@ object WifiApManager {
     private val unregisterSoftApCallback by lazy {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", `WifiManager$SoftApCallback`::class.java)
     }
-    val softApCallbackFlow = frameworkCallbackFlow("Soft AP callback") {
+    val softApCallbackFlow = binderCallbackFlow("Soft AP callback") {
         if (directSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw SoftApCallbackUnavailableException()
         }
@@ -344,7 +314,7 @@ object WifiApManager {
             }
             throw e
         }
-        return@frameworkCallbackFlow {
+        return@binderCallbackFlow {
             try {
                 unregisterSoftApCallback(Services.wifi, callback)
             } catch (e: Exception) {
@@ -393,7 +363,7 @@ object WifiApManager {
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
         start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
-    ) = frameworkCallbackFlow("local-only hotspot callback") {
+    ) = binderCallbackFlow("local-only hotspot callback") {
         var reservation: WifiManager.LocalOnlyHotspotReservation? = null
         start(object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
@@ -407,7 +377,7 @@ object WifiApManager {
             override fun onStopped() = finish(LocalOnlyHotspotEvent.Stopped())
             override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
         })
-        return@frameworkCallbackFlow {
+        return@binderCallbackFlow {
             reservation?.close() ?: cancelLocalOnlyHotspotRequest()
             reservation = null
         }

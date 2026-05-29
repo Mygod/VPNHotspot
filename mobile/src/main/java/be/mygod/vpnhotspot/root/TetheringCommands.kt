@@ -1,18 +1,11 @@
 package be.mygod.vpnhotspot.root
 
-import android.net.TetheredClient
-import android.os.Parcelable
 import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.parcelize.Parcelize
 
 object TetheringCommands {
@@ -42,39 +35,13 @@ object TetheringCommands {
     }
 
     /**
-     * This is the only command supported since other callbacks do not require signature permissions.
+     * Tethered clients are the only tethering events forwarded over root, since the others don't
+     * require signature permissions and are observed in-process via [TetheringManagerCompat.eventFlow].
      */
     @Parcelize
-    data class OnClientsChanged(val clients: List<TetheredClient>) : Parcelable {
-        fun dispatch(callback: TetheringManagerCompat.TetheringEventCallback) = callback.onClientsChanged(clients)
-    }
-
-    @Parcelize
     @RequiresApi(30)
-    class TetheringEventCallbackFlow : RootFlow<OnClientsChanged> {
-        override fun flow() = callbackFlow {
-            val callback = object : TetheringManagerCompat.TetheringEventCallback {
-                private fun push(parcel: OnClientsChanged) {
-                    trySend(parcel).onFailure {
-                        close(it ?: IllegalStateException("Flow buffer rejected tethering event"))
-                    }
-                }
-
-                override fun onClientsChanged(clients: Collection<TetheredClient>) =
-                    push(OnClientsChanged(clients.toList()))
-            }
-            TetheringManagerCompat.registerTetheringEventCallback(callback) {
-                launch {
-                    try {
-                        it.run()
-                    } catch (e: Throwable) {
-                        close(e)
-                    }
-                }
-            }
-            awaitClose {
-                TetheringManagerCompat.unregisterTetheringEventCallback(callback)
-            }
-        }.buffer(Channel.UNLIMITED)
+    class ClientsFlow : RootFlow<TetheringManagerCompat.Event.ClientsChanged> {
+        override fun flow() =
+            TetheringManagerCompat.eventFlow.filterIsInstance<TetheringManagerCompat.Event.ClientsChanged>()
     }
 }
