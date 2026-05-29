@@ -6,6 +6,8 @@ This directory is the central audit point for framework APIs that need compile a
 Keep that jar limited to framework classes, or binary-name nested classes, that are missing from SDK stubs and are directly referenced by app code.
 Use abstract class if we require a class to implement or extend a base interface or class.
 Do not add stubs for private nested framework interfaces such as `TetheringManager$ConnectorConsumer`: direct linking still fails runtime Java access checks, so those must stay behind `Class.forName` and `Proxy`.
+Stub declarations should carry `androidx.annotation.RequiresApi` for the exact platform introduction point when useful, and always when that point is above this app's minSdk.
+Use declaration comments in the stub only for the API levels where VPNHotspot actually uses the member, especially when that differs from the introduction point or depends on a runtime probe.
 
 APIs whose owner class is already in `android.jar` should stay as direct SDK usage, reflection, or hardcoded constants at the call site.
 These additional reflected whitelisted/system API are listed below:

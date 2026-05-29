@@ -178,9 +178,10 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
+val hiddenApiStubAnnotations by configurations.creating
 val compileHiddenApiStubs by tasks.registering(JavaCompile::class) {
     source("src/hiddenApiStubs/java")
-    classpath = files(androidComponents.sdkComponents.bootClasspath)
+    classpath = files(androidComponents.sdkComponents.bootClasspath) + hiddenApiStubAnnotations
     destinationDirectory.set(layout.buildDirectory.dir("intermediates/hiddenApiStubs/classes"))
     sourceCompatibility = javaVersion.toString()
     targetCompatibility = javaVersion.toString()
@@ -251,6 +252,7 @@ dependencies {
     implementation(libs.zxing.core)
     debugImplementation(libs.leakcanary.android)
     debugImplementation("androidx.compose.ui:ui-tooling")
+    hiddenApiStubAnnotations(libs.annotation.jvm)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.espresso.core)

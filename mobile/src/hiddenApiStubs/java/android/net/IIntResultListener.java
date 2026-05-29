@@ -4,7 +4,9 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.os.IInterface;
 import android.os.RemoteException;
+import androidx.annotation.RequiresApi;
 
+@RequiresApi(30)
 public interface IIntResultListener extends IInterface {
     void onResult(int resultCode) throws RemoteException;
 

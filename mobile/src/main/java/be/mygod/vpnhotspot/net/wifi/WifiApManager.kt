@@ -382,13 +382,14 @@ object WifiApManager {
         data class Failed(val reason: Int) : LocalOnlyHotspotEvent()
     }
 
+    private val cancelLocalOnlyHotspotRequest by lazy {
+        WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
+    }
     /**
      * This is the only way to unregister requests besides app exiting.
      * Therefore, we are happy with crashing the app if reflection fails.
      */
-    private val cancelLocalOnlyHotspotRequest by lazy {
-        WifiManager::class.java.getDeclaredMethod("cancelLocalOnlyHotspotRequest")
-    }
+    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
         start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
@@ -407,7 +408,7 @@ object WifiApManager {
             override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
         })
         return@frameworkCallbackFlow {
-            reservation?.close() ?: cancelLocalOnlyHotspotRequest(Services.wifi)
+            reservation?.close() ?: cancelLocalOnlyHotspotRequest()
             reservation = null
         }
     }
