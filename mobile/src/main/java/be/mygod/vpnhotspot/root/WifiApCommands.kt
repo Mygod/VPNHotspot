@@ -184,7 +184,9 @@ object WifiApCommands {
             }
             binderSoftApCallbackCapability = SoftApCallbackCapability.Available
         } catch (e: CancellationException) {
-            if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+            withContext(NonCancellable) {
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+            }
             throw e
         } catch (e: Exception) {
             throw WifiApManager.SoftApCallbackUnavailableException(e)
