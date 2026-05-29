@@ -1,12 +1,10 @@
 package be.mygod.vpnhotspot.manage
 
 import android.bluetooth.BluetoothManager
-import android.content.ComponentName
 import android.content.Intent
 import android.graphics.drawable.Icon
 import android.net.TetheringManager
 import android.os.Build
-import android.os.IBinder
 import android.service.quicksettings.Tile
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -17,11 +15,12 @@ import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetherType
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.ui.tetherErrorLabel
+import be.mygod.vpnhotspot.util.bindServiceFlow
 import be.mygod.vpnhotspot.util.readableMessage
-import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -38,17 +37,30 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService() {
     protected val interested get() = tethered?.filter { TetherType.ofInterface(it).isA(tetherType) }
     protected var binder: TetheringService.Binder? = null
     private var listeningJob: Job? = null
-    private var serviceJob: Job? = null
 
     protected abstract fun start()
     protected abstract fun stop()
 
     override fun onStartListening() {
         super.onStartListening()
-        bindService(Intent(this, TetheringService::class.java), this, BIND_AUTO_CREATE)
         listeningJob = scope.launch {
             if (Build.VERSION.SDK_INT >= 30) launch(start = CoroutineStart.UNDISPATCHED) {
                 TetherType.changes.collect { updateTile() }
+            }
+            launch {
+                try {
+                    bindServiceFlow(Intent(this@TetheringTileService, TetheringService::class.java))
+                        .collectLatest { service ->
+                            val binder = service as TetheringService.Binder?
+                            this@TetheringTileService.binder = binder
+                            if (binder == null) return@collectLatest
+                            resolveTapPending()
+                            binder.managedIfaces.collect { updateTile() }
+                        }
+                } finally {
+                    // explicit unbind does not trigger onServiceDisconnected, so clear the stale binder ourselves
+                    binder = null
+                }
             }
             TetherStates.flow.map { it.tethered }.distinctUntilChanged().collect { ifaces ->
                 tethered = ifaces.toList()
@@ -64,22 +76,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService() {
     override fun onStopListening() {
         listeningJob?.cancel()
         listeningJob = null
-        stopAndUnbind(this)
         super.onStopListening()
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        binder = service as TetheringService.Binder
-        serviceJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            service.managedIfaces.collect { updateTile() }
-        }
-        super.onServiceConnected(name, service)
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        serviceJob?.cancel()
-        serviceJob = null
-        binder = null
     }
 
     override fun updateTile() {

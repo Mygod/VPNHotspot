@@ -5,15 +5,12 @@ import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
-import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pGroupList
-import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.wifi.p2p.`WifiP2pManager$PersistentGroupInfoListener`
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -121,30 +118,27 @@ object WifiP2pManagerHelper {
      *
      * @param c is the channel created at {@link #initialize}
      */
-    suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel): Collection<WifiP2pGroup> {
-        val result = CompletableDeferred<Collection<WifiP2pGroup>>()
-        requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
-            override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
-                result.complete(groups.groupList)
-            }
-        })
-        return result.await()
-    }
+    suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel) =
+        suspendCancellableCoroutine { cont ->
+            requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
+                override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
+                    cont.resume(groups.groupList)
+                }
+            })
+        }
 
     suspend fun WifiP2pManager.requestConnectionInfo(c: WifiP2pManager.Channel) =
-        CompletableDeferred<WifiP2pInfo?>().apply { requestConnectionInfo(c) { complete(it) } }.await()
+        suspendCancellableCoroutine { cont -> requestConnectionInfo(c) { cont.resume(it) } }
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
-    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel): MacAddress? {
-        val future = CompletableDeferred<String?>()
-        requestDeviceInfo(c) { future.complete(it?.deviceAddress) }
-        return future.await()?.let {
-            val address = if (it.isEmpty()) null else MacAddress.fromString(it)
-            if (address == MacAddressCompat.ANY_ADDRESS) null else address
-        }
+    suspend fun WifiP2pManager.requestDeviceAddress(c: WifiP2pManager.Channel) = suspendCancellableCoroutine { cont ->
+        requestDeviceInfo(c) { cont.resume(it?.deviceAddress) }
+    }?.let {
+        val address = if (it.isEmpty()) null else MacAddress.fromString(it)
+        if (address == MacAddressCompat.ANY_ADDRESS) null else address
     }
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     suspend fun WifiP2pManager.requestGroupInfo(c: WifiP2pManager.Channel) =
-        CompletableDeferred<WifiP2pGroup?>().apply { requestGroupInfo(c) { complete(it) } }.await()
+        suspendCancellableCoroutine { cont -> requestGroupInfo(c) { cont.resume(it) } }
     suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =
-        CompletableDeferred<Int>().apply { requestP2pState(c) { complete(it) } }.await()
+        suspendCancellableCoroutine { cont -> requestP2pState(c) { cont.resume(it) } }
 }

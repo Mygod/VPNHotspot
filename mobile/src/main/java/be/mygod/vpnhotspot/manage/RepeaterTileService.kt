@@ -1,21 +1,19 @@
 package be.mygod.vpnhotspot.manage
 
-import android.content.ComponentName
 import android.content.Intent
 import android.graphics.drawable.Icon
-import android.os.IBinder
 import android.service.quicksettings.Tile
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.util.KillableTileService
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.stopAndUnbind
+import be.mygod.vpnhotspot.util.bindServiceFlow
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 
@@ -28,13 +26,29 @@ class RepeaterTileService : KillableTileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        if (Services.p2p != null) {
-            bindService(Intent(this, RepeaterService::class.java), this, BIND_AUTO_CREATE)
-        } else updateTile()
+        if (Services.p2p == null) {
+            updateTile()
+            return
+        }
+        serviceJob = scope.launch {
+            try {
+                bindServiceFlow(Intent(this@RepeaterTileService, RepeaterService::class.java)).collectLatest { service ->
+                    val binder = service as RepeaterService.Binder?
+                    this@RepeaterTileService.binder = binder
+                    if (binder == null) return@collectLatest
+                    resolveTapPending()
+                    merge(binder.status, binder.group).collect { updateTile() }
+                }
+            } finally {
+                // explicit unbind does not trigger onServiceDisconnected, so clear the stale binder ourselves
+                binder = null
+            }
+        }
     }
 
     override fun onStopListening() {
-        if (Services.p2p != null) stopAndUnbind(this)
+        serviceJob?.cancel()
+        serviceJob = null
         super.onStopListening()
     }
 
@@ -51,21 +65,6 @@ class RepeaterTileService : KillableTileService() {
             }
             else -> { }
         }
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        binder = service as RepeaterService.Binder
-        serviceJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            merge(service.status, service.group).collect { updateTile() }
-        }
-        super.onServiceConnected(name, service)
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        if (binder == null) return
-        this.binder = null
-        serviceJob?.cancel()
-        serviceJob = null
     }
 
     override fun onDestroy() {

@@ -1,15 +1,11 @@
 package be.mygod.vpnhotspot.client
 
 import android.content.ClipData
-import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.content.ServiceConnection
 import android.net.MacAddress
 import android.net.wifi.WifiClient
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.Build
-import android.os.IBinder
 import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import androidx.collection.LongObjectMap
@@ -45,7 +41,7 @@ import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.ui.softApClientBlockReasonLabel
 import be.mygod.vpnhotspot.ui.softApClientDisconnectReasonLabel
 import be.mygod.vpnhotspot.util.Services
-import be.mygod.vpnhotspot.util.stopAndUnbind
+import be.mygod.vpnhotspot.util.bindServiceFlow
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.coroutines.CancellationException
@@ -67,7 +63,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver {
+class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
     private data class TetheredClientInfo(val fallbackType: TetherType, val addresses: List<ClientAddressInfo>)
     data class TrafficRate(val send: Long = 0, val receive: Long = 0)
     data class ClientRowState(val client: Client, val record: ClientRecord, val rate: TrafficRate?)
@@ -75,7 +71,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     private val tetherStatesState = MutableStateFlow(TetherStates())
     val tetherStates = tetherStatesState.asStateFlow()
     private var tetheredInterfaces = emptySet<String>()
-    private var tetherStatesJob: Job? = null
+    private var startedJob: Job? = null
 
     private val repeater = MutableStateFlow<RepeaterService.Binder?>(null)
     private var p2p: Collection<WifiP2pDevice> = emptyList()
@@ -381,8 +377,16 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     override fun onStart(owner: LifecycleOwner) {
-        if (Services.p2p != null) app.bindService(Intent(app, RepeaterService::class.java), this, Context.BIND_AUTO_CREATE)
-        tetherStatesJob = viewModelScope.launch {
+        startedJob = viewModelScope.launch {
+            if (Services.p2p != null) launch {
+                try {
+                    app.bindServiceFlow(Intent(app, RepeaterService::class.java)).collect {
+                        repeater.value = it as RepeaterService.Binder?
+                    }
+                } finally {
+                    repeater.value = null
+                }
+            }
             TetherStates.flow.collect { states ->
                 tetherStatesState.value = states
                 tetheredInterfaces = states.tethered + states.localOnly
@@ -391,17 +395,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
         }
     }
     override fun onStop(owner: LifecycleOwner) {
-        tetherStatesJob?.cancel()
-        tetherStatesJob = null
-        if (Services.p2p != null) app.stopAndUnbind(this)
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        val binder = service as RepeaterService.Binder
-        repeater.value = binder
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        repeater.value = null
+        startedJob?.cancel()
+        startedJob = null
     }
 }

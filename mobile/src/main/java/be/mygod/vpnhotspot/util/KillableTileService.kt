@@ -3,9 +3,7 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.DeadObjectException
@@ -16,10 +14,11 @@ import android.view.WindowManager
 import androidx.core.view.doOnPreDraw
 import java.lang.ref.WeakReference
 
-abstract class KillableTileService : TileService(), ServiceConnection {
+abstract class KillableTileService : TileService() {
     protected var tapPending = false
 
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+    /** Run a tap that arrived before the service binder was ready; call this once the binder connects. */
+    protected fun resolveTapPending() {
         if (tapPending) {
             tapPending = false
             onClick()

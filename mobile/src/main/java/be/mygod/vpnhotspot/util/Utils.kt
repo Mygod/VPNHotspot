@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -13,6 +14,7 @@ import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.IBinder
 import android.os.Parcel
 import android.os.Parcelable
 import android.os.RemoteException
@@ -24,7 +26,9 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -180,6 +184,35 @@ fun Context.launchUrl(url: String) {
 fun Context.stopAndUnbind(connection: ServiceConnection) {
     connection.onServiceDisconnected(null)
     unbindService(connection)
+}
+
+/**
+ * Bind to [service] for as long as the returned flow is collected, emitting the connected [IBinder]
+ * (and null whenever the service disconnects), then unbinding once collection ends. The
+ * [ServiceConnection] captures only the channel, so neither the system nor our own LoadedApk roots
+ * the collector through it — unlike passing a heavy `this` as the connection.
+ *
+ * Note: ending collection (an explicit unbind) does NOT emit a terminal null — Android only calls
+ * onServiceDisconnected on unexpected disconnects — so a collector that caches the binder elsewhere
+ * must clear it in a finally/onCompletion, or it will read a stale binder on the next bind cycle.
+ */
+fun Context.bindServiceFlow(service: Intent, flags: Int = Context.BIND_AUTO_CREATE) = callbackFlow {
+    val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            trySend(binder)
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            trySend(null)
+        }
+    }
+    // Android registers the connection in LoadedApk before bindService returns — even when it returns
+    // false (component missing/refused) or throws — so we must always unbind, else it leaks till process death.
+    try {
+        bindService(service, connection, flags)
+        awaitClose()
+    } finally {
+        unbindService(connection)
+    }
 }
 
 fun Resources.findIdentifier(name: String, defType: String, defPackage: String, alternativePackage: String? = null) =
